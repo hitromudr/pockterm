@@ -15,6 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # `make check` also runs `format`, which rewrites files instead of
+      # `make check` includes `format`, which rewrites files instead of
       # failing on unformatted code; CI must only verify, not mutate.
-      - run: make lint test
+      # JS tests run in the separate `test-js` target and are included explicitly.
+      - run: make lint test test-js
