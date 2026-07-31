@@ -31,7 +31,7 @@ lint: ## Run vet
 format: ## Format code
 	$(GO) fmt ./...
 
-check: format lint test ## Format, vet and test
+check: format lint test test-js ## Format, vet, go and js tests
 
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)
