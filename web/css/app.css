@@ -1,7 +1,10 @@
-/* Mobile-first dark shell. safe-area covers the iPhone notch/home bar. */
+/* Full-height dark terminal shell. --vvh tracks the visual viewport so
+   the key bar stays above the mobile keyboard. */
 :root {
   --bg: #0b0e14;
   --fg: #d8dee9;
+  --bar: #151a24;
+  --vvh: 100dvh;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body {
@@ -9,9 +12,39 @@ html, body {
   background: var(--bg);
   color: var(--fg);
   font-family: system-ui, sans-serif;
+  overscroll-behavior: none;
 }
-#app {
-  height: 100%;
+#wrap {
+  display: flex;
+  flex-direction: column;
+  height: var(--vvh);
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
-           env(safe-area-inset-bottom) env(safe-area-inset-left);
+           0 env(safe-area-inset-left);
 }
+#status {
+  background: #7a3b3b;
+  color: #fff;
+  text-align: center;
+  padding: 4px;
+  font-size: 14px;
+}
+#term { flex: 1; min-height: 0; }
+#keybar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  background: var(--bar);
+  overflow-x: auto;
+}
+#keybar button {
+  flex: 1;
+  min-width: 44px;
+  padding: 10px 0;
+  font-size: 15px;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 6px;
+}
+#keybar button:active { background: #3a4458; }
+#keybar button.on { background: #7aa2f7; color: #0b0e14; }

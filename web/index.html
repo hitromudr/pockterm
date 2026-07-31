@@ -2,15 +2,33 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#0b0e14">
   <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="vendor/xterm.css">
   <link rel="stylesheet" href="css/app.css">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>pockterm</title>
 </head>
 <body>
-  <main id="app">pockterm</main>
+  <div id="wrap">
+    <div id="status" hidden></div>
+    <div id="term"></div>
+    <div id="keybar">
+      <button data-key="esc">Esc</button>
+      <button data-key="tab">Tab</button>
+      <button data-key="shift-tab">&#8679;Tab</button>
+      <button data-key="up">&#8593;</button>
+      <button data-key="down">&#8595;</button>
+      <button data-key="left">&#8592;</button>
+      <button data-key="right">&#8594;</button>
+      <button id="key-ctrl">Ctrl</button>
+      <button data-key="ctrl-c">^C</button>
+      <button data-key="enter">&#9166;</button>
+    </div>
+  </div>
+  <script src="vendor/xterm.js"></script>
+  <script src="vendor/addon-fit.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
