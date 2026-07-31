@@ -5,7 +5,13 @@ const PRECACHE = [
   '/',
   '/css/app.css',
   '/js/app.js',
+  '/js/keys.js',
+  '/vendor/xterm.js',
+  '/vendor/xterm.css',
+  '/vendor/addon-fit.js',
   '/manifest.json',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
 ];
 
 self.addEventListener('install', (e) => {
