@@ -1,20 +1,20 @@
 # Example systemd unit for pockterm.
-# Copy to /etc/systemd/system/pockterm.service and adjust User/Environment.
+# Note: no ProtectSystem/ProtectHome sandboxing here - when pockterm
+# bootstraps the tmux server, the whole session tree inherits unit
+# restrictions, which would cripple the tools running inside.
 [Unit]
-Description=Mobile web terminal for a tmux session (PWA + Go single binary)
+Description=pockterm - mobile web terminal for a tmux session
 After=network.target
 
 [Service]
 Type=simple
-User=dms
-ExecStart=/usr/local/bin/pockterm
+User=youruser
+Environment=POCKTERM_LISTEN=127.0.0.1:8130
+Environment=POCKTERM_SESSION=claude
+# Environment=POCKTERM_BOOTSTRAP=/usr/local/bin/claude
 Restart=always
 RestartSec=3
-# Environment=EXAMPLE_VAR=value
-PrivateTmp=true
-ProtectSystem=full
-ProtectHome=read-only
-NoNewPrivileges=true
+ExecStart=/usr/local/bin/pockterm
 
 [Install]
 WantedBy=multi-user.target
