@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 
 	"github.com/gorilla/websocket"
@@ -53,17 +54,27 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
+	// writeMu serializes all writes to conn. gorilla/websocket forbids concurrent
+	// writes from multiple goroutines; without this mutex, the PTY→WS goroutine
+	// writing binary frames will race with the main WS→PTY loop writing pong
+	// replies, causing "concurrent write to websocket connection" panic.
+	var writeMu sync.Mutex
+
 	if o.EnsureGroup != nil {
 		if err := o.EnsureGroup(); err != nil {
 			log.Printf("bootstrap failed: %v", err)
+			writeMu.Lock()
 			conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","error":"bootstrap failed"}`))
+			writeMu.Unlock()
 			return
 		}
 	}
 	t, err := term.Start(o.NewSession(nextID.Add(1)), 80, 24)
 	if err != nil {
 		log.Printf("session start failed: %v", err)
+		writeMu.Lock()
 		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","error":"session start failed"}`))
+		writeMu.Unlock()
 		return
 	}
 	defer t.Close()
@@ -75,7 +86,10 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 		for {
 			n, rerr := t.File.Read(buf)
 			if n > 0 {
-				if werr := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); werr != nil {
+				writeMu.Lock()
+				werr := conn.WriteMessage(websocket.BinaryMessage, buf[:n])
+				writeMu.Unlock()
+				if werr != nil {
 					return
 				}
 			}
@@ -109,7 +123,9 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 					log.Printf("resize failed: %v", err)
 				}
 			case "ping":
+				writeMu.Lock()
 				conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"pong"}`))
+				writeMu.Unlock()
 			}
 		}
 	}

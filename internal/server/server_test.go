@@ -91,3 +91,48 @@ func TestTokenRequired(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestConcurrentOutputAndPing(t *testing.T) {
+	// Regression test for concurrent writes to websocket connection.
+	// The PTY→WS goroutine and the main WS→PTY loop must not write concurrently.
+	srv := httptest.NewServer(Handler(Options{
+		Token:      "",
+		NewSession: func(id int64) []string { return []string{"sh", "-c", "while true; do echo spam; done"} },
+		Static:     http.NotFoundHandler(),
+	}))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, ""), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	// Give the PTY a moment to start generating output.
+	time.Sleep(100 * time.Millisecond)
+
+	// Send many ping frames while PTY spam output flows concurrently.
+	// This triggers the race condition if writes are not serialized.
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for i := 0; i < 50; i++ {
+		if err := c.WriteMessage(websocket.TextMessage, []byte(`{"type":"ping"}`)); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Verify we receive pong responses without a panic.
+	pongCount := 0
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mt == websocket.TextMessage && strings.Contains(string(data), "pong") {
+			pongCount++
+			if pongCount >= 50 {
+				return
+			}
+		}
+	}
+}
