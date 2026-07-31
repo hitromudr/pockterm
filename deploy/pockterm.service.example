@@ -1,0 +1,20 @@
+# Example systemd unit for pockterm.
+# Copy to /etc/systemd/system/pockterm.service and adjust User/Environment.
+[Unit]
+Description=Mobile web terminal for a tmux session (PWA + Go single binary)
+After=network.target
+
+[Service]
+Type=simple
+User=dms
+ExecStart=/usr/local/bin/pockterm
+Restart=always
+RestartSec=3
+# Environment=EXAMPLE_VAR=value
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

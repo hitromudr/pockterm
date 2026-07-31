@@ -1,0 +1,17 @@
+/* Mobile-first dark shell. safe-area covers the iPhone notch/home bar. */
+:root {
+  --bg: #0b0e14;
+  --fg: #d8dee9;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, sans-serif;
+}
+#app {
+  height: 100%;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
