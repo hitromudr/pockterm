@@ -15,10 +15,10 @@ import (
 )
 
 type Options struct {
-	Token       string                    // "" disables token auth (loopback-only deployments)
-	NewSession  func(id int64) []string   // argv for a new client's session
-	EnsureGroup func() error              // pre-attach hook (bootstrap); nil = no-op
-	Static      http.Handler              // the embedded PWA
+	Token       string                  // "" disables token auth (loopback-only deployments)
+	NewSession  func(id int64) []string // argv for a new client's session
+	EnsureGroup func() error            // pre-attach hook (bootstrap); nil = no-op
+	Static      http.Handler            // the embedded PWA
 }
 
 func Handler(o Options) http.Handler {
