@@ -38,6 +38,9 @@ pockterm itself listens on loopback. Put a reverse proxy in front for
 TLS and authentication (client certificates or the built-in token).
 An example systemd unit is in `deploy/pockterm.service.example`.
 The proxy must pass WebSocket upgrades for `/ws` and disable buffering.
+The proxy must also preserve the original Host header (nginx:
+`proxy_set_header Host $host;`) — the server checks `Origin` against the
+request's `Host` and rejects the upgrade if the proxy rewrites it.
 
 ## Security model
 
