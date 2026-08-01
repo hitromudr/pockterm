@@ -3,9 +3,22 @@
 package tmuxcmd
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
+
+// clientPrefix names the grouped sessions pockterm creates for its own
+// clients. They are hidden from the session list and cannot be attached
+// to by name, so users only ever see their own sessions.
+const clientPrefix = "pockterm-"
+
+// ClientName is the session name for a pockterm client with the given id.
+func ClientName(id int64) string { return fmt.Sprintf("%s%d", clientPrefix, id) }
+
+// IsClientSession reports whether name is one of pockterm's own client
+// sessions rather than a user session.
+func IsClientSession(name string) bool { return strings.HasPrefix(name, clientPrefix) }
 
 // Session is one tmux session as reported by ListSessions.
 type Session struct {

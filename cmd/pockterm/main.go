@@ -3,7 +3,6 @@
 package main
 
 import (
-	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -29,7 +28,7 @@ func main() {
 		Token:        cfg.Token,
 		ListSessions: listSessions,
 		Attach: func(id int64, target string) []string {
-			return tmuxcmd.Attach(target, fmt.Sprintf("web-%d", id))
+			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 		},
 		Static: http.FileServer(http.FS(static)),
 	})
@@ -43,5 +42,11 @@ func main() {
 func listSessions() ([]tmuxcmd.Session, error) {
 	argv := tmuxcmd.ListSessions()
 	out, _ := exec.Command(argv[0], argv[1:]...).Output()
-	return tmuxcmd.ParseSessions(string(out)), nil
+	var visible []tmuxcmd.Session
+	for _, s := range tmuxcmd.ParseSessions(string(out)) {
+		if !tmuxcmd.IsClientSession(s.Name) {
+			visible = append(visible, s)
+		}
+	}
+	return visible, nil
 }

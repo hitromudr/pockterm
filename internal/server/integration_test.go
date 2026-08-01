@@ -37,7 +37,7 @@ func TestRealTmuxRoundTrip(t *testing.T) {
 			return tmuxcmd.ParseSessions(string(out)), nil
 		},
 		Attach: func(id int64, target string) []string {
-			base := tmuxcmd.Attach(target, fmt.Sprintf("web-%d", id))
+			base := tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 			return append([]string{"tmux", "-L", sock}, base[1:]...)
 		},
 		Static: http.NotFoundHandler(),
@@ -57,15 +57,15 @@ func TestRealTmuxRoundTrip(t *testing.T) {
 	}
 	readBinaryUntil(t, c, "polo")
 
-	// Grouped web session self-destroys after the client detaches.
+	// Grouped client session self-destroys after the client detaches.
 	c.Close()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		out, _ := tmuxL(sock, "list-sessions", "-F", "#{session_name}").CombinedOutput()
-		if !strings.Contains(string(out), "web-") {
+		if !strings.Contains(string(out), "pockterm-") {
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatal("web session was not destroyed after detach")
+	t.Fatal("client session was not destroyed after detach")
 }

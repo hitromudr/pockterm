@@ -36,6 +36,20 @@ func TestParseSessions(t *testing.T) {
 	}
 }
 
+func TestClientSessionNaming(t *testing.T) {
+	if got := ClientName(7); got != "pockterm-7" {
+		t.Fatalf("ClientName = %q", got)
+	}
+	if !IsClientSession("pockterm-7") {
+		t.Fatal("pockterm-7 should be a client session")
+	}
+	for _, user := range []string{"claude", "train", "web", "work"} {
+		if IsClientSession(user) {
+			t.Fatalf("%q wrongly flagged as a client session", user)
+		}
+	}
+}
+
 func TestParseSessionsIgnoresJunk(t *testing.T) {
 	// Empty input (no sessions) and malformed lines yield no sessions.
 	if s := ParseSessions(""); len(s) != 0 {
