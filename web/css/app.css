@@ -8,6 +8,10 @@
   --vvh: 100dvh;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
+/* The hidden attribute must always win over an id's display rule
+   (#keybar/#composer/#screen-* all set display, which by specificity
+   would otherwise leave a "hidden" element on screen). */
+[hidden] { display: none !important; }
 html, body {
   height: 100%;
   background: var(--bg);
