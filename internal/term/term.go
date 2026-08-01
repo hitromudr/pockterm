@@ -15,6 +15,12 @@ type Term struct {
 
 func Start(argv []string, cols, rows uint16) (*Term, error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
+	// A full-screen program (tmux) needs a TERM with clear capability.
+	// Under systemd the parent env carries none, which makes tmux attach
+	// die with "open terminal failed: terminal does not support clear".
+	// The web client is xterm.js, so advertise xterm-256color; appended
+	// last, it overrides any inherited TERM.
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: cols, Rows: rows})
 	if err != nil {
 		return nil, err

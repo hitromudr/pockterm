@@ -21,7 +21,14 @@ html, body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
            0 env(safe-area-inset-left);
 }
+/* Overlay, not a flex child: showing/hiding it must not resize #term
+   (otherwise the terminal jumps every time the reconnect banner toggles). */
 #status {
+  position: absolute;
+  top: env(safe-area-inset-top);
+  left: 0;
+  right: 0;
+  z-index: 10;
   background: #7a3b3b;
   color: #fff;
   text-align: center;
@@ -29,16 +36,16 @@ html, body {
   font-size: 14px;
 }
 #term { flex: 1; min-height: 0; }
+/* Grid so all keys fit at any width; a flex row overflowed narrow phones
+   and hid the rightmost keys (^C, Enter) behind a horizontal scroll. */
 #keybar {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   gap: 4px;
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
   background: var(--bar);
-  overflow-x: auto;
 }
 #keybar button {
-  flex: 1;
-  min-width: 44px;
   padding: 10px 0;
   font-size: 15px;
   color: var(--fg);

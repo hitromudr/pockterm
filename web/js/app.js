@@ -75,10 +75,15 @@ ctrlBtn.addEventListener('click', () => {
 });
 
 // Keep the layout inside the visible viewport (mobile keyboard) and the
-// PTY in sync with the terminal grid.
+// PTY in sync with the terminal grid. Debounced: a resize drag fires a
+// burst of events, and refitting on each one makes the terminal flicker.
+let refitTimer = null;
 function refit() {
-  fit.fit();
-  sendResize();
+  clearTimeout(refitTimer);
+  refitTimer = setTimeout(() => {
+    fit.fit();
+    sendResize();
+  }, 100);
 }
 window.addEventListener('resize', refit);
 if (window.visualViewport) {

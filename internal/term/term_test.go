@@ -47,3 +47,19 @@ func TestResize(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A PTY child must always get a usable TERM, even when the parent (e.g. a
+// systemd service) has none or a broken one. Without it tmux attach fails
+// with "open terminal failed: terminal does not support clear".
+func TestStartSetsUsableTERM(t *testing.T) {
+	t.Setenv("TERM", "dumb")
+	tm, err := Start([]string{"sh", "-c", `printf "TERM=%s." "$TERM"`}, 80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tm.Close()
+	got := readUntil(t, tm, "TERM=")
+	if !strings.Contains(got, "TERM=xterm-256color.") {
+		t.Fatalf("child TERM not set to xterm-256color: %q", got)
+	}
+}
