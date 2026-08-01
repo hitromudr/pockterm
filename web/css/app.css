@@ -40,7 +40,7 @@ html, body {
   padding: 8px 10px;
   background: var(--bar);
 }
-.bar .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar .title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar button {
   color: var(--fg);
   background: #232a38;
