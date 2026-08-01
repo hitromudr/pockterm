@@ -209,7 +209,8 @@ function renderAnswers() {
   for (const o of q.options) {
     const b = document.createElement('button');
     b.textContent = `${o.key} · ${o.label}`;
-    b.addEventListener('click', () => { send(o.key); term.focus(); });
+    // digit + Enter picks the menu item in one tap.
+    b.addEventListener('click', () => { send(o.key + '\r'); term.focus(); });
     answersEl.appendChild(b);
   }
   const esc = document.createElement('button');
