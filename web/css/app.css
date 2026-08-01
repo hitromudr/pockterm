@@ -16,8 +16,12 @@ html, body {
   overscroll-behavior: none;
 }
 
-/* A screen fills the visual viewport; only one is visible at a time. */
-#screen-sessions, #screen-term {
+/* A screen fills the visual viewport; only one is visible at a time.
+   The :not([hidden]) guard matters: a bare `#id { display: flex }` beats
+   the `hidden` attribute by specificity, which would leave the hidden
+   screen in flow (empty gap, broken layout, clicks landing on the wrong
+   layer). Scoping display:flex to the visible screen lets `hidden` win. */
+#screen-sessions:not([hidden]), #screen-term:not([hidden]) {
   display: flex;
   flex-direction: column;
   height: var(--vvh);
@@ -98,3 +102,10 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 }
 #keybar button:active { background: #3a4458; }
 #keybar button.on { background: var(--accent); color: #0b0e14; }
+
+/* The key bar exists for touch keyboards (Esc, Tab, arrows, Ctrl aren't
+   on a phone's on-screen keyboard). On a device with a real keyboard and
+   a mouse it only gets in the way, so hide it there — you just type. */
+@media (hover: hover) and (pointer: fine) {
+  #keybar { display: none; }
+}

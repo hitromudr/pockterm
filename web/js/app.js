@@ -116,6 +116,8 @@ ctrlBtn.addEventListener('click', () => { setCtrl(!ctrlLatch); term.focus(); });
 
 document.getElementById('back').addEventListener('click', showSessions);
 document.getElementById('refresh').addEventListener('click', loadSessions);
+// Tapping the terminal returns keyboard focus to it (so typing goes in).
+document.getElementById('term').addEventListener('click', () => term.focus());
 
 // Keep the terminal grid in sync with the visible viewport. Debounced:
 // a resize drag fires a burst of events and refitting on each flickers.
