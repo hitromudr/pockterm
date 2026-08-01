@@ -41,6 +41,25 @@ html, body {
   background: var(--bar);
 }
 .bar .title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Session tabs: a horizontally scrollable row; tap a tab to switch. */
+#tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+  overflow-x: auto;
+}
+#tabs button {
+  padding: 6px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 6px;
+}
+#tabs button.active { background: var(--accent); color: #0b0e14; font-weight: 600; }
 .bar button {
   color: var(--fg);
   background: #232a38;

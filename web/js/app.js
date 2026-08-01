@@ -8,8 +8,17 @@ const screenSessions = document.getElementById('screen-sessions');
 const screenTerm = document.getElementById('screen-term');
 const sessionList = document.getElementById('session-list');
 const emptyMsg = document.getElementById('empty');
-const sessName = document.getElementById('sess-name');
+const tabsEl = document.getElementById('tabs');
 const statusEl = document.getElementById('status');
+
+async function fetchSessions() {
+  try {
+    const res = await fetch(`/api/sessions?${tokenQS}`);
+    return (await res.json()) || [];
+  } catch (_) {
+    return [];
+  }
+}
 
 // --- terminal (created once, reused across sessions) ---
 const term = new Terminal({ fontSize: 14, scrollback: 5000, theme: { background: '#0b0e14' } });
@@ -42,13 +51,7 @@ const enc = new TextEncoder();
 async function loadSessions() {
   sessionList.innerHTML = '';
   emptyMsg.hidden = true;
-  let sessions = [];
-  try {
-    const res = await fetch(`/api/sessions?${tokenQS}`);
-    sessions = await res.json();
-  } catch (_) {
-    sessions = [];
-  }
+  const sessions = await fetchSessions();
   if (!sessions || sessions.length === 0) {
     emptyMsg.hidden = false;
     return;
@@ -79,14 +82,30 @@ function showSessions() {
 }
 
 function attach(name) {
+  // Close any current socket first (switching tabs) so its output stops
+  // writing into the terminal we're about to reuse for another session.
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
   current = name;
-  sessName.textContent = name;
   screenSessions.hidden = true;
   screenTerm.hidden = false;
   term.reset();
   document.getElementById('answers').hidden = true;
   lastAnswersSig = null;
+  renderTabs();
   requestAnimationFrame(() => { fit.fit(); term.focus(); connect(); });
+}
+
+// Session tabs in the terminal header: tap one to switch to that session.
+async function renderTabs() {
+  const sessions = await fetchSessions();
+  tabsEl.innerHTML = '';
+  for (const s of sessions) {
+    const b = document.createElement('button');
+    b.textContent = s.name;
+    if (s.name === current) b.className = 'active';
+    b.addEventListener('click', () => { if (s.name !== current) attach(s.name); });
+    tabsEl.appendChild(b);
+  }
 }
 
 // --- websocket to the attached session ---
