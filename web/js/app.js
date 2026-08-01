@@ -154,7 +154,16 @@ ctrlBtn.addEventListener('click', () => { setCtrl(!ctrlLatch); term.focus(); });
 document.getElementById('back').addEventListener('click', showSessions);
 document.getElementById('refresh').addEventListener('click', loadSessions);
 // Tapping the terminal returns keyboard focus to it (so typing goes in).
-document.getElementById('term').addEventListener('click', () => term.focus());
+document.getElementById('term').addEventListener('click', () => { term.focus(); refit(); });
+
+// tmux shares one window size across all clients of a session, so when a
+// second (smaller) client connects the window shrinks and this one gets
+// filler dots. Reclaim the size for whichever device is active: on focus,
+// on becoming visible, so the device you're actually using wins.
+window.addEventListener('focus', refit);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refit();
+});
 
 // --- prompt mode: composer + detected answer buttons ---
 const answersEl = document.getElementById('answers');
