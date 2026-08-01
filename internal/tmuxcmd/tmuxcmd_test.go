@@ -10,6 +10,7 @@ func TestAttach(t *testing.T) {
 	want := []string{
 		"tmux", "new-session", "-A", "-s", "web-1", "-t", "claude",
 		";", "set-option", "destroy-unattached", "on",
+		";", "set-option", "mouse", "on",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v", got)

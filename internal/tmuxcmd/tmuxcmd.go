@@ -73,5 +73,9 @@ func Attach(target, webSession string) []string {
 	return []string{
 		"tmux", "new-session", "-A", "-s", webSession, "-t", target,
 		";", "set-option", "destroy-unattached", "on",
+		// mouse on lets the wheel/touch enter tmux copy-mode so scrollback
+		// works in the browser. Scoped to this grouped session, so the
+		// user's own direct tmux clients are unaffected.
+		";", "set-option", "mouse", "on",
 	}
 }
