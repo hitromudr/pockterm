@@ -29,9 +29,17 @@
     <header class="bar">
       <button id="back">&#8592; Sessions</button>
       <span id="sess-name" class="title"></span>
+      <button id="mode" title="Prompt mode">&#129302;</button>
     </header>
     <div id="status" hidden></div>
     <div id="term"></div>
+    <!-- Buttons for a detected interactive prompt (Claude permission etc.) -->
+    <div id="answers" hidden></div>
+    <!-- Prompt composer (shown in prompt mode instead of the key bar) -->
+    <form id="composer" hidden>
+      <textarea id="prompt" rows="1" placeholder="Message… (▶ to send)"></textarea>
+      <button id="send" type="submit" title="Send">&#9654;</button>
+    </form>
     <div id="keybar">
       <button data-key="esc">Esc</button>
       <button data-key="tab">Tab</button>

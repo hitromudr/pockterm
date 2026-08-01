@@ -1,4 +1,5 @@
 import { keyBytes, applyCtrl } from './keys.js';
+import { detectQuestion } from './detect.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -83,6 +84,7 @@ function attach(name) {
   screenSessions.hidden = true;
   screenTerm.hidden = false;
   term.reset();
+  document.getElementById('answers').hidden = true;
   requestAnimationFrame(() => { fit.fit(); term.focus(); connect(); });
 }
 
@@ -96,7 +98,7 @@ function connect() {
   ws.onopen = () => { statusEl.hidden = true; retry = 1000; sendResize(); };
   ws.onmessage = (e) => {
     if (typeof e.data === 'string') return; // control frames (pong/error)
-    term.write(new Uint8Array(e.data));
+    term.write(new Uint8Array(e.data), scheduleScan);
   };
   ws.onclose = () => {
     if (!current) return; // left for the list on purpose
@@ -133,6 +135,76 @@ document.getElementById('back').addEventListener('click', showSessions);
 document.getElementById('refresh').addEventListener('click', loadSessions);
 // Tapping the terminal returns keyboard focus to it (so typing goes in).
 document.getElementById('term').addEventListener('click', () => term.focus());
+
+// --- prompt mode: composer + detected answer buttons ---
+const answersEl = document.getElementById('answers');
+const composerEl = document.getElementById('composer');
+const promptEl = document.getElementById('prompt');
+const modeBtn = document.getElementById('mode');
+const keybarEl = document.getElementById('keybar');
+
+// Prompt mode swaps the key bar for the composer. Detected answer buttons
+// show in both modes (they help whenever a prompt appears).
+function setPromptMode(on) {
+  modeBtn.classList.toggle('on', on);
+  composerEl.hidden = !on;
+  keybarEl.hidden = on;
+  if (on) promptEl.focus();
+  refit();
+}
+modeBtn.addEventListener('click', () => setPromptMode(composerEl.hidden));
+
+// Send the composed prompt (text + Enter), then clear and keep the field.
+composerEl.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const text = promptEl.value;
+  if (!text) return;
+  send(text + '\r');
+  promptEl.value = '';
+  promptEl.style.height = 'auto';
+  promptEl.focus();
+});
+// Grow the textarea with its content, up to the CSS max-height.
+promptEl.addEventListener('input', () => {
+  promptEl.style.height = 'auto';
+  promptEl.style.height = promptEl.scrollHeight + 'px';
+});
+
+// Read the visible terminal rows for the prompt detector.
+function visibleLines() {
+  const buf = term.buffer.active;
+  const lines = [];
+  for (let y = 0; y < term.rows; y++) {
+    const line = buf.getLine(buf.baseY + y);
+    lines.push(line ? line.translateToString(true) : '');
+  }
+  return lines;
+}
+
+function renderAnswers() {
+  const q = detectQuestion(visibleLines());
+  answersEl.innerHTML = '';
+  if (!q) { answersEl.hidden = true; return; }
+  for (const o of q.options) {
+    const b = document.createElement('button');
+    b.textContent = `${o.key} · ${o.label}`;
+    b.addEventListener('click', () => { send(o.key); term.focus(); });
+    answersEl.appendChild(b);
+  }
+  const esc = document.createElement('button');
+  esc.className = 'esc';
+  esc.textContent = 'Esc';
+  esc.addEventListener('click', () => { send('\x1b'); term.focus(); });
+  answersEl.appendChild(esc);
+  answersEl.hidden = false;
+}
+
+// Throttle scans: xterm's write callback can fire many times per second.
+let scanTimer = null;
+function scheduleScan() {
+  if (scanTimer) return;
+  scanTimer = setTimeout(() => { scanTimer = null; renderAnswers(); }, 150);
+}
 
 // Keep the terminal grid in sync with the visible viewport. Debounced:
 // a resize drag fires a burst of events and refitting on each flickers.
