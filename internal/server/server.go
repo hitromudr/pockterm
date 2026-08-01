@@ -1,7 +1,9 @@
-// Package server bridges a WebSocket client and a PTY session.
+// Package server bridges a WebSocket client and a PTY attached to a
+// user-chosen tmux session. It never creates sessions of its own.
 package server
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"net/url"
@@ -12,18 +14,20 @@ import (
 
 	"github.com/hitromudr/pockterm/internal/proto"
 	"github.com/hitromudr/pockterm/internal/term"
+	"github.com/hitromudr/pockterm/internal/tmuxcmd"
 )
 
 type Options struct {
-	Token       string                  // "" disables token auth (loopback-only deployments)
-	NewSession  func(id int64) []string // argv for a new client's session
-	EnsureGroup func() error            // pre-attach hook (bootstrap); nil = no-op
-	Static      http.Handler            // the embedded PWA
+	Token        string                                 // "" disables token auth (loopback-only deployments)
+	ListSessions func() ([]tmuxcmd.Session, error)      // current tmux sessions
+	Attach       func(id int64, target string) []string // argv attaching a client to target
+	Static       http.Handler                           // the embedded PWA
 }
 
 func Handler(o Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", o.Static)
+	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) { serveSessions(o, w, r) })
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) { serveWS(o, w, r) })
 	return mux
 }
@@ -43,11 +47,50 @@ var upgrader = websocket.Upgrader{
 
 var nextID atomic.Int64
 
-func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
-	if o.Token != "" && r.URL.Query().Get("token") != o.Token {
+func authOK(o Options, r *http.Request) bool {
+	return o.Token == "" || r.URL.Query().Get("token") == o.Token
+}
+
+func serveSessions(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	sessions, err := o.ListSessions()
+	if err != nil {
+		http.Error(w, "cannot list sessions", http.StatusInternalServerError)
+		return
+	}
+	if sessions == nil {
+		sessions = []tmuxcmd.Session{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sessions)
+}
+
+func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	target := r.URL.Query().Get("session")
+	if target == "" {
+		http.Error(w, "missing session", http.StatusBadRequest)
+		return
+	}
+	// Only attach to a session that actually exists. This both gives a
+	// clean error for a stale link and blocks attaching to an arbitrary
+	// name (the value reaches tmux, so it must be a known session).
+	sessions, err := o.ListSessions()
+	if err != nil {
+		http.Error(w, "cannot list sessions", http.StatusInternalServerError)
+		return
+	}
+	if !sessionExists(sessions, target) {
+		http.Error(w, "no such session", http.StatusNotFound)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -60,20 +103,11 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 	// replies, causing "concurrent write to websocket connection" panic.
 	var writeMu sync.Mutex
 
-	if o.EnsureGroup != nil {
-		if err := o.EnsureGroup(); err != nil {
-			log.Printf("bootstrap failed: %v", err)
-			writeMu.Lock()
-			conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","error":"bootstrap failed"}`))
-			writeMu.Unlock()
-			return
-		}
-	}
-	t, err := term.Start(o.NewSession(nextID.Add(1)), 80, 24)
+	t, err := term.Start(o.Attach(nextID.Add(1), target), 80, 24)
 	if err != nil {
-		log.Printf("session start failed: %v", err)
+		log.Printf("attach failed: %v", err)
 		writeMu.Lock()
-		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","error":"session start failed"}`))
+		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","error":"attach failed"}`))
 		writeMu.Unlock()
 		return
 	}
@@ -129,4 +163,13 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+func sessionExists(sessions []tmuxcmd.Session, name string) bool {
+	for _, s := range sessions {
+		if s.Name == name {
+			return true
+		}
+	}
+	return false
 }

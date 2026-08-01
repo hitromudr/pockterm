@@ -1,5 +1,53 @@
-// Package tmuxcmd builds tmux invocations; it never runs them.
+// Package tmuxcmd builds tmux invocations and parses their output; it
+// never runs them.
 package tmuxcmd
+
+import (
+	"strconv"
+	"strings"
+)
+
+// Session is one tmux session as reported by ListSessions.
+type Session struct {
+	Name     string `json:"name"`
+	Windows  int    `json:"windows"`
+	Created  int64  `json:"created"` // unix seconds
+	Attached bool   `json:"attached"`
+}
+
+// listFormat keeps the field order ParseSessions expects.
+const listFormat = "#{session_name}\t#{session_windows}\t#{session_created}\t#{session_attached}"
+
+// ListSessions returns the argv listing sessions one per line in the
+// tab-separated order ParseSessions parses.
+func ListSessions() []string {
+	return []string{"tmux", "list-sessions", "-F", listFormat}
+}
+
+// ParseSessions turns ListSessions output into Session values. Blank and
+// malformed lines are skipped so a partial line never aborts the list.
+func ParseSessions(out string) []Session {
+	var sessions []Session
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		if len(f) != 4 || f[0] == "" {
+			continue
+		}
+		windows, _ := strconv.Atoi(f[1])
+		created, _ := strconv.ParseInt(f[2], 10, 64)
+		sessions = append(sessions, Session{
+			Name:     f[0],
+			Windows:  windows,
+			Created:  created,
+			Attached: f[3] == "1",
+		})
+	}
+	return sessions
+}
 
 // Attach returns the argv attaching a web client to its own grouped
 // session sharing windows with target. A grouped session gets an
@@ -13,21 +61,4 @@ func Attach(target, webSession string) []string {
 		"tmux", "new-session", "-A", "-s", webSession, "-t", target,
 		";", "set-option", "destroy-unattached", "on",
 	}
-}
-
-// Bootstrap returns the argv creating the detached target session.
-// Empty cmd starts the user's login shell (tmux default), keeping the
-// public tool generic; deployments set POCKTERM_BOOTSTRAP.
-func Bootstrap(target, cmd string) []string {
-	args := []string{"tmux", "new-session", "-d", "-s", target}
-	if cmd != "" {
-		args = append(args, cmd)
-	}
-	return args
-}
-
-// HasSession returns the probe argv; exit status 0 means the exact
-// session exists ("=" disables tmux prefix matching).
-func HasSession(target string) []string {
-	return []string{"tmux", "has-session", "-t", "=" + target}
 }

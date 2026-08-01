@@ -31,15 +31,20 @@ func TestRealTmuxRoundTrip(t *testing.T) {
 	t.Cleanup(func() { tmuxL(sock, "kill-server").Run() })
 
 	srv := httptest.NewServer(Handler(Options{
-		NewSession: func(id int64) []string {
-			base := tmuxcmd.Attach("itest", fmt.Sprintf("web-%d", id))
+		ListSessions: func() ([]tmuxcmd.Session, error) {
+			out, _ := tmuxL(sock, "list-sessions", "-F",
+				"#{session_name}\t#{session_windows}\t#{session_created}\t#{session_attached}").Output()
+			return tmuxcmd.ParseSessions(string(out)), nil
+		},
+		Attach: func(id int64, target string) []string {
+			base := tmuxcmd.Attach(target, fmt.Sprintf("web-%d", id))
 			return append([]string{"tmux", "-L", sock}, base[1:]...)
 		},
 		Static: http.NotFoundHandler(),
 	}))
 	defer srv.Close()
 
-	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws", nil)
+	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws?session=itest", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

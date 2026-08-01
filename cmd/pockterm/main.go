@@ -1,4 +1,5 @@
-// Command pockterm serves a mobile web terminal attached to a tmux session.
+// Command pockterm serves a mobile web terminal that attaches to a
+// user-chosen tmux session. It lists sessions but never creates them.
 package main
 
 import (
@@ -25,20 +26,22 @@ func main() {
 		log.Fatal(err)
 	}
 	h := server.Handler(server.Options{
-		Token: cfg.Token,
-		NewSession: func(id int64) []string {
-			return tmuxcmd.Attach(cfg.Session, fmt.Sprintf("web-%d", id))
-		},
-		EnsureGroup: func() error {
-			probe := tmuxcmd.HasSession(cfg.Session)
-			if exec.Command(probe[0], probe[1:]...).Run() == nil {
-				return nil
-			}
-			boot := tmuxcmd.Bootstrap(cfg.Session, cfg.Bootstrap)
-			return exec.Command(boot[0], boot[1:]...).Run()
+		Token:        cfg.Token,
+		ListSessions: listSessions,
+		Attach: func(id int64, target string) []string {
+			return tmuxcmd.Attach(target, fmt.Sprintf("web-%d", id))
 		},
 		Static: http.FileServer(http.FS(static)),
 	})
-	log.Printf("pockterm listening on %s (tmux session %q)", cfg.Listen, cfg.Session)
+	log.Printf("pockterm listening on %s", cfg.Listen)
 	log.Fatal(http.ListenAndServe(cfg.Listen, h))
+}
+
+// listSessions runs `tmux list-sessions`. With no server running tmux
+// exits non-zero and prints nothing to stdout; that is not an error here,
+// just an empty list, so the parse result is returned regardless.
+func listSessions() ([]tmuxcmd.Session, error) {
+	argv := tmuxcmd.ListSessions()
+	out, _ := exec.Command(argv[0], argv[1:]...).Output()
+	return tmuxcmd.ParseSessions(string(out)), nil
 }

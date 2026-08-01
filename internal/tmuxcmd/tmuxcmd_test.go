@@ -16,26 +16,32 @@ func TestAttach(t *testing.T) {
 	}
 }
 
-func TestBootstrapWithCommand(t *testing.T) {
-	got := Bootstrap("claude", "/usr/local/bin/claude-start")
-	want := []string{"tmux", "new-session", "-d", "-s", "claude", "/usr/local/bin/claude-start"}
+func TestListSessionsArgv(t *testing.T) {
+	got := ListSessions()
+	want := []string{"tmux", "list-sessions", "-F", listFormat}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v", got)
 	}
 }
 
-func TestBootstrapDefaultShell(t *testing.T) {
-	got := Bootstrap("claude", "")
-	want := []string{"tmux", "new-session", "-d", "-s", "claude"}
+func TestParseSessions(t *testing.T) {
+	out := "claude\t1\t1754032444\t1\nwork\t3\t1754030000\t0\n"
+	got := ParseSessions(out)
+	want := []Session{
+		{Name: "claude", Windows: 1, Created: 1754032444, Attached: true},
+		{Name: "work", Windows: 3, Created: 1754030000, Attached: false},
+	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %v", got)
+		t.Fatalf("got %+v", got)
 	}
 }
 
-func TestHasSession(t *testing.T) {
-	got := HasSession("claude")
-	want := []string{"tmux", "has-session", "-t", "=claude"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %v", got)
+func TestParseSessionsIgnoresJunk(t *testing.T) {
+	// Empty input (no sessions) and malformed lines yield no sessions.
+	if s := ParseSessions(""); len(s) != 0 {
+		t.Fatalf("empty: got %+v", s)
+	}
+	if s := ParseSessions("no server running on /tmp/tmux-1000/default\n"); len(s) != 0 {
+		t.Fatalf("junk line parsed as a session: %+v", s)
 	}
 }

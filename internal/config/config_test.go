@@ -11,22 +11,20 @@ func TestDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Listen != "127.0.0.1:8130" || c.Session != "claude" || c.Bootstrap != "" || c.Token != "" {
+	if c.Listen != "127.0.0.1:8130" || c.Token != "" {
 		t.Fatalf("unexpected defaults: %+v", c)
 	}
 }
 
 func TestOverrides(t *testing.T) {
 	c, err := FromEnv(env(map[string]string{
-		"POCKTERM_LISTEN":    "127.0.0.1:9999",
-		"POCKTERM_SESSION":   "work",
-		"POCKTERM_BOOTSTRAP": "/usr/bin/top",
-		"POCKTERM_TOKEN":     "s3cret",
+		"POCKTERM_LISTEN": "127.0.0.1:9999",
+		"POCKTERM_TOKEN":  "s3cret",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Listen != "127.0.0.1:9999" || c.Session != "work" || c.Bootstrap != "/usr/bin/top" || c.Token != "s3cret" {
+	if c.Listen != "127.0.0.1:9999" || c.Token != "s3cret" {
 		t.Fatalf("unexpected config: %+v", c)
 	}
 }

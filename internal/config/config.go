@@ -8,18 +8,14 @@ import (
 )
 
 type Config struct {
-	Listen    string // POCKTERM_LISTEN, host:port
-	Session   string // POCKTERM_SESSION, tmux target session/group
-	Bootstrap string // POCKTERM_BOOTSTRAP, command for a missing session ("" = login shell)
-	Token     string // POCKTERM_TOKEN, required for non-loopback listen
+	Listen string // POCKTERM_LISTEN, host:port
+	Token  string // POCKTERM_TOKEN, required for non-loopback listen
 }
 
 func FromEnv(getenv func(string) string) (Config, error) {
 	c := Config{
-		Listen:    orDefault(getenv("POCKTERM_LISTEN"), "127.0.0.1:8130"),
-		Session:   orDefault(getenv("POCKTERM_SESSION"), "claude"),
-		Bootstrap: getenv("POCKTERM_BOOTSTRAP"),
-		Token:     getenv("POCKTERM_TOKEN"),
+		Listen: orDefault(getenv("POCKTERM_LISTEN"), "127.0.0.1:8130"),
+		Token:  getenv("POCKTERM_TOKEN"),
 	}
 	if err := c.validate(); err != nil {
 		return Config{}, err
