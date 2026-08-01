@@ -2,25 +2,27 @@
 
 [Русская версия](README.md)
 
-Pocket terminal: a mobile-friendly PWA attached to a tmux session,
-served by a single Go binary. Built for driving
-[Claude Code](https://claude.com/claude-code) (or any TUI) from a phone.
+Pocket terminal: a mobile-friendly PWA window onto your tmux sessions,
+served by a single Go binary. Handy for driving any console from a phone —
+for example [Claude Code](https://claude.com/claude-code) or any TUI.
 
 - **One binary.** Static PWA is embedded; no runtime dependencies except
   `tmux` on the host.
 - **Real terminal.** xterm.js over a WebSocket-to-PTY bridge, plus a key
   bar (Esc, Tab, arrows, Ctrl latch) for mobile keyboards.
+- **List and attach.** pockterm lists running tmux sessions and attaches
+  to the one you pick. It never **creates** sessions — you start those on
+  the server yourself.
 - **tmux grouped sessions.** Each client gets its own view size; your
   laptop's tmux window is never shrunk by a phone.
-- **Survives reboots.** If the target session is missing, pockterm
-  bootstraps it with a configurable command.
 
 ## Quick start
 
 ```bash
 make build
-POCKTERM_SESSION=claude ./bin/pockterm
-# open http://127.0.0.1:8130
+./bin/pockterm
+# start a session: tmux new-session -d -s work
+# open http://127.0.0.1:8130 and pick it
 ```
 
 ## Configuration (environment)
@@ -28,8 +30,6 @@ POCKTERM_SESSION=claude ./bin/pockterm
 | Variable | Default | Meaning |
 |---|---|---|
 | `POCKTERM_LISTEN` | `127.0.0.1:8130` | Listen address. Non-loopback requires `POCKTERM_TOKEN`. |
-| `POCKTERM_SESSION` | `claude` | tmux session (group) to attach to. |
-| `POCKTERM_BOOTSTRAP` | login shell | Command used to create the session when missing. |
 | `POCKTERM_TOKEN` | empty | Shared token (`?token=...`); mandatory off-loopback. |
 
 ## Deployment

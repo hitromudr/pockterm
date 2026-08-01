@@ -1,17 +1,16 @@
 # Example systemd unit for pockterm.
-# Note: no ProtectSystem/ProtectHome sandboxing here - when pockterm
-# bootstraps the tmux server, the whole session tree inherits unit
-# restrictions, which would cripple the tools running inside.
+# It only lists and attaches to sessions you start yourself, so it needs
+# no special environment beyond the listen address (and a token if the
+# listen address is not loopback).
 [Unit]
-Description=pockterm - mobile web terminal for a tmux session
+Description=pockterm - mobile web terminal for your tmux sessions
 After=network.target
 
 [Service]
 Type=simple
 User=youruser
 Environment=POCKTERM_LISTEN=127.0.0.1:8130
-Environment=POCKTERM_SESSION=claude
-# Environment=POCKTERM_BOOTSTRAP=/usr/local/bin/claude
+# Environment=POCKTERM_TOKEN=change-me   # required if LISTEN is not loopback
 Restart=always
 RestartSec=3
 ExecStart=/usr/local/bin/pockterm
