@@ -109,29 +109,35 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 #mode { margin-left: 8px; }
 #mode.on { background: var(--accent); color: #0b0e14; }
 
-/* Answer buttons for a detected prompt: big, wrap onto rows, above input. */
+/* Answer buttons for a detected prompt: one per row, above the input.
+   Capped height with scroll so a long menu never eats the terminal. */
 #answers {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
   padding: 6px;
+  max-height: 45vh;
+  overflow-y: auto;
   background: var(--bar);
   border-top: 1px solid #2a3345;
 }
 #answers button {
-  flex: 1 1 auto;
-  min-width: 44%;
+  width: 100%;
   padding: 12px 10px;
   font-size: 15px;
   text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: #0b0e14;
   background: var(--accent);
   border: none;
   border-radius: 8px;
 }
 #answers button.esc {
-  flex: 0 0 auto;
-  min-width: 0;
+  align-self: flex-end;
+  width: auto;
+  padding: 10px 18px;
   color: var(--fg);
   background: #232a38;
 }

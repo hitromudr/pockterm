@@ -237,6 +237,11 @@ function refit() {
   refitTimer = setTimeout(() => { fit.fit(); sendResize(); }, 100);
 }
 window.addEventListener('resize', refit);
+// Refit whenever the terminal's box changes size — first render, and when
+// the composer / answer buttons appear or grow and shrink the terminal.
+if (window.ResizeObserver) {
+  new ResizeObserver(refit).observe(document.getElementById('term'));
+}
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
     document.documentElement.style.setProperty('--vvh', `${window.visualViewport.height}px`);
