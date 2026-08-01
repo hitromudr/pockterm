@@ -170,6 +170,33 @@ document.getElementById('font-inc').addEventListener('click', () => setFont(font
 // Tapping the terminal returns keyboard focus to it (so typing goes in).
 document.getElementById('term').addEventListener('click', () => { term.focus(); refit(); });
 
+// Touch scroll: a vertical swipe on the terminal is turned into tmux
+// mouse-wheel events (SGR). tmux mouse mode is on for pockterm's sessions,
+// so the wheel enters copy-mode and scrolls the history — this is what
+// makes scrolling work on Android, where xterm's own scrollback is empty
+// under tmux.
+function sendWheel(btn) { send(`\x1b[<${btn};1;1M`); }
+let touchY = null;
+const termBox = document.getElementById('term');
+termBox.addEventListener('touchstart', (e) => { touchY = e.touches[0].clientY; }, { passive: true });
+termBox.addEventListener('touchmove', (e) => {
+  if (touchY === null) return;
+  let dy = e.touches[0].clientY - touchY;
+  const step = 20;
+  while (dy >= step) { sendWheel(64); dy -= step; touchY += step; }   // swipe down → history
+  while (dy <= -step) { sendWheel(65); dy += step; touchY -= step; }  // swipe up → newer
+}, { passive: true });
+termBox.addEventListener('touchend', () => { touchY = null; }, { passive: true });
+
+// Hide/show the bottom bar to give the terminal the whole screen.
+let panelsHidden = false;
+document.getElementById('hide').addEventListener('click', () => {
+  panelsHidden = !panelsHidden;
+  screenTerm.classList.toggle('panels-hidden', panelsHidden);
+  document.getElementById('hide').classList.toggle('on', panelsHidden);
+  refit();
+});
+
 // tmux shares one window size across all clients of a session, so when a
 // second (smaller) client connects the window shrinks and this one gets
 // filler dots. Reclaim the size for whichever device is active: on focus,

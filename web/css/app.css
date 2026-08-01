@@ -106,6 +106,16 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   font-size: 14px;
 }
 #term { flex: 1; min-height: 0; }
+/* Hide xterm's own scrollbar: under tmux the scrollback lives in tmux
+   (copy-mode), so the bar is inert and only misleads — scroll with the
+   wheel or a touch swipe instead. */
+.xterm-viewport { scrollbar-width: none; }
+.xterm-viewport::-webkit-scrollbar { display: none; }
+/* Bar hidden: give the terminal the whole screen. */
+#mode.on, #hide.on { background: var(--accent); color: #0b0e14; }
+#screen-term.panels-hidden #keybar,
+#screen-term.panels-hidden #composer,
+#screen-term.panels-hidden #quickbar { display: none !important; }
 /* Grid so all keys fit at any width; a flex row overflowed narrow phones
    and hid the rightmost keys (^C, Enter) behind a horizontal scroll. */
 #keybar {
