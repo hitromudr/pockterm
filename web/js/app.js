@@ -16,6 +16,21 @@ const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
 term.open(document.getElementById('term'));
 
+// Keep terminal control keys in the terminal instead of firing the browser
+// (Ctrl+R reload, Ctrl+L address bar, Ctrl+W close, Ctrl+D bookmark). A
+// normal tab still reserves Ctrl+W/T/N no matter what — install pockterm as
+// a PWA (standalone window, no tabs) for those to reach the terminal too.
+// Copy/paste (Ctrl+C with a selection, Ctrl+V, Ctrl+Shift+*) are left alone.
+term.attachCustomKeyEventHandler((e) => {
+  if (e.type === 'keydown' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+    // Reload / address bar / close-tab / bookmark — reclaim for the shell.
+    if (['KeyR', 'KeyL', 'KeyW', 'KeyD'].includes(e.code)) {
+      e.preventDefault();
+    }
+  }
+  return true;
+});
+
 let ws = null;
 let current = null; // attached session name, or null on the list screen
 let retry = 1000;
