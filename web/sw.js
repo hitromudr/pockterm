@@ -1,6 +1,6 @@
 // Version-stamped static cache. Bump VERSION on any static change:
 // the old cache is dropped on activate.
-const VERSION = 'v14';
+const VERSION = 'v15';
 const PRECACHE = [
   '/',
   '/css/app.css',

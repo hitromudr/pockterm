@@ -216,3 +216,15 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 @media (hover: hover) and (pointer: fine) {
   #keybar { display: none; }
 }
+
+/* Landscape phones are short: put the key bar on one row (width is ample)
+   and shrink the panels so terminal + controls fit without overlapping. */
+@media (orientation: landscape) and (max-height: 520px) {
+  #keybar { grid-template-columns: repeat(10, 1fr); }
+  #keybar button { padding: 6px 0; font-size: 13px; }
+  #answers { max-height: 55vh; }
+  #answers button { padding: 8px 10px; }
+  #composer { padding-top: 4px; }
+  #composer textarea { max-height: 30vh; }
+  .bar { padding: 4px 8px; }
+}

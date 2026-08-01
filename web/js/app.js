@@ -21,7 +21,9 @@ async function fetchSessions() {
 }
 
 // --- terminal (created once, reused across sessions) ---
-const term = new Terminal({ fontSize: 14, scrollback: 5000, theme: { background: '#0b0e14' } });
+let fontSize = 14;
+try { fontSize = parseInt(localStorage.getItem('pt-font'), 10) || 14; } catch (_) {}
+const term = new Terminal({ fontSize, scrollback: 5000, theme: { background: '#0b0e14' } });
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
 term.open(document.getElementById('term'));
@@ -76,6 +78,7 @@ function escapeHtml(s) {
 function showSessions() {
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   current = null;
+  try { sessionStorage.removeItem('pt-session'); } catch (_) {}
   screenTerm.hidden = true;
   screenSessions.hidden = false;
   loadSessions();
@@ -86,6 +89,7 @@ function attach(name) {
   // writing into the terminal we're about to reuse for another session.
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   current = name;
+  try { sessionStorage.setItem('pt-session', name); } catch (_) {}
   screenSessions.hidden = true;
   screenTerm.hidden = false;
   term.reset();
@@ -153,6 +157,16 @@ ctrlBtn.addEventListener('click', () => { setCtrl(!ctrlLatch); term.focus(); });
 
 document.getElementById('back').addEventListener('click', showSessions);
 document.getElementById('refresh').addEventListener('click', loadSessions);
+
+// Terminal text size (A-/A+), persisted; refit so the grid follows.
+function setFont(sz) {
+  fontSize = Math.max(9, Math.min(28, sz));
+  term.options.fontSize = fontSize;
+  try { localStorage.setItem('pt-font', String(fontSize)); } catch (_) {}
+  refit();
+}
+document.getElementById('font-dec').addEventListener('click', () => setFont(fontSize - 1));
+document.getElementById('font-inc').addEventListener('click', () => setFont(fontSize + 1));
 // Tapping the terminal returns keyboard focus to it (so typing goes in).
 document.getElementById('term').addEventListener('click', () => { term.focus(); refit(); });
 
@@ -278,4 +292,15 @@ if (window.visualViewport) {
 }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
-showSessions();
+
+// Restore the last session (survives an orientation-change reload / reopen).
+async function init() {
+  let saved = null;
+  try { saved = sessionStorage.getItem('pt-session'); } catch (_) {}
+  if (saved) {
+    const sessions = await fetchSessions();
+    if (sessions.some((s) => s.name === saved)) { attach(saved); return; }
+  }
+  showSessions();
+}
+init();
