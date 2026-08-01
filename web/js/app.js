@@ -85,6 +85,7 @@ function attach(name) {
   screenTerm.hidden = false;
   term.reset();
   document.getElementById('answers').hidden = true;
+  lastAnswersSig = null;
   requestAnimationFrame(() => { fit.fit(); term.focus(); connect(); });
 }
 
@@ -181,8 +182,14 @@ function visibleLines() {
   return lines;
 }
 
+let lastAnswersSig = null;
 function renderAnswers() {
   const q = detectQuestion(visibleLines());
+  // Only rebuild when the detected prompt actually changed; otherwise the
+  // buttons flicker (and detach mid-tap) on every terminal update.
+  const sig = q ? JSON.stringify(q.options) : null;
+  if (sig === lastAnswersSig) return;
+  lastAnswersSig = sig;
   answersEl.innerHTML = '';
   if (!q) { answersEl.hidden = true; return; }
   for (const o of q.options) {
