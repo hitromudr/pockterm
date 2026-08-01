@@ -11,7 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"pockterm/internal/tmuxcmd"
+	"github.com/hitromudr/pockterm/internal/tmuxcmd"
 )
 
 // The test runs a private tmux server on its own socket (-L) so it can

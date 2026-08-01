@@ -10,8 +10,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"pockterm/internal/proto"
-	"pockterm/internal/term"
+	"github.com/hitromudr/pockterm/internal/proto"
+	"github.com/hitromudr/pockterm/internal/term"
 )
 
 type Options struct {

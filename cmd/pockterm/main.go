@@ -9,10 +9,10 @@ import (
 	"os"
 	"os/exec"
 
-	"pockterm"
-	"pockterm/internal/config"
-	"pockterm/internal/server"
-	"pockterm/internal/tmuxcmd"
+	"github.com/hitromudr/pockterm"
+	"github.com/hitromudr/pockterm/internal/config"
+	"github.com/hitromudr/pockterm/internal/server"
+	"github.com/hitromudr/pockterm/internal/tmuxcmd"
 )
 
 func main() {

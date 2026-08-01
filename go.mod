@@ -1,4 +1,4 @@
-module pockterm
+module github.com/hitromudr/pockterm
 
 go 1.22
 
