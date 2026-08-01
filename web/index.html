@@ -35,6 +35,13 @@
     <div id="term"></div>
     <!-- Buttons for a detected interactive prompt (Claude permission etc.) -->
     <div id="answers" hidden></div>
+    <!-- Quick macros for prompt mode -->
+    <div id="quickbar" hidden>
+      <button data-macro="accept">&#10003; Accept</button>
+      <button data-macro="enter">&#9166;</button>
+      <button data-macro="esc">Esc</button>
+      <button data-macro="ctrl-c" class="stop">&#9209; ^C</button>
+    </div>
     <!-- Prompt composer (shown in prompt mode instead of the key bar) -->
     <form id="composer" hidden>
       <textarea id="prompt" rows="1" placeholder="Message… (▶ to send)"></textarea>

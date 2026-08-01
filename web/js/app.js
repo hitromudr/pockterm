@@ -140,15 +140,29 @@ document.getElementById('term').addEventListener('click', () => term.focus());
 // --- prompt mode: composer + detected answer buttons ---
 const answersEl = document.getElementById('answers');
 const composerEl = document.getElementById('composer');
+const quickbarEl = document.getElementById('quickbar');
 const promptEl = document.getElementById('prompt');
 const modeBtn = document.getElementById('mode');
 const keybarEl = document.getElementById('keybar');
 
-// Prompt mode swaps the key bar for the composer. Detected answer buttons
-// show in both modes (they help whenever a prompt appears).
+// Quick macros for prompt mode. "accept" is right-arrow + Enter — one tap
+// to accept Claude's inline suggestion; "ctrl-c" stops the running process.
+const MACROS = {
+  accept: '\x1b[C\r',
+  enter: '\r',
+  esc: '\x1b',
+  'ctrl-c': '\x03',
+};
+document.querySelectorAll('#quickbar button[data-macro]').forEach((b) => {
+  b.addEventListener('click', () => { send(MACROS[b.dataset.macro]); term.focus(); });
+});
+
+// Prompt mode swaps the key bar for the composer + quick macros. Detected
+// answer buttons show in both modes (they help whenever a prompt appears).
 function setPromptMode(on) {
   modeBtn.classList.toggle('on', on);
   composerEl.hidden = !on;
+  quickbarEl.hidden = !on;
   keybarEl.hidden = on;
   if (on) promptEl.focus();
   refit();

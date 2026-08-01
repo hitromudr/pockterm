@@ -136,6 +136,25 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   background: #232a38;
 }
 
+/* Quick macros row (prompt mode): accept, enter, esc, stop. */
+#quickbar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 6px 0;
+  background: var(--bar);
+}
+#quickbar button {
+  flex: 1;
+  padding: 10px 0;
+  font-size: 15px;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 8px;
+}
+#quickbar button:active { background: #3a4458; }
+#quickbar button.stop { color: #ffb4b4; background: #3a2530; }
+
 /* Prompt composer: textarea grows, send button on the right. */
 #composer {
   display: flex;
