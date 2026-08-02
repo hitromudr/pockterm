@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v46';
+const APP_VERSION = 'v47';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -259,11 +259,14 @@ function showSessions() {
 }
 
 function attach(name) {
-  // Whether the keyboard was up is the user's decision, not the switch's.
-  // Focusing the terminal unconditionally raised it on every tab tap, on a
-  // screen where it eats half the view; leaving focus alone keeps whatever
-  // state the switch found.
-  const hadFocus = !!term.textarea && document.activeElement === term.textarea;
+  // Nothing here touches focus, and that is the whole point.
+  //
+  // Focus and the keyboard are not the same thing on Android: dismissing the
+  // keyboard with the back gesture leaves the textarea focused. Restoring
+  // "the focus it had" therefore raised the keyboard for someone who had just
+  // put it away — which is what a switch kept doing. The tab buttons do not
+  // take focus (see keepsTerminalFocus), so whatever state the switch found
+  // simply stays.
   // Close any current socket first (switching tabs) so its output stops
   // writing into the terminal we're about to reuse for another session.
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
@@ -278,7 +281,7 @@ function attach(name) {
   lastAnswersSig = null;
   inCopyMode = false; // the new socket reports the pane's state on connect
   renderTabs();
-  requestAnimationFrame(() => { fit.fit(); if (hadFocus) term.focus(); connect(); });
+  requestAnimationFrame(() => { refit(); connect(); });
 }
 
 // Session tabs in the terminal header: tap one to switch to that session.

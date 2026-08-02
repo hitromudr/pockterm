@@ -274,7 +274,10 @@ describe('switching sessions', () => {
     let focused = await page.evaluate(() => document.activeElement && document.activeElement.tagName);
     assert.notEqual(focused, 'TEXTAREA', 'the switch grabbed focus and would raise the keyboard');
 
-    // Typing: focus stays, and so does the keyboard.
+    // Typing: focus stays where it was, without anyone restoring it — the
+    // switch must not call focus() at all. On Android focus survives the
+    // keyboard being dismissed, so "restoring" it there raises the keyboard
+    // for someone who had just put it away.
     await page.click('#term');
     assert.equal(await page.evaluate(() => document.activeElement.tagName), 'TEXTAREA');
     await page.click('#tabs button:not(.active)');
