@@ -13,6 +13,8 @@ test('named keys map to escape sequences', () => {
   assert.equal(keyBytes('left'), '\x1b[D');
   assert.equal(keyBytes('enter'), '\r');
   assert.equal(keyBytes('ctrl-c'), '\x03');
+  // DEL: a terminal reads BS (\x08) as "move left", not "erase".
+  assert.equal(keyBytes('backspace'), '\x7f');
 });
 
 test('unknown key maps to empty string', () => {

@@ -178,10 +178,12 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 #screen-term.panels-hidden #quickbar,
 #screen-term.panels-hidden #selbar { display: none !important; }
 /* Grid so all keys fit at any width; a flex row overflowed narrow phones
-   and hid the rightmost keys (^C, Enter) behind a horizontal scroll. */
+   and hid the rightmost keys (^C, Enter) behind a horizontal scroll.
+   Six columns for eleven keys: two rows. Five would leave a third row
+   holding a single key and steal that height from the terminal. */
 #keybar {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 4px;
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
   background: var(--bar);
@@ -334,7 +336,7 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 /* Landscape phones are short: put the key bar on one row (width is ample)
    and shrink the panels so terminal + controls fit without overlapping. */
 @media (orientation: landscape) and (max-height: 520px) {
-  #keybar { grid-template-columns: repeat(10, 1fr); }
+  #keybar { grid-template-columns: repeat(11, 1fr); }
   #keybar button { padding: 6px 0; font-size: 13px; }
   #answers { max-height: 55vh; }
   #answers button { padding: 8px 10px; }

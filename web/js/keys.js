@@ -9,6 +9,11 @@ const KEYS = {
   left: '\x1b[D',
   enter: '\r',
   'ctrl-c': '\x03',
+  // DEL, not BS: that is what a terminal expects from the Backspace key.
+  // This one exists to bypass the Android keyboard — Gboard keeps its own
+  // idea of the word being typed, and its Backspace re-commits that word
+  // into a terminal that has already moved on.
+  backspace: '\x7f',
 };
 
 export function keyBytes(name) {
