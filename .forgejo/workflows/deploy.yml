@@ -1,0 +1,57 @@
+name: deploy
+
+# The RPi5 is both the build machine and the host: the Forgejo runner lives on
+# the same box as the service. The job still cannot install anything — it runs
+# in a container — so it only drops a signed binary into /incoming, and the
+# host side (pockterm-deploy.path -> /usr/local/sbin/pockterm-deploy) verifies
+# the signature and installs it. See CLAUDE.md, "Deploy".
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test-js:
+    runs-on: rpi5-arm64
+    container:
+      image: node:lts-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - run: apk add --no-cache make
+      - run: make test-js
+
+  build-deploy:
+    runs-on: rpi5-arm64
+    needs: [test-js]
+    container:
+      image: golang:1.24-bookworm
+      # The only host path the runner is allowed to mount (valid_volumes).
+      volumes:
+        - /var/lib/pockterm/incoming:/incoming
+    steps:
+      # actions/checkout needs node, which the golang image does not have.
+      # Cloning by hand is cheaper than adding a toolchain: the repository is
+      # public and served by the same Forgejo the runner talks to.
+      - name: Checkout
+        run: |
+          git clone http://forgejo:3000/${{ github.repository }}.git .
+          git checkout ${{ github.sha }}
+
+      # `make check` would reformat the tree instead of failing on it, so CI
+      # verifies only.
+      - run: go vet ./...
+      - run: go test ./...
+      - run: make build-arm64
+
+      - name: Hand the binary over to the host
+        env:
+          KEY: ${{ secrets.DEPLOY_HMAC_KEY }}
+        run: |
+          test -n "$KEY" || { echo "DEPLOY_HMAC_KEY is not set for this repo"; exit 1; }
+          cp bin/pockterm-linux-arm64 /incoming/pockterm.tmp
+          openssl dgst -sha256 -hmac "$KEY" -r /incoming/pockterm.tmp |
+            cut -d' ' -f1 > /incoming/pockterm.new.hmac
+          # Rename last and atomically: the host triggers on pockterm.new
+          # appearing, and by then the signature is already in place.
+          mv /incoming/pockterm.tmp /incoming/pockterm.new
+          echo "handed over $(sha256sum /incoming/pockterm.new | cut -d' ' -f1)"
