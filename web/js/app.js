@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v45';
+const APP_VERSION = 'v46';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -363,12 +363,28 @@ term.onData((d) => {
 // re-commit. beforeinput fires for the on-screen Backspace as
 // deleteContentBackward; the terminal wants DEL for that, and nothing else
 // should reach the textarea.
+// xterm draws what the keyboard is composing in a layer of its own
+// (.composition-view) on top of the screen. Cancelling the delete above
+// leaves that layer holding text the terminal has already dealt with: the pty
+// receives the right thing, and the screen shows "роттт" for a word, a space
+// and one delete. Clearing the layer and the textarea puts the two back in
+// agreement.
+function clearComposition() {
+  if (term.textarea) term.textarea.value = '';
+  const view = document.querySelector('.xterm .composition-view');
+  if (view) {
+    view.textContent = '';
+    view.classList.remove('active');
+  }
+}
+
 if (term.textarea) {
   term.textarea.addEventListener('beforeinput', (e) => {
     if (e.inputType !== 'deleteContentBackward') return;
     e.preventDefault();
     send(keyBytes('backspace'));
     commitPendingInput();
+    clearComposition();
   });
 }
 
@@ -403,6 +419,7 @@ document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
   keepsTerminalFocus(b);
   b.addEventListener('click', () => {
     commitPendingInput();
+    clearComposition();
     send(keyBytes(b.dataset.key));
     // No focus() here: the press already kept it, and calling it for someone
     // who was only reading would raise the keyboard over the screen.
