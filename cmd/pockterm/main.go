@@ -9,11 +9,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/hitromudr/pockterm"
 	"github.com/hitromudr/pockterm/internal/config"
@@ -21,6 +23,7 @@ import (
 	"github.com/hitromudr/pockterm/internal/setup"
 	"github.com/hitromudr/pockterm/internal/telegram"
 	"github.com/hitromudr/pockterm/internal/tmuxcmd"
+	"github.com/hitromudr/pockterm/internal/upload"
 	"github.com/hitromudr/pockterm/internal/watch"
 )
 
@@ -32,7 +35,7 @@ const usage = `pockterm — mobile web terminal for your tmux sessions
   pockterm qr [url]        print the client URL as a QR code for your phone
 
 Environment: POCKTERM_LISTEN, POCKTERM_TOKEN, POCKTERM_PUBLIC_URL,
-POCKTERM_TG_* and POCKTERM_IDLE. See the README.
+POCKTERM_TG_*, POCKTERM_IDLE and POCKTERM_UPLOAD_DIR. See the README.
 `
 
 func main() {
@@ -121,13 +124,35 @@ func serve() {
 		Attach: func(id int64, target string) []string {
 			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 		},
-		InMode:   inMode,
-		Presence: notifier(cfg),
-		Idle:     cfg.Idle,
-		Static:   http.FileServer(http.FS(static)),
+		InMode:     inMode,
+		Presence:   notifier(cfg),
+		Idle:       cfg.Idle,
+		Static:     http.FileServer(http.FS(static)),
+		SaveUpload: uploader(cfg),
 	})
 	log.Printf("pockterm listening on %s", cfg.Listen)
 	log.Fatal(http.ListenAndServe(cfg.Listen, h))
+}
+
+// uploader wires the store for images pasted in the browser, or returns nil
+// to leave /api/upload absent. Files land in the user's cache directory: a
+// pasted screenshot is a scratch file, not something to keep next to the
+// service's own data.
+func uploader(cfg config.Config) func(io.Reader) (string, error) {
+	dir := cfg.UploadDir
+	if dir == "off" {
+		return nil
+	}
+	if dir == "" {
+		cache, err := os.UserCacheDir()
+		if err != nil {
+			log.Printf("no cache directory, image paste is off: %v", err)
+			return nil
+		}
+		dir = filepath.Join(cache, "pockterm", "uploads")
+	}
+	log.Printf("image paste on, saving to %s", dir)
+	return upload.Store{Dir: dir}.Save
 }
 
 // notifier wires the Telegram notifications, or returns nil when they are

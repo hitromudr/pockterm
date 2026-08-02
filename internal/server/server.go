@@ -4,6 +4,7 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -37,6 +38,7 @@ type Options struct {
 	Presence     Presence                               // notification bookkeeping; nil disables it
 	Idle         time.Duration                          // silence that counts as "finished"; told to the client
 	Static       http.Handler                           // the embedded PWA
+	SaveUpload   func(io.Reader) (string, error)        // store a pasted image, return its path; nil disables /api/upload
 }
 
 // modePoll is how often a client's pane is checked for tmux copy-mode. The
@@ -48,6 +50,7 @@ func Handler(o Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", o.Static)
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) { serveSessions(o, w, r) })
+	mux.HandleFunc("/api/upload", func(w http.ResponseWriter, r *http.Request) { serveUpload(o, w, r) })
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) { serveWS(o, w, r) })
 	return mux
 }
@@ -86,6 +89,33 @@ func serveSessions(o Options, w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sessions)
+}
+
+// serveUpload takes an image pasted in the browser and answers with the path
+// it was saved under. The client types that path into the terminal: bytes
+// cannot cross a pty, a filename can.
+func serveUpload(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.SaveUpload == nil {
+		http.Error(w, "uploads are disabled", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "post the image as the request body", http.StatusMethodNotAllowed)
+		return
+	}
+	path, err := o.SaveUpload(r.Body)
+	if err != nil {
+		// The message says what was wrong with the image (not an image, too
+		// large); the client shows it verbatim.
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"path": path})
 }
 
 func serveWS(o Options, w http.ResponseWriter, r *http.Request) {

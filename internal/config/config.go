@@ -12,6 +12,10 @@ type Config struct {
 	Listen string // POCKTERM_LISTEN, host:port
 	Token  string // POCKTERM_TOKEN, required for non-loopback listen
 
+	// Where images pasted in the browser are saved. Empty means the
+	// default under the user's cache directory; "off" disables uploads.
+	UploadDir string // POCKTERM_UPLOAD_DIR
+
 	// Telegram notifications; empty TGToken disables them entirely.
 	TGToken   string        // POCKTERM_TG_TOKEN, bot token
 	TGChat    string        // POCKTERM_TG_CHAT, chat id to notify
@@ -29,6 +33,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	c := Config{
 		Listen:    orDefault(getenv("POCKTERM_LISTEN"), "127.0.0.1:8130"),
 		Token:     getenv("POCKTERM_TOKEN"),
+		UploadDir: getenv("POCKTERM_UPLOAD_DIR"),
 		TGToken:   getenv("POCKTERM_TG_TOKEN"),
 		TGChat:    getenv("POCKTERM_TG_CHAT"),
 		TGLink:    getenv("POCKTERM_TG_LINK"),

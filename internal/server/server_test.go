@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -326,5 +328,114 @@ func TestConcurrentOutputAndPing(t *testing.T) {
 				return
 			}
 		}
+	}
+}
+
+// --- image upload ---
+
+// uploadOptions accepts anything and reports where it "saved" it, so the
+// endpoint can be tested without a disk.
+func uploadOptions(token string, save func(io.Reader) (string, error)) Options {
+	o := testOptions(token)
+	o.SaveUpload = save
+	return o
+}
+
+func TestUploadReturnsThePath(t *testing.T) {
+	var got []byte
+	srv := httptest.NewServer(Handler(uploadOptions("", func(r io.Reader) (string, error) {
+		var err error
+		got, err = io.ReadAll(r)
+		return "/tmp/paste-1.png", err
+	})))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/upload", "image/png", strings.NewReader("PNGDATA"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var answer struct{ Path string }
+	if err := json.NewDecoder(resp.Body).Decode(&answer); err != nil {
+		t.Fatal(err)
+	}
+	if answer.Path != "/tmp/paste-1.png" {
+		t.Errorf("path is %q", answer.Path)
+	}
+	if string(got) != "PNGDATA" {
+		t.Errorf("store received %q", got)
+	}
+}
+
+func TestUploadRefusalReachesTheClient(t *testing.T) {
+	srv := httptest.NewServer(Handler(uploadOptions("", func(io.Reader) (string, error) {
+		return "", errors.New("not an image (looks like text/plain)")
+	})))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/upload", "image/png", strings.NewReader("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	// A silent failure here looks like "the paste did nothing".
+	if !strings.Contains(string(body), "not an image") {
+		t.Errorf("reason lost on the way to the client: %q", body)
+	}
+}
+
+func TestUploadNeedsTheToken(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(Handler(uploadOptions("secret", func(io.Reader) (string, error) {
+		called = true
+		return "/tmp/x.png", nil
+	})))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/upload", "image/png", strings.NewReader("PNGDATA"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d, want 401", resp.StatusCode)
+	}
+	if called {
+		t.Error("an unauthorized upload reached the store")
+	}
+}
+
+func TestUploadIsAbsentWhenNoStore(t *testing.T) {
+	srv := testServer(t, "")
+	resp, err := http.Post(srv.URL+"/api/upload", "image/png", strings.NewReader("PNGDATA"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestUploadRejectsGet(t *testing.T) {
+	srv := httptest.NewServer(Handler(uploadOptions("", func(io.Reader) (string, error) {
+		return "/tmp/x.png", nil
+	})))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/upload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("status %d, want 405", resp.StatusCode)
 	}
 }

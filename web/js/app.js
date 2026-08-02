@@ -1,6 +1,7 @@
 import { keyBytes, applyCtrl } from './keys.js';
 import { detectQuestion } from './detect.js';
 import { newState, questionNotice, noteActivity, doneNotice } from './notify.js';
+import { pickImage, carriesFiles, firstImage } from './paste.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -380,6 +381,18 @@ async function writeClipboard(text) {
   }
 }
 
+// Read an image out of the clipboard where the browser allows it. Wrapped
+// because navigator.clipboard.read is missing on Firefox and throws on a
+// denied permission, and neither is worth a stack trace.
+async function clipboardImage() {
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.read) return null;
+    return await firstImage(await navigator.clipboard.read());
+  } catch (_) {
+    return null;
+  }
+}
+
 // First non-blank line, trimmed: enough to recognise what was copied.
 function preview(text) {
   const t = (text.split('\n').find((l) => l.trim()) || '').trim();
@@ -393,15 +406,74 @@ document.getElementById('copy').addEventListener('click', async () => {
   toast(ok ? `copied ${text.length} chars: ${preview(text)}` : 'clipboard blocked by the browser');
 });
 
+// --- pasting an image ---
+// The pty carries keystrokes, so an image cannot go into the terminal at
+// all. It goes to the server instead, which saves it and answers with a
+// path; the path is what gets typed. Claude Code reads a file mentioned in
+// the prompt, so from the phone this is the same gesture as pasting text.
+async function attachImage(file) {
+  const kb = Math.max(1, Math.round((file.size || 0) / 1024));
+  toast(`uploading ${kb} KB…`);
+  let res;
+  try {
+    res = await fetch(`/api/upload?${tokenQS}`, {
+      method: 'POST',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+  } catch (_) {
+    toast('upload failed: no connection');
+    return;
+  }
+  if (!res.ok) {
+    // The server explains a refusal in plain text (not an image, too large);
+    // silence here would read as "the paste did nothing".
+    const why = (await res.text().catch(() => '')).trim();
+    toast(why ? `upload refused: ${why}` : `upload failed: ${res.status}`);
+    return;
+  }
+  const { path } = await res.json().catch(() => ({}));
+  if (!path) { toast('upload failed: no path in the answer'); return; }
+  if (ctrlLatch) setCtrl(false);
+  // Trailing space so the next thing typed does not glue itself to the path.
+  term.paste(`${path} `);
+  toast(`attached ${path.split('/').pop()}`);
+}
+
+document.addEventListener('paste', (e) => {
+  const file = pickImage(e.clipboardData);
+  if (!file) return; // text: leave the terminal's own paste path alone
+  e.preventDefault();
+  attachImage(file);
+});
+
+// Drag and drop from a desktop file manager, same destination.
+document.addEventListener('dragover', (e) => { if (carriesFiles(e.dataTransfer)) e.preventDefault(); });
+document.addEventListener('drop', (e) => {
+  const file = pickImage(e.dataTransfer);
+  if (!file) return;
+  e.preventDefault();
+  attachImage(file);
+});
+
 document.getElementById('paste').addEventListener('click', async () => {
   let text = '';
   try {
     text = (await navigator.clipboard.readText()) || '';
   } catch (_) {
+    // readText refuses on an image-only clipboard, which is exactly the
+    // case worth handling on a phone: there is no paste event to hook.
+    const image = await clipboardImage();
+    if (image) { attachImage(image); return; }
     toast('clipboard read blocked — paste from the keyboard instead');
     return;
   }
-  if (!text) { toast('clipboard is empty'); return; }
+  if (!text) {
+    const image = await clipboardImage();
+    if (image) { attachImage(image); return; }
+    toast('clipboard is empty');
+    return;
+  }
   if (ctrlLatch) setCtrl(false); // a latched Ctrl would mangle the text
   // term.paste honours bracketed-paste mode, so a multi-line paste arrives
   // as one block instead of firing a message per line in Claude Code.
