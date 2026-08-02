@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v43';
+const APP_VERSION = 'v44';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -307,7 +307,13 @@ function connect() {
   ws.onmessage = (e) => {
     if (typeof e.data === 'string') { onControl(e.data); return; }
     noteActivity(notifyState, Date.now());
-    term.write(new Uint8Array(e.data), scheduleScan);
+    // One bad write must not take the socket handler with it: an exception
+    // here leaves the terminal frozen with output still arriving.
+    try {
+      term.write(new Uint8Array(e.data), scheduleScan);
+    } catch (err) {
+      report('write-failed', { message: String((err && err.message) || err).slice(0, 120) });
+    }
   };
   ws.onclose = () => {
     if (!current) return; // left for the list on purpose
@@ -1063,7 +1069,22 @@ let refitTimer = null;
 function refit() {
   if (current === null) return;
   clearTimeout(refitTimer);
-  refitTimer = setTimeout(() => { fit.fit(); sendResize(); }, 100);
+  refitTimer = setTimeout(() => {
+    // Fitting against a box with no size is what breaks xterm: the phone
+    // reported `Cannot read properties of undefined (reading 'replaceCells')`
+    // from inside the renderer, after which the terminal stops drawing and
+    // looks hung. A hidden screen, a collapsed layout mid-transition, a
+    // keyboard covering everything — all produce that box.
+    const box = document.getElementById('term');
+    if (screenTerm.hidden || !box || box.clientWidth < 8 || box.clientHeight < 8) return;
+    try {
+      fit.fit();
+    } catch (e) {
+      report('fit-failed', { message: String((e && e.message) || e).slice(0, 120) });
+      return;
+    }
+    sendResize();
+  }, 100);
 }
 window.addEventListener('resize', refit);
 // Refit whenever the terminal's box changes size — first render, and when
