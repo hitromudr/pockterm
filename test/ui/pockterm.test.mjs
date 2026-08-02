@@ -256,6 +256,8 @@ describe('the key bar', () => {
     assert.ok(stop.y < ctrl.y, 'the stop key is not above Ctrl');
     const hide = await box(page, '#hide');
     assert.ok(hide.x > stop.x, 'the stop key still holds the corner');
+    // Delete and enter sit to the right of the Ctrl column.
+    assert.ok(del.x > stop.x, 'delete is not to the right of ^C');
     // Escape is the top-left corner; the cross sits next to it.
     assert.ok(esc.x < up.x && esc.y < down.y, 'escape is not the top-left key');
     assert.ok(left.x <= esc.x + 2, 'the cross is not against the left edge');
