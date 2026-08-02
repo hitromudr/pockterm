@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v27';
+const APP_VERSION = 'v28';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -429,6 +429,18 @@ document.getElementById('sel-done').addEventListener('click', () => setSelectMod
 // not rendered enough to hold a selection. A contenteditable node that is
 // actually laid out, selected through a Range, does copy.
 async function writeClipboard(text) {
+  // Inside the owner's Android client the page is not in Chrome but in a
+  // WebView, which has no asynchronous clipboard at all. That app injects a
+  // bridge to the system clipboard; when it is there, nothing else comes
+  // close for reliability.
+  if (window.PockNative && typeof window.PockNative.copy === 'function') {
+    try {
+      if (window.PockNative.copy(text)) return 'native';
+      lastCopyError = 'native bridge refused';
+    } catch (e) {
+      lastCopyError = `native bridge: ${(e && e.name) || 'error'}`;
+    }
+  }
   if (navigator.clipboard && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(text);
@@ -593,6 +605,13 @@ document.addEventListener('drop', (e) => {
   attachImage(file);
 });
 
+// One way in for pasted text, whichever path produced it.
+function pasteIntoTerminal(text) {
+  if (ctrlLatch) setCtrl(false);
+  term.paste(text);
+  toast(`pasted ${text.length} chars`);
+}
+
 // When the browser will not read the clipboard for us, the system still
 // will — its own Paste needs no permission. The field takes it, the terminal
 // gets what landed there, and the field disappears again.
@@ -640,6 +659,18 @@ pickFileEl.addEventListener('change', () => {
 
 document.getElementById('paste').addEventListener('click', async () => {
   let text = '';
+  // Same bridge, other direction: a WebView never resolves readText().
+  if (window.PockNative && typeof window.PockNative.read === 'function') {
+    try {
+      const native = String(window.PockNative.read() || '');
+      report('paste', { via: 'native', chars: native.length });
+      if (native) { pasteIntoTerminal(native); return; }
+      openPasteTarget('clipboard is empty — paste here');
+      return;
+    } catch (e) {
+      report('paste', { via: 'native', error: (e && e.name) || 'error' });
+    }
+  }
   try {
     text = (await navigator.clipboard.readText()) || '';
   } catch (e) {
