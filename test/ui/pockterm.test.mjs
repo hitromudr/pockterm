@@ -247,6 +247,21 @@ describe('switching sessions', () => {
   before(async () => { stand = await startStand({ sessions: ['one', 'two'] }); });
   after(async () => { await stand.stop(); });
 
+  test('nothing but a tap on the terminal takes focus', async () => {
+    await stand.open();
+    await stand.attach('one');
+    const { page } = stand;
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+
+    // Every one of these used to focus something and raise the keyboard.
+    for (const sel of ['#hide', '#show-bars', '[data-key="esc"]', '#tabs button:not(.active)']) {
+      await page.click(sel);
+      await page.waitForTimeout(200);
+      const tag = await page.evaluate(() => document.activeElement && document.activeElement.tagName);
+      assert.notEqual(tag, 'TEXTAREA', `${sel} grabbed focus`);
+    }
+  });
+
   test('a switch leaves the keyboard as it found it', async () => {
     await stand.open();
     await stand.attach('one');

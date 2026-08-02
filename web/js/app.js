@@ -348,7 +348,30 @@ function sendVisible() {
 term.onData((d) => {
   if (ctrlLatch) { d = applyCtrl(d); setCtrl(false); }
   send(d);
+  // End the composing region as soon as the characters are on the wire.
+  //
+  // Gboard keeps the word being typed to itself; the terminal has already
+  // received those characters, but the keyboard still believes it owns them.
+  // Its own Backspace then deletes that region and re-commits what is left —
+  // xterm reads the re-commit as fresh input and sends it again, so "рот"
+  // followed by one delete arrives as "ротро". Ending the composition after
+  // every chunk leaves the keyboard nothing stale to re-commit. Only the app
+  // can do this; in a real browser it is a no-op, and there is no such bug.
+  commitPendingInput();
 });
+
+// Take the delete key itself, before the keyboard can turn it into a
+// re-commit. beforeinput fires for the on-screen Backspace as
+// deleteContentBackward; the terminal wants DEL for that, and nothing else
+// should reach the textarea.
+if (term.textarea) {
+  term.textarea.addEventListener('beforeinput', (e) => {
+    if (e.inputType !== 'deleteContentBackward') return;
+    e.preventDefault();
+    send(keyBytes('backspace'));
+    commitPendingInput();
+  });
+}
 
 // Tapping a button must not take focus away from the terminal: on Android the
 // soft keyboard closes the moment the textarea loses focus, and a focus
@@ -384,10 +407,12 @@ document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
   b.addEventListener('click', () => {
     commitPendingInput();
     send(keyBytes(b.dataset.key));
-    term.focus();
+    // No focus() here: the press already kept it, and calling it for someone
+    // who was only reading would raise the keyboard over the screen.
   });
 });
-ctrlBtn.addEventListener('click', () => { setCtrl(!ctrlLatch); term.focus(); });
+keepsTerminalFocus(ctrlBtn);
+ctrlBtn.addEventListener('click', () => setCtrl(!ctrlLatch));
 
 document.getElementById('back').addEventListener('click', showSessions);
 document.getElementById('refresh').addEventListener('click', loadSessions);
@@ -482,7 +507,7 @@ const MACROS = {
 // and both send the same thing.
 document.querySelectorAll('button[data-macro]').forEach((b) => {
   keepsTerminalFocus(b);
-  b.addEventListener('click', () => { commitPendingInput(); send(MACROS[b.dataset.macro]); term.focus(); });
+  b.addEventListener('click', () => { commitPendingInput(); send(MACROS[b.dataset.macro]); });
 });
 
 // Bottom bars are mutually exclusive: selection mode wins over prompt mode
@@ -491,17 +516,22 @@ document.querySelectorAll('button[data-macro]').forEach((b) => {
 // live above all of them and show in every mode.
 let promptMode = false;
 let selectMode = false;
-function renderBars() {
+let hadTerminalFocus = false;
+// focusNow: only a tap that asked for a mode may raise the keyboard. This
+// function runs on every re-render — a session switch, a resize, an answer
+// row appearing — and focusing from there is what kept pushing the keyboard
+// onto the screen uninvited.
+function renderBars(focusNow = false) {
   selbarEl.hidden = !selectMode;
   composerEl.hidden = selectMode || !promptMode;
   quickbarEl.hidden = selectMode || !promptMode;
   keybarEl.hidden = selectMode || promptMode;
   modeBtn.classList.toggle('on', promptMode);
   selectBtn.classList.toggle('on', selectMode);
-  if (promptMode && !selectMode) promptEl.focus();
+  if (focusNow && promptMode && !selectMode) promptEl.focus();
   refit();
 }
-function setPromptMode(on) { promptMode = on; renderBars(); }
+function setPromptMode(on) { promptMode = on; renderBars(true); }
 modeBtn.addEventListener('click', () => setPromptMode(!promptMode));
 
 // Installing puts pockterm on the home screen as its own app: a standalone
@@ -604,8 +634,17 @@ function setSelectMode(on) {
   snapshotEl.hidden = !on;
   if (!on) closePasteTarget();
   renderBars();
-  if (on) toast('select text, then Copy — the screen is frozen');
-  else term.focus();
+  if (on) {
+    hadTerminalFocus = !!term.textarea && document.activeElement === term.textarea;
+    toast('select text, then Copy — the screen is frozen');
+  } else if (hadTerminalFocus) {
+    // Give the terminal its focus back only if selection mode took it away;
+    // raising the keyboard for someone who was only reading is noise.
+    term.focus();
+  }
+}
+for (const b of document.querySelectorAll('#modebar button, #modebar label, #overflow button, #show-bars')) {
+  keepsTerminalFocus(b);
 }
 selectBtn.addEventListener('click', () => setSelectMode(!selectMode));
 document.getElementById('sel-done').addEventListener('click', () => setSelectMode(false));
