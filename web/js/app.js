@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v39';
+const APP_VERSION = 'v40';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -108,6 +108,32 @@ async function loadSessions() {
     ren.addEventListener('click', () => openRename(s.name));
     li.appendChild(ren);
 
+    // Closing ends processes — an agent mid-task, an editor with unsaved
+    // work. One stray touch must not do that, so the first tap only arms the
+    // button and it disarms itself a few seconds later.
+    const close = document.createElement('button');
+    close.className = 'close';
+    close.textContent = '✕';
+    close.title = `Close ${s.name}`;
+    let armed = null;
+    close.addEventListener('click', () => {
+      if (!armed) {
+        close.classList.add('armed');
+        close.textContent = '✕?';
+        toast(`tap again to close ${s.name}`);
+        armed = setTimeout(() => {
+          armed = null;
+          close.classList.remove('armed');
+          close.textContent = '✕';
+        }, 4000);
+        return;
+      }
+      clearTimeout(armed);
+      armed = null;
+      killSession(s.name);
+    });
+    li.appendChild(close);
+
     sessionList.appendChild(li);
   }
 }
@@ -152,6 +178,26 @@ for (const b of newMenu.querySelectorAll('button[data-preset]')) {
       toast('no connection to the server');
     }
   });
+}
+
+async function killSession(name) {
+  try {
+    const res = await fetch(`/api/sessions/kill?${tokenQS}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    report('kill-session', { ok: res.ok, status: res.status });
+    if (!res.ok) {
+      toast((await res.text().catch(() => '')).trim() || `could not close: ${res.status}`);
+      return;
+    }
+    toast(`closed ${name}`);
+    if (current === name) showSessions();
+    else loadSessions();
+  } catch (_) {
+    toast('no connection to the server');
+  }
 }
 
 function openRename(name) {

@@ -55,6 +55,14 @@ func TestRenameMatchesExactly(t *testing.T) {
 	}
 }
 
+func TestKillMatchesExactly(t *testing.T) {
+	// The day this was written, an evening of lost sessions was still fresh:
+	// a prefix match here would close the wrong one.
+	if got := strings.Join(Kill("claude-1"), " "); got != "tmux kill-session -t =claude-1" {
+		t.Errorf("argv is %q", got)
+	}
+}
+
 func TestStartGoesThroughTheMakefile(t *testing.T) {
 	argv := Start("/home/dms/work", "claude")
 	want := "make -C /home/dms/work claude"

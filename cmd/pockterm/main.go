@@ -140,6 +140,7 @@ func serve() {
 		LogClient:    func(line string) { log.Printf("client: %s", line) },
 		StartSession: starter(cfg),
 		RenameSess:   renamer,
+		KillSession:  killer,
 	})
 	log.Printf("pockterm listening on %s", cfg.Listen)
 	log.Fatal(http.ListenAndServe(cfg.Listen, h))
@@ -201,6 +202,18 @@ func starter(cfg config.Config) func(string) error {
 		log.Printf("started %s: %s", preset, firstLine(string(out)))
 		return nil
 	}
+}
+
+// killer closes a session. Everything it touches has already been checked
+// against the list the server itself produced.
+func killer(name string) error {
+	argv := session.Kill(name)
+	out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("could not close: %s", firstLine(string(out)))
+	}
+	log.Printf("closed session %s", name)
+	return nil
 }
 
 // renamer renames a session. The name is checked here rather than trusted

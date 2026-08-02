@@ -43,6 +43,7 @@ type Options struct {
 	LogClient    func(string)                           // record a line the browser sent; nil disables /api/log
 	StartSession func(preset string) error              // create a session from a fixed preset; nil disables /api/sessions/new
 	RenameSess   func(from, to string) error            // rename a session; nil disables /api/sessions/rename
+	KillSession  func(name string) error                // close a session; nil disables /api/sessions/kill
 }
 
 // modePoll is how often a client's pane is checked for tmux copy-mode. The
@@ -58,6 +59,7 @@ func Handler(o Options) http.Handler {
 	mux.HandleFunc("/api/log", func(w http.ResponseWriter, r *http.Request) { serveLog(o, w, r) })
 	mux.HandleFunc("/api/sessions/new", func(w http.ResponseWriter, r *http.Request) { serveNewSession(o, w, r) })
 	mux.HandleFunc("/api/sessions/rename", func(w http.ResponseWriter, r *http.Request) { serveRename(o, w, r) })
+	mux.HandleFunc("/api/sessions/kill", func(w http.ResponseWriter, r *http.Request) { serveKill(o, w, r) })
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) { serveWS(o, w, r) })
 	return mux
 }
@@ -227,6 +229,45 @@ func serveRename(o Options, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := o.RenameSess(req.From, req.To); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// serveKill closes a session. Only a session the server already lists can be
+// closed, for the same reason renaming has that rule: the name reaches a
+// command line, and this one ends processes.
+func serveKill(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.KillSession == nil {
+		http.Error(w, "closing sessions is off", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "post a name", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&req); err != nil {
+		http.Error(w, "unreadable request", http.StatusBadRequest)
+		return
+	}
+	sessions, err := o.ListSessions()
+	if err != nil {
+		http.Error(w, "cannot list sessions", http.StatusInternalServerError)
+		return
+	}
+	if !sessionExists(sessions, req.Name) {
+		http.Error(w, "no such session", http.StatusNotFound)
+		return
+	}
+	if err := o.KillSession(req.Name); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

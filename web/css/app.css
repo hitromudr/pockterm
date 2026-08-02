@@ -110,14 +110,16 @@ html, body {
 /* A row is the session plus its rename handle; a button cannot nest in a
    button, so they are siblings. */
 #session-list li { display: flex; gap: 6px; align-items: stretch; }
-button.rename {
-  flex: 0 0 48px;
+button.rename, button.close {
+  flex: 0 0 44px;
   color: var(--fg);
   background: #1b2230;
   border: 1px solid #2a3345;
   border-radius: 8px;
   font-size: 16px;
 }
+/* Armed: the next tap ends processes, and it should look like it. */
+button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340; }
 
 /* --- session list --- */
 /* The bottom safe-area inset is the reason the last session was unreachable

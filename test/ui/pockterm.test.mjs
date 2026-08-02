@@ -191,6 +191,33 @@ describe('starting and renaming sessions', () => {
     );
   });
 
+  test('closing takes two taps, and the first one is reversible', async () => {
+    await stand.open();
+    const { page } = stand;
+
+    // Start one to close, so the test never touches the fixture session.
+    const before = await page.locator('#session-list li').count();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset="shell"]');
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
+
+    const victim = page.locator('#session-list li').last();
+    const name = await victim.locator('.name').textContent();
+
+    // One tap only arms it: an agent mid-task must survive a stray touch.
+    await victim.locator('button.close').click();
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator('#session-list li').count(), before + 1, 'one tap closed a session');
+
+    await victim.locator('button.close').click();
+    await page.waitForFunction(
+      (n) => !Array.from(document.querySelectorAll('#session-list .name')).some((e) => e.textContent === n),
+      name,
+      { timeout: 8000 },
+    );
+  });
+
   test('a session can be renamed, and a bad name is refused out loud', async () => {
     await stand.open();
     const { page } = stand;

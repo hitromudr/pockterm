@@ -57,6 +57,12 @@ func Rename(from, to string) []string {
 	return []string{"tmux", "rename-session", "-t", "=" + from, to}
 }
 
+// Kill is the argv that closes a session. Exact match again: closing
+// "claude-1" must never reach "claude-10".
+func Kill(name string) []string {
+	return []string{"tmux", "kill-session", "-t", "=" + name}
+}
+
 // Start is the argv that creates a session through the Makefile in dir.
 func Start(dir, target string) []string {
 	return []string{"make", "-C", dir, target}
