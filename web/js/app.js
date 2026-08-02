@@ -1,4 +1,4 @@
-import { keyBytes, applyCtrl } from './keys.js';
+import { keyBytes } from './keys.js';
 import { detectQuestion } from './detect.js';
 import { newState, questionNotice, noteActivity, doneNotice } from './notify.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v44';
+const APP_VERSION = 'v45';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -80,7 +80,6 @@ term.attachCustomKeyEventHandler((e) => {
 let ws = null;
 let current = null; // attached session name, or null on the list screen
 let retry = 1000;
-let ctrlLatch = false;
 const enc = new TextEncoder();
 
 // --- session list screen ---
@@ -352,18 +351,12 @@ function sendVisible() {
 }
 
 term.onData((d) => {
-  if (ctrlLatch) { d = applyCtrl(d); setCtrl(false); }
   send(d);
-  // End the composing region as soon as the characters are on the wire.
-  //
-  // Gboard keeps the word being typed to itself; the terminal has already
-  // received those characters, but the keyboard still believes it owns them.
-  // Its own Backspace then deletes that region and re-commits what is left —
-  // xterm reads the re-commit as fresh input and sends it again, so "рот"
-  // followed by one delete arrives as "ротро". Ending the composition after
-  // every chunk leaves the keyboard nothing stale to re-commit. Only the app
-  // can do this; in a real browser it is a no-op, and there is no such bug.
-  commitPendingInput();
+  // No commitInput() here. Ending the composition after every single
+  // character sounded thorough and was wrong: restartInput moves the caret
+  // and reopens the input, so typing turned into jumping around the line.
+  // The composition is ended where it actually matters — before a key from
+  // the bar, and after the delete this page intercepts.
 });
 
 // Take the delete key itself, before the keyboard can turn it into a
@@ -389,8 +382,6 @@ function keepsTerminalFocus(el) {
 }
 
 // --- key bar ---
-const ctrlBtn = document.getElementById('key-ctrl');
-function setCtrl(on) { ctrlLatch = on; ctrlBtn.classList.toggle('on', on); }
 // Make the keyboard hand over the word it is still composing before a key
 // from this bar reaches the pty.
 //
@@ -417,8 +408,6 @@ document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
     // who was only reading would raise the keyboard over the screen.
   });
 });
-keepsTerminalFocus(ctrlBtn);
-ctrlBtn.addEventListener('click', () => setCtrl(!ctrlLatch));
 
 document.getElementById('back').addEventListener('click', showSessions);
 document.getElementById('refresh').addEventListener('click', loadSessions);
@@ -815,7 +804,6 @@ async function attachImage(file) {
   const { path } = await res.json().catch(() => ({}));
   report('upload', { ok: !!path, bytes: file.size || 0, type: file.type || '' });
   if (!path) { toast('upload failed: no path in the answer'); return; }
-  if (ctrlLatch) setCtrl(false);
   // Trailing space so the next thing typed does not glue itself to the path.
   term.paste(`${path} `);
   // Same reason as after a copy: do not leave a frozen screen in the way of
@@ -842,7 +830,6 @@ document.addEventListener('drop', (e) => {
 
 // One way in for pasted text, whichever path produced it.
 function pasteIntoTerminal(text) {
-  if (ctrlLatch) setCtrl(false);
   term.paste(text);
   toast(`pasted ${text.length} chars`);
 }
@@ -868,7 +855,6 @@ pasteTargetEl.addEventListener('paste', () => {
     const text = pasteTargetEl.value;
     closePasteTarget();
     if (!text) return;
-    if (ctrlLatch) setCtrl(false);
     term.paste(text);
     toast(`pasted ${text.length} chars`);
   }, 0);
@@ -927,7 +913,6 @@ document.getElementById('paste').addEventListener('click', async () => {
     openPasteTarget('clipboard looks empty — paste here');
     return;
   }
-  if (ctrlLatch) setCtrl(false); // a latched Ctrl would mangle the text
   // term.paste honours bracketed-paste mode, so a multi-line paste arrives
   // as one block instead of firing a message per line in Claude Code.
   term.paste(text);

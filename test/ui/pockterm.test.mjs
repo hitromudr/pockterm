@@ -320,9 +320,9 @@ describe('the key bar', () => {
     // ^C sits over Ctrl, one column in from the edge: hitting it by accident
     // is the most expensive mistake this bar can cause.
     const stop = await box(page, '[data-key="ctrl-c"]');
-    const ctrl = await box(page, '#key-ctrl');
-    assert.ok(Math.abs(stop.x - ctrl.x) < 2, 'the stop key is not above Ctrl');
-    assert.ok(stop.y < ctrl.y, 'the stop key is not above Ctrl');
+    const del2 = await box(page, '[data-key="delete"]');
+    assert.ok(Math.abs(stop.x - del2.x) < 2, 'the stop key is not above forward delete');
+    assert.ok(stop.y < del2.y, 'the stop key is not above forward delete');
     const hide = await box(page, '#hide');
     assert.ok(hide.x > stop.x, 'the stop key still holds the corner');
     // Delete and enter sit to the right of the Ctrl column.
