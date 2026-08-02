@@ -101,6 +101,7 @@
       <button data-key="enter">&#9166;</button>
       <button id="hide" title="Hide the bars">&#9662;</button>
     </div>
+    <input id="pick-file" type="file" accept="image/*" hidden>
     <div id="overflow" hidden>
       <button id="font-dec" title="Smaller text">A&minus;</button>
       <button id="font-inc" title="Bigger text">A+</button>
@@ -121,10 +122,10 @@
            selection bar, so reaching it meant freezing the screen first. -->
       <button id="paste" title="Paste from the clipboard">&#128229; Paste</button>
       <!-- An Android screenshot is a file, not clipboard content, so the
-           only way to attach one is to pick it. -->
-      <label id="pick" title="Attach an image">&#128206;
-        <input id="pick-file" type="file" accept="image/*" hidden>
-      </label>
+           only way to attach one is to pick it. A button rather than a label
+           around the input: the bar's buttons are told not to take focus, and
+           on a label that also swallowed the click that opens the picker. -->
+      <button id="pick" title="Attach an image">&#128206;</button>
       <button id="mode" title="Prompt mode">&#128172;</button>
       <button id="more" title="More">&#8943;</button>
     </div>

@@ -384,6 +384,35 @@ describe('pasting an image', () => {
   before(async () => { stand = await startStand(); });
   after(async () => { await stand.stop(); });
 
+  test('the attach button opens the picker, and a picked file is uploaded', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    // The picker itself is the app's business; what must hold here is that the
+    // button reaches the input at all. It stopped doing that once, when the
+    // bar's "do not take focus" rule was applied to the label around it.
+    const opened = await page.evaluate(() => new Promise((resolve) => {
+      const input = document.getElementById('pick-file');
+      input.addEventListener('click', (e) => { e.preventDefault(); resolve(true); }, { once: true });
+      document.getElementById('pick').click();
+      setTimeout(() => resolve(false), 1000);
+    }));
+    assert.ok(opened, 'the attach button never reached the file input');
+
+    // And a picked file goes through the same upload as a paste.
+    await page.setInputFiles('#pick-file', {
+      name: 'shot.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(PNG_B64, 'base64'),
+    });
+    await page.waitForFunction(
+      () => /attached/.test(document.getElementById('toast').textContent || ''),
+      null,
+      { timeout: 5000 },
+    );
+  });
+
   test('a pasted screenshot is saved and its path typed into the terminal', async () => {
     await stand.open();
     await stand.attach();
@@ -405,8 +434,9 @@ describe('pasting an image', () => {
       { timeout: 5000 },
     );
 
-    const saved = readdirSync(stand.uploads);
-    assert.equal(saved.length, 1, `uploads holds ${JSON.stringify(saved)}`);
-    assert.match(saved[0], /\.png$/);
+    // Not "exactly one": the picker case in this suite uploads too. What
+    // matters is that this paste added a file of its own.
+    const saved = readdirSync(stand.uploads).filter((f) => f.endsWith('.png'));
+    assert.ok(saved.length >= 1, `uploads holds ${JSON.stringify(saved)}`);
   });
 });

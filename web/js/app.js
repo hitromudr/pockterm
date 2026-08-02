@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v49';
+const APP_VERSION = 'v51';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -285,9 +285,16 @@ function attach(name) {
   requestAnimationFrame(() => {
     refit();
     connect();
-    // Nothing here focuses or blurs. keyboardUp is reported so the next
-    // complaint about the keyboard comes with the state it was in.
-    report('switch', { keyboardUp });
+    // The keyboard reappearing on a switch is not this code focusing
+    // anything: on Android the textarea keeps focus after the keyboard is
+    // dismissed, and the WebView re-shows it for a focused element when the
+    // layout moves. That is why it only started after the first tap on the
+    // input — before that nothing held focus. So when a soft keyboard is
+    // known to exist and is currently down, the terminal gives up focus.
+    if (sawKeyboard && !keyboardUp && term.textarea && document.activeElement === term.textarea) {
+      term.textarea.blur();
+    }
+    report('switch', { keyboardUp, sawKeyboard });
   });
 }
 
@@ -928,6 +935,7 @@ pasteTargetEl.addEventListener('blur', () => {
 
 // Attach an image from storage. On Android a screenshot is a file, not
 // clipboard content, so this is the only path that reaches it.
+document.getElementById('pick').addEventListener('click', () => pickFileEl.click());
 pickFileEl.addEventListener('change', () => {
   const file = pickFileEl.files && pickFileEl.files[0];
   pickFileEl.value = ''; // so picking the same file twice fires again
@@ -1138,9 +1146,16 @@ if (window.ResizeObserver) {
 // the honest signal, and it is what "leave the keyboard as it was" has to be
 // judged against.
 let keyboardUp = false;
+// Whether this device has a soft keyboard at all, learned by watching one
+// appear. Without it the rule below would blur the terminal on a desktop,
+// where focus is the only thing that makes typing possible.
+let sawKeyboard = false;
 if (window.visualViewport) {
   const vv = window.visualViewport;
-  const measure = () => { keyboardUp = vv.height < window.innerHeight * 0.75; };
+  const measure = () => {
+    keyboardUp = vv.height < window.innerHeight * 0.75;
+    if (keyboardUp) sawKeyboard = true;
+  };
   measure();
   vv.addEventListener('resize', () => {
     document.documentElement.style.setProperty('--vvh', `${vv.height}px`);

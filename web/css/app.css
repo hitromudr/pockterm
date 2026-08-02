@@ -327,16 +327,7 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 #selbar #sel-done { flex: 0 0 40%; }
 /* The file picker is a label wrapping a hidden input; it has to read as one
    of the buttons next to it. */
-#modebar #pick {
-  flex: 0 0 56px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 17px;
-  color: var(--fg);
-  background: #232a38;
-  border-radius: 8px;
-}
+#modebar #pick { flex: 0 0 48px; font-size: 17px; }
 #modebar #pick:active { background: #3a4458; }
 /* Escape hatch for a browser that will not read the clipboard for us. */
 #paste-target {
