@@ -35,7 +35,20 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   // Never intercept non-GET or cross-origin; WebSocket upgrades bypass SW anyway.
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  // Network first, cache only as the offline fallback.
+  //
+  // Cache first was wrong for this app: the server is one hop away over a
+  // tunnel, while an installed PWA that is never fully reloaded kept serving
+  // the code it was installed with — fixes shipped, and the phone went on
+  // running the version that had the bug. Offline still works, because every
+  // answer is written back into the cache on the way out.
   e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request))
+    fetch(e.request)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });

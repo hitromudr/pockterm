@@ -5,6 +5,12 @@ name: deploy
 # in a container — so it only drops a signed binary into /incoming, and the
 # host side (pockterm-deploy.path -> /usr/local/sbin/pockterm-deploy) verifies
 # the signature and installs it. See CLAUDE.md, "Deploy".
+#
+# A push builds and tests but does NOT install. Installing restarts the unit,
+# and the unit serves the terminal the author is very likely sitting in — on
+# 2026-08-02 five deploys in one evening interrupted live work. The install
+# step therefore waits for someone to press the button (workflow_dispatch),
+# which is a decision about timing, not about code.
 on:
   push:
     branches: [main]
@@ -44,6 +50,7 @@ jobs:
       - run: make build-arm64
 
       - name: Hand the binary over to the host
+        if: github.event_name == 'workflow_dispatch'
         env:
           KEY: ${{ secrets.DEPLOY_HMAC_KEY }}
         run: |
