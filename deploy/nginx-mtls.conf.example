@@ -1,0 +1,61 @@
+# pockterm behind nginx with mutual TLS.
+#
+# The setup to keep: only devices holding a client certificate you issued can
+# reach the terminal at all — a scan of the internet sees a handshake failure,
+# not a login page. The phone stores the certificate once; there is nothing to
+# type afterwards.
+#
+# Issue a CA and a client certificate (adjust the days to taste):
+#
+#   openssl genrsa -out ca.key 4096
+#   openssl req -x509 -new -key ca.key -days 3650 -out ca.crt \
+#       -subj "/CN=pockterm client CA"
+#   openssl genrsa -out phone.key 2048
+#   openssl req -new -key phone.key -out phone.csr -subj "/CN=phone"
+#   openssl x509 -req -in phone.csr -CA ca.crt -CAkey ca.key \
+#       -CAcreateserial -days 825 -out phone.crt
+#   openssl pkcs12 -export -out phone.p12 -inkey phone.key -in phone.crt
+#
+# Transfer phone.p12 to the device and install it (Android: Settings →
+# Security → Encryption & credentials → Install a certificate → VPN & app
+# user certificate; iOS: mail it to yourself, open, then trust it in Settings
+# → General → VPN & Device Management). Keep ca.key somewhere safe: it can
+# mint new client certificates, so it is as sensitive as the terminal itself.
+#
+# With mTLS in front, POCKTERM_TOKEN is optional — the certificate is the
+# authentication. Setting both is harmless and gives you a second lock.
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name pockterm.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/pockterm.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pockterm.example.com/privkey.pem;
+
+    # Client certificates: only holders of one signed by this CA get in.
+    ssl_client_certificate /etc/nginx/pockterm/ca.crt;
+    ssl_verify_client on;
+
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header X-Frame-Options "DENY" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8130;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+
+        proxy_buffering off;
+        proxy_read_timeout  1h;
+        proxy_send_timeout  1h;
+    }
+}
+
+server {
+    listen 80;
+    server_name pockterm.example.com;
+    return 301 https://$host$request_uri;
+}

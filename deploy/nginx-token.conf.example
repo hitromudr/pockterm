@@ -1,0 +1,51 @@
+# pockterm behind nginx with TLS and the built-in shared token.
+#
+# The simplest setup that is not reckless: TLS from Let's Encrypt, and the
+# token in the URL your phone saved. Good enough to start; if this is going to
+# live for a while, prefer nginx-mtls.conf.example — a token in a query string
+# ends up in browser history and in logs.
+#
+# Replace pockterm.example.com with your domain. The upstream is the loopback
+# address pockterm listens on (POCKTERM_LISTEN), reached directly if nginx
+# runs on the same machine, or through a reverse tunnel if it does not.
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name pockterm.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/pockterm.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pockterm.example.com/privkey.pem;
+
+    # The terminal is a shell. Keep it out of search engines and out of
+    # other people's frames.
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header X-Frame-Options "DENY" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8130;
+
+        # WebSocket upgrade for /ws — without these two headers the terminal
+        # connects and immediately drops.
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # pockterm compares Origin against Host and refuses the upgrade when
+        # a proxy rewrites it, so pass the original value through.
+        proxy_set_header Host $host;
+
+        # Terminal output must arrive as it is produced, not in batches.
+        proxy_buffering off;
+
+        # A session sits idle while you read; the default 60s would cut it.
+        proxy_read_timeout  1h;
+        proxy_send_timeout  1h;
+    }
+}
+
+server {
+    listen 80;
+    server_name pockterm.example.com;
+    return 301 https://$host$request_uri;
+}

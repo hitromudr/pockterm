@@ -35,6 +35,48 @@ make build
 # open http://127.0.0.1:8130 and pick it
 ```
 
+## Installing on a server
+
+```bash
+git clone https://github.com/hitromudr/pockterm && cd pockterm
+sudo bash deploy/install.sh        # or: make install
+```
+
+The script builds the binary into `/usr/local/bin`, generates a token in
+`/etc/pockterm/pockterm.env` (mode 600), writes a systemd unit and starts the
+service as the account whose tmux sessions you want served — under `sudo`,
+that is whoever invoked it. Re-running is safe: the token is kept and the unit
+is rewritten only when it actually changed. Remove it with
+`sudo bash deploy/install.sh --uninstall`.
+
+The service listens on loopback. To reach it from outside, put a reverse proxy
+in front — worked examples ship alongside:
+
+| File | When |
+|---|---|
+| `deploy/nginx-token.conf.example` | TLS plus the built-in token. To get started |
+| `deploy/nginx-mtls.conf.example` | Client certificates. To keep |
+
+A token in the address bar ends up in browser history and proxy logs, so a
+lasting setup is better served by mTLS: an internet-wide scan then sees a
+failed handshake rather than a login page. Issuing the certificates and
+installing them on a phone is documented at the top of
+`nginx-mtls.conf.example`.
+
+## Connecting a phone
+
+```bash
+make qr PUBLIC_URL=https://pockterm.example.com
+```
+
+The QR code is printed straight into the terminal: point the camera at it and
+the address opens, token included. Then "Add to Home Screen" and pockterm
+behaves like an app — its own window without tabs, and the keyboard shortcuts
+reach the terminal.
+
+Without a camera, `pockterm qr https://...` prints both the code and the plain
+URL.
+
 ## Configuration (environment)
 
 | Variable | Default | Meaning |
