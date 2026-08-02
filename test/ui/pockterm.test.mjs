@@ -215,6 +215,71 @@ describe('starting and renaming sessions', () => {
   });
 });
 
+describe('the key bar', () => {
+  let stand;
+  before(async () => { stand = await startStand(); });
+  after(async () => { await stand.stop(); });
+
+  const box = (page, sel) => page.locator(sel).boundingBox();
+
+  test('arrows stack on the left, delete sits above enter on the right', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    const up = await box(page, '[data-key="up"]');
+    const down = await box(page, '[data-key="down"]');
+    const del = await box(page, '[data-key="backspace"]');
+    const enter = await box(page, '[data-key="enter"]');
+    const esc = await box(page, '[data-key="esc"]');
+
+    // Up above down, in the same column.
+    assert.ok(up.y < down.y, 'up is not above down');
+    assert.ok(Math.abs(up.x - down.x) < 2, 'the arrows are not in one column');
+    // Delete above enter, also one column, and to the right of everything.
+    assert.ok(del.y < enter.y, 'delete is not above enter');
+    assert.ok(Math.abs(del.x - enter.x) < 2, 'delete and enter are not in one column');
+    assert.ok(del.x > esc.x, 'the delete column is not on the right');
+    // The arrows own the left edge.
+    assert.ok(up.x < esc.x, 'the arrows are not on the left');
+  });
+
+  test('tab and shift-tab are gone', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    assert.equal(await page.locator('[data-key="tab"]').count(), 0);
+    assert.equal(await page.locator('[data-key="shift-tab"]').count(), 0);
+  });
+
+  test('one tap hides every bar, one brings them back', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#hide');
+    for (const sel of ['#keybar', '#answerkeys', '#modebar']) {
+      assert.ok(await page.locator(sel).isHidden(), `${sel} stayed on screen`);
+    }
+    // Something has to bring them back, or the only way out is a reload.
+    await page.click('#show-bars');
+    assert.ok(await page.locator('#keybar').isVisible(), 'the bars did not come back');
+  });
+
+  test('the answer keys type a digit into the terminal', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('[data-key="2"]');
+    await page.waitForFunction(
+      () => (document.querySelector('.xterm-rows')?.textContent || '').includes('2'),
+      null,
+      { timeout: 5000 },
+    );
+  });
+});
+
 describe('pasting an image', () => {
   let stand;
   before(async () => { stand = await startStand(); });

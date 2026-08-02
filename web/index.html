@@ -75,31 +75,44 @@
       <textarea id="prompt" rows="1" placeholder="Message… (▶ to send)"></textarea>
       <button id="send" type="submit" title="Send">&#9654;</button>
     </form>
+    <!-- Two rows, five columns, laid out for a thumb rather than for a
+         keyboard: arrows in their own block on the left with up above down,
+         delete over enter on the right, the rest in between. Tab and
+         Shift+Tab are gone — this bar answers an agent, it does not complete
+         filenames. -->
     <div id="keybar">
-      <button data-key="esc">Esc</button>
-      <button data-key="tab">Tab</button>
-      <button data-key="shift-tab">&#8679;Tab</button>
       <button data-key="up">&#8593;</button>
-      <button data-key="down">&#8595;</button>
       <button data-key="left">&#8592;</button>
-      <button data-key="right">&#8594;</button>
-      <button id="key-ctrl">Ctrl</button>
+      <button data-key="esc">Esc</button>
       <button data-key="ctrl-c">^C</button>
       <!-- Deletes without asking the on-screen keyboard; see keys.js. -->
       <button data-key="backspace">&#9003;</button>
+
+      <button data-key="down">&#8595;</button>
+      <button data-key="right">&#8594;</button>
+      <button id="key-ctrl">Ctrl</button>
+      <button id="hide" title="Hide the bars">&#9662;</button>
       <button data-key="enter">&#9166;</button>
+    </div>
+    <!-- Answers to a numbered menu: the agent asks with 1/2/3 and this skips
+         the on-screen keyboard, which is where the doubled words come from. -->
+    <div id="answerkeys">
+      <button data-key="1">1</button>
+      <button data-key="2">2</button>
+      <button data-key="3">3</button>
     </div>
     <div id="overflow" hidden>
       <button id="font-dec" title="Smaller text">A&minus;</button>
       <button id="font-inc" title="Bigger text">A+</button>
       <button id="bell" title="Notify when the agent asks or finishes">&#128276; Notify</button>
-      <button id="hide" title="Hide/show the bars">&#9662; Hide bars</button>
       <!-- Unhidden only when the browser offers the install; see app.js. -->
       <button id="install" title="Install as an app" hidden>&#11015; Install</button>
     </div>
     <!-- Modes and settings, at the bottom because that is where the thumb
          already is. Rare things (text size, notifications, hiding the bars)
          sit behind ⋯ instead of taking permanent space from the tabs. -->
+    <!-- The only thing left on screen when everything is hidden. -->
+    <button id="show-bars" title="Show the bars" hidden>&#9652;</button>
     <div id="modebar">
       <button id="select" title="Select text">&#9986;</button>
       <!-- Pasting has nothing to do with selecting: it lived inside the

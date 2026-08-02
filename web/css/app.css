@@ -222,17 +222,36 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 .xterm-viewport::-webkit-scrollbar { display: none; }
 /* Bar hidden: give the terminal the whole screen. */
 #mode.on, #hide.on, #select.on, #bell.on { background: var(--accent); color: #0b0e14; }
+/* Hiding means hiding everything — one tap, not a trip through a menu. What
+   stays is a small handle to bring it all back; without it the only way out
+   would be a reload. */
+#screen-term.panels-hidden #answerkeys,
 #screen-term.panels-hidden #keybar,
 #screen-term.panels-hidden #composer,
 #screen-term.panels-hidden #quickbar,
-#screen-term.panels-hidden #selbar { display: none !important; }
+#screen-term.panels-hidden #selbar,
+#screen-term.panels-hidden #overflow,
+#screen-term.panels-hidden #modebar { display: none !important; }
+#show-bars {
+  position: absolute;
+  right: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  z-index: 12;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 22px;
+  font-size: 18px;
+  color: var(--fg);
+  background: #232a38cc;
+}
 /* Grid so all keys fit at any width; a flex row overflowed narrow phones
    and hid the rightmost keys (^C, Enter) behind a horizontal scroll.
-   Six columns for eleven keys: two rows. Five would leave a third row
-   holding a single key and steal that height from the terminal. */
+   Five columns, ten keys, two rows — and the columns carry meaning: arrows
+   on the left (up above down), delete above enter on the right. */
 #keybar {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 4px;
   padding: 6px;
   background: var(--bar);
@@ -246,6 +265,24 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   border-radius: 6px;
 }
 #keybar button:active { background: #3a4458; }
+/* Three wide targets: answering "2" should not need aim. */
+#answerkeys {
+  display: flex;
+  gap: 4px;
+  padding: 0 6px 6px;
+  background: var(--bar);
+}
+#answerkeys button {
+  flex: 1;
+  padding: 12px 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 6px;
+}
+#answerkeys button:active { background: #3a4458; }
 #keybar button.on { background: var(--accent); color: #0b0e14; }
 
 /* Answer buttons for a detected prompt: one per row, above the input.

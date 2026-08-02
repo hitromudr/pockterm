@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v29';
+const APP_VERSION = 'v30';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -342,12 +342,15 @@ termBox.addEventListener('touchend', () => { touchY = null; }, { passive: true }
 
 // Hide/show the bottom bar to give the terminal the whole screen.
 let panelsHidden = false;
-document.getElementById('hide').addEventListener('click', () => {
-  panelsHidden = !panelsHidden;
-  screenTerm.classList.toggle('panels-hidden', panelsHidden);
-  document.getElementById('hide').classList.toggle('on', panelsHidden);
+const showBarsBtn = document.getElementById('show-bars');
+function setPanelsHidden(on) {
+  panelsHidden = on;
+  screenTerm.classList.toggle('panels-hidden', on);
+  showBarsBtn.hidden = !on;
   refit();
-});
+}
+document.getElementById('hide').addEventListener('click', () => setPanelsHidden(true));
+showBarsBtn.addEventListener('click', () => setPanelsHidden(false));
 
 // tmux shares one window size across all clients of a session, so when a
 // second (smaller) client connects the window shrinks and this one gets
@@ -366,6 +369,7 @@ const quickbarEl = document.getElementById('quickbar');
 const promptEl = document.getElementById('prompt');
 const modeBtn = document.getElementById('mode');
 const keybarEl = document.getElementById('keybar');
+const answerKeysEl = document.getElementById('answerkeys');
 const selbarEl = document.getElementById('selbar');
 const selectBtn = document.getElementById('select');
 const snapshotEl = document.getElementById('snapshot');
@@ -396,6 +400,7 @@ function renderBars() {
   composerEl.hidden = selectMode || !promptMode;
   quickbarEl.hidden = selectMode || !promptMode;
   keybarEl.hidden = selectMode || promptMode;
+  answerKeysEl.hidden = selectMode || promptMode;
   modeBtn.classList.toggle('on', promptMode);
   selectBtn.classList.toggle('on', selectMode);
   if (promptMode && !selectMode) promptEl.focus();
