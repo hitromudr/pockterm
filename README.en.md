@@ -27,6 +27,11 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   so the image goes to the server, lands as a file under the user's cache
   directory, and the terminal receives its path — which an agent reads
   anyway.
+- **Sessions from the UI.** `+` starts one from a fixed preset (`shell`,
+  `claude`, `yolo`, `continue`), `✎` renames, `✕` closes in two taps. The page
+  never sends a command, only a preset name, and the same Makefile people use
+  by hand does the launching. It exists because a phone with no sessions left
+  had no way to make one.
 - **Telegram notifications.** The server reads the session's screen with
   `capture-pane` and messages you when the agent asks for an answer or
   falls silent — which works with pockterm closed, exactly when it matters.
@@ -105,6 +110,7 @@ URL.
 | `POCKTERM_TG_API` | `https://api.telegram.org` | Bot API root: a local bot server or a test double. |
 | `POCKTERM_IDLE` | `30s` | How much silence counts as "finished". |
 | `POCKTERM_UPLOAD_DIR` | user cache dir | Where pasted images are saved; `off` disables uploads. |
+| `POCKTERM_SESSION_DIR` | work dir | Where the session Makefile lives (the + button); `off` refuses to start any. |
 
 ## Notifications
 

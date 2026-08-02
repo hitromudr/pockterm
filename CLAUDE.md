@@ -26,10 +26,37 @@ layout bug in this app was found on a phone rather than by the unit tests:
 Code comments are in English. User-facing documentation is bilingual:
 `README.md` (Russian) and `README.en.md` (English).
 
+## The client is not always a browser
+
+On the owner's phone this runs inside a WebView in his own Android app
+(`android_client` in the devops repo), not in Chrome. A WebView has no
+asynchronous Clipboard API, no Notification API, no file chooser and no PWA
+install; it also cannot be opened in devtools. Every clipboard, image and
+notification bug reported here came from that gap, and the app now injects a
+bridge — `window.PockNative` with `copy`, `read`, `commitInput`, `notify` and
+`appVersion`. The page prefers it when present and falls back to browser APIs
+where there are any.
+
+`commitInput` deserves its own line: Gboard keeps the word being typed as a
+composing region, and both the lost last word on Enter and the doubled word on
+Backspace come from it. Only the app can end a composition.
+
+## Diagnostics
+
+The page posts what decides an outcome to `/api/log`, which the server writes
+to its journal (`journalctl -u pockterm | grep client:`): the environment on
+load — version, secure context, which clipboard APIs exist, whether the native
+bridge is there — plus copy/paste/upload results and uncaught errors. It is
+there because the device this serves has no console anyone can open, and every
+fix before it was a guess.
+
 ## Deploy
 
-A push to `main` deploys to the RPi5 by itself — do not install by hand there,
-and do not run the `pockterm_app` ansible role's binary copy against it.
+A push to `main` builds and tests; it does **not** install. Installing
+restarts the unit that serves the terminal its author is usually sitting in,
+so the handover waits for someone to press Run workflow (`workflow_dispatch`).
+Do not install by hand on the RPi5, and do not run the `pockterm_app` ansible
+role's binary copy against it.
 
 `.forgejo/workflows/deploy.yml` runs on the runner that lives on that same box.
 The job builds in a container and drops `pockterm.new` plus an HMAC signature
