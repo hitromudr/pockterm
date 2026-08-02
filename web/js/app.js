@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v41';
+const APP_VERSION = 'v42';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -260,6 +260,11 @@ function showSessions() {
 }
 
 function attach(name) {
+  // Whether the keyboard was up is the user's decision, not the switch's.
+  // Focusing the terminal unconditionally raised it on every tab tap, on a
+  // screen where it eats half the view; leaving focus alone keeps whatever
+  // state the switch found.
+  const hadFocus = !!term.textarea && document.activeElement === term.textarea;
   // Close any current socket first (switching tabs) so its output stops
   // writing into the terminal we're about to reuse for another session.
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
@@ -274,7 +279,7 @@ function attach(name) {
   lastAnswersSig = null;
   inCopyMode = false; // the new socket reports the pane's state on connect
   renderTabs();
-  requestAnimationFrame(() => { fit.fit(); term.focus(); connect(); });
+  requestAnimationFrame(() => { fit.fit(); if (hadFocus) term.focus(); connect(); });
 }
 
 // Session tabs in the terminal header: tap one to switch to that session.
@@ -285,6 +290,7 @@ async function renderTabs() {
     const b = document.createElement('button');
     b.textContent = s.name;
     if (s.name === current) b.className = 'active';
+    keepsTerminalFocus(b);
     b.addEventListener('click', () => { if (s.name !== current) attach(s.name); });
     tabsEl.appendChild(b);
   }
@@ -344,6 +350,15 @@ term.onData((d) => {
   send(d);
 });
 
+// Tapping a button must not take focus away from the terminal: on Android the
+// soft keyboard closes the moment the textarea loses focus, and a focus
+// restored later — in a timer, a frame callback, after an await — does not
+// bring it back, because it is no longer inside the touch. preventDefault on
+// the press keeps focus where it is; the click still fires.
+function keepsTerminalFocus(el) {
+  el.addEventListener('mousedown', (e) => e.preventDefault());
+}
+
 // --- key bar ---
 const ctrlBtn = document.getElementById('key-ctrl');
 function setCtrl(on) { ctrlLatch = on; ctrlBtn.classList.toggle('on', on); }
@@ -365,6 +380,7 @@ function commitPendingInput() {
 }
 
 document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
+  keepsTerminalFocus(b);
   b.addEventListener('click', () => {
     commitPendingInput();
     send(keyBytes(b.dataset.key));
@@ -465,6 +481,7 @@ const MACROS = {
 // Macros live in two places now — the key bar and prompt mode's quick row —
 // and both send the same thing.
 document.querySelectorAll('button[data-macro]').forEach((b) => {
+  keepsTerminalFocus(b);
   b.addEventListener('click', () => { commitPendingInput(); send(MACROS[b.dataset.macro]); term.focus(); });
 });
 

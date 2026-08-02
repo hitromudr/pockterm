@@ -242,6 +242,33 @@ describe('starting and renaming sessions', () => {
   });
 });
 
+describe('switching sessions', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['one', 'two'] }); });
+  after(async () => { await stand.stop(); });
+
+  test('a switch leaves the keyboard as it found it', async () => {
+    await stand.open();
+    await stand.attach('one');
+    const { page } = stand;
+
+    // Not typing: nothing focused, so nothing should raise the keyboard.
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.click('#tabs button:not(.active)');
+    await page.waitForTimeout(400);
+    let focused = await page.evaluate(() => document.activeElement && document.activeElement.tagName);
+    assert.notEqual(focused, 'TEXTAREA', 'the switch grabbed focus and would raise the keyboard');
+
+    // Typing: focus stays, and so does the keyboard.
+    await page.click('#term');
+    assert.equal(await page.evaluate(() => document.activeElement.tagName), 'TEXTAREA');
+    await page.click('#tabs button:not(.active)');
+    await page.waitForTimeout(400);
+    focused = await page.evaluate(() => document.activeElement && document.activeElement.tagName);
+    assert.equal(focused, 'TEXTAREA', 'the switch dropped focus and the keyboard would close');
+  });
+});
+
 describe('the key bar', () => {
   let stand;
   before(async () => { stand = await startStand(); });
