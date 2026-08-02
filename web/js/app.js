@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v30';
+const APP_VERSION = 'v32';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -369,7 +369,6 @@ const quickbarEl = document.getElementById('quickbar');
 const promptEl = document.getElementById('prompt');
 const modeBtn = document.getElementById('mode');
 const keybarEl = document.getElementById('keybar');
-const answerKeysEl = document.getElementById('answerkeys');
 const selbarEl = document.getElementById('selbar');
 const selectBtn = document.getElementById('select');
 const snapshotEl = document.getElementById('snapshot');
@@ -385,7 +384,9 @@ const MACROS = {
   esc: '\x1b',
   'ctrl-c': '\x03',
 };
-document.querySelectorAll('#quickbar button[data-macro]').forEach((b) => {
+// Macros live in two places now — the key bar and prompt mode's quick row —
+// and both send the same thing.
+document.querySelectorAll('button[data-macro]').forEach((b) => {
   b.addEventListener('click', () => { send(MACROS[b.dataset.macro]); term.focus(); });
 });
 
@@ -400,7 +401,6 @@ function renderBars() {
   composerEl.hidden = selectMode || !promptMode;
   quickbarEl.hidden = selectMode || !promptMode;
   keybarEl.hidden = selectMode || promptMode;
-  answerKeysEl.hidden = selectMode || promptMode;
   modeBtn.classList.toggle('on', promptMode);
   selectBtn.classList.toggle('on', selectMode);
   if (promptMode && !selectMode) promptEl.focus();

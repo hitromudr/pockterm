@@ -222,26 +222,41 @@ describe('the key bar', () => {
 
   const box = (page, sel) => page.locator(sel).boundingBox();
 
-  test('arrows stack on the left, delete sits above enter on the right', async () => {
+  test('the arrows form their cross on the left, delete sits above enter', async () => {
     await stand.open();
     await stand.attach();
     const { page } = stand;
 
     const up = await box(page, '[data-key="up"]');
     const down = await box(page, '[data-key="down"]');
+    const left = await box(page, '[data-key="left"]');
+    const right = await box(page, '[data-key="right"]');
     const del = await box(page, '[data-key="backspace"]');
     const enter = await box(page, '[data-key="enter"]');
     const esc = await box(page, '[data-key="esc"]');
 
-    // Up above down, in the same column.
+    // The cross: up over down, left beside it on the left, right on the right.
     assert.ok(up.y < down.y, 'up is not above down');
-    assert.ok(Math.abs(up.x - down.x) < 2, 'the arrows are not in one column');
+    assert.ok(Math.abs(up.x - down.x) < 2, 'up and down are not in one column');
+    assert.ok(left.x < down.x, 'left is not to the left of down');
+    assert.ok(right.x > down.x, 'right is not to the right of down');
+    assert.ok(Math.abs(left.y - down.y) < 2 && Math.abs(right.y - down.y) < 2,
+      'the bottom of the cross is not one row');
     // Delete above enter, also one column, and to the right of everything.
     assert.ok(del.y < enter.y, 'delete is not above enter');
     assert.ok(Math.abs(del.x - enter.x) < 2, 'delete and enter are not in one column');
     assert.ok(del.x > esc.x, 'the delete column is not on the right');
-    // The arrows own the left edge.
-    assert.ok(up.x < esc.x, 'the arrows are not on the left');
+    // Escape is the top-left corner; the cross sits next to it.
+    assert.ok(esc.x < up.x && esc.y < down.y, 'escape is not the top-left key');
+    assert.ok(left.x <= esc.x + 2, 'the cross is not against the left edge');
+  });
+
+  test('accept is one tap from the key bar', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    // The macro is right-arrow then Enter — the answer given most often.
+    assert.equal(await page.locator('#keybar button[data-macro="accept"]').count(), 1);
   });
 
   test('tab and shift-tab are gone', async () => {
@@ -258,7 +273,7 @@ describe('the key bar', () => {
     const { page } = stand;
 
     await page.click('#hide');
-    for (const sel of ['#keybar', '#answerkeys', '#modebar']) {
+    for (const sel of ['#keybar', '#modebar']) {
       assert.ok(await page.locator(sel).isHidden(), `${sel} stayed on screen`);
     }
     // Something has to bring them back, or the only way out is a reload.
@@ -266,14 +281,14 @@ describe('the key bar', () => {
     assert.ok(await page.locator('#keybar').isVisible(), 'the bars did not come back');
   });
 
-  test('the answer keys type a digit into the terminal', async () => {
+  test('the answer key types a digit into the terminal', async () => {
     await stand.open();
     await stand.attach();
     const { page } = stand;
 
-    await page.click('[data-key="2"]');
+    await page.click('[data-key="1"]');
     await page.waitForFunction(
-      () => (document.querySelector('.xterm-rows')?.textContent || '').includes('2'),
+      () => (document.querySelector('.xterm-rows')?.textContent || '').includes('1'),
       null,
       { timeout: 5000 },
     );
