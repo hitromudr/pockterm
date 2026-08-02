@@ -10,9 +10,16 @@ Mobile web terminal for a tmux session (PWA + Go single binary).
 ## Commands
 
 ```bash
-make help    # list targets
-make check   # format, lint, tests
+make help     # list targets
+make check    # format, lint, unit tests
+make test-ui  # browser tests: real binary, private tmux, Chromium at phone size
 ```
+
+`make test-ui` needs `npm install` and a chromium on the machine
+(`PT_UI_CHROME` overrides the path). It exists because every clipboard and
+layout bug in this app was found on a phone rather than by the unit tests:
+`test/ui/stand.mjs` starts the actual binary against its own tmux server, and
+`test/ui/probe.mjs` walks the same flow taking screenshots at each step.
 
 ## Conventions
 

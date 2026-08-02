@@ -9,7 +9,7 @@
 // sessions through the same tmux, and a test must not list, attach to, or
 // kill any of them. TMUX_TMPDIR gives the test its own server.
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,11 +33,22 @@ async function waitForServer(url, attempts = 100) {
 // The stand creates and destroys tmux sessions, and this machine serves the
 // owner's real ones. Every tmux call below must therefore land on the private
 // server; this checks that it does instead of trusting that it does.
-function assertPrivateTmux(env, dir) {
-  const socket = execFileSync('tmux', ['display-message', '-p', '#{socket_path}'], { env })
+//
+// Trusting the environment is exactly what went wrong the first time: this
+// suite is developed from inside a tmux session, TMUX leaked into the child
+// environment, and tmux honoured it over TMUX_TMPDIR — the tests created their
+// sessions on the owner's live server. Hence both belts below: the socket is
+// named explicitly with -S, and TMUX is scrubbed from the environment pockterm
+// inherits.
+function tmuxArgs(socket, rest) {
+  return ['-S', socket, ...rest];
+}
+
+function assertPrivateTmux(socket, dir, env) {
+  const seen = execFileSync('tmux', tmuxArgs(socket, ['display-message', '-p', '#{socket_path}']), { env })
     .toString().trim();
-  if (!socket.startsWith(dir)) {
-    throw new Error(`refusing to run: tmux socket ${socket} is outside the test directory ${dir}`);
+  if (!seen.startsWith(dir)) {
+    throw new Error(`refusing to run: tmux socket ${seen} is outside the test directory ${dir}`);
   }
 }
 
@@ -52,11 +63,21 @@ export async function startStand({ sessions = ['demo'] } = {}) {
     POCKTERM_TG_TOKEN: '',
     POCKTERM_TG_CHAT: '',
   };
+  // Inside a tmux session these two point every child at that session's
+  // server, whatever TMUX_TMPDIR says.
+  delete env.TMUX;
+  delete env.TMUX_PANE;
+
+  // Where tmux puts its socket for this TMUX_TMPDIR — pockterm finds it
+  // through the environment, the lines below name it outright.
+  const socketDir = join(dir, `tmux-${process.getuid()}`);
+  mkdirSync(socketDir, { recursive: true, mode: 0o700 });
+  const socket = join(socketDir, 'default');
 
   for (const name of sessions) {
-    execFileSync('tmux', ['new-session', '-d', '-s', name, 'sh', '-c', 'cat'], { env });
+    execFileSync('tmux', tmuxArgs(socket, ['new-session', '-d', '-s', name, 'sh', '-c', 'cat']), { env });
   }
-  assertPrivateTmux(env, dir);
+  assertPrivateTmux(socket, dir, env);
 
   const server = spawn(join(ROOT, 'bin', 'pockterm'), [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   const log = [];
@@ -89,6 +110,12 @@ export async function startStand({ sessions = ['demo'] } = {}) {
     serverLog: () => log.join(''),
     async open() {
       await page.goto(base);
+      // The app restores the session it was last attached to (that is what
+      // makes an orientation reload survivable), so a second open lands in
+      // the terminal, not on the list.
+      if (await page.locator('#screen-term:not([hidden])').count()) {
+        await page.click('#back');
+      }
       await page.waitForSelector('#session-list li');
     },
     // Attach to a session and wait until the terminal is live.
@@ -104,8 +131,8 @@ export async function startStand({ sessions = ['demo'] } = {}) {
       // Checked again on the way out: kill-server is the one command here
       // that could ruin somebody's day if it reached the wrong socket.
       try {
-        assertPrivateTmux(env, dir);
-        execFileSync('tmux', ['kill-server'], { env, stdio: 'ignore' });
+        assertPrivateTmux(socket, dir, env);
+        execFileSync('tmux', tmuxArgs(socket, ['kill-server']), { env, stdio: 'ignore' });
       } catch (_) { /* already gone, or not ours to kill */ }
       rmSync(dir, { recursive: true, force: true });
     },

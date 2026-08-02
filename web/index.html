@@ -26,15 +26,12 @@
 
   <!-- Screen 2: the attached terminal. -->
   <div id="screen-term" hidden>
+    <!-- Navigation only. Everything you press while working lives at the
+         bottom of the screen, within reach of a thumb; the top edge of a
+         6-inch phone is not. -->
     <header class="bar">
       <button id="back" title="All sessions">&#9776;</button>
       <div id="tabs"></div>
-      <button id="font-dec" title="Smaller text">A&minus;</button>
-      <button id="font-inc" title="Bigger text">A+</button>
-      <button id="hide" title="Hide/show bar">&#9662;</button>
-      <button id="select" title="Select text">&#9986;</button>
-      <button id="bell" title="Notify when the agent asks or finishes">&#128276;</button>
-      <button id="mode" title="Prompt mode">&#128172;</button>
     </header>
     <div id="status" hidden></div>
     <div id="toast" hidden></div>
@@ -45,11 +42,10 @@
     </div>
     <!-- Buttons for a detected interactive prompt (Claude permission etc.) -->
     <div id="answers" hidden></div>
-    <!-- Quick macros for prompt mode -->
+    <!-- Quick macros for prompt mode. No plain Enter here: the composer's ▶
+         sends, and the key bar owns Esc and ^C — one key, one place. -->
     <div id="quickbar" hidden>
       <button data-macro="accept">&#10003; Accept</button>
-      <button data-macro="enter">&#9166;</button>
-      <button data-macro="esc">Esc</button>
       <button data-macro="ctrl-c" class="stop">&#9209; ^C</button>
     </div>
     <!-- Selection mode: clipboard exchange for the selected terminal text -->
@@ -84,6 +80,20 @@
       <!-- Deletes without asking the on-screen keyboard; see keys.js. -->
       <button data-key="backspace">&#9003;</button>
       <button data-key="enter">&#9166;</button>
+    </div>
+    <div id="overflow" hidden>
+      <button id="font-dec" title="Smaller text">A&minus;</button>
+      <button id="font-inc" title="Bigger text">A+</button>
+      <button id="bell" title="Notify when the agent asks or finishes">&#128276; Notify</button>
+      <button id="hide" title="Hide/show the bars">&#9662; Hide bars</button>
+    </div>
+    <!-- Modes and settings, at the bottom because that is where the thumb
+         already is. Rare things (text size, notifications, hiding the bars)
+         sit behind ⋯ instead of taking permanent space from the tabs. -->
+    <div id="modebar">
+      <button id="select" title="Select text">&#9986; Select</button>
+      <button id="mode" title="Prompt mode">&#128172; Prompt</button>
+      <button id="more" title="More">&#8943;</button>
     </div>
   </div>
 

@@ -305,6 +305,17 @@ function renderBars() {
 function setPromptMode(on) { promptMode = on; renderBars(); }
 modeBtn.addEventListener('click', () => setPromptMode(!promptMode));
 
+// Text size, notifications and hiding the bars are settings, not controls:
+// they belong behind one button instead of taking four permanent slots away
+// from the session tabs.
+const moreBtn = document.getElementById('more');
+const overflowEl = document.getElementById('overflow');
+moreBtn.addEventListener('click', () => {
+  overflowEl.hidden = !overflowEl.hidden;
+  moreBtn.classList.toggle('on', !overflowEl.hidden);
+  refit();
+});
+
 // Send the composed prompt (text + Enter), then clear and keep the field.
 composerEl.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -416,7 +427,11 @@ async function writeClipboard(text) {
     sel.addRange(range);
     host.focus({ preventScroll: true });
 
+    // The document-level copy listener must not treat this as the user's
+    // own copy: the selection here is ours, not theirs.
+    copyingViaFallback = true;
     const ok = document.execCommand('copy');
+    copyingViaFallback = false;
     sel.removeAllRanges();
     host.remove();
     if (hadFocus && hadFocus.focus) hadFocus.focus({ preventScroll: true });
@@ -427,6 +442,7 @@ async function writeClipboard(text) {
   }
 }
 let lastCopyError = '';
+let copyingViaFallback = false;
 
 // Read an image out of the clipboard where the browser allows it. Wrapped
 // because navigator.clipboard.read is missing on Firefox and throws on a
@@ -445,6 +461,17 @@ function preview(text) {
   const t = (text.split('\n').find((l) => l.trim()) || '').trim();
   return t.length > 28 ? `${t.slice(0, 28)}…` : t;
 }
+
+// Android's selection menu has its own Copy, and so does Ctrl+C — neither
+// goes anywhere near the button below. Without this, copying that way left
+// the frozen screen covering the terminal: taps did nothing, the keyboard
+// never returned, and reloading the page was the only way out.
+document.addEventListener('copy', () => {
+  if (copyingViaFallback || !selectMode) return;
+  const text = selectedText();
+  setSelectMode(false);
+  if (text) toast(`copied ${text.length} chars: ${preview(text)}`);
+});
 
 document.getElementById('copy').addEventListener('click', async () => {
   const text = selectedText();
