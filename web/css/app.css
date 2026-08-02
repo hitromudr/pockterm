@@ -389,6 +389,15 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   border-radius: 8px;
 }
 #overflow button.on { background: var(--accent); color: #0b0e14; }
+/* Not a control: what is running, for when something looks stale. */
+#versions {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0 6px;
+  font-size: 12px;
+  color: #8b93a7;
+  white-space: nowrap;
+}
 
 /* Quick macros row (prompt mode): accept and stop. */
 #quickbar {

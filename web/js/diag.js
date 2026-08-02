@@ -34,6 +34,12 @@ export function environment(version) {
     // The Android client injects this; its absence means the page is running
     // in an older build of the app and the clipboard is back to browser APIs.
     native: !!(window.PockNative && window.PockNative.copy),
+    app: (() => {
+      try {
+        return window.PockNative && window.PockNative.appVersion
+          ? String(window.PockNative.appVersion()) : '';
+      } catch (_) { return ''; }
+    })(),
   };
 }
 

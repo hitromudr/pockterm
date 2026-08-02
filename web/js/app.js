@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v40';
+const APP_VERSION = 'v41';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -20,6 +20,17 @@ initDiag((line) => {
   } catch (_) { /* never break the app over a log line */ }
 });
 report('hello', environment(APP_VERSION));
+
+// What is actually running, shown where it can be read without a console:
+// the page's own version, and the app's when the page is inside it.
+function appVersion() {
+  try {
+    if (window.PockNative && typeof window.PockNative.appVersion === 'function') {
+      return String(window.PockNative.appVersion() || '');
+    }
+  } catch (_) { /* nothing to show */ }
+  return '';
+}
 
 const screenSessions = document.getElementById('screen-sessions');
 const screenTerm = document.getElementById('screen-term');
@@ -503,6 +514,11 @@ window.addEventListener('appinstalled', () => report('installed', {}));
 // they belong behind one button instead of taking four permanent slots away
 // from the session tabs.
 const moreBtn = document.getElementById('more');
+const versionsEl = document.getElementById('versions');
+{
+  const app = appVersion();
+  versionsEl.textContent = app ? `page ${APP_VERSION} · app ${app}` : `page ${APP_VERSION}`;
+}
 const overflowEl = document.getElementById('overflow');
 moreBtn.addEventListener('click', () => {
   overflowEl.hidden = !overflowEl.hidden;
