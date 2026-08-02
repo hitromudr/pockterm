@@ -57,6 +57,16 @@ in front — worked examples ship alongside:
 | `deploy/nginx-token.conf.example` | TLS plus the built-in token. To get started |
 | `deploy/nginx-mtls.conf.example` | Client certificates. To keep |
 
+With mTLS in front the token is not needed and gets in the way: the server
+answers `401` to any link without it, which in a browser looks exactly like a
+machine with no sessions. Install with `POCKTERM_NO_TOKEN=1`:
+
+```bash
+sudo POCKTERM_NO_TOKEN=1 bash deploy/install.sh
+```
+
+An existing token is left alone — the installer only warns about it.
+
 A token in the address bar ends up in browser history and proxy logs, so a
 lasting setup is better served by mTLS: an internet-wide scan then sees a
 failed handshake rather than a login page. Issuing the certificates and

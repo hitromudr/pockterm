@@ -1,4 +1,4 @@
-.PHONY: install uninstall qr
+.PHONY: install uninstall qr test-install
 
 install: ## Install on this machine (binary, token, systemd unit)
 	sudo bash deploy/install.sh
@@ -13,3 +13,6 @@ qr: ## Print the client link as a QR code (PUBLIC_URL=https://your.domain)
 	@POCKTERM_PUBLIC_URL="$(PUBLIC_URL)" \
 	 POCKTERM_TOKEN="$$(sudo sed -n 's/^POCKTERM_TOKEN=//p' /etc/pockterm/pockterm.env 2>/dev/null)" \
 	 $(BIN_DIR)/pockterm qr
+
+test-install: ## Exercise deploy/install.sh in temporary paths
+	bash test/install_test.sh

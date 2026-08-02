@@ -79,7 +79,18 @@ main() {
 
 	# Token: generated once and kept. Regenerating it on every run would
 	# invalidate the link already saved on the phone.
-	if [ -s "$ENV_FILE" ] && grep -q '^POCKTERM_TOKEN=' "$ENV_FILE"; then
+	#
+	# Behind mutual TLS the token is not a second lock but a third wheel: the
+	# certificate already decides who gets in, and a token the reverse proxy
+	# does not know about turns every link without it into a 401 — which
+	# looks, from the browser, exactly like a machine with no sessions.
+	if [ -n "${POCKTERM_NO_TOKEN:-}" ]; then
+		if [ -s "$ENV_FILE" ] && grep -q '^POCKTERM_TOKEN=' "$ENV_FILE"; then
+			warn "POCKTERM_NO_TOKEN set, but $ENV_FILE already has a token — leaving it alone"
+		else
+			ok "no token generated (POCKTERM_NO_TOKEN)"
+		fi
+	elif [ -s "$ENV_FILE" ] && grep -q '^POCKTERM_TOKEN=' "$ENV_FILE"; then
 		ok "token kept ($ENV_FILE)"
 	else
 		# Subshell: the tightened umask must not leak to the unit below,
