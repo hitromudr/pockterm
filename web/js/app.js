@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v34';
+const APP_VERSION = 'v35';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {

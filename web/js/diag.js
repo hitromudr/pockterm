@@ -31,6 +31,9 @@ export function environment(version) {
     touch: (nav.maxTouchPoints || 0) > 0,
     screen: `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio || 1}`,
     standalone: window.matchMedia('(display-mode: standalone)').matches,
+    // The Android client injects this; its absence means the page is running
+    // in an older build of the app and the clipboard is back to browser APIs.
+    native: !!(window.PockNative && window.PockNative.copy),
   };
 }
 
