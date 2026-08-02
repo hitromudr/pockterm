@@ -3,6 +3,7 @@
 package telegram
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,7 +44,14 @@ func (c *Client) Send(text string) error {
 		strings.NewReader(form.Encode()),
 	)
 	if err != nil {
-		return err
+		// The token is part of the Bot API path, and Go puts the request URL
+		// into transport errors. Logged as-is, one failed request writes the
+		// bot's credentials into the journal — so unwrap to the cause.
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			return fmt.Errorf("telegram: sendMessage: %w", uerr.Err)
+		}
+		return fmt.Errorf("telegram: sendMessage: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
