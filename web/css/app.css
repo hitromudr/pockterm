@@ -160,6 +160,11 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   background: var(--bg);
   user-select: text;
   -webkit-user-select: text;
+  /* A frozen screen that looks exactly like the live one is a trap: taps do
+     nothing and it reads as a hung terminal. The outline says "this is not
+     the terminal right now". */
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
 }
 /* Hide xterm's own scrollbar: under tmux the scrollback lives in tmux
    (copy-mode), so the bar is inert and only misleads — scroll with the

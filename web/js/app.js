@@ -393,11 +393,17 @@ async function writeClipboard(text) {
   } else {
     lastCopyError = 'no clipboard API (page is not a secure context)';
   }
+  // Focus has to come back where it was: the node below is focused for
+  // execCommand and then destroyed, and focus destroyed with it means no
+  // keyboard until the page is reloaded.
+  const hadFocus = document.activeElement;
   try {
     const host = document.createElement('div');
     host.contentEditable = 'true';
     host.textContent = text;
     host.setAttribute('aria-hidden', 'true');
+    host.setAttribute('inputmode', 'none'); // do not raise the keyboard for it
+    host.tabIndex = -1;
     host.style.cssText =
       'position:fixed;left:0;bottom:0;width:2px;height:2px;padding:0;' +
       'border:0;outline:0;overflow:hidden;opacity:0.01;white-space:pre;z-index:-1';
@@ -413,6 +419,7 @@ async function writeClipboard(text) {
     const ok = document.execCommand('copy');
     sel.removeAllRanges();
     host.remove();
+    if (hadFocus && hadFocus.focus) hadFocus.focus({ preventScroll: true });
     return ok ? 'exec' : null;
   } catch (e) {
     lastCopyError = (e && e.name) || 'error';
@@ -445,6 +452,12 @@ document.getElementById('copy').addEventListener('click', async () => {
   lastCopyError = '';
   const how = await writeClipboard(text);
   if (!how) { toast(`copy failed: ${lastCopyError || 'blocked by the browser'}`); return; }
+  // Leave selection mode on the way out: the frozen screen looks exactly
+  // like the terminal, so staying in it after a copy reads as a hung app —
+  // taps do nothing and the keyboard never comes back. Exiting here also
+  // puts focus back in the terminal inside the same tap, which is what
+  // Android needs to raise the keyboard.
+  setSelectMode(false);
   // The mechanism is named because the fallback is the one that can lie.
   toast(`copied ${text.length} chars (${how}): ${preview(text)}`);
 });
@@ -481,6 +494,9 @@ async function attachImage(file) {
   if (ctrlLatch) setCtrl(false);
   // Trailing space so the next thing typed does not glue itself to the path.
   term.paste(`${path} `);
+  // Same reason as after a copy: do not leave a frozen screen in the way of
+  // what the user types next.
+  if (selectMode) setSelectMode(false);
   toast(`attached ${path.split('/').pop()}`);
 }
 
