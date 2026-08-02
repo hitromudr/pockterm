@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,6 +40,7 @@ type Options struct {
 	Idle         time.Duration                          // silence that counts as "finished"; told to the client
 	Static       http.Handler                           // the embedded PWA
 	SaveUpload   func(io.Reader) (string, error)        // store a pasted image, return its path; nil disables /api/upload
+	LogClient    func(string)                           // record a line the browser sent; nil disables /api/log
 }
 
 // modePoll is how often a client's pane is checked for tmux copy-mode. The
@@ -51,6 +53,7 @@ func Handler(o Options) http.Handler {
 	mux.Handle("/", o.Static)
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) { serveSessions(o, w, r) })
 	mux.HandleFunc("/api/upload", func(w http.ResponseWriter, r *http.Request) { serveUpload(o, w, r) })
+	mux.HandleFunc("/api/log", func(w http.ResponseWriter, r *http.Request) { serveLog(o, w, r) })
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) { serveWS(o, w, r) })
 	return mux
 }
@@ -116,6 +119,42 @@ func serveUpload(o Options, w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"path": path})
+}
+
+// serveLog takes a line from the browser and puts it in the server's log.
+//
+// The phone this runs on has no console anyone can open: it is behind mTLS,
+// on a tunnel, in a browser whose clipboard and keyboard behave unlike any
+// desktop. Without this, every report is "it does not work" and every fix is
+// a guess.
+func serveLog(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.LogClient == nil {
+		http.Error(w, "client logging is off", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "post a json line", http.StatusMethodNotAllowed)
+		return
+	}
+	// Bounded on purpose: this endpoint writes to the journal of a box that
+	// also serves git and passwords.
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<10))
+	if err != nil {
+		http.Error(w, "unreadable", http.StatusBadRequest)
+		return
+	}
+	line := strings.Map(func(c rune) rune {
+		if c == '\n' || c == '\r' {
+			return ' '
+		}
+		return c
+	}, string(body))
+	o.LogClient(strings.TrimSpace(line))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func serveWS(o Options, w http.ResponseWriter, r *http.Request) {

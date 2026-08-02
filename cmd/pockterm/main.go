@@ -129,6 +129,9 @@ func serve() {
 		Idle:       cfg.Idle,
 		Static:     http.FileServer(http.FS(static)),
 		SaveUpload: uploader(cfg),
+		// The browser has no console anyone can open on the phone this
+		// serves; its own words land here instead.
+		LogClient: func(line string) { log.Printf("client: %s", line) },
 	})
 	log.Printf("pockterm listening on %s", cfg.Listen)
 	log.Fatal(http.ListenAndServe(cfg.Listen, h))

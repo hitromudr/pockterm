@@ -3,9 +3,23 @@ import { detectQuestion } from './detect.js';
 import { newState, questionNotice, noteActivity, doneNotice } from './notify.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
 import { snapshotText } from './select.js';
+import { initDiag, environment, report } from './diag.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
+
+// Version of the code actually running. Bumped with the service worker's
+// cache name: a mismatch between the two is itself a diagnosis, because an
+// installed PWA can keep running the version it was installed with.
+const APP_VERSION = 'v25';
+
+// Diagnostics go to the server's journal — see js/diag.js for why.
+initDiag((line) => {
+  try {
+    navigator.sendBeacon(`/api/log?${tokenQS}`, new Blob([JSON.stringify(line)], { type: 'application/json' }));
+  } catch (_) { /* never break the app over a log line */ }
+});
+report('hello', environment(APP_VERSION));
 
 const screenSessions = document.getElementById('screen-sessions');
 const screenTerm = document.getElementById('screen-term');
@@ -478,6 +492,7 @@ document.getElementById('copy').addEventListener('click', async () => {
   if (!text) { toast('nothing selected'); return; }
   lastCopyError = '';
   const how = await writeClipboard(text);
+  report('copy', { how, chars: text.length, error: lastCopyError });
   if (!how) { toast(`copy failed: ${lastCopyError || 'blocked by the browser'}`); return; }
   // Leave selection mode on the way out: the frozen screen looks exactly
   // like the terminal, so staying in it after a copy reads as a hung app —
@@ -517,6 +532,7 @@ async function attachImage(file) {
     return;
   }
   const { path } = await res.json().catch(() => ({}));
+  report('upload', { ok: !!path, bytes: file.size || 0, type: file.type || '' });
   if (!path) { toast('upload failed: no path in the answer'); return; }
   if (ctrlLatch) setCtrl(false);
   // Trailing space so the next thing typed does not glue itself to the path.
@@ -596,6 +612,7 @@ document.getElementById('paste').addEventListener('click', async () => {
     // readText refuses on an image-only clipboard and on a denied
     // permission; the image case is worth trying before giving up.
     const image = await clipboardImage();
+    report('paste-refused', { error: (e && e.name) || 'error', gotImage: !!image });
     if (image) { attachImage(image); return; }
     openPasteTarget(`browser refused the clipboard (${(e && e.name) || 'error'}) — paste here`);
     return;
