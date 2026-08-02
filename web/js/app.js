@@ -12,12 +12,18 @@ const emptyMsg = document.getElementById('empty');
 const tabsEl = document.getElementById('tabs');
 const statusEl = document.getElementById('status');
 
+// Returns {sessions} or {error}. The distinction matters: "no sessions" and
+// "you are not allowed to ask" look identical to a user staring at an empty
+// list, and the second one sends them looking for a tmux problem that does
+// not exist.
 async function fetchSessions() {
   try {
     const res = await fetch(`/api/sessions?${tokenQS}`);
-    return (await res.json()) || [];
+    if (res.status === 401) return { error: 'unauthorized', sessions: [] };
+    if (!res.ok) return { error: `server said ${res.status}`, sessions: [] };
+    return { sessions: (await res.json()) || [] };
   } catch (_) {
-    return [];
+    return { error: 'no connection to the server', sessions: [] };
   }
 }
 
@@ -54,9 +60,19 @@ const enc = new TextEncoder();
 async function loadSessions() {
   sessionList.innerHTML = '';
   emptyMsg.hidden = true;
-  const sessions = await fetchSessions();
-  if (!sessions || sessions.length === 0) {
+  const { sessions, error } = await fetchSessions();
+  if (error) {
     emptyMsg.hidden = false;
+    emptyMsg.innerHTML = error === 'unauthorized'
+      ? '<p>Доступ не разрешён.</p><p>Ссылка открыта без токена, ' +
+        'а сервер его требует — открой её из закладки с <code>?token=…</code>.</p>'
+      : `<p>${escapeHtml(error)}</p><p>Сессии узнать не удалось.</p>`;
+    return;
+  }
+  if (sessions.length === 0) {
+    emptyMsg.hidden = false;
+    emptyMsg.innerHTML = '<p>Нет активных tmux-сессий.</p>' +
+      '<p>Запусти сессию на сервере и нажми обновить.</p>';
     return;
   }
   for (const s of sessions) {
@@ -103,7 +119,7 @@ function attach(name) {
 
 // Session tabs in the terminal header: tap one to switch to that session.
 async function renderTabs() {
-  const sessions = await fetchSessions();
+  const { sessions } = await fetchSessions();
   tabsEl.innerHTML = '';
   for (const s of sessions) {
     const b = document.createElement('button');
@@ -527,7 +543,7 @@ async function init() {
   let saved = null;
   try { saved = sessionStorage.getItem('pt-session'); } catch (_) {}
   if (saved) {
-    const sessions = await fetchSessions();
+    const { sessions } = await fetchSessions();
     if (sessions.some((s) => s.name === saved)) { attach(saved); return; }
   }
   showSessions();
