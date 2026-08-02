@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v25';
+const APP_VERSION = 'v26';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -318,6 +318,29 @@ function renderBars() {
 }
 function setPromptMode(on) { promptMode = on; renderBars(); }
 modeBtn.addEventListener('click', () => setPromptMode(!promptMode));
+
+// Installing puts pockterm on the home screen as its own app: a standalone
+// window with no tabs and no address bar, which is also the only way the
+// Ctrl+W/T/N keys ever reach the shell. Chrome hands over its own prompt and
+// only once, so the button appears when the offer arrives and disappears
+// after it is used.
+const installBtn = document.getElementById('install');
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  installBtn.hidden = false;
+  report('install-offer', {});
+});
+installBtn.addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice.catch(() => ({ outcome: 'error' }));
+  report('install-choice', { outcome });
+  installPrompt = null;
+  installBtn.hidden = true;
+});
+window.addEventListener('appinstalled', () => report('installed', {}));
 
 // Text size, notifications and hiding the bars are settings, not controls:
 // they belong behind one button instead of taking four permanent slots away

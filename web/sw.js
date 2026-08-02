@@ -1,6 +1,6 @@
 // Version-stamped static cache. Bump VERSION on any static change:
 // the old cache is dropped on activate.
-const VERSION = 'v25';
+const VERSION = 'v26';
 const PRECACHE = [
   '/',
   '/css/app.css',
@@ -17,6 +17,8 @@ const PRECACHE = [
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/icon-192-maskable.png',
+  '/icons/icon-512-maskable.png',
 ];
 
 self.addEventListener('install', (e) => {
