@@ -35,6 +35,7 @@ type Options struct {
 	Attach       func(id int64, target string) []string // argv attaching a client to target
 	InMode       func(id int64) (bool, error)           // client pane in tmux copy-mode; nil disables the poll
 	Presence     Presence                               // notification bookkeeping; nil disables it
+	Idle         time.Duration                          // silence that counts as "finished"; told to the client
 	Static       http.Handler                           // the embedded PWA
 }
 
@@ -138,6 +139,18 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer t.Close()
+
+	// The page raises its own notifications while it is open, and it has to
+	// agree with the server about what counts as "finished" — otherwise the
+	// same run is announced twice, at two different moments.
+	if o.Idle > 0 {
+		writeMu.Lock()
+		conn.WriteJSON(struct {
+			Type string `json:"type"`
+			Idle int    `json:"idle"`
+		}{"config", int(o.Idle.Seconds())})
+		writeMu.Unlock()
+	}
 
 	// Tell the client when its pane enters or leaves copy-mode, so prompt
 	// buttons can disappear while it is scrolled back into history.

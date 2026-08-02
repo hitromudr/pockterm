@@ -123,6 +123,7 @@ func serve() {
 		},
 		InMode:   inMode,
 		Presence: notifier(cfg),
+		Idle:     cfg.Idle,
 		Static:   http.FileServer(http.FS(static)),
 	})
 	log.Printf("pockterm listening on %s", cfg.Listen)

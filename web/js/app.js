@@ -1,5 +1,6 @@
 import { keyBytes, applyCtrl } from './keys.js';
 import { detectQuestion } from './detect.js';
+import { newState, questionNotice, noteActivity, doneNotice } from './notify.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -123,6 +124,7 @@ function connect() {
   ws.onopen = () => { statusEl.hidden = true; retry = 1000; sendResize(); sendVisible(); };
   ws.onmessage = (e) => {
     if (typeof e.data === 'string') { onControl(e.data); return; }
+    noteActivity(notifyState, Date.now());
     term.write(new Uint8Array(e.data), scheduleScan);
   };
   ws.onclose = () => {
@@ -139,6 +141,9 @@ function onControl(raw) {
   let c = null;
   try { c = JSON.parse(raw); } catch (_) { return; }
   if (c && c.type === 'mode') setCopyMode(!!c.in);
+  // The server's own idle threshold, so its Telegram notice and this page's
+  // notification mean the same thing.
+  if (c && c.type === 'config' && c.idle > 0) idleMs = c.idle * 1000;
 }
 
 function send(data) {
@@ -399,6 +404,54 @@ function visibleLines() {
   return lines;
 }
 
+// --- notifications while the page is open ---------------------------------
+// The server messages Telegram for a session nobody is watching. This covers
+// the case in between: the page is open but in the background — another tab,
+// a phone with the screen off — where the client already has the whole
+// stream and a notification costs nothing.
+const bellBtn = document.getElementById('bell');
+const notifyState = newState();
+let notifyOn = false;
+let idleMs = 30_000; // overwritten by the server's own threshold on connect
+try { notifyOn = localStorage.getItem('pt-notify') === 'on'; } catch (_) {}
+
+function renderBell() {
+  bellBtn.classList.toggle('on', notifyOn);
+  bellBtn.title = notifyOn ? 'Notifications on' : 'Notify when the agent asks or finishes';
+}
+
+bellBtn.addEventListener('click', async () => {
+  if (notifyOn) {
+    notifyOn = false;
+  } else {
+    if (!('Notification' in window)) { toast('this browser has no notifications'); return; }
+    let perm = Notification.permission;
+    if (perm === 'default') perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      // Denied is sticky: the browser will not ask again from here.
+      toast(perm === 'denied' ? 'notifications blocked in browser settings' : 'not allowed');
+      return;
+    }
+    notifyOn = true;
+  }
+  try { localStorage.setItem('pt-notify', notifyOn ? 'on' : 'off'); } catch (_) {}
+  renderBell();
+  toast(notifyOn ? 'notifications on' : 'notifications off');
+});
+renderBell();
+
+function show(notice) {
+  if (!notice || !notifyOn || Notification.permission !== 'granted') return;
+  // tag replaces a previous notice of the same kind instead of stacking:
+  // five "asks for an answer" in a row is noise, not information.
+  const n = new Notification(notice.title, { body: notice.body, tag: notice.tag });
+  n.onclick = () => { window.focus(); n.close(); };
+}
+
+// Checked on a timer rather than on output, because "finished" is defined by
+// the absence of output.
+setInterval(() => show(doneNotice(notifyState, Date.now(), idleMs, document.hidden)), 5000);
+
 // Scrolled back into tmux history (copy-mode): the numbered lines on screen
 // belong to the past, so answering them would send digits to whatever is
 // running now. No buttons until the pane leaves the mode.
@@ -411,7 +464,12 @@ function setCopyMode(on) {
 
 let lastAnswersSig = null;
 function renderAnswers() {
-  const q = inCopyMode ? null : detectQuestion(visibleLines());
+  const lines = visibleLines();
+  const q = inCopyMode ? null : detectQuestion(lines);
+  // Kept for the "finished" notice: the last line of output says more than
+  // "the run ended" on its own.
+  notifyState.tail = [...lines].reverse().find((l) => l.trim()) || '';
+  show(questionNotice(notifyState, q, document.hidden));
   // Only rebuild when the detected prompt actually changed; otherwise the
   // buttons flicker (and detach mid-tap) on every terminal update.
   const sig = q ? JSON.stringify(q.options) : null;
