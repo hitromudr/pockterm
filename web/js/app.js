@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v47';
+const APP_VERSION = 'v49';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -38,6 +38,7 @@ const sessionList = document.getElementById('session-list');
 const emptyMsg = document.getElementById('empty');
 const tabsEl = document.getElementById('tabs');
 const statusEl = document.getElementById('status');
+let tabsSignature = null;
 
 // Returns {sessions} or {error}. The distinction matters: "no sessions" and
 // "you are not allowed to ask" look identical to a user staring at an empty
@@ -281,20 +282,39 @@ function attach(name) {
   lastAnswersSig = null;
   inCopyMode = false; // the new socket reports the pane's state on connect
   renderTabs();
-  requestAnimationFrame(() => { refit(); connect(); });
+  requestAnimationFrame(() => {
+    refit();
+    connect();
+    // Nothing here focuses or blurs. keyboardUp is reported so the next
+    // complaint about the keyboard comes with the state it was in.
+    report('switch', { keyboardUp });
+  });
 }
 
 // Session tabs in the terminal header: tap one to switch to that session.
 async function renderTabs() {
   const { sessions } = await fetchSessions();
-  tabsEl.innerHTML = '';
-  for (const s of sessions) {
-    const b = document.createElement('button');
-    b.textContent = s.name;
-    if (s.name === current) b.className = 'active';
-    keepsTerminalFocus(b);
-    b.addEventListener('click', () => { if (s.name !== current) attach(s.name); });
-    tabsEl.appendChild(b);
+  const names = sessions.map((s) => s.name).join('\u0000');
+
+  // Rebuilding the row would remove the button that was just tapped, and a
+  // WebView answers the removal of the focused element by handing focus back
+  // to the previous one — the terminal's textarea — which raises the keyboard.
+  // So the row is rebuilt only when the set of sessions actually changed;
+  // switching only moves the highlight.
+  if (names !== tabsSignature) {
+    tabsSignature = names;
+    tabsEl.innerHTML = '';
+    for (const s of sessions) {
+      const b = document.createElement('button');
+      b.textContent = s.name;
+      b.dataset.session = s.name;
+      keepsTerminalFocus(b);
+      b.addEventListener('click', () => { if (s.name !== current) attach(s.name); });
+      tabsEl.appendChild(b);
+    }
+  }
+  for (const b of tabsEl.querySelectorAll('button')) {
+    b.classList.toggle('active', b.dataset.session === current);
   }
 }
 
@@ -372,6 +392,17 @@ term.onData((d) => {
 // receives the right thing, and the screen shows "роттт" for a word, a space
 // and one delete. Clearing the layer and the textarea puts the two back in
 // agreement.
+// Hand over what the keyboard has not committed yet, then clear the layer.
+//
+// Clearing alone threw that text away: typing a word and pressing ← lost the
+// word, because during composition xterm has sent nothing — the characters
+// live in the textarea and nowhere else.
+function flushComposition() {
+  const pending = (term.textarea && term.textarea.value) || '';
+  if (pending) send(pending);
+  clearComposition();
+}
+
 function clearComposition() {
   if (term.textarea) term.textarea.value = '';
   const view = document.querySelector('.xterm .composition-view');
@@ -384,6 +415,11 @@ function clearComposition() {
 if (term.textarea) {
   term.textarea.addEventListener('beforeinput', (e) => {
     if (e.inputType !== 'deleteContentBackward') return;
+    // With a composition in progress the keyboard is editing text that has
+    // not been sent anywhere yet — let it. Taking the delete then would erase
+    // a character the terminal never received, and doubling comes from the
+    // other case: nothing pending, so the delete belongs to the terminal.
+    if (term.textarea.value) return;
     e.preventDefault();
     send(keyBytes('backspace'));
     commitPendingInput();
@@ -421,8 +457,8 @@ function commitPendingInput() {
 document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
   keepsTerminalFocus(b);
   b.addEventListener('click', () => {
+    flushComposition();
     commitPendingInput();
-    clearComposition();
     send(keyBytes(b.dataset.key));
     // No focus() here: the press already kept it, and calling it for someone
     // who was only reading would raise the keyboard over the screen.
@@ -1097,9 +1133,18 @@ window.addEventListener('resize', refit);
 if (window.ResizeObserver) {
   new ResizeObserver(refit).observe(document.getElementById('term'));
 }
+// Whether the keyboard is up cannot be read from focus: on Android the back
+// gesture hides it and leaves the textarea focused. The viewport shrinking is
+// the honest signal, and it is what "leave the keyboard as it was" has to be
+// judged against.
+let keyboardUp = false;
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', () => {
-    document.documentElement.style.setProperty('--vvh', `${window.visualViewport.height}px`);
+  const vv = window.visualViewport;
+  const measure = () => { keyboardUp = vv.height < window.innerHeight * 0.75; };
+  measure();
+  vv.addEventListener('resize', () => {
+    document.documentElement.style.setProperty('--vvh', `${vv.height}px`);
+    measure();
     refit();
   });
 }
