@@ -32,9 +32,11 @@
       <button id="font-dec" title="Smaller text">A&minus;</button>
       <button id="font-inc" title="Bigger text">A+</button>
       <button id="hide" title="Hide/show bar">&#9662;</button>
+      <button id="select" title="Select text">&#9986;</button>
       <button id="mode" title="Prompt mode">&#128172;</button>
     </header>
     <div id="status" hidden></div>
+    <div id="toast" hidden></div>
     <div id="term"></div>
     <!-- Buttons for a detected interactive prompt (Claude permission etc.) -->
     <div id="answers" hidden></div>
@@ -44,6 +46,12 @@
       <button data-macro="enter">&#9166;</button>
       <button data-macro="esc">Esc</button>
       <button data-macro="ctrl-c" class="stop">&#9209; ^C</button>
+    </div>
+    <!-- Selection mode: clipboard exchange for the selected terminal text -->
+    <div id="selbar" hidden>
+      <button id="copy">&#128203; Copy</button>
+      <button id="paste">&#128229; Paste</button>
+      <button id="sel-done">&#10005;</button>
     </div>
     <!-- Prompt composer (shown in prompt mode instead of the key bar) -->
     <form id="composer" hidden>

@@ -105,17 +105,48 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   padding: 4px;
   font-size: 14px;
 }
+/* Overlay too, for the same reason as #status: a toast must never resize
+   the terminal. Short-lived feedback for copy/paste, which is otherwise
+   invisible — the whole point is knowing what landed in the clipboard. */
+#toast {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 52px;
+  z-index: 11;
+  max-width: 90%;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #232a38e6;
+  color: var(--fg);
+  font-size: 13px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 #term { flex: 1; min-height: 0; }
+/* Selection mode: hand the terminal text back to the browser so a
+   long-press gives the OS selection handles and its own Copy action.
+   xterm sets user-select:none for its mouse-driven selection, which under
+   tmux mouse mode never fires on touch — so here that rule has to lose. */
+#screen-term.selecting .xterm .xterm-screen,
+#screen-term.selecting .xterm .xterm-rows,
+#screen-term.selecting .xterm .xterm-rows * {
+  user-select: text;
+  -webkit-user-select: text;
+}
 /* Hide xterm's own scrollbar: under tmux the scrollback lives in tmux
    (copy-mode), so the bar is inert and only misleads — scroll with the
    wheel or a touch swipe instead. */
 .xterm-viewport { scrollbar-width: none; }
 .xterm-viewport::-webkit-scrollbar { display: none; }
 /* Bar hidden: give the terminal the whole screen. */
-#mode.on, #hide.on { background: var(--accent); color: #0b0e14; }
+#mode.on, #hide.on, #select.on { background: var(--accent); color: #0b0e14; }
 #screen-term.panels-hidden #keybar,
 #screen-term.panels-hidden #composer,
-#screen-term.panels-hidden #quickbar { display: none !important; }
+#screen-term.panels-hidden #quickbar,
+#screen-term.panels-hidden #selbar { display: none !important; }
 /* Grid so all keys fit at any width; a flex row overflowed narrow phones
    and hid the rightmost keys (^C, Enter) behind a horizontal scroll. */
 #keybar {
@@ -170,6 +201,26 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   color: var(--fg);
   background: #232a38;
 }
+
+/* Selection bar: same shape as the quick macros row, and it replaces
+   whichever bar is up while selection mode is on. */
+#selbar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  background: var(--bar);
+}
+#selbar button {
+  flex: 1;
+  padding: 12px 0;
+  font-size: 15px;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 8px;
+}
+#selbar button:active { background: #3a4458; }
+#selbar #sel-done { flex: 0 0 56px; }
 
 /* Quick macros row (prompt mode): accept, enter, esc, stop. */
 #quickbar {

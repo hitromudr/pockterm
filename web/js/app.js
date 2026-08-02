@@ -95,6 +95,7 @@ function attach(name) {
   term.reset();
   document.getElementById('answers').hidden = true;
   lastAnswersSig = null;
+  inCopyMode = false; // the new socket reports the pane's state on connect
   renderTabs();
   requestAnimationFrame(() => { fit.fit(); term.focus(); connect(); });
 }
@@ -119,9 +120,9 @@ function connect() {
   const qs = [tokenQS, `session=${encodeURIComponent(current)}`].filter(Boolean).join('&');
   ws = new WebSocket(`${scheme}://${location.host}/ws?${qs}`);
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => { statusEl.hidden = true; retry = 1000; sendResize(); };
+  ws.onopen = () => { statusEl.hidden = true; retry = 1000; sendResize(); sendVisible(); };
   ws.onmessage = (e) => {
-    if (typeof e.data === 'string') return; // control frames (pong/error)
+    if (typeof e.data === 'string') { onControl(e.data); return; }
     term.write(new Uint8Array(e.data), scheduleScan);
   };
   ws.onclose = () => {
@@ -133,12 +134,27 @@ function connect() {
   };
 }
 
+// Server control frames: pong, error, and the pane's copy-mode state.
+function onControl(raw) {
+  let c = null;
+  try { c = JSON.parse(raw); } catch (_) { return; }
+  if (c && c.type === 'mode') setCopyMode(!!c.in);
+}
+
 function send(data) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(enc.encode(data));
 }
 function sendResize() {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+  }
+}
+// Telegram notifications stay quiet for a session that is on screen right
+// now. A backgrounded tab keeps its socket open, so the server cannot tell
+// from the connection alone — it needs this.
+function sendVisible() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'visible', visible: document.visibilityState === 'visible' }));
   }
 }
 
@@ -168,7 +184,13 @@ function setFont(sz) {
 document.getElementById('font-dec').addEventListener('click', () => setFont(fontSize - 1));
 document.getElementById('font-inc').addEventListener('click', () => setFont(fontSize + 1));
 // Tapping the terminal returns keyboard focus to it (so typing goes in).
-document.getElementById('term').addEventListener('click', () => { term.focus(); refit(); });
+// Not in selection mode: focusing drops the browser's text selection, which
+// is exactly what the user is in the middle of making.
+document.getElementById('term').addEventListener('click', () => {
+  if (selectMode) return;
+  term.focus();
+  refit();
+});
 
 // Touch scroll: a vertical swipe on the terminal is turned into tmux
 // mouse-wheel events (SGR). tmux mouse mode is on for pockterm's sessions,
@@ -178,7 +200,11 @@ document.getElementById('term').addEventListener('click', () => { term.focus(); 
 function sendWheel(btn) { send(`\x1b[<${btn};1;1M`); }
 let touchY = null;
 const termBox = document.getElementById('term');
-termBox.addEventListener('touchstart', (e) => { touchY = e.touches[0].clientY; }, { passive: true });
+termBox.addEventListener('touchstart', (e) => {
+  // Selection mode gives the drag gesture back to the browser: swiping has
+  // to select text there, not scroll.
+  touchY = selectMode ? null : e.touches[0].clientY;
+}, { passive: true });
 termBox.addEventListener('touchmove', (e) => {
   if (touchY === null) return;
   let dy = e.touches[0].clientY - touchY;
@@ -203,6 +229,7 @@ document.getElementById('hide').addEventListener('click', () => {
 // on becoming visible, so the device you're actually using wins.
 window.addEventListener('focus', refit);
 document.addEventListener('visibilitychange', () => {
+  sendVisible();
   if (document.visibilityState === 'visible') refit();
 });
 
@@ -213,6 +240,9 @@ const quickbarEl = document.getElementById('quickbar');
 const promptEl = document.getElementById('prompt');
 const modeBtn = document.getElementById('mode');
 const keybarEl = document.getElementById('keybar');
+const selbarEl = document.getElementById('selbar');
+const selectBtn = document.getElementById('select');
+const toastEl = document.getElementById('toast');
 
 // Quick macros for prompt mode. "accept" is right-arrow + Enter — one tap
 // to accept Claude's inline suggestion; "ctrl-c" stops the running process.
@@ -226,17 +256,24 @@ document.querySelectorAll('#quickbar button[data-macro]').forEach((b) => {
   b.addEventListener('click', () => { send(MACROS[b.dataset.macro]); term.focus(); });
 });
 
-// Prompt mode swaps the key bar for the composer + quick macros. Detected
-// answer buttons show in both modes (they help whenever a prompt appears).
-function setPromptMode(on) {
-  modeBtn.classList.toggle('on', on);
-  composerEl.hidden = !on;
-  quickbarEl.hidden = !on;
-  keybarEl.hidden = on;
-  if (on) promptEl.focus();
+// Bottom bars are mutually exclusive: selection mode wins over prompt mode
+// (composer and key bar both steal the taps a selection needs), prompt mode
+// swaps the key bar for the composer + quick macros. Detected answer buttons
+// live above all of them and show in every mode.
+let promptMode = false;
+let selectMode = false;
+function renderBars() {
+  selbarEl.hidden = !selectMode;
+  composerEl.hidden = selectMode || !promptMode;
+  quickbarEl.hidden = selectMode || !promptMode;
+  keybarEl.hidden = selectMode || promptMode;
+  modeBtn.classList.toggle('on', promptMode);
+  selectBtn.classList.toggle('on', selectMode);
+  if (promptMode && !selectMode) promptEl.focus();
   refit();
 }
-modeBtn.addEventListener('click', () => setPromptMode(composerEl.hidden));
+function setPromptMode(on) { promptMode = on; renderBars(); }
+modeBtn.addEventListener('click', () => setPromptMode(!promptMode));
 
 // Send the composed prompt (text + Enter), then clear and keep the field.
 composerEl.addEventListener('submit', (e) => {
@@ -254,6 +291,103 @@ promptEl.addEventListener('input', () => {
   promptEl.style.height = promptEl.scrollHeight + 'px';
 });
 
+// --- selection mode and the clipboard ---
+// Copy and paste are otherwise silent, and "no idea what got copied" is the
+// complaint this has to answer, so every action reports what it moved.
+let toastTimer = null;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2500);
+}
+
+// The selection is captured while it is being made: tapping Copy moves the
+// focus and can clear the document selection before the handler runs.
+let lastSelection = '';
+function remember(text) { if (text) lastSelection = text; }
+document.addEventListener('selectionchange', () => remember(String(document.getSelection() || '')));
+term.onSelectionChange(() => remember(term.getSelection()));
+
+function selectedText() {
+  return term.getSelection() || String(document.getSelection() || '') || lastSelection;
+}
+
+function dropSelection() {
+  lastSelection = '';
+  term.clearSelection();
+  const sel = window.getSelection();
+  if (sel) sel.removeAllRanges();
+}
+
+// Selection mode hands the drag gesture back to the browser and lifts
+// xterm's user-select:none (see .selecting in app.css), so a long-press
+// gives the OS selection handles. tmux mouse mode means xterm's own
+// mouse selection never fires on touch, which is why this exists.
+// Entering starts from a clean slate: Copy must never hand over leftovers.
+function setSelectMode(on) {
+  selectMode = on;
+  screenTerm.classList.toggle('selecting', on);
+  dropSelection();
+  renderBars();
+  if (on) toast('select text, then Copy');
+  else term.focus();
+}
+selectBtn.addEventListener('click', () => setSelectMode(!selectMode));
+document.getElementById('sel-done').addEventListener('click', () => setSelectMode(false));
+
+async function writeClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_) { /* fall through to the textarea path */ }
+  // Plain-http contexts (LAN testing) have no async clipboard API.
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (_) {
+    return false;
+  }
+}
+
+// First non-blank line, trimmed: enough to recognise what was copied.
+function preview(text) {
+  const t = (text.split('\n').find((l) => l.trim()) || '').trim();
+  return t.length > 28 ? `${t.slice(0, 28)}…` : t;
+}
+
+document.getElementById('copy').addEventListener('click', async () => {
+  const text = selectedText();
+  if (!text) { toast('nothing selected'); return; }
+  const ok = await writeClipboard(text);
+  toast(ok ? `copied ${text.length} chars: ${preview(text)}` : 'clipboard blocked by the browser');
+});
+
+document.getElementById('paste').addEventListener('click', async () => {
+  let text = '';
+  try {
+    text = (await navigator.clipboard.readText()) || '';
+  } catch (_) {
+    toast('clipboard read blocked — paste from the keyboard instead');
+    return;
+  }
+  if (!text) { toast('clipboard is empty'); return; }
+  if (ctrlLatch) setCtrl(false); // a latched Ctrl would mangle the text
+  // term.paste honours bracketed-paste mode, so a multi-line paste arrives
+  // as one block instead of firing a message per line in Claude Code.
+  term.paste(text);
+  toast(`pasted ${text.length} chars`);
+});
+
 // Read the visible terminal rows for the prompt detector.
 function visibleLines() {
   const buf = term.buffer.active;
@@ -265,9 +399,19 @@ function visibleLines() {
   return lines;
 }
 
+// Scrolled back into tmux history (copy-mode): the numbered lines on screen
+// belong to the past, so answering them would send digits to whatever is
+// running now. No buttons until the pane leaves the mode.
+let inCopyMode = false;
+function setCopyMode(on) {
+  if (on === inCopyMode) return;
+  inCopyMode = on;
+  renderAnswers();
+}
+
 let lastAnswersSig = null;
 function renderAnswers() {
-  const q = detectQuestion(visibleLines());
+  const q = inCopyMode ? null : detectQuestion(visibleLines());
   // Only rebuild when the detected prompt actually changed; otherwise the
   // buttons flicker (and detach mid-tap) on every terminal update.
   const sig = q ? JSON.stringify(q.options) : null;

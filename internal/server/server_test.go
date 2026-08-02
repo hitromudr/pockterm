@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -127,6 +129,149 @@ func TestResizeAndPing(t *testing.T) {
 			return
 		}
 	}
+}
+
+func TestCopyModeReported(t *testing.T) {
+	// The client hides its prompt buttons while the pane shows history, so
+	// the server has to push pane-mode changes as they happen.
+	opts := testOptions("")
+	var inMode atomic.Bool
+	opts.InMode = func(id int64) (bool, error) { return inMode.Load(), nil }
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	readBinaryUntil(t, c, "ready")
+
+	// The initial state arrives without a transition: a client attaching to
+	// a pane already scrolled back must not wait for one.
+	waitMode(t, c, false)
+	inMode.Store(true)
+	waitMode(t, c, true)
+	inMode.Store(false)
+	waitMode(t, c, false)
+}
+
+// waitMode reads until a mode frame with the wanted state arrives.
+func waitMode(t *testing.T, c *websocket.Conn, want bool) {
+	t.Helper()
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("waiting for mode=%v: %v", want, err)
+		}
+		if mt != websocket.TextMessage {
+			continue
+		}
+		var f struct {
+			Type string `json:"type"`
+			In   bool   `json:"in"`
+		}
+		if err := json.Unmarshal(data, &f); err != nil || f.Type != "mode" {
+			continue
+		}
+		if f.In == want {
+			return
+		}
+	}
+}
+
+func TestModePollOptional(t *testing.T) {
+	// Without InMode wired the socket still works; no mode frames are sent.
+	srv := testServer(t, "")
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	readBinaryUntil(t, c, "ready")
+}
+
+// fakePresence records the notifier bookkeeping the socket performs.
+type fakePresence struct {
+	mu      sync.Mutex
+	watched []string
+	joined  []int64
+	visible []bool
+	left    []int64
+}
+
+func (p *fakePresence) Watch(s string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.watched = append(p.watched, s)
+}
+
+func (p *fakePresence) Join(s string, id int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.joined = append(p.joined, id)
+}
+
+func (p *fakePresence) SetVisible(s string, id int64, visible bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.visible = append(p.visible, visible)
+}
+
+func (p *fakePresence) Leave(s string, id int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.left = append(p.left, id)
+}
+
+// eventually polls cond until it holds or the deadline passes.
+func eventually(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
+
+func TestPresenceTracksTheClient(t *testing.T) {
+	p := &fakePresence{}
+	opts := testOptions("")
+	opts.Presence = p
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readBinaryUntil(t, c, "ready")
+
+	eventually(t, "watch and join", func() bool {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return len(p.watched) == 1 && p.watched[0] == "demo" && len(p.joined) == 1
+	})
+
+	if err := c.WriteMessage(websocket.TextMessage, []byte(`{"type":"visible","visible":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "visibility change", func() bool {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return len(p.visible) == 1 && !p.visible[0]
+	})
+
+	c.Close()
+	eventually(t, "leave on disconnect", func() bool {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return len(p.left) == 1
+	})
 }
 
 func TestTokenRequired(t *testing.T) {

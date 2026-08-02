@@ -5,7 +5,14 @@
 
 // A menu option line: optional pointer/box glyphs, a number, a separator,
 // then a label. Matches "❯ 1. Yes", "  2) No", "│ 3. …", etc.
-const OPTION = /^[\s│>❯›*-]*(\d{1,2})[.):]\s+(\S.*?)\s*$/;
+const OPTION = /^([\s│>❯›*-]*)(\d{1,2})[.):]\s+(\S.*?)\s*$/;
+
+// TUI chrome: the pointer at the highlighted option, or the box the prompt
+// is drawn in. A numbered list in prose (Claude writes one in almost every
+// answer) has neither, and that list is the false positive worth killing —
+// buttons for it send stray digits to whatever is actually running.
+const CHROME = /[>❯›│]/;
+const RIGHT_BORDER = /│\s*$/;
 
 function stripAnsi(s) {
   // xterm's translateToString already yields plain text; strip escapes
@@ -13,30 +20,50 @@ function stripAnsi(s) {
   return s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
 }
 
+// Labels of boxed prompts carry the right border and its padding.
+function label(text) {
+  return text.replace(RIGHT_BORDER, '').trim();
+}
+
+function boxGlyphs(s) {
+  return s.replace(/[│╭╮╰╯─]/g, '').trim();
+}
+
 // detectQuestion(lines) → { prompt, options: [{key,label}] } | null.
-// options is the leading run numbered 1,2,3,…; key is the digit to send.
+// A menu is a run of adjacent lines numbered 1,2,3,… (no gaps, nothing in
+// between) that carries TUI chrome. The lowest such run on screen wins:
+// when a real prompt follows earlier output, the prompt is the live one.
 export function detectQuestion(lines) {
-  const opts = [];
-  let firstIdx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    const m = OPTION.exec(stripAnsi(lines[i]));
-    if (!m) continue;
-    const expected = String(opts.length + 1);
-    if (m[1] !== expected) {
-      // Not the next number in sequence: reset unless we haven't started.
-      if (opts.length) continue;
-      if (m[1] !== '1') continue;
+  const plain = lines.map(stripAnsi);
+  let best = null;
+  let run = null; // { start, opts, chrome }
+
+  const close = () => {
+    if (run && run.opts.length >= 2 && run.chrome) best = run;
+    run = null;
+  };
+  for (let i = 0; i < plain.length; i++) {
+    const m = OPTION.exec(plain[i]);
+    const chrome = m ? CHROME.test(m[1]) || RIGHT_BORDER.test(plain[i]) : false;
+    // Continues the run only if this line sits right below the previous
+    // option and carries the next number.
+    if (m && run && i === run.start + run.opts.length && m[2] === String(run.opts.length + 1)) {
+      run.opts.push({ key: m[2], label: label(m[3]) });
+      run.chrome = run.chrome || chrome;
+      continue;
     }
-    if (opts.length === 0) firstIdx = i;
-    opts.push({ key: m[1], label: m[2].trim() });
+    // Anything else ends the current run; a "1." line starts a new one.
+    close();
+    if (m && m[2] === '1') run = { start: i, opts: [{ key: '1', label: label(m[3]) }], chrome };
   }
-  if (opts.length < 2) return null;
+  close();
+  if (!best) return null;
 
   // Prompt: nearest non-empty line just above the first option.
   let prompt = '';
-  for (let i = firstIdx - 1; i >= 0 && i > firstIdx - 6; i--) {
-    const t = stripAnsi(lines[i]).replace(/[│╭╮╰╯─]/g, '').trim();
+  for (let i = best.start - 1; i >= 0 && i > best.start - 6; i--) {
+    const t = boxGlyphs(plain[i]);
     if (t) { prompt = t; break; }
   }
-  return { prompt, options: opts };
+  return { prompt, options: best.opts };
 }

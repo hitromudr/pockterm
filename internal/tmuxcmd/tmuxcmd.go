@@ -62,6 +62,28 @@ func ParseSessions(out string) []Session {
 	return sessions
 }
 
+// CapturePane returns the argv printing the visible text of session's
+// current pane. This is how the notifier reads a screen nobody has open:
+// plain text, no escapes, one line per terminal row.
+func CapturePane(session string) []string {
+	return []string{"tmux", "capture-pane", "-p", "-t", session}
+}
+
+// PaneInMode returns the argv reporting whether the current pane of
+// session is in a tmux mode — copy-mode, which is what a touch swipe
+// enters to scroll the history. The web UI needs to know: while the pane
+// shows history, the numbered lines on screen belong to the past and
+// answering them would send digits to whatever is running now.
+func PaneInMode(session string) []string {
+	return []string{"tmux", "display-message", "-p", "-t", session, "#{pane_in_mode}"}
+}
+
+// ParsePaneInMode reads PaneInMode output. Only a bare "1" means in-mode;
+// empty output or an error message (dead server, session gone) does not.
+func ParsePaneInMode(out string) bool {
+	return strings.TrimSpace(out) == "1"
+}
+
 // Attach returns the argv attaching a web client to its own grouped
 // session sharing windows with target. A grouped session gets an
 // independent window size, so a phone client does not shrink the

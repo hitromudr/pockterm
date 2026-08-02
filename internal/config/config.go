@@ -5,17 +5,36 @@ package config
 import (
 	"fmt"
 	"net"
+	"time"
 )
 
 type Config struct {
 	Listen string // POCKTERM_LISTEN, host:port
 	Token  string // POCKTERM_TOKEN, required for non-loopback listen
+
+	// Telegram notifications; empty TGToken disables them entirely.
+	TGToken   string        // POCKTERM_TG_TOKEN, bot token
+	TGChat    string        // POCKTERM_TG_CHAT, chat id to notify
+	TGLink    string        // POCKTERM_TG_LINK, URL appended to messages
+	TGPreview bool          // POCKTERM_TG_PREVIEW=off sends no screen text
+	TGAPI     string        // POCKTERM_TG_API, Bot API root (a local bot server, or a test double)
+	Idle      time.Duration // POCKTERM_IDLE, silence that counts as "finished"
 }
 
 func FromEnv(getenv func(string) string) (Config, error) {
+	idle, err := duration(getenv("POCKTERM_IDLE"), 30*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
 	c := Config{
-		Listen: orDefault(getenv("POCKTERM_LISTEN"), "127.0.0.1:8130"),
-		Token:  getenv("POCKTERM_TOKEN"),
+		Listen:    orDefault(getenv("POCKTERM_LISTEN"), "127.0.0.1:8130"),
+		Token:     getenv("POCKTERM_TOKEN"),
+		TGToken:   getenv("POCKTERM_TG_TOKEN"),
+		TGChat:    getenv("POCKTERM_TG_CHAT"),
+		TGLink:    getenv("POCKTERM_TG_LINK"),
+		TGPreview: getenv("POCKTERM_TG_PREVIEW") != "off",
+		TGAPI:     getenv("POCKTERM_TG_API"),
+		Idle:      idle,
 	}
 	if err := c.validate(); err != nil {
 		return Config{}, err
@@ -23,11 +42,28 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	return c, nil
 }
 
+// Notify reports whether Telegram notifications are configured.
+func (c Config) Notify() bool { return c.TGToken != "" && c.TGChat != "" }
+
 func orDefault(v, def string) string {
 	if v == "" {
 		return def
 	}
 	return v
+}
+
+func duration(v string, def time.Duration) (time.Duration, error) {
+	if v == "" {
+		return def, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid POCKTERM_IDLE %q: %w", v, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("POCKTERM_IDLE must be positive, got %q", v)
+	}
+	return d, nil
 }
 
 func (c Config) validate() error {
@@ -40,6 +76,10 @@ func (c Config) validate() error {
 	// A terminal without auth must never face a network: fail closed.
 	if !loopback && c.Token == "" {
 		return fmt.Errorf("refusing to listen on non-loopback %q without POCKTERM_TOKEN", c.Listen)
+	}
+	// Half-configured notifications would fail silently at the first event.
+	if (c.TGToken == "") != (c.TGChat == "") {
+		return fmt.Errorf("POCKTERM_TG_TOKEN and POCKTERM_TG_CHAT must be set together")
 	}
 	return nil
 }

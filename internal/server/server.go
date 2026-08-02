@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -17,12 +18,30 @@ import (
 	"github.com/hitromudr/pockterm/internal/tmuxcmd"
 )
 
+// Presence is how the server tells the notifier which sessions matter and
+// who is looking at them. nil disables notifications.
+type Presence interface {
+	// Watch puts a session under observation for good — a notification is
+	// worth having precisely when nobody is attached any more.
+	Watch(session string)
+	Join(session string, id int64)
+	SetVisible(session string, id int64, visible bool)
+	Leave(session string, id int64)
+}
+
 type Options struct {
 	Token        string                                 // "" disables token auth (loopback-only deployments)
 	ListSessions func() ([]tmuxcmd.Session, error)      // current tmux sessions
 	Attach       func(id int64, target string) []string // argv attaching a client to target
+	InMode       func(id int64) (bool, error)           // client pane in tmux copy-mode; nil disables the poll
+	Presence     Presence                               // notification bookkeeping; nil disables it
 	Static       http.Handler                           // the embedded PWA
 }
+
+// modePoll is how often a client's pane is checked for tmux copy-mode. The
+// UI hides its prompt buttons while the pane shows scrollback, so the state
+// has to follow a swipe closely without hammering tmux.
+const modePoll = 400 * time.Millisecond
 
 func Handler(o Options) http.Handler {
 	mux := http.NewServeMux()
@@ -103,7 +122,14 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 	// replies, causing "concurrent write to websocket connection" panic.
 	var writeMu sync.Mutex
 
-	t, err := term.Start(o.Attach(nextID.Add(1), target), 80, 24)
+	id := nextID.Add(1)
+	if o.Presence != nil {
+		o.Presence.Watch(target)
+		o.Presence.Join(target, id)
+		defer o.Presence.Leave(target, id)
+	}
+
+	t, err := term.Start(o.Attach(id, target), 80, 24)
 	if err != nil {
 		log.Printf("attach failed: %v", err)
 		writeMu.Lock()
@@ -112,6 +138,14 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer t.Close()
+
+	// Tell the client when its pane enters or leaves copy-mode, so prompt
+	// buttons can disappear while it is scrolled back into history.
+	if o.InMode != nil {
+		done := make(chan struct{})
+		defer close(done)
+		go pollMode(conn, &writeMu, func() (bool, error) { return o.InMode(id) }, done)
+	}
 
 	// PTY → WS. On PTY EOF (client killed, tmux server gone) close the
 	// socket to unblock the read loop below.
@@ -160,6 +194,50 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 				writeMu.Lock()
 				conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"pong"}`))
 				writeMu.Unlock()
+			case "visible":
+				// A backgrounded tab keeps its socket open, so visibility
+				// is what decides whether a notification is redundant.
+				if o.Presence != nil {
+					o.Presence.SetVisible(target, id, c.Visible)
+				}
+			}
+		}
+	}
+}
+
+// modeFrame is the server→client notification about the pane's mode.
+type modeFrame struct {
+	Type string `json:"type"`
+	In   bool   `json:"in"`
+}
+
+// pollMode reports the pane's copy-mode state to the client until done is
+// closed. The first reading is always sent (a client attaching to a pane
+// already scrolled back must not wait for a transition), then only changes;
+// a failed reading is skipped rather than reported as "not in mode", so a
+// transient tmux error does not make the buttons flash back.
+func pollMode(conn *websocket.Conn, writeMu *sync.Mutex, in func() (bool, error), done <-chan struct{}) {
+	ticker := time.NewTicker(modePoll)
+	defer ticker.Stop()
+	last, known := false, false
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			cur, err := in()
+			if err != nil {
+				continue
+			}
+			if known && cur == last {
+				continue
+			}
+			last, known = cur, true
+			writeMu.Lock()
+			err = conn.WriteJSON(modeFrame{Type: "mode", In: cur})
+			writeMu.Unlock()
+			if err != nil {
+				return
 			}
 		}
 	}

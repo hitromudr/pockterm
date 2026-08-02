@@ -51,6 +51,34 @@ func TestClientSessionNaming(t *testing.T) {
 	}
 }
 
+func TestCapturePaneArgv(t *testing.T) {
+	got := CapturePane("claude")
+	want := []string{"tmux", "capture-pane", "-p", "-t", "claude"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestPaneInModeArgv(t *testing.T) {
+	got := PaneInMode("pockterm-7")
+	want := []string{"tmux", "display-message", "-p", "-t", "pockterm-7", "#{pane_in_mode}"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestParsePaneInMode(t *testing.T) {
+	if !ParsePaneInMode("1\n") {
+		t.Fatal(`"1" should mean the pane is in a mode`)
+	}
+	// Not in a mode, and the failure cases: no such session, dead server.
+	for _, out := range []string{"0\n", "0", "", "can't find session: pockterm-7\n"} {
+		if ParsePaneInMode(out) {
+			t.Fatalf("%q wrongly read as in-mode", out)
+		}
+	}
+}
+
 func TestParseSessionsIgnoresJunk(t *testing.T) {
 	// Empty input (no sessions) and malformed lines yield no sessions.
 	if s := ParseSessions(""); len(s) != 0 {
