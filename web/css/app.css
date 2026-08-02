@@ -71,7 +71,19 @@ html, body {
 #refresh { margin-left: auto; }
 
 /* --- session list --- */
-#session-list { list-style: none; overflow-y: auto; padding: 8px; }
+/* The bottom safe-area inset is the reason the last session was unreachable
+   on a phone: the screen itself only pads top/left/right (see #screen-*
+   above), and the terminal screen makes up for it in its bottom bars — which
+   this screen does not have, so the list ran under the gesture bar.
+   flex:1 with min-height:0 goes with it: the list, not its content, owns the
+   space between the header and the bottom edge, so it scrolls as one. */
+#session-list {
+  flex: 1;
+  min-height: 0;
+  list-style: none;
+  overflow-y: auto;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+}
 #session-list li { margin-bottom: 8px; }
 button.session {
   width: 100%;
@@ -125,14 +137,27 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#term { flex: 1; min-height: 0; }
-/* Selection mode: hand the terminal text back to the browser so a
-   long-press gives the OS selection handles and its own Copy action.
-   xterm sets user-select:none for its mouse-driven selection, which under
-   tmux mouse mode never fires on touch — so here that rule has to lose. */
-#screen-term.selecting .xterm .xterm-screen,
-#screen-term.selecting .xterm .xterm-rows,
-#screen-term.selecting .xterm .xterm-rows * {
+#term { flex: 1; min-height: 0; position: relative; }
+/* Selection mode selects from a frozen copy of the screen laid over the
+   terminal, not from the terminal itself.
+   Two reasons, and lifting xterm's user-select:none fixed neither: the DOM
+   renderer rebuilds its rows on every write, so a selection anchored in them
+   dies with the next redraw — under an agent that prints a spinner, within a
+   blink — and under tmux mouse mode xterm swallows the drag that would start
+   a selection in the first place. Plain text in a <pre> has neither problem,
+   and it keeps the long-press handles on Android. */
+#snapshot {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  padding: 0 4px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: courier-new, courier, monospace;
+  line-height: 1.2;
+  color: var(--fg);
+  background: var(--bg);
   user-select: text;
   -webkit-user-select: text;
 }

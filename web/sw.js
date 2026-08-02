@@ -9,6 +9,7 @@ const PRECACHE = [
   '/js/detect.js',
   '/js/notify.js',
   '/js/paste.js',
+  '/js/select.js',
   '/vendor/xterm.js',
   '/vendor/xterm.css',
   '/vendor/addon-fit.js',

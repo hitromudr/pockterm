@@ -38,7 +38,11 @@
     </header>
     <div id="status" hidden></div>
     <div id="toast" hidden></div>
-    <div id="term"></div>
+    <div id="term">
+      <!-- Selection mode lays a frozen copy of the screen over the live
+           terminal; see #snapshot in css/app.css. -->
+      <pre id="snapshot" hidden></pre>
+    </div>
     <!-- Buttons for a detected interactive prompt (Claude permission etc.) -->
     <div id="answers" hidden></div>
     <!-- Quick macros for prompt mode -->

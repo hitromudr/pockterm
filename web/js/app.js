@@ -2,6 +2,7 @@ import { keyBytes, applyCtrl } from './keys.js';
 import { detectQuestion } from './detect.js';
 import { newState, questionNotice, noteActivity, doneNotice } from './notify.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
+import { snapshotText } from './select.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -110,6 +111,8 @@ function attach(name) {
   try { sessionStorage.setItem('pt-session', name); } catch (_) {}
   screenSessions.hidden = true;
   screenTerm.hidden = false;
+  // A frozen screen belongs to the session it was frozen from.
+  if (selectMode) setSelectMode(false);
   term.reset();
   document.getElementById('answers').hidden = true;
   lastAnswersSig = null;
@@ -201,6 +204,8 @@ function setFont(sz) {
   fontSize = Math.max(9, Math.min(28, sz));
   term.options.fontSize = fontSize;
   try { localStorage.setItem('pt-font', String(fontSize)); } catch (_) {}
+  // A-/A+ stays useful while reading a frozen screen.
+  snapshotEl.style.fontSize = `${fontSize}px`;
   refit();
 }
 document.getElementById('font-dec').addEventListener('click', () => setFont(fontSize - 1));
@@ -264,6 +269,7 @@ const modeBtn = document.getElementById('mode');
 const keybarEl = document.getElementById('keybar');
 const selbarEl = document.getElementById('selbar');
 const selectBtn = document.getElementById('select');
+const snapshotEl = document.getElementById('snapshot');
 const toastEl = document.getElementById('toast');
 
 // Quick macros for prompt mode. "accept" is right-arrow + Enter — one tap
@@ -342,17 +348,22 @@ function dropSelection() {
   if (sel) sel.removeAllRanges();
 }
 
-// Selection mode hands the drag gesture back to the browser and lifts
-// xterm's user-select:none (see .selecting in app.css), so a long-press
-// gives the OS selection handles. tmux mouse mode means xterm's own
-// mouse selection never fires on touch, which is why this exists.
+// Selection mode covers the terminal with a frozen copy of the screen (see
+// #snapshot in app.css) and selects from that. Selecting in the live
+// terminal does not work: tmux mouse mode swallows the drag, and every
+// write rebuilds the rows the selection is anchored in — with an agent
+// printing a spinner the highlight disappears before Copy can be tapped.
 // Entering starts from a clean slate: Copy must never hand over leftovers.
 function setSelectMode(on) {
   selectMode = on;
-  screenTerm.classList.toggle('selecting', on);
   dropSelection();
+  if (on) {
+    snapshotEl.textContent = snapshotText(visibleLines());
+    snapshotEl.style.fontSize = `${fontSize}px`;
+  }
+  snapshotEl.hidden = !on;
   renderBars();
-  if (on) toast('select text, then Copy');
+  if (on) toast('select text, then Copy — the screen is frozen');
   else term.focus();
 }
 selectBtn.addEventListener('click', () => setSelectMode(!selectMode));
