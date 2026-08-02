@@ -51,13 +51,7 @@
     <!-- Selection mode: clipboard exchange for the selected terminal text -->
     <div id="selbar" hidden>
       <button id="copy">&#128203; Copy</button>
-      <button id="paste">&#128229; Paste</button>
-      <!-- An Android screenshot is a file, not clipboard content, so the
-           only way to attach one is to pick it. -->
-      <label id="pick" title="Attach an image">&#128206;
-        <input id="pick-file" type="file" accept="image/*" hidden>
-      </label>
-      <button id="sel-done">&#10005;</button>
+      <button id="sel-done">&#10005; Done</button>
     </div>
     <!-- Shown when the browser refuses to hand over the clipboard: the
          system's own Paste writes here, which needs no permission. -->
@@ -93,8 +87,16 @@
          already is. Rare things (text size, notifications, hiding the bars)
          sit behind ⋯ instead of taking permanent space from the tabs. -->
     <div id="modebar">
-      <button id="select" title="Select text">&#9986; Select</button>
-      <button id="mode" title="Prompt mode">&#128172; Prompt</button>
+      <button id="select" title="Select text">&#9986;</button>
+      <!-- Pasting has nothing to do with selecting: it lived inside the
+           selection bar, so reaching it meant freezing the screen first. -->
+      <button id="paste" title="Paste from the clipboard">&#128229; Paste</button>
+      <!-- An Android screenshot is a file, not clipboard content, so the
+           only way to attach one is to pick it. -->
+      <label id="pick" title="Attach an image">&#128206;
+        <input id="pick-file" type="file" accept="image/*" hidden>
+      </label>
+      <button id="mode" title="Prompt mode">&#128172;</button>
       <button id="more" title="More">&#8943;</button>
     </div>
   </div>

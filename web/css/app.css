@@ -250,10 +250,10 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   border-radius: 8px;
 }
 #selbar button:active { background: #3a4458; }
-#selbar #sel-done { flex: 0 0 56px; }
+#selbar #sel-done { flex: 0 0 40%; }
 /* The file picker is a label wrapping a hidden input; it has to read as one
    of the buttons next to it. */
-#selbar #pick {
+#modebar #pick {
   flex: 0 0 56px;
   display: flex;
   align-items: center;
@@ -263,7 +263,7 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   background: #232a38;
   border-radius: 8px;
 }
-#selbar #pick:active { background: #3a4458; }
+#modebar #pick:active { background: #3a4458; }
 /* Escape hatch for a browser that will not read the clipboard for us. */
 #paste-target {
   padding: 12px;
@@ -296,7 +296,8 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   border: none;
   border-radius: 8px;
 }
-#modebar #more { flex: 0 0 56px; font-size: 17px; }
+#modebar #more, #modebar #select, #modebar #mode { flex: 0 0 48px; font-size: 17px; }
+#modebar #paste { flex: 1; }
 #modebar button.on { background: var(--accent); color: #0b0e14; font-weight: 600; }
 #overflow {
   display: flex;

@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v26';
+const APP_VERSION = 'v27';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -503,6 +503,17 @@ function preview(text) {
 // goes anywhere near the button below. Without this, copying that way left
 // the frozen screen covering the terminal: taps did nothing, the keyboard
 // never returned, and reloading the page was the only way out.
+// A tap on the frozen screen that selects nothing means "I am done looking".
+// Without it the only way out is the Done button, and every report so far has
+// been that selection mode hangs the terminal — because from the outside a
+// frozen screen and a hung one are the same picture.
+snapshotEl.addEventListener('click', () => {
+  const sel = String(window.getSelection() || '');
+  if (sel) return; // a tap that lands inside a selection is not a way out
+  setSelectMode(false);
+  toast('screen is live again');
+});
+
 document.addEventListener('copy', () => {
   if (copyingViaFallback || !selectMode) return;
   const text = selectedText();
