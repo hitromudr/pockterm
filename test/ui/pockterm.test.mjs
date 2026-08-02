@@ -248,8 +248,14 @@ describe('the key bar', () => {
     // Delete and enter moved off the right edge; the stop and hide keys took
     // that corner instead.
     assert.ok(del.x > esc.x, 'the delete column drifted to the left edge');
+    // ^C sits over Ctrl, one column in from the edge: hitting it by accident
+    // is the most expensive mistake this bar can cause.
     const stop = await box(page, '[data-key="ctrl-c"]');
-    assert.ok(stop.x > del.x, 'the stop key is not in the right-hand corner');
+    const ctrl = await box(page, '#key-ctrl');
+    assert.ok(Math.abs(stop.x - ctrl.x) < 2, 'the stop key is not above Ctrl');
+    assert.ok(stop.y < ctrl.y, 'the stop key is not above Ctrl');
+    const hide = await box(page, '#hide');
+    assert.ok(hide.x > stop.x, 'the stop key still holds the corner');
     // Escape is the top-left corner; the cross sits next to it.
     assert.ok(esc.x < up.x && esc.y < down.y, 'escape is not the top-left key');
     assert.ok(left.x <= esc.x + 2, 'the cross is not against the left edge');
