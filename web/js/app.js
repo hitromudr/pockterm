@@ -270,6 +270,8 @@ const keybarEl = document.getElementById('keybar');
 const selbarEl = document.getElementById('selbar');
 const selectBtn = document.getElementById('select');
 const snapshotEl = document.getElementById('snapshot');
+const pasteTargetEl = document.getElementById('paste-target');
+const pickFileEl = document.getElementById('pick-file');
 const toastEl = document.getElementById('toast');
 
 // Quick macros for prompt mode. "accept" is right-arrow + Enter — one tap
@@ -362,6 +364,7 @@ function setSelectMode(on) {
     snapshotEl.style.fontSize = `${fontSize}px`;
   }
   snapshotEl.hidden = !on;
+  if (!on) closePasteTarget();
   renderBars();
   if (on) toast('select text, then Copy — the screen is frozen');
   else term.focus();
@@ -369,28 +372,54 @@ function setSelectMode(on) {
 selectBtn.addEventListener('click', () => setSelectMode(!selectMode));
 document.getElementById('sel-done').addEventListener('click', () => setSelectMode(false));
 
+// Put text in the device clipboard and report which way it went — "copied"
+// with nothing in the clipboard is worse than an honest failure, and the
+// only way to tell them apart on a phone is to say so on screen.
+//
+// The old fallback was a readonly, fully transparent textarea. On Android
+// Chrome that combination reports success and copies nothing: the element is
+// not rendered enough to hold a selection. A contenteditable node that is
+// actually laid out, selected through a Range, does copy.
 async function writeClipboard(text) {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
       await navigator.clipboard.writeText(text);
-      return true;
+      return 'api';
+    } catch (e) {
+      // Falls through, but the reason is worth keeping: "Document is not
+      // focused" and a denied permission need different answers.
+      lastCopyError = (e && e.name) || 'error';
     }
-  } catch (_) { /* fall through to the textarea path */ }
-  // Plain-http contexts (LAN testing) have no async clipboard API.
+  } else {
+    lastCopyError = 'no clipboard API (page is not a secure context)';
+  }
   try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', '');
-    ta.style.cssText = 'position:fixed;top:0;opacity:0';
-    document.body.appendChild(ta);
-    ta.select();
+    const host = document.createElement('div');
+    host.contentEditable = 'true';
+    host.textContent = text;
+    host.setAttribute('aria-hidden', 'true');
+    host.style.cssText =
+      'position:fixed;left:0;bottom:0;width:2px;height:2px;padding:0;' +
+      'border:0;outline:0;overflow:hidden;opacity:0.01;white-space:pre;z-index:-1';
+    document.body.appendChild(host);
+
+    const range = document.createRange();
+    range.selectNodeContents(host);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    host.focus({ preventScroll: true });
+
     const ok = document.execCommand('copy');
-    ta.remove();
-    return ok;
-  } catch (_) {
-    return false;
+    sel.removeAllRanges();
+    host.remove();
+    return ok ? 'exec' : null;
+  } catch (e) {
+    lastCopyError = (e && e.name) || 'error';
+    return null;
   }
 }
+let lastCopyError = '';
 
 // Read an image out of the clipboard where the browser allows it. Wrapped
 // because navigator.clipboard.read is missing on Firefox and throws on a
@@ -413,8 +442,11 @@ function preview(text) {
 document.getElementById('copy').addEventListener('click', async () => {
   const text = selectedText();
   if (!text) { toast('nothing selected'); return; }
-  const ok = await writeClipboard(text);
-  toast(ok ? `copied ${text.length} chars: ${preview(text)}` : 'clipboard blocked by the browser');
+  lastCopyError = '';
+  const how = await writeClipboard(text);
+  if (!how) { toast(`copy failed: ${lastCopyError || 'blocked by the browser'}`); return; }
+  // The mechanism is named because the fallback is the one that can lie.
+  toast(`copied ${text.length} chars (${how}): ${preview(text)}`);
 });
 
 // --- pasting an image ---
@@ -423,6 +455,7 @@ document.getElementById('copy').addEventListener('click', async () => {
 // path; the path is what gets typed. Claude Code reads a file mentioned in
 // the prompt, so from the phone this is the same gesture as pasting text.
 async function attachImage(file) {
+  closePasteTarget();
   const kb = Math.max(1, Math.round((file.size || 0) / 1024));
   toast(`uploading ${kb} KB…`);
   let res;
@@ -467,22 +500,67 @@ document.addEventListener('drop', (e) => {
   attachImage(file);
 });
 
+// When the browser will not read the clipboard for us, the system still
+// will — its own Paste needs no permission. The field takes it, the terminal
+// gets what landed there, and the field disappears again.
+function openPasteTarget(why) {
+  pasteTargetEl.value = '';
+  pasteTargetEl.hidden = false;
+  pasteTargetEl.focus();
+  toast(why);
+}
+function closePasteTarget() {
+  pasteTargetEl.value = '';
+  pasteTargetEl.hidden = true;
+}
+pasteTargetEl.addEventListener('paste', () => {
+  // An image is handled by the document-level listener (it cancels the
+  // default, so nothing lands here). Text arrives after this event, hence
+  // the tick.
+  setTimeout(() => {
+    const text = pasteTargetEl.value;
+    closePasteTarget();
+    if (!text) return;
+    if (ctrlLatch) setCtrl(false);
+    term.paste(text);
+    toast(`pasted ${text.length} chars`);
+  }, 0);
+});
+// Closing on blur must not race the paste itself: on Android the system
+// paste menu can take focus away for a moment, and hiding the field then
+// would drop what the user is about to paste.
+pasteTargetEl.addEventListener('blur', () => {
+  setTimeout(() => {
+    if (!pasteTargetEl.hidden && !pasteTargetEl.value && document.activeElement !== pasteTargetEl) {
+      closePasteTarget();
+    }
+  }, 600);
+});
+
+// Attach an image from storage. On Android a screenshot is a file, not
+// clipboard content, so this is the only path that reaches it.
+pickFileEl.addEventListener('change', () => {
+  const file = pickFileEl.files && pickFileEl.files[0];
+  pickFileEl.value = ''; // so picking the same file twice fires again
+  if (file) attachImage(file);
+});
+
 document.getElementById('paste').addEventListener('click', async () => {
   let text = '';
   try {
     text = (await navigator.clipboard.readText()) || '';
-  } catch (_) {
-    // readText refuses on an image-only clipboard, which is exactly the
-    // case worth handling on a phone: there is no paste event to hook.
+  } catch (e) {
+    // readText refuses on an image-only clipboard and on a denied
+    // permission; the image case is worth trying before giving up.
     const image = await clipboardImage();
     if (image) { attachImage(image); return; }
-    toast('clipboard read blocked — paste from the keyboard instead');
+    openPasteTarget(`browser refused the clipboard (${(e && e.name) || 'error'}) — paste here`);
     return;
   }
   if (!text) {
     const image = await clipboardImage();
     if (image) { attachImage(image); return; }
-    toast('clipboard is empty');
+    openPasteTarget('clipboard looks empty — paste here');
     return;
   }
   if (ctrlLatch) setCtrl(false); // a latched Ctrl would mangle the text

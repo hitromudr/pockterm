@@ -246,6 +246,29 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 }
 #selbar button:active { background: #3a4458; }
 #selbar #sel-done { flex: 0 0 56px; }
+/* The file picker is a label wrapping a hidden input; it has to read as one
+   of the buttons next to it. */
+#selbar #pick {
+  flex: 0 0 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  color: var(--fg);
+  background: #232a38;
+  border-radius: 8px;
+}
+#selbar #pick:active { background: #3a4458; }
+/* Escape hatch for a browser that will not read the clipboard for us. */
+#paste-target {
+  padding: 12px;
+  margin: 0 6px calc(6px + env(safe-area-inset-bottom));
+  color: var(--fg);
+  background: #1b2230;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 16px; /* under 16px Android zooms the page on focus */
+}
 
 /* Quick macros row (prompt mode): accept, enter, esc, stop. */
 #quickbar {

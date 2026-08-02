@@ -56,8 +56,16 @@
     <div id="selbar" hidden>
       <button id="copy">&#128203; Copy</button>
       <button id="paste">&#128229; Paste</button>
+      <!-- An Android screenshot is a file, not clipboard content, so the
+           only way to attach one is to pick it. -->
+      <label id="pick" title="Attach an image">&#128206;
+        <input id="pick-file" type="file" accept="image/*" hidden>
+      </label>
       <button id="sel-done">&#10005;</button>
     </div>
+    <!-- Shown when the browser refuses to hand over the clipboard: the
+         system's own Paste writes here, which needs no permission. -->
+    <input id="paste-target" type="text" autocomplete="off" placeholder="long-press here → Paste" hidden>
     <!-- Prompt composer (shown in prompt mode instead of the key bar) -->
     <form id="composer" hidden>
       <textarea id="prompt" rows="1" placeholder="Message… (▶ to send)"></textarea>
