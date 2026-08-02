@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v37';
+const APP_VERSION = 'v39';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -290,8 +290,29 @@ term.onData((d) => {
 // --- key bar ---
 const ctrlBtn = document.getElementById('key-ctrl');
 function setCtrl(on) { ctrlLatch = on; ctrlBtn.classList.toggle('on', on); }
+// Make the keyboard hand over the word it is still composing before a key
+// from this bar reaches the pty.
+//
+// Gboard keeps the current word to itself until it decides the word is over.
+// Enter sent from here arrived *before* that word, so the message went
+// without its last word; the same stale composing region is what makes
+// Backspace re-commit a word the terminal has already moved past. Only the
+// app can end a composition — a page cannot — so this asks it to, and does
+// nothing in a real browser, where the problem does not exist.
+function commitPendingInput() {
+  try {
+    if (window.PockNative && typeof window.PockNative.commitInput === 'function') {
+      window.PockNative.commitInput();
+    }
+  } catch (_) { /* the key still has to go through */ }
+}
+
 document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
-  b.addEventListener('click', () => { send(keyBytes(b.dataset.key)); term.focus(); });
+  b.addEventListener('click', () => {
+    commitPendingInput();
+    send(keyBytes(b.dataset.key));
+    term.focus();
+  });
 });
 ctrlBtn.addEventListener('click', () => { setCtrl(!ctrlLatch); term.focus(); });
 
@@ -387,7 +408,7 @@ const MACROS = {
 // Macros live in two places now — the key bar and prompt mode's quick row —
 // and both send the same thing.
 document.querySelectorAll('button[data-macro]').forEach((b) => {
-  b.addEventListener('click', () => { send(MACROS[b.dataset.macro]); term.focus(); });
+  b.addEventListener('click', () => { commitPendingInput(); send(MACROS[b.dataset.macro]); term.focus(); });
 });
 
 // Bottom bars are mutually exclusive: selection mode wins over prompt mode
@@ -820,6 +841,14 @@ bellBtn.addEventListener('click', async () => {
   if (notifyOn) {
     notifyOn = false;
   } else {
+    if (nativeNotifier()) {
+      // The app notifies for us; it asked Android for the permission itself.
+      notifyOn = true;
+      try { localStorage.setItem('pt-notify', 'on'); } catch (_) {}
+      renderBell();
+      toast('notifications on (app)');
+      return;
+    }
     if (!('Notification' in window)) { toast('this browser has no notifications'); return; }
     let perm = Notification.permission;
     if (perm === 'default') perm = await Notification.requestPermission();
@@ -836,8 +865,23 @@ bellBtn.addEventListener('click', async () => {
 });
 renderBell();
 
+// A WebView has no Notification API at all, so the app carries them.
+function nativeNotifier() {
+  return !!(window.PockNative && typeof window.PockNative.notify === 'function');
+}
+
 function show(notice) {
-  if (!notice || !notifyOn || Notification.permission !== 'granted') return;
+  if (!notice || !notifyOn) return;
+  if (nativeNotifier()) {
+    try {
+      const ok = window.PockNative.notify(notice.title, notice.body);
+      report('notify', { via: 'native', ok: !!ok, tag: notice.tag });
+      if (ok) return;
+    } catch (e) {
+      report('notify', { via: 'native', error: (e && e.name) || 'error' });
+    }
+  }
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
   // tag replaces a previous notice of the same kind instead of stacking:
   // five "asks for an answer" in a row is noise, not information.
   const n = new Notification(notice.title, { body: notice.body, tag: notice.tag });

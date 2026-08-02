@@ -268,9 +268,8 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 }
 #keybar button:active { background: #3a4458; }
 #keybar button.on { background: var(--accent); color: #0b0e14; }
-/* Accept is the answer given most often; it should be recognisable without
-   reading. */
-#keybar button.accept { color: #0b0e14; background: var(--accent); font-weight: 600; }
+/* Accept is a key like the others: an accent block in the middle of the bar
+   only pulls the eye away from the terminal. */
 
 /* Answer buttons for a detected prompt: one per row, above the input.
    Capped height with scroll so a long menu never eats the terminal. */
