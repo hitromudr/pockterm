@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v35';
+const APP_VERSION = 'v36';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -755,14 +755,17 @@ document.getElementById('paste').addEventListener('click', async () => {
       const native = String(window.PockNative.read() || '');
       report('paste', { via: 'native', chars: native.length });
       if (native) { pasteIntoTerminal(native); return; }
-      openPasteTarget('clipboard is empty — paste here');
-      return;
+      // Empty is not the end of the road: the system clipboard holds no
+      // plain text right now, but it may hold an image, and this WebView
+      // does expose the browser clipboard as well. Falling through beats
+      // announcing failure with two paths untried.
     } catch (e) {
       report('paste', { via: 'native', error: (e && e.name) || 'error' });
     }
   }
   try {
     text = (await navigator.clipboard.readText()) || '';
+    report('paste', { via: 'browser', chars: text.length });
   } catch (e) {
     // readText refuses on an image-only clipboard and on a denied
     // permission; the image case is worth trying before giving up.
@@ -774,6 +777,7 @@ document.getElementById('paste').addEventListener('click', async () => {
   }
   if (!text) {
     const image = await clipboardImage();
+    report('paste', { via: 'image', found: !!image });
     if (image) { attachImage(image); return; }
     openPasteTarget('clipboard looks empty — paste here');
     return;
