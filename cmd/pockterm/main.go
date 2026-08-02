@@ -16,16 +16,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/hitromudr/pockterm"
 	"github.com/hitromudr/pockterm/internal/config"
 	"github.com/hitromudr/pockterm/internal/server"
+	"github.com/hitromudr/pockterm/internal/session"
 	"github.com/hitromudr/pockterm/internal/setup"
 	"github.com/hitromudr/pockterm/internal/telegram"
 	"github.com/hitromudr/pockterm/internal/tmuxcmd"
 	"github.com/hitromudr/pockterm/internal/upload"
 	"github.com/hitromudr/pockterm/internal/watch"
 )
+
+// Where the session Makefile lives when POCKTERM_SESSION_DIR says nothing.
+// The role that installs pockterm puts it in the user's work directory.
+const defaultSessionDir = "/home/dms/work"
 
 const usage = `pockterm — mobile web terminal for your tmux sessions
 
@@ -131,7 +137,9 @@ func serve() {
 		SaveUpload: uploader(cfg),
 		// The browser has no console anyone can open on the phone this
 		// serves; its own words land here instead.
-		LogClient: func(line string) { log.Printf("client: %s", line) },
+		LogClient:    func(line string) { log.Printf("client: %s", line) },
+		StartSession: starter(cfg),
+		RenameSess:   renamer,
 	})
 	log.Printf("pockterm listening on %s", cfg.Listen)
 	log.Fatal(http.ListenAndServe(cfg.Listen, h))
@@ -156,6 +164,74 @@ func uploader(cfg config.Config) func(io.Reader) (string, error) {
 	}
 	log.Printf("image paste on, saving to %s", dir)
 	return upload.Store{Dir: dir}.Save
+}
+
+// starter runs one of the fixed presets through the same Makefile the owner
+// uses by hand, or returns nil to leave the endpoint absent.
+//
+// Through the Makefile and not directly: it is the one place that knows how a
+// session is launched here — the claude-safe sandbox wrapper, a free session
+// number, and its own systemd scope so the tmux server never lands in this
+// service's cgroup. Two launchers would drift apart, and the day they do,
+// somebody loses their sessions.
+func starter(cfg config.Config) func(string) error {
+	dir := cfg.SessionMakeDir
+	if dir == "off" {
+		return nil
+	}
+	if dir == "" {
+		dir = defaultSessionDir
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Makefile")); err != nil {
+		log.Printf("no Makefile in %s, starting sessions is off", dir)
+		return nil
+	}
+	log.Printf("starting sessions on, via make -C %s", dir)
+	return func(preset string) error {
+		target, err := session.Target(preset)
+		if err != nil {
+			return err
+		}
+		argv := session.Start(dir, target)
+		out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
+		if err != nil {
+			log.Printf("start %s: %v: %s", preset, err, out)
+			return fmt.Errorf("could not start: %s", firstLine(string(out)))
+		}
+		log.Printf("started %s: %s", preset, firstLine(string(out)))
+		return nil
+	}
+}
+
+// renamer renames a session. The name is checked here rather than trusted
+// from the page: it reaches a command line.
+func renamer(from, to string) error {
+	if err := session.ValidName(to); err != nil {
+		return err
+	}
+	argv := session.Rename(from, to)
+	out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("could not rename: %s", firstLine(string(out)))
+	}
+	log.Printf("renamed %s to %s", from, to)
+	return nil
+}
+
+// firstLine keeps an error message to one line: it ends up in a toast on a
+// phone screen.
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 120 {
+		s = s[:120]
+	}
+	if s == "" {
+		return "no output"
+	}
+	return s
 }
 
 // notifier wires the Telegram notifications, or returns nil when they are

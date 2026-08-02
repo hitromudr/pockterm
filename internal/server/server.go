@@ -41,6 +41,8 @@ type Options struct {
 	Static       http.Handler                           // the embedded PWA
 	SaveUpload   func(io.Reader) (string, error)        // store a pasted image, return its path; nil disables /api/upload
 	LogClient    func(string)                           // record a line the browser sent; nil disables /api/log
+	StartSession func(preset string) error              // create a session from a fixed preset; nil disables /api/sessions/new
+	RenameSess   func(from, to string) error            // rename a session; nil disables /api/sessions/rename
 }
 
 // modePoll is how often a client's pane is checked for tmux copy-mode. The
@@ -54,6 +56,8 @@ func Handler(o Options) http.Handler {
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) { serveSessions(o, w, r) })
 	mux.HandleFunc("/api/upload", func(w http.ResponseWriter, r *http.Request) { serveUpload(o, w, r) })
 	mux.HandleFunc("/api/log", func(w http.ResponseWriter, r *http.Request) { serveLog(o, w, r) })
+	mux.HandleFunc("/api/sessions/new", func(w http.ResponseWriter, r *http.Request) { serveNewSession(o, w, r) })
+	mux.HandleFunc("/api/sessions/rename", func(w http.ResponseWriter, r *http.Request) { serveRename(o, w, r) })
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) { serveWS(o, w, r) })
 	return mux
 }
@@ -154,6 +158,78 @@ func serveLog(o Options, w http.ResponseWriter, r *http.Request) {
 		return c
 	}, string(body))
 	o.LogClient(strings.TrimSpace(line))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// serveNewSession creates a session from one of the presets. There is no
+// command in the request — only a name from a fixed list — because with no
+// session left a phone cannot type a command anywhere, and that is the entire
+// problem being solved here.
+func serveNewSession(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.StartSession == nil {
+		http.Error(w, "starting sessions is off", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "post a preset", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Preset string `json:"preset"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&req); err != nil {
+		http.Error(w, "unreadable request", http.StatusBadRequest)
+		return
+	}
+	if err := o.StartSession(req.Preset); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// serveRename renames a session. claude-1, claude-2, claude-3 is not a list
+// anyone can navigate on a phone.
+func serveRename(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.RenameSess == nil {
+		http.Error(w, "renaming is off", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "post from and to", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&req); err != nil {
+		http.Error(w, "unreadable request", http.StatusBadRequest)
+		return
+	}
+	// The session being renamed must be one the server already lists —
+	// otherwise the name in the request reaches tmux unchecked.
+	sessions, err := o.ListSessions()
+	if err != nil {
+		http.Error(w, "cannot list sessions", http.StatusInternalServerError)
+		return
+	}
+	if !sessionExists(sessions, req.From) {
+		http.Error(w, "no such session", http.StatusNotFound)
+		return
+	}
+	if err := o.RenameSess(req.From, req.To); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -70,6 +70,55 @@ html, body {
 }
 #refresh { margin-left: auto; }
 
+/* Presets for a new session, and the rename field. Both hang under the
+   header of the list screen, where the decision is being made. */
+#new-menu, #rename-box {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bar);
+  border-bottom: 1px solid #2a3345;
+}
+#new-menu { flex-wrap: wrap; }
+#new-menu button {
+  flex: 1 1 45%;
+  padding: 12px 8px;
+  font-size: 14px;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 8px;
+}
+#new-menu button:active { background: #3a4458; }
+#rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  font-size: 16px; /* under 16px Android zooms the page on focus */
+  color: var(--fg);
+  background: #1b2230;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+#rename-box button {
+  padding: 10px 14px;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 8px;
+}
+/* A row is the session plus its rename handle; a button cannot nest in a
+   button, so they are siblings. */
+#session-list li { display: flex; gap: 6px; align-items: stretch; }
+button.rename {
+  flex: 0 0 48px;
+  color: var(--fg);
+  background: #1b2230;
+  border: 1px solid #2a3345;
+  border-radius: 8px;
+  font-size: 16px;
+}
+
 /* --- session list --- */
 /* The bottom safe-area inset is the reason the last session was unreachable
    on a phone: the screen itself only pads top/left/right (see #screen-*

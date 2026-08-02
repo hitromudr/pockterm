@@ -16,6 +16,10 @@ type Config struct {
 	// default under the user's cache directory; "off" disables uploads.
 	UploadDir string // POCKTERM_UPLOAD_DIR
 
+	// Directory holding the session Makefile the page may run presets from.
+	// Empty means the default work directory; "off" refuses to start any.
+	SessionMakeDir string // POCKTERM_SESSION_DIR
+
 	// Telegram notifications; empty TGToken disables them entirely.
 	TGToken   string        // POCKTERM_TG_TOKEN, bot token
 	TGChat    string        // POCKTERM_TG_CHAT, chat id to notify
@@ -31,15 +35,16 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	c := Config{
-		Listen:    orDefault(getenv("POCKTERM_LISTEN"), "127.0.0.1:8130"),
-		Token:     getenv("POCKTERM_TOKEN"),
-		UploadDir: getenv("POCKTERM_UPLOAD_DIR"),
-		TGToken:   getenv("POCKTERM_TG_TOKEN"),
-		TGChat:    getenv("POCKTERM_TG_CHAT"),
-		TGLink:    getenv("POCKTERM_TG_LINK"),
-		TGPreview: getenv("POCKTERM_TG_PREVIEW") != "off",
-		TGAPI:     getenv("POCKTERM_TG_API"),
-		Idle:      idle,
+		Listen:         orDefault(getenv("POCKTERM_LISTEN"), "127.0.0.1:8130"),
+		Token:          getenv("POCKTERM_TOKEN"),
+		UploadDir:      getenv("POCKTERM_UPLOAD_DIR"),
+		SessionMakeDir: getenv("POCKTERM_SESSION_DIR"),
+		TGToken:        getenv("POCKTERM_TG_TOKEN"),
+		TGChat:         getenv("POCKTERM_TG_CHAT"),
+		TGLink:         getenv("POCKTERM_TG_LINK"),
+		TGPreview:      getenv("POCKTERM_TG_PREVIEW") != "off",
+		TGAPI:          getenv("POCKTERM_TG_API"),
+		Idle:           idle,
 	}
 	if err := c.validate(); err != nil {
 		return Config{}, err

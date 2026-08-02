@@ -32,7 +32,9 @@ describe('sessions screen', () => {
       box.y + box.height <= viewport.height + 1,
       `last session ends at ${box.y + box.height}, viewport is ${viewport.height}`,
     );
-    await last.locator('button').click({ trial: true });
+    // The row holds two buttons now — the session and its rename handle.
+    await last.locator('button.session').click({ trial: true });
+    await last.locator('button.rename').click({ trial: true });
   });
 });
 
@@ -165,6 +167,51 @@ describe('typing and deleting', () => {
 
     const seen = await page.evaluate(line);
     assert.equal((seen.match(/wor/g) || []).length, 1, `screen holds ${JSON.stringify(seen.slice(0, 80))}`);
+  });
+});
+
+describe('starting and renaming sessions', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['demo'] }); });
+  after(async () => { await stand.stop(); });
+
+  test('a session can be started from an empty-handed phone', async () => {
+    await stand.open();
+    const { page } = stand;
+    const before = await page.locator('#session-list li').count();
+
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset="shell"]');
+
+    // The list refreshes on its own once tmux has the session.
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n,
+      before,
+      { timeout: 8000 },
+    );
+  });
+
+  test('a session can be renamed, and a bad name is refused out loud', async () => {
+    await stand.open();
+    const { page } = stand;
+
+    await page.click('#session-list li:first-child button.rename');
+    await page.fill('#rename-input', 'bad name');
+    await page.click('#rename-save');
+    // A refusal has to say why: a silent button reads as broken.
+    await page.waitForFunction(
+      () => /name must be/i.test(document.getElementById('toast').textContent || ''),
+      null,
+      { timeout: 5000 },
+    );
+
+    await page.fill('#rename-input', 'notes');
+    await page.click('#rename-save');
+    await page.waitForFunction(
+      () => Array.from(document.querySelectorAll('#session-list .name')).some((e) => e.textContent === 'notes'),
+      null,
+      { timeout: 8000 },
+    );
   });
 });
 

@@ -9,7 +9,7 @@
 // sessions through the same tmux, and a test must not list, attach to, or
 // kill any of them. TMUX_TMPDIR gives the test its own server.
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -78,6 +78,18 @@ export async function startStand({ sessions = ['demo'] } = {}) {
     execFileSync('tmux', tmuxArgs(socket, ['new-session', '-d', '-s', name, 'sh', '-c', 'cat']), { env });
   }
   assertPrivateTmux(socket, dir, env);
+
+  // A Makefile the presets can reach. The real one launches agents through
+  // the sandbox wrapper; here the targets only have to produce a session on
+  // the private server, which is what the page and the endpoint are about.
+  writeFileSync(join(dir, 'Makefile'), [
+    'shell:',
+    `\ttmux -S ${socket} new-session -d -s shell-$$$$ sh -c cat`,
+    'claude:',
+    `\ttmux -S ${socket} new-session -d -s claude-$$$$ sh -c cat`,
+    '',
+  ].join('\n'));
+  env.POCKTERM_SESSION_DIR = dir;
 
   const server = spawn(join(ROOT, 'bin', 'pockterm'), [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   const log = [];

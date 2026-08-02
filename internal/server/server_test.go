@@ -439,3 +439,114 @@ func TestUploadRejectsGet(t *testing.T) {
 		t.Fatalf("status %d, want 405", resp.StatusCode)
 	}
 }
+
+// --- creating and renaming sessions ---
+
+func TestNewSessionRefusesAnUnknownPreset(t *testing.T) {
+	asked := ""
+	o := testOptions("")
+	o.StartSession = func(preset string) (err error) {
+		asked = preset
+		if preset != "claude" {
+			return errors.New("unknown preset")
+		}
+		return nil
+	}
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/new", "application/json",
+		strings.NewReader(`{"preset":"rm -rf /"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", resp.StatusCode)
+	}
+	// The preset still reached the starter, which is what validates it —
+	// this only checks the answer is a refusal, not a 500.
+	if asked != "rm -rf /" {
+		t.Errorf("starter saw %q", asked)
+	}
+}
+
+func TestNewSessionStarts(t *testing.T) {
+	started := ""
+	o := testOptions("")
+	o.StartSession = func(preset string) error { started = preset; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/new", "application/json", strings.NewReader(`{"preset":"claude"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if started != "claude" {
+		t.Errorf("started %q", started)
+	}
+}
+
+func TestNewSessionNeedsTheToken(t *testing.T) {
+	called := false
+	o := testOptions("secret")
+	o.StartSession = func(string) error { called = true; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/new", "application/json", strings.NewReader(`{"preset":"claude"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized || called {
+		t.Fatalf("status %d, starter called: %v", resp.StatusCode, called)
+	}
+}
+
+func TestRenameOnlyTouchesAListedSession(t *testing.T) {
+	called := false
+	o := testOptions("")
+	o.RenameSess = func(from, to string) error { called = true; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	// testOptions lists exactly one session, "demo".
+	resp, err := http.Post(srv.URL+"/api/sessions/rename", "application/json",
+		strings.NewReader(`{"from":"not-listed","to":"whatever"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", resp.StatusCode)
+	}
+	if called {
+		t.Error("a name the server does not list reached tmux")
+	}
+}
+
+func TestRenameWorks(t *testing.T) {
+	var gotFrom, gotTo string
+	o := testOptions("")
+	o.RenameSess = func(from, to string) error { gotFrom, gotTo = from, to; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/rename", "application/json",
+		strings.NewReader(`{"from":"demo","to":"notes"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if gotFrom != "demo" || gotTo != "notes" {
+		t.Errorf("renamed %q -> %q", gotFrom, gotTo)
+	}
+}

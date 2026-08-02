@@ -15,8 +15,22 @@
   <div id="screen-sessions">
     <header class="bar">
       <span class="title">pockterm</span>
+      <!-- With no session left there is nowhere to type the command that
+           would make one: this is the way back in. -->
+      <button id="new" title="New session">&plus;</button>
       <button id="refresh" title="Refresh">&#8635;</button>
     </header>
+    <div id="new-menu" hidden>
+      <button data-preset="shell">&#9656; Shell</button>
+      <button data-preset="claude">&#10022; Claude</button>
+      <button data-preset="yolo">&#9889; Claude (yolo)</button>
+      <button data-preset="continue">&#8635; Continue</button>
+    </div>
+    <div id="rename-box" hidden>
+      <input id="rename-input" type="text" autocomplete="off" placeholder="new name">
+      <button id="rename-save">Save</button>
+      <button id="rename-cancel">&#10005;</button>
+    </div>
     <ul id="session-list"></ul>
     <div id="empty" hidden>
       <p>No active tmux sessions.</p>

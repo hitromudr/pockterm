@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v28';
+const APP_VERSION = 'v29';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -100,9 +100,94 @@ async function loadSessions() {
       `<span class="meta">${win}${s.attached ? ' · attached' : ''}</span>`;
     b.addEventListener('click', () => attach(s.name));
     li.appendChild(b);
+
+    const ren = document.createElement('button');
+    ren.className = 'rename';
+    ren.textContent = '✎';
+    ren.title = `Rename ${s.name}`;
+    ren.addEventListener('click', () => openRename(s.name));
+    li.appendChild(ren);
+
     sessionList.appendChild(li);
   }
 }
+
+// --- starting and renaming sessions ---
+// pockterm still does not invent commands: the page asks for one of the
+// presets the Makefile defines, and the server runs that target. What this
+// closes is the dead end — no sessions left, and a phone with nowhere to type
+// the command that would create one.
+const newBtn = document.getElementById('new');
+const newMenu = document.getElementById('new-menu');
+const renameBox = document.getElementById('rename-box');
+const renameInput = document.getElementById('rename-input');
+let renameTarget = null;
+
+newBtn.addEventListener('click', () => {
+  newMenu.hidden = !newMenu.hidden;
+  renameBox.hidden = true;
+});
+
+for (const b of newMenu.querySelectorAll('button[data-preset]')) {
+  b.addEventListener('click', async () => {
+    const preset = b.dataset.preset;
+    newMenu.hidden = true;
+    toast(`starting ${preset}…`);
+    try {
+      const res = await fetch(`/api/sessions/new?${tokenQS}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preset }),
+      });
+      if (!res.ok) {
+        const why = (await res.text().catch(() => '')).trim();
+        toast(why || `could not start: ${res.status}`);
+        report('start-session', { preset, ok: false, status: res.status });
+        return;
+      }
+      report('start-session', { preset, ok: true });
+      // tmux needs a moment before the session shows up in the listing.
+      setTimeout(loadSessions, 400);
+    } catch (_) {
+      toast('no connection to the server');
+    }
+  });
+}
+
+function openRename(name) {
+  renameTarget = name;
+  renameInput.value = name;
+  renameBox.hidden = false;
+  newMenu.hidden = true;
+  renameInput.focus();
+  renameInput.select();
+}
+document.getElementById('rename-cancel').addEventListener('click', () => {
+  renameBox.hidden = true;
+  renameTarget = null;
+});
+document.getElementById('rename-save').addEventListener('click', async () => {
+  const to = renameInput.value.trim();
+  if (!renameTarget || !to || to === renameTarget) { renameBox.hidden = true; return; }
+  try {
+    const res = await fetch(`/api/sessions/rename?${tokenQS}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: renameTarget, to }),
+    });
+    if (!res.ok) {
+      // The server explains why in plain text — a name it will not accept is
+      // the common case, and silence would look like a broken button.
+      toast((await res.text().catch(() => '')).trim() || `rename failed: ${res.status}`);
+      return;
+    }
+    renameBox.hidden = true;
+    renameTarget = null;
+    loadSessions();
+  } catch (_) {
+    toast('no connection to the server');
+  }
+});
 
 function escapeHtml(s) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
