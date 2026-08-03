@@ -69,6 +69,24 @@ the next attempt costs a reload instead of an APK release. The drift itself is
 still open: all that is known is that replacing the input type does not cure
 it.
 
+## A session name can be a group in disguise
+
+tmux names a session group after the session it was created from and never
+renames it. Rename that session and the old name lives on as a group — and
+`new-session -t <name>`, which is how every client attaches, resolves a group
+before a session of the same name. Hand the freed name to another session and
+its tab opens the first session's window.
+
+This is not cosmetic: attaching merges the two sessions into one group
+permanently. Renaming out of it does not separate them, and `move-window` out
+of the group destroys the other session's windows. The only way out is to
+close one of the pair, which frees the other.
+
+`tmuxcmd.NameConflict` refuses such a name at the rename endpoint, and the
+session Makefile picks numbers that are free as both a session and a group
+name. Both guards exist because the trap is invisible from the page: two tabs,
+one window, and nothing anywhere saying why.
+
 ## Notifications are decided in one place
 
 `internal/watch` reads each watched session's pane with `capture-pane` and
