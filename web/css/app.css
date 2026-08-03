@@ -233,6 +233,20 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 #screen-term.panels-hidden #selbar,
 #screen-term.panels-hidden #overflow,
 #screen-term.panels-hidden #modebar { display: none !important; }
+#to-bottom {
+  position: absolute;
+  right: 10px;
+  bottom: calc(64px + env(safe-area-inset-bottom));
+  z-index: 12;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 22px;
+  font-size: 18px;
+  color: #0b0e14;
+  background: var(--accent);
+  opacity: 0.9;
+}
 #show-bars {
   position: absolute;
   right: 10px;

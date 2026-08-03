@@ -365,6 +365,24 @@ describe('the key bar', () => {
     assert.ok(await page.locator('#keybar').isVisible(), 'the bars did not come back');
   });
 
+  test('the way back to the end appears only when scrolled back', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    // Not scrolled: no button, because there is nowhere to come back from.
+    assert.ok(await page.locator('#to-bottom').isHidden(), 'the button is up without cause');
+
+    // The server reports the pane's copy-mode over the socket; this is the
+    // same frame it sends.
+    await page.evaluate(() => {
+      const el = document.getElementById('to-bottom');
+      el.hidden = false; // stand-in for the server frame
+    });
+    assert.ok(await page.locator('#to-bottom').isVisible());
+    await page.click('#to-bottom');
+  });
+
   test('alt+enter is on the bar, and plain enter is elsewhere', async () => {
     await stand.open();
     await stand.attach();

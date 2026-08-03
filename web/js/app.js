@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v58';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -457,8 +457,10 @@ if (term.textarea) {
     if (composing) return;
     e.preventDefault();
     send(keyBytes('backspace'));
-    commitPendingInput();
-    clearComposition();
+    // Nothing else. Ending the composition here — a synthetic compositionend,
+    // an emptied textarea — left the keyboard believing something else about
+    // its own state, and the next space went nowhere. The keys from the bar
+    // still do that, because there the keyboard is not mid-word.
   });
 }
 
@@ -529,6 +531,16 @@ document.getElementById('term').addEventListener('click', () => {
 // makes scrolling work on Android, where xterm's own scrollback is empty
 // under tmux.
 function sendWheel(btn) { send(`\x1b[<${btn};1;1M`); }
+
+// One wheel notch per row of movement, not per twenty pixels. A fixed step
+// scrolls a different distance at every text size and stutters between the
+// finger and the screen; a row is what tmux actually moves.
+function rowHeight() {
+  const row = document.querySelector('.xterm-rows > div');
+  const h = row && row.getBoundingClientRect().height;
+  return h && h > 4 ? h : Math.max(8, fontSize * 1.2);
+}
+
 let touchY = null;
 const termBox = document.getElementById('term');
 termBox.addEventListener('touchstart', (e) => {
@@ -539,7 +551,7 @@ termBox.addEventListener('touchstart', (e) => {
 termBox.addEventListener('touchmove', (e) => {
   if (touchY === null) return;
   let dy = e.touches[0].clientY - touchY;
-  const step = 20;
+  const step = rowHeight();
   while (dy >= step) { sendWheel(64); dy -= step; touchY += step; }   // swipe down → history
   while (dy <= -step) { sendWheel(65); dy += step; touchY -= step; }  // swipe up → newer
 }, { passive: true });
@@ -1097,9 +1109,20 @@ setInterval(() => show(doneNotice(notifyState, Date.now(), idleMs, document.hidd
 // belong to the past, so answering them would send digits to whatever is
 // running now. No buttons until the pane leaves the mode.
 let inCopyMode = false;
+// Scrolled back into history, the way out was a tmux key nobody has on a
+// phone. This button is the way back to the live end of the output, and it is
+// on screen exactly while there is somewhere to come back from.
+const toBottomBtn = document.getElementById('to-bottom');
+keepsTerminalFocus(toBottomBtn);
+toBottomBtn.addEventListener('click', () => {
+  // q leaves tmux copy-mode, which lands on the bottom of the pane.
+  send('q');
+});
+
 function setCopyMode(on) {
   if (on === inCopyMode) return;
   inCopyMode = on;
+  toBottomBtn.hidden = !on;
   renderAnswers();
 }
 
