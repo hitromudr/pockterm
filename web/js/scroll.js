@@ -91,6 +91,7 @@ export class Scroller {
     this.inFlight = [];
     this.lagMs = DEFAULT_LAG;
     this.ticking = false;
+    this.touching = false;
   }
 
   // report closes the books on a gesture: what was sent while the finger was
@@ -132,6 +133,8 @@ export class Scroller {
 
   // Where the drawn screen has to be to sit under the finger.
   //
+  // Only under the finger: see end() for why the glide is left alone.
+  //
   // tmux moves whole lines — two per notch here — and answers over a tunnel,
   // so between notches the screen has nothing to say about where the finger
   // is: it stood still for a couple of lines of travel and then jumped, which
@@ -152,7 +155,10 @@ export class Scroller {
   // error in lagMs; the redraw heuristic is wrong whenever anything else is
   // printing, which here is most of the time.
   track(at) {
-    if (!this.onTrack) return;
+    // Only while the finger is down. A frame already queued when the finger
+    // lifts would otherwise put the shift back for one frame after the gesture
+    // handed it over — a flick that twitched once as it started.
+    if (!this.onTrack || !this.touching) return;
     while (this.inFlight.length && at - this.inFlight[0].at >= this.lagMs) this.inFlight.shift();
     let owed = 0;
     for (const f of this.inFlight) owed += f.dir;
@@ -169,6 +175,8 @@ export class Scroller {
 
   start(at) {
     this.gliding = false; // a touch always catches the glide
+    this.touching = true;
+    this.ticking = false;
     this.carry = 0;
     this.speed = 0;
     this.lastAt = at;
@@ -244,7 +252,16 @@ export class Scroller {
   }
 
   // Let go: keep going if the finger was still moving.
+  //
+  // The shift goes back here, before the glide rather than after it. Covering
+  // the glide as well was the first thing tried and it juddered: a flick at
+  // 1.4 px/ms has two or three notches in the air at once, the cover then runs
+  // into MAX_TRACK, and a shift that stops following and then catches up is the
+  // stutter it was supposed to remove. Under a finger there is at most one
+  // notch outstanding, which is the case worth covering — and nobody can judge
+  // a fraction of a line at flick speed anyway.
   end(at) {
+    this.touching = false;
     this.idle = this.samples.length ? Math.max(0, Math.round(at - this.samples[this.samples.length - 1].at)) : 0;
     this.speed = this.velocity(at);
     const thrown = this.speed;
@@ -255,6 +272,8 @@ export class Scroller {
     this.gliding = true;
     this.lastAt = at;
     this.thrownAt = thrown;
+    this.inFlight = [];
+    if (this.onTrack) this.onTrack(0);
     this.raf((t) => this.glide(t));
   }
 
@@ -271,8 +290,6 @@ export class Scroller {
       this.report(at, this.thrownAt || 0);
       return;
     }
-    // The glide moves in whole lines too, so it needs the same cover.
-    this.track(at);
     this.raf((t) => this.glide(t));
   }
 

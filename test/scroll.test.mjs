@@ -296,15 +296,24 @@ test('letting go hands the picture back to tmux', () => {
   parked.s.end(16 + 300); // rested before lifting: no glide to wait for
   assert.equal(parked.last, 0, 'the shift outlived the gesture');
 
-  // Thrown: the shift belongs to the glide until the glide is done.
+  // Thrown: the shift goes back at the lift, and stays back for the whole
+  // glide. Covering the glide too was tried first and juddered — a flick has
+  // two or three notches in the air at once, the cover runs into MAX_TRACK, and
+  // a shift that stops following and then catches up is the stutter it was
+  // meant to remove. Under a finger there is at most one notch outstanding.
   const thrown = tracking({ step: 30 });
   thrown.s.start(0);
   for (let i = 1; i <= 5; i++) thrown.s.move(20, i * 16);
+  assert.notEqual(thrown.last, 0, 'the finger was not followed');
   thrown.s.end(80);
-  assert.notEqual(thrown.last, 0, 'the glide moves in whole lines too');
+  assert.equal(thrown.last, 0, 'the shift outlived the finger that asked for it');
   let at = 80;
+  const shiftsAtLift = thrown.shifts.length;
   for (let i = 0; i < 300; i++) { at += 16; thrown.idleTo(at); }
-  assert.equal(thrown.last, 0, 'the shift outlived the glide');
+  assert.equal(thrown.last, 0, 'the shift came back during the glide');
+  for (const px of thrown.shifts.slice(shiftsAtLift)) {
+    assert.equal(px, 0, `the glide shifted the screen by ${px}`);
+  }
 });
 
 test('a gesture that never glides still reports', () => {

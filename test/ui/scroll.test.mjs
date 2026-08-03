@@ -191,8 +191,10 @@ describe('a swipe follows the finger', () => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 
     await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
-    // Tapping it is how the page leaves history: it sends q, and the pane comes
-    // back to the live end.
+    // Tapped while the glide is still running, on purpose: inertia goes on
+    // sending notches after the finger has left, and those used to arrive
+    // behind the q and put the pane back into history — the button looked like
+    // it had done nothing. The tap cancels the glide first.
     await page.click('#to-bottom');
     await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
     const after = stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_in_mode} #{scroll_position}']).trim();

@@ -7,6 +7,7 @@ import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { Scroller } from './scroll.js';
 import { staleNotice } from './update.js';
+import { endingKeys } from './ender.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -16,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v76';
+const APP_VERSION = 'v77';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -401,11 +402,21 @@ function sendVisible() {
   }
 }
 
+// Asking is not enough: the committed word arrives in a later task, so the key
+// that ends the input waits for it. Everything about that rule, and why an
+// Enter sent in the same tick overtook the word it was meant to follow, is in
+// ender.js.
+const enders = endingKeys({ send, commit: commitPendingInput });
+
 term.onData((d) => {
   send(d);
   // No commitInput() here. Ending the composition after every single
   // character sounded thorough and was wrong: restartInput moves the caret
   // and reopens the input, so typing turned into jumping around the line.
+  //
+  // This, though, is where a held Enter learns that the word it was waiting for
+  // has arrived — see ender.js.
+  enders.sawData();
 });
 
 // One owner for typing, one for the bar.
@@ -445,17 +456,20 @@ function keepsTerminalFocus(el) {
 function commitPendingInput() {
   try {
     if (window.PockNative && typeof window.PockNative.commitInput === 'function') {
-      window.PockNative.commitInput();
+      return !!window.PockNative.commitInput();
     }
   } catch (_) { /* the key still has to go through */ }
+  return false;
 }
+
 
 document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
   keepsTerminalFocus(b);
   b.addEventListener('click', () => {
     // Only the keys that end an input need the keyboard to hand over its word.
-    if (b.dataset.key === 'enter' || b.dataset.key === 'alt-enter') commitPendingInput();
-    send(keyBytes(b.dataset.key));
+    const ends = b.dataset.key === 'enter' || b.dataset.key === 'alt-enter';
+    if (ends) enders.press(keyBytes(b.dataset.key));
+    else send(keyBytes(b.dataset.key));
     // No focus() here: the press already kept it, and calling it for someone
     // who was only reading would raise the keyboard over the screen.
   });
@@ -508,6 +522,14 @@ function sendWheel(btn) {
   if (wheelFlush === null) wheelFlush = requestAnimationFrame(flushWheel);
 }
 
+// Notches queued for a frame that no longer matters. Dropping them is not the
+// same as flushing them: they are movement the user has just cancelled, and
+// sending them puts the pane back where it was asked to leave.
+function dropQueuedWheel() {
+  if (wheelFlush !== null) { cancelAnimationFrame(wheelFlush); wheelFlush = null; }
+  wheelPending = 0;
+}
+
 function flushWheel() {
   if (wheelFlush !== null) { cancelAnimationFrame(wheelFlush); wheelFlush = null; }
   const n = Math.abs(wheelPending);
@@ -521,17 +543,32 @@ function flushWheel() {
 // When the last batch went out and whether its answer has arrived. The lag
 // between the two is what "the screen loses the finger" is made of, and it is
 // not visible from anywhere else.
+//
+// A frame arriving long after the batch is not that batch's answer, and the
+// journal proved it: one gesture reported lag 5791ms — notches sent, six quiet
+// seconds, then unrelated output counted as the reply. That reading went into
+// the estimate the shift is predicted with, pushed it to its 200ms ceiling, and
+// the screen then held every notch five times too long: a picture that lagged
+// the finger and jumped to catch up, reported as the scroll juddering and still
+// sticking. So a wait past this is not a measurement, it is a batch whose answer
+// never came, and it is counted as one.
+const LAG_MAX = 300; // milliseconds
 let wheelSentAt = 0;
 let wheelLag = 0;
 let wheelLagAvg = 0;
+let wheelLost = 0;
 function noteFrameArrived() {
   if (!wheelSentAt) return;
   const lag = performance.now() - wheelSentAt;
   wheelSentAt = 0;
+  if (lag > LAG_MAX) {
+    wheelLost++;
+    return;
+  }
   wheelLag = Math.max(wheelLag, Math.round(lag));
-  // The shift below has to guess when a notch has landed, and this is the only
-  // measurement of that there is. Smoothed, because a single frame arriving
-  // late is not what the next notch will do.
+  // The shift has to predict when a notch has landed, and this is the only
+  // measurement of that there is. Smoothed, because one frame arriving late is
+  // not what the next notch will do.
   wheelLagAvg = wheelLagAvg ? wheelLagAvg * 0.8 + lag * 0.2 : lag;
   scroller.setLag(wheelLagAvg);
 }
@@ -583,8 +620,19 @@ const scroller = new Scroller({
   // tmux, a notch away over the network. These numbers are.
   onGesture: (g) => {
     flushWheel(); // nothing queued may outlive the gesture that made it
-    report('scroll', { ...g, lines: wheelLines, lag: wheelLag });
+    // `lost` counts batches whose answer never came within LAG_MAX. It is
+    // reported because the alternative — folding those into `lag` — is what
+    // wrecked the shift, and because a swipe full of them says the tunnel is
+    // the problem and no amount of tuning here will help.
+    report('scroll', {
+      ...g,
+      lines: wheelLines,
+      lag: wheelLag,
+      lost: wheelLost,
+      predicted: Math.round(wheelLagAvg),
+    });
     wheelLag = 0;
+    wheelLost = 0;
   },
 });
 function setScrollStep() { scroller.setStep(rowHeight() * wheelLines); }
@@ -661,7 +709,15 @@ const MACROS = {
 // and both send the same thing.
 document.querySelectorAll('button[data-macro]').forEach((b) => {
   keepsTerminalFocus(b);
-  b.addEventListener('click', () => { commitPendingInput(); send(MACROS[b.dataset.macro]); });
+  b.addEventListener('click', () => {
+    // Same rule as the key bar's Enter, and the same list: what ends an input
+    // waits for the word, what interrupts it (esc, ctrl-c) must not wait for
+    // anything. Asking for a commit on those was what the comment above
+    // already said not to do.
+    const macro = b.dataset.macro;
+    if (macro === 'enter' || macro === 'accept') enders.press(MACROS[macro]);
+    else send(MACROS[macro]);
+  });
 });
 
 // Bottom bars are mutually exclusive: selection mode wins over prompt mode
@@ -1377,6 +1433,13 @@ let scrolledBack = false;
 const toBottomBtn = document.getElementById('to-bottom');
 keepsTerminalFocus(toBottomBtn);
 toBottomBtn.addEventListener('click', () => {
+  // The glide first. A flick's inertia goes on sending notches for up to a
+  // second after the finger has left, and those would arrive behind the q and
+  // put the pane straight back into the history it was just asked to leave —
+  // the button then looked like it had done nothing. Found by the browser test
+  // under load, where the glide outlives the tap by longer.
+  scroller.stop();
+  dropQueuedWheel();
   // q leaves tmux copy-mode, which lands on the bottom of the pane.
   send('q');
 });

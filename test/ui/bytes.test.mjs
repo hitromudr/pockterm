@@ -116,3 +116,81 @@ describe('what the key bar puts on the wire', () => {
     assert.equal(added.replace(/\r?\n/g, ''), '^[[C^M', `accept sent ${JSON.stringify(added)}`);
   });
 });
+
+// The keyboard's last word, and the newline that must not overtake it.
+//
+// Gboard holds the word being typed as a composing region; the app's bridge
+// ends that with commitInput(), and the committed text then reaches the page in
+// a later task. An Enter sent in the same tick as the call goes first — the line
+// arrives without its last word and the word turns up after the newline, which
+// is what "our Enter does not send the last word" was on the device.
+//
+// The IME cannot be reproduced here, but the ordering can: the bridge is faked,
+// and a real keystroke is delivered right after the tap on Enter, in the window
+// where the page is holding it. What reaches the pty says which went first.
+describe('an ending key waits for the word', () => {
+  let stand;
+  before(async () => {
+    stand = await startStand({ sessions: ['wire'], raw: true });
+    await stand.page.addInitScript(() => {
+      // Only commitInput: every other call site guards with typeof, so the
+      // clipboard and notifications keep their browser fallbacks.
+      window.PockNative = { commitInput() { return true; } };
+    });
+  });
+  after(async () => { await stand.stop(); });
+
+  const transcript = (page) =>
+    page.evaluate(() => (document.querySelector('.xterm-rows')?.textContent || '').replace(/\s+$/, ''));
+
+  test('a keystroke arriving after the tap still goes before the newline', async () => {
+    await stand.open();
+    await stand.attach('wire');
+    const { page } = stand;
+    await page.click('#term');
+    await page.waitForTimeout(500);
+
+    const before = await transcript(page);
+    await page.click('#keybar [data-key="enter"]');
+    // Stands in for the committed word: input that arrives after the key was
+    // tapped. Some 5-20ms later in practice, well inside the page's wait.
+    await page.keyboard.press('Z');
+    await page.waitForTimeout(700);
+    const added = (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+
+    assert.equal(added, 'Z^M', `the newline overtook the word: ${JSON.stringify(added)}`);
+  });
+
+  test('an ending key with no word behind it still goes', async () => {
+    // Most Enters have nothing in composition, and a key that waits forever for
+    // a word that never comes would be worse than the defect being fixed.
+    await stand.open();
+    await stand.attach('wire');
+    const { page } = stand;
+    await page.click('#term');
+    await page.waitForTimeout(500);
+
+    const before = await transcript(page);
+    await page.click('#keybar [data-key="enter"]');
+    await page.waitForTimeout(700);
+    const added = (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+    assert.equal(added, '^M', `Enter alone put ${JSON.stringify(added)} on the wire`);
+  });
+
+  test('accept waits the same way, and sends both bytes in order', async () => {
+    await stand.open();
+    await stand.attach('wire');
+    const { page } = stand;
+    await page.click('#term');
+    await page.waitForTimeout(500);
+
+    const before = await transcript(page);
+    await page.click('#keybar [data-macro="accept"]');
+    await page.keyboard.press('Z');
+    await page.waitForTimeout(700);
+    const added = (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+    // The word first, then the macro whole: a right arrow with a newline behind
+    // it, not split around the word.
+    assert.equal(added, 'Z^[[C^M', `accept put ${JSON.stringify(added)} on the wire`);
+  });
+});

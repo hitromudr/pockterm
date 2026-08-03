@@ -81,6 +81,26 @@ the next attempt costs a reload instead of an APK release. The drift itself is
 still open: all that is known is that replacing the input type does not cure
 it.
 
+## The bar's Enter waits for the keyboard's word
+
+Gboard holds the word being typed as a composing region, and only the app can
+end that — `PockNative.commitInput()`, which asks Android to restart the input.
+Calling it before Enter is necessary and was not sufficient: the committed text
+reaches the page in a later task, so an Enter sent in the same tick overtook it.
+The line went without its last word, and the word turned up after the newline.
+
+`web/js/ender.js` holds the key instead: released a moment after input arrives,
+or after 90ms when nothing was being composed. Both bounds matter — a commit can
+arrive in more than one chunk, and an Enter that sometimes does nothing would be
+worse than the defect. Only keys that end an input go through it (`enter`,
+`alt-enter`, the `accept` macro); `esc` and `ctrl-c` interrupt one and must not
+wait for anything.
+
+The bridge cannot say whether anything was composing — `commitInput` returns
+`true` whenever the app knows the call — so the page waits on the data, not on
+the answer. `test/ui/bytes.test.mjs` proves the order on the wire: a real
+keystroke delivered right after the tap lands before the `^M`.
+
 ## Scrolled back is not the same as copy-mode
 
 The page shows two things while the pane is scrolled back into history: the
@@ -136,6 +156,25 @@ first.
 Body text comes from `watch.Tail`, not from the last non-blank line: agent TUIs
 draw an input box and a shortcut hint under their output, so the last line on
 screen is usually `? for shortcuts` or a row of `─`.
+
+## What the shift under the finger does not cover
+
+The page shifts the drawn rows to follow the finger between whole lines
+(`track` in `web/js/scroll.js`), and two limits on that were learned by
+shipping it:
+
+- **Only while the finger is down.** Covering the glide as well was the first
+  version and it juddered: a flick at 1.4 px/ms has two or three notches in the
+  air at once, the cover then runs into `MAX_TRACK`, and a shift that stops
+  following and catches up in bursts is the stutter it was meant to remove.
+- **The lag estimate has to be guarded.** The shift predicts when a notch has
+  landed from the measured round trip, and the journal showed a reading of
+  5791ms — notches sent, six quiet seconds, then unrelated output counted as the
+  answer. That pushed the estimate to its ceiling and made every notch look
+  outstanding five times too long: the picture lagged the finger and jumped,
+  reported as juddering and still sticking. A wait past `LAG_MAX` is now counted
+  as a batch whose answer never came (`lost` in the gesture report) instead of
+  as a measurement.
 
 ## Diagnostics
 
