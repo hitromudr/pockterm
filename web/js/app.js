@@ -13,7 +13,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v71';
+const APP_VERSION = 'v72';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -349,6 +349,7 @@ function connect() {
     if (typeof e.data === 'string') { onControl(e.data); return; }
     // One bad write must not take the socket handler with it: an exception
     // here leaves the terminal frozen with output still arriving.
+    noteFrameArrived();
     try {
       term.write(new Uint8Array(e.data), scheduleScan);
     } catch (err) {
@@ -481,7 +482,46 @@ document.getElementById('term').addEventListener('click', () => {
 // so the wheel enters copy-mode and scrolls the history — this is what
 // makes scrolling work on Android, where xterm's own scrollback is empty
 // under tmux.
-function sendWheel(btn) { send(`\x1b[<${btn};1;1M`); }
+// Wheel notches are batched into one message per frame.
+//
+// A swipe produces twenty-odd notches in a second, and each one used to be its
+// own socket message: tmux redrew after every one, and the redraws came back
+// over the tunnel in clumps — the screen lost the finger and caught up in
+// jumps of several lines. One message per frame lets tmux move the history in
+// one go and answer with one screen.
+let wheelPending = 0;
+let wheelFlush = null;
+
+function sendWheel(btn) {
+  const dir = btn === 64 ? 1 : -1;
+  // A reversal mid-swipe must not cancel out silently: flush what is queued
+  // before turning around.
+  if (wheelPending !== 0 && Math.sign(wheelPending) !== dir) flushWheel();
+  wheelPending += dir;
+  if (wheelFlush === null) wheelFlush = requestAnimationFrame(flushWheel);
+}
+
+function flushWheel() {
+  if (wheelFlush !== null) { cancelAnimationFrame(wheelFlush); wheelFlush = null; }
+  const n = Math.abs(wheelPending);
+  if (n === 0) return;
+  const btn = wheelPending > 0 ? 64 : 65;
+  wheelPending = 0;
+  wheelSentAt = performance.now();
+  send(`\x1b[<${btn};1;1M`.repeat(n));
+}
+
+// When the last batch went out and whether its answer has arrived. The lag
+// between the two is what "the screen loses the finger" is made of, and it is
+// not visible from anywhere else.
+let wheelSentAt = 0;
+let wheelLag = 0;
+function noteFrameArrived() {
+  if (!wheelSentAt) return;
+  const lag = performance.now() - wheelSentAt;
+  wheelSentAt = 0;
+  wheelLag = Math.max(wheelLag, Math.round(lag));
+}
 
 // A row on screen, measured rather than computed: the font metrics of a
 // monospace face are not the line box xterm actually draws.
@@ -499,7 +539,11 @@ const scroller = new Scroller({
   notch: (dir) => sendWheel(dir > 0 ? 64 : 65), // +1 = towards history
   // How a swipe felt is not observable from here: the screen it moves lives in
   // tmux, a notch away over the network. These numbers are.
-  onGesture: (g) => report('scroll', { ...g, lines: wheelLines }),
+  onGesture: (g) => {
+    flushWheel(); // nothing queued may outlive the gesture that made it
+    report('scroll', { ...g, lines: wheelLines, lag: wheelLag });
+    wheelLag = 0;
+  },
 });
 function setScrollStep() { scroller.setStep(rowHeight() * wheelLines); }
 setScrollStep();
