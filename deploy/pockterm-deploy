@@ -31,6 +31,10 @@ UNIT="${UNIT:-pockterm.service}"
 
 NEW="$INCOMING/pockterm.new"
 SIG="$INCOMING/pockterm.new.hmac"
+# What the scheme that waited used to park a build under.
+PENDING="$INCOMING/pockterm.pending"
+PENDING_SIG="$INCOMING/pockterm.pending.hmac"
+SINCE="$INCOMING/pockterm.pending.since"
 
 log()  { printf 'pockterm-deploy: %s\n' "$*"; }
 fail() { printf 'pockterm-deploy: %s\n' "$*" >&2; rm -f "$NEW" "$SIG"; exit 1; }
@@ -87,11 +91,22 @@ install_binary() {
 	return 1
 }
 
-# Whatever the parking scheme left behind. Dropped rather than installed: a
-# build parked then is older than the one arriving now, and the file is ten
-# megabytes of nothing.
-rm -f "$INCOMING/pockterm.pending" "$INCOMING/pockterm.pending.hmac" \
-	"$INCOMING/pockterm.pending.since"
+# A build the previous scheme had parked. It is installed, not dropped: it is a
+# signed binary that was meant to go in, and the first version of this script
+# deleted it instead — which threw away a build that had arrived one minute
+# earlier, while the old script was still the one on the host. A build actually
+# arriving now supersedes it.
+if [ -f "$PENDING" ]; then
+	if [ -f "$NEW" ]; then
+		log "отложенная сборка старше пришедшей — отбрасываем её"
+		rm -f "$PENDING" "$PENDING_SIG"
+	else
+		log "ставим сборку, отложенную прежней схемой"
+		mv -f "$PENDING" "$NEW"
+		[ -f "$PENDING_SIG" ] && mv -f "$PENDING_SIG" "$SIG"
+	fi
+fi
+rm -f "$SINCE"
 
 if [ ! -f "$NEW" ]; then
 	log "нечего ставить"

@@ -94,20 +94,33 @@ grep -q 'нечего ставить' "$WORK/out" || bad "the script did not say
 grep -q 'restart' "$WORK/systemctl.log" && bad "a restart with nothing to install"
 ok "a trigger with nothing behind it is a no-op"
 
-# --- a build parked by the previous scheme ---
+# --- a build parked by the previous scheme, with nothing newer ---
 #
-# It is dropped, not installed: it is older than whatever arrives next, and ten
-# megabytes of it sit in a directory mounted into a job container.
-make_build parked
-cp "$WORK/build" "$INCOMING/pockterm.pending"
-sign "$INCOMING/pockterm.pending" > "$INCOMING/pockterm.pending.hmac"
-date +%s > "$INCOMING/pockterm.pending.since"
-drop sixth
-deploy || bad "a leftover parked build broke the install: $(cat "$WORK/out")"
-grep -q sixth "$BIN" || bad "the arriving build was not installed"
+# It goes in. The first version of this script deleted it instead, and on the
+# host that threw away a build parked one minute earlier by the old script it
+# was replacing — the one case where the two schemes meet, and the one where
+# losing the file costs a whole CI run.
+park() { # park <marker>
+	make_build "$1"
+	cp "$WORK/build" "$INCOMING/pockterm.pending"
+	sign "$INCOMING/pockterm.pending" > "$INCOMING/pockterm.pending.hmac"
+	date +%s > "$INCOMING/pockterm.pending.since"
+}
+park parked
+deploy || bad "the parked build was not taken: $(cat "$WORK/out")"
+grep -q parked "$BIN" || bad "the parked build was thrown away"
+grep -q 'restart pockterm.service' "$WORK/systemctl.log" || bad "the unit was not restarted"
 [ -f "$INCOMING/pockterm.pending" ] && bad "the parked build was left behind"
 [ -f "$INCOMING/pockterm.pending.since" ] && bad "the parking timestamp was left behind"
-ok "what the parking scheme left behind is cleaned up"
+ok "a build parked by the previous scheme is installed, not lost"
+
+# --- a parked build and a newer one arriving together ---
+park stale
+drop seventh
+deploy || bad "the pair broke the install: $(cat "$WORK/out")"
+grep -q seventh "$BIN" || bad "the arriving build lost to the parked one"
+[ -f "$INCOMING/pockterm.pending" ] && bad "the superseded build was left behind"
+ok "a build arriving now supersedes one parked earlier"
 
 echo
 printf '\033[1;34m[deploy-test]\033[0m all checks passed\n'
