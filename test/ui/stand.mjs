@@ -138,8 +138,14 @@ export async function startStand({ sessions = ['demo'], raw = false } = {}) {
     permissions: ['clipboard-read', 'clipboard-write'],
   });
   const page = await context.newPage();
+  // Две разные вещи, и смешивать их нельзя. `pageerror` — необработанное
+  // исключение, то есть всегда дефект: именно так страница умирала на загрузке
+  // с ReferenceError, а телефон показывал это как машину без tmux-сессий.
+  // Вывод в консоль бывает и безобидным — браузер сам просит /favicon.ico,
+  // которого в бинаре нет, и пишет про 404.
   const consoleErrors = [];
-  page.on('pageerror', (e) => consoleErrors.push(String(e)));
+  const pageErrors = [];
+  page.on('pageerror', (e) => { pageErrors.push(String(e)); consoleErrors.push(String(e)); });
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
 
   return {
@@ -147,9 +153,12 @@ export async function startStand({ sessions = ['demo'], raw = false } = {}) {
     base,
     uploads,
     consoleErrors,
+    pageErrors,
     serverLog: () => log.join(''),
-    async open() {
-      await page.goto(base);
+    // `query` открывает страницу с параметрами адреса — их читает выбор
+    // режима клавиатуры (`?ime=`), и без этого его в стенде не потрогать.
+    async open(query = '') {
+      await page.goto(base + query);
       // The app restores the session it was last attached to (that is what
       // makes an orientation reload survivable), so a second open lands in
       // the terminal, not on the list.
