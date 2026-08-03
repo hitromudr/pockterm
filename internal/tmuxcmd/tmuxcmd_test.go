@@ -2,6 +2,7 @@ package tmuxcmd
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -121,5 +122,50 @@ func TestParseWheelLines(t *testing.T) {
 		if got := ParseWheelLines(in); got != 5 {
 			t.Fatalf("ParseWheelLines(%q) = %d, want the 5 it falls back to", in, got)
 		}
+	}
+}
+
+func TestParseSessionsReadsTheGroup(t *testing.T) {
+	out := "devops\t1\t1754226692\t0\tnatal\n" +
+		"roost\t1\t1754221234\t1\t\n"
+	got := ParseSessions(out)
+	if len(got) != 2 {
+		t.Fatalf("parsed %d sessions", len(got))
+	}
+	if got[0].Group != "natal" {
+		t.Errorf("group = %q, want the group name tmux reports", got[0].Group)
+	}
+	if got[1].Group != "" {
+		t.Errorf("a session on its own has no group, got %q", got[1].Group)
+	}
+}
+
+func TestNameConflict(t *testing.T) {
+	// The state that produced the bug: a session renamed away from claude-1
+	// left a group still called claude-1 behind it.
+	sessions := []Session{
+		{Name: "devops", Group: "natal"},
+		{Name: "roost"},
+	}
+
+	if err := NameConflict("work", sessions); err != nil {
+		t.Errorf("an unused name was refused: %v", err)
+	}
+	if err := NameConflict("roost", sessions); err == nil {
+		t.Error("an existing session name must be refused")
+	}
+	// The one that cost an afternoon: no session is called natal, but the
+	// name resolves to devops's group, so a session taking it would have its
+	// tab open devops — and attaching would merge them irreversibly.
+	err := NameConflict("natal", sessions)
+	if err == nil {
+		t.Fatal("a name that is a live group must be refused")
+	}
+	if !strings.Contains(err.Error(), "devops") {
+		t.Errorf("the message should name the session holding the group: %v", err)
+	}
+	// A session may keep the name of its own group; nothing resolves elsewhere.
+	if err := NameConflict("natal", []Session{{Name: "natal", Group: "natal"}}); err == nil {
+		t.Error("renaming a session to its own group name changes nothing and must be allowed")
 	}
 }

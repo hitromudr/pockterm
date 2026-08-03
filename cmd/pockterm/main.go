@@ -337,6 +337,16 @@ func renamer(from, to string) error {
 	if err := session.ValidName(to); err != nil {
 		return err
 	}
+	// A name freed by an earlier rename can still exist as a session group,
+	// and handing it out again makes this session's tab open somebody else's
+	// window — permanently, since attaching merges the two. tmuxcmd.NameConflict
+	// has the details; this is the one place that can catch it.
+	sessions, err := listSessions()
+	if err == nil {
+		if err := tmuxcmd.NameConflict(to, sessions); err != nil {
+			return err
+		}
+	}
 	argv := session.Rename(from, to)
 	out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
 	if err != nil {

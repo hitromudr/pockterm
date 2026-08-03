@@ -26,10 +26,15 @@ type Session struct {
 	Windows  int    `json:"windows"`
 	Created  int64  `json:"created"` // unix seconds
 	Attached bool   `json:"attached"`
+	// Group this session belongs to, empty when it is on its own. tmux names
+	// a group after the session it was created from and never renames it, so
+	// this is frequently a name no session carries any more — and a name that
+	// must not be handed to another session. See NameConflict.
+	Group string `json:"-"`
 }
 
 // listFormat keeps the field order ParseSessions expects.
-const listFormat = "#{session_name}\t#{session_windows}\t#{session_created}\t#{session_attached}"
+const listFormat = "#{session_name}\t#{session_windows}\t#{session_created}\t#{session_attached}\t#{session_group}"
 
 // ListSessions returns the argv listing sessions one per line in the
 // tab-separated order ParseSessions parses.
@@ -47,19 +52,55 @@ func ParseSessions(out string) []Session {
 			continue
 		}
 		f := strings.Split(line, "\t")
-		if len(f) != 4 || f[0] == "" {
+		// The group field was added later; a line without it is still a
+		// session, just one whose group is unknown.
+		if len(f) < 4 || f[0] == "" {
 			continue
 		}
 		windows, _ := strconv.Atoi(f[1])
 		created, _ := strconv.ParseInt(f[2], 10, 64)
+		group := ""
+		if len(f) > 4 {
+			group = f[4]
+		}
 		sessions = append(sessions, Session{
 			Name:     f[0],
 			Windows:  windows,
 			Created:  created,
 			Attached: f[3] == "1",
+			Group:    group,
 		})
 	}
 	return sessions
+}
+
+// NameConflict reports why name cannot be given to a session, or nil.
+//
+// The trap it closes cost an afternoon on 2026-08-03. tmux names a session
+// group after the session it was created from and keeps that name after the
+// session is renamed, so a name freed by renaming still exists as a group.
+// Worse, `new-session -t <name>` — how a client attaches — resolves a group
+// before a session of the same name. Give a second session the freed name and
+// its tab opens the first session's window, and attaching merges the two into
+// one group for good: the merge cannot be undone, and moving a window out of
+// it destroys the other session's windows.
+//
+// The session's own group is not a conflict: renaming a session to the name
+// of the group it already belongs to changes nothing about what resolves
+// where.
+func NameConflict(name string, sessions []Session) error {
+	for _, s := range sessions {
+		if s.Name == name {
+			return fmt.Errorf("a session named %q already exists", name)
+		}
+	}
+	for _, s := range sessions {
+		if s.Group == name && s.Name != name {
+			return fmt.Errorf("%q is the name of the session group %q is in — "+
+				"tmux would open that session instead of this one; pick another name", name, s.Name)
+		}
+	}
+	return nil
 }
 
 // CapturePane returns the argv printing the visible text of session's
