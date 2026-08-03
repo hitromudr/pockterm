@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v58';
+const APP_VERSION = 'v59';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -401,6 +401,16 @@ term.onData((d) => {
 // asking the app to end the composition before Enter — without it the message
 // goes without the word the keyboard is still holding, which is a fact about
 // Gboard, not a choice.
+
+// Tapping a button must not take focus away from the terminal: on Android the
+// soft keyboard closes the moment the textarea loses focus, and a focus
+// restored later — in a timer, a frame callback, after an await — does not
+// bring it back, because it is no longer inside the touch. preventDefault on
+// the press keeps focus where it is; the click still fires.
+function keepsTerminalFocus(el) {
+  el.addEventListener('mousedown', (e) => e.preventDefault());
+}
+
 // --- key bar ---
 // Make the keyboard hand over the word it is still composing before a key
 // from this bar reaches the pty.
