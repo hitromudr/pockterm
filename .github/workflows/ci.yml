@@ -18,4 +18,4 @@ jobs:
       # `make check` includes `format`, which rewrites files instead of
       # failing on unformatted code; CI must only verify, not mutate.
       # JS tests run in the separate `test-js` target and are included explicitly.
-      - run: make lint test test-js
+      - run: make lint test test-js test-sh

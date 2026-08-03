@@ -29,6 +29,9 @@ type Presence interface {
 	Join(session string, id int64)
 	SetVisible(session string, id int64, visible bool)
 	Leave(session string, id int64)
+	// Counts answers /api/presence: attached clients, and how many of them
+	// have the page on screen.
+	Counts() (clients, visible int)
 }
 
 type Options struct {
@@ -58,6 +61,7 @@ func Handler(o Options) http.Handler {
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) { serveSessions(o, w, r) })
 	mux.HandleFunc("/api/upload", func(w http.ResponseWriter, r *http.Request) { serveUpload(o, w, r) })
 	mux.HandleFunc("/api/log", func(w http.ResponseWriter, r *http.Request) { serveLog(o, w, r) })
+	mux.HandleFunc("/api/presence", func(w http.ResponseWriter, r *http.Request) { servePresence(o, w, r) })
 	mux.HandleFunc("/api/sessions/new", func(w http.ResponseWriter, r *http.Request) { serveNewSession(o, w, r) })
 	mux.HandleFunc("/api/sessions/rename", func(w http.ResponseWriter, r *http.Request) { serveRename(o, w, r) })
 	mux.HandleFunc("/api/sessions/kill", func(w http.ResponseWriter, r *http.Request) { serveKill(o, w, r) })
@@ -99,6 +103,28 @@ func serveSessions(o Options, w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sessions)
+}
+
+// servePresence answers who is on the page right now. Its reader is the
+// deploy script on the host: installing a binary restarts this unit, and the
+// answer decides whether that is a good moment.
+//
+// "clients" counts open sockets, "visible" counts the tabs actually on
+// screen. A phone in a pocket keeps its socket for hours, so waiting for
+// clients to reach zero would mean never installing; waiting for visible is
+// the wait that ends.
+func servePresence(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.Presence == nil {
+		http.Error(w, "presence is not tracked", http.StatusNotFound)
+		return
+	}
+	clients, visible := o.Presence.Counts()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"clients": clients, "visible": visible})
 }
 
 // serveUpload takes an image pasted in the browser and answers with the path

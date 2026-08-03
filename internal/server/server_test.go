@@ -74,6 +74,68 @@ func TestSessionsEndpoint(t *testing.T) {
 	}
 }
 
+func TestPresenceEndpointReportsWhoIsLooking(t *testing.T) {
+	p := &fakePresence{clients: 3, viewing: 1}
+	opts := testOptions("")
+	opts.Presence = p
+	srv := httptest.NewServer(Handler(opts))
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/api/presence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	// The deploy script reads "visible": a pocketed phone holds a socket, so
+	// only this number ever reaches zero.
+	if got["clients"] != 3 || got["visible"] != 1 {
+		t.Fatalf("presence = %v, want clients 3 and visible 1", got)
+	}
+}
+
+func TestPresenceEndpointNeedsTheToken(t *testing.T) {
+	// It says whether the owner is at the terminal right now; that is not for
+	// anyone who reaches the port.
+	opts := testOptions("s3cret")
+	opts.Presence = &fakePresence{}
+	srv := httptest.NewServer(Handler(opts))
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/api/presence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d without a token, want 401", resp.StatusCode)
+	}
+
+	ok, err := http.Get(srv.URL + "/api/presence?token=s3cret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ok.Body.Close()
+	if ok.StatusCode != http.StatusOK {
+		t.Fatalf("status %d with the token, want 200", ok.StatusCode)
+	}
+}
+
+func TestPresenceAbsentWhenNotTracked(t *testing.T) {
+	srv := testServer(t, "") // testOptions leaves Presence nil
+	resp, err := http.Get(srv.URL + "/api/presence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d, want 404 when nothing tracks presence", resp.StatusCode)
+	}
+}
+
 func TestEchoRoundTrip(t *testing.T) {
 	srv := testServer(t, "")
 	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
@@ -201,6 +263,8 @@ type fakePresence struct {
 	joined  []int64
 	visible []bool
 	left    []int64
+	clients int // what Counts reports, set by the test
+	viewing int
 }
 
 func (p *fakePresence) Watch(s string) {
@@ -225,6 +289,12 @@ func (p *fakePresence) Leave(s string, id int64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.left = append(p.left, id)
+}
+
+func (p *fakePresence) Counts() (int, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.clients, p.viewing
 }
 
 // eventually polls cond until it holds or the deadline passes.

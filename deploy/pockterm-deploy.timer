@@ -1,0 +1,12 @@
+[Unit]
+Description=Retry a parked pockterm install once nobody is looking
+Documentation=file:///usr/local/sbin/pockterm-deploy
+
+[Timer]
+# Started by the script itself when a build has to wait, stopped by it once
+# the build is in. Not enabled at boot: with nothing parked there is nothing
+# to retry.
+OnActiveSec=1min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Unit=pockterm-deploy.service

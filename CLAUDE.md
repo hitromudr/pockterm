@@ -90,19 +90,33 @@ fix before it was a guess.
 
 ## Deploy
 
-A push to `main` builds and tests; it does **not** install. Installing
-restarts the unit that serves the terminal its author is usually sitting in,
-so the handover waits for someone to press Run workflow (`workflow_dispatch`).
-Do not install by hand on the RPi5, and do not run the `pockterm_app` ansible
-role's binary copy against it.
+A push to `main` builds, tests and hands the binary over; **the host decides
+when to install it**, because installing restarts the unit that serves the
+terminal its author is usually sitting in. Do not install by hand on the RPi5,
+and do not run the `pockterm_app` ansible role's binary copy against it.
 
 `.forgejo/workflows/deploy.yml` runs on the runner that lives on that same box.
 The job builds in a container and drops `pockterm.new` plus an HMAC signature
 into `/var/lib/pockterm/incoming`; the host watches that path
 (`pockterm-deploy.path`) and `/usr/local/sbin/pockterm-deploy` verifies the
-signature, installs the binary and restarts the unit. Identical bytes are a
-no-op, so a docs-only push does not drop anyone's terminal; a binary that
-fails to start is rolled back to the previous one.
+signature and takes it from there. Identical bytes are a no-op, so a docs-only
+push does not drop anyone's terminal; a binary that fails to start is rolled
+back to the previous one.
+
+The timing question is answered by `/api/presence`, which reports attached
+clients and how many have the page on screen. The script installs when that
+second number is zero, and otherwise parks the build as `pockterm.pending` and
+starts `pockterm-deploy.timer` to retry every minute — usually landing within
+a minute of the phone being put down. Waiting on *attached* clients instead
+would never end: a pocketed PWA holds its socket for hours. `FORCE_AFTER`
+(default 6h) bounds the wait; a server that cannot answer counts as free,
+which is also what bootstraps the scheme from a build that predates the
+endpoint.
+
+The host-side pieces — `pockterm-deploy`, its `.path`, `.service` and
+`.timer` — live in `deploy/` in this repository and are covered by
+`test/deploy_test.sh` (`make test-deploy`), which stubs systemctl and curl.
+They were host-only files until 2026-08-03, owned by nothing.
 
 The signing key is the repo Actions secret `DEPLOY_HMAC_KEY` and
 `/etc/pockterm/deploy-hmac.key` on the host. It exists because the drop

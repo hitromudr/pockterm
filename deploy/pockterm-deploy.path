@@ -1,0 +1,12 @@
+[Unit]
+Description=Watch for a pockterm binary dropped by CI
+Documentation=file:///usr/local/sbin/pockterm-deploy
+
+[Path]
+# The job writes the signature first and renames the binary into place last,
+# so the appearance of this file means both parts are complete.
+PathExists=/var/lib/pockterm/incoming/pockterm.new
+Unit=pockterm-deploy.service
+
+[Install]
+WantedBy=paths.target

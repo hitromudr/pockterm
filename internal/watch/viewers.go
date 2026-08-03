@@ -51,6 +51,28 @@ func (v *Viewers) Leave(session string, id int64) {
 	}
 }
 
+// Counts reports how many clients are attached at all, and how many of them
+// have their tab on screen right now.
+//
+// It exists for the deploy script rather than for the UI: installing a new
+// binary restarts the unit, and the one moment not to do that is while
+// somebody is typing into the terminal it serves. A backgrounded tab still
+// holds its socket, so "attached" alone would never give an install window —
+// the visible count is the one worth waiting on.
+func (v *Viewers) Counts() (clients, visible int) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for _, c := range v.m {
+		for _, seen := range c {
+			clients++
+			if seen {
+				visible++
+			}
+		}
+	}
+	return clients, visible
+}
+
 // Viewing reports whether any client has this session visible.
 func (v *Viewers) Viewing(session string) bool {
 	v.mu.Lock()

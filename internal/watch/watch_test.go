@@ -212,6 +212,33 @@ func TestViewers(t *testing.T) {
 	}
 }
 
+func TestViewerCountsSpanEverySession(t *testing.T) {
+	v := NewViewers()
+	if clients, visible := v.Counts(); clients != 0 || visible != 0 {
+		t.Fatalf("empty registry counts %d/%d", clients, visible)
+	}
+	v.Join("claude", 1)
+	v.Join("notes", 2)
+	// The deploy script waits on this: two attached, both looking.
+	if clients, visible := v.Counts(); clients != 2 || visible != 2 {
+		t.Fatalf("counts %d/%d, want 2/2", clients, visible)
+	}
+	// A backgrounded tab keeps its socket, so it stays a client and stops
+	// being a viewer — that difference is the whole point of the counter.
+	v.SetVisible("claude", 1, false)
+	if clients, visible := v.Counts(); clients != 2 || visible != 1 {
+		t.Fatalf("counts %d/%d, want 2/1", clients, visible)
+	}
+	v.Leave("notes", 2)
+	if clients, visible := v.Counts(); clients != 1 || visible != 0 {
+		t.Fatalf("counts %d/%d, want 1/0", clients, visible)
+	}
+	v.Leave("claude", 1)
+	if clients, visible := v.Counts(); clients != 0 || visible != 0 {
+		t.Fatalf("counts %d/%d after everybody left", clients, visible)
+	}
+}
+
 func TestFormat(t *testing.T) {
 	q := Event{
 		Kind:    Question,

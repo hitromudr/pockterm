@@ -18,3 +18,5 @@ func (p Presence) SetVisible(session string, id int64, visible bool) {
 }
 
 func (p Presence) Leave(session string, id int64) { p.Viewers.Leave(session, id) }
+
+func (p Presence) Counts() (clients, visible int) { return p.Viewers.Counts() }

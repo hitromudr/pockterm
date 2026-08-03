@@ -1,4 +1,4 @@
-.PHONY: install uninstall qr test-install
+.PHONY: install uninstall qr test-install test-deploy test-sh
 
 install: ## Install on this machine (binary, token, systemd unit)
 	sudo bash deploy/install.sh
@@ -16,3 +16,8 @@ qr: ## Print the client link as a QR code (PUBLIC_URL=https://your.domain)
 
 test-install: ## Exercise deploy/install.sh in temporary paths
 	bash test/install_test.sh
+
+test-deploy: ## Exercise deploy/pockterm-deploy (stubbed systemctl and curl)
+	bash test/deploy_test.sh
+
+test-sh: test-install test-deploy ## Run both shell test suites

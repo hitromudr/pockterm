@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# pockterm-deploy — install a pockterm binary dropped by CI, when nobody is
+# looking at the terminal.
+#
+# The CI job runs in a container and cannot touch the host, so it only leaves
+# a signed file in $INCOMING. This script is what installs it: triggered by
+# pockterm-deploy.path when the file appears, and by pockterm-deploy.timer
+# afterwards for as long as the moment is wrong.
+#
+# Why the HMAC: $INCOMING is mounted into a job container, and the runner
+# serves every repository on this Forgejo, not only pockterm. Without a
+# signature any workflow could drop a binary here and have the host install it
+# as root. The key lives in the pockterm repo's Actions secrets, which other
+# repositories cannot read.
+#
+# Why the wait: installing restarts the unit, and the unit serves the terminal
+# its author is usually sitting in. Waiting on open sockets would never end —
+# a pocketed phone holds one for hours — so the question asked is narrower:
+# does anyone have the page on screen right now (/api/presence, "visible").
+# The install lands in the first gap, usually within a minute of putting the
+# phone down; FORCE_AFTER puts an upper bound on the wait.
+set -euo pipefail
+
+INCOMING="${INCOMING:-/var/lib/pockterm/incoming}"
+KEY_FILE="${KEY_FILE:-/etc/pockterm/deploy-hmac.key}"
+ENV_FILE="${ENV_FILE:-/etc/pockterm/pockterm.env}"
+BIN="${BIN:-/usr/local/bin/pockterm}"
+# Who owns the installed binary. Overridable so the test can exercise this
+# script without root; on the host it stays root:root.
+BIN_OWNER="${BIN_OWNER:-root}"
+BIN_GROUP="${BIN_GROUP:-root}"
+UNIT="${UNIT:-pockterm.service}"
+TIMER="${TIMER:-pockterm-deploy.timer}"
+PRESENCE_URL="${PRESENCE_URL:-http://127.0.0.1:8130/api/presence}"
+# How long a build may wait for a gap before it goes in anyway. 0 waits
+# forever, which is a terminal that never gets its fix.
+FORCE_AFTER="${FORCE_AFTER:-21600}" # 6h
+
+NEW="$INCOMING/pockterm.new"
+SIG="$INCOMING/pockterm.new.hmac"
+# A build waiting for its moment is parked under a different name: the path
+# unit watches pockterm.new, and leaving it there would retrigger this script
+# in a loop.
+PENDING="$INCOMING/pockterm.pending"
+PENDING_SIG="$INCOMING/pockterm.pending.hmac"
+SINCE="$INCOMING/pockterm.pending.since"
+
+log()  { printf 'pockterm-deploy: %s\n' "$*"; }
+fail() { printf 'pockterm-deploy: %s\n' "$*" >&2; rm -f "$NEW" "$SIG"; exit 1; }
+
+# verify checks the signature of $1 and that the binary runs at all. Signature
+# over the bytes, not over a name or a timestamp: the bytes are what becomes
+# root-owned.
+verify() {
+	local file="$1" sig="$2" want got
+	[ -f "$sig" ] || return 1
+	[ -s "$KEY_FILE" ] || { log "нет ключа $KEY_FILE"; return 1; }
+	want="$(openssl dgst -sha256 -hmac "$(cat "$KEY_FILE")" -r "$file" | cut -d' ' -f1)"
+	got="$(tr -d ' \n\r\t' < "$sig")"
+	[ "$want" = "$got" ] || return 1
+	chmod 0755 "$file"
+	"$file" --help >/dev/null 2>&1
+}
+
+# viewers prints how many clients have the page on screen, or "unknown" when
+# the running server cannot say.
+viewers() {
+	local token url body
+	token=""
+	if [ -r "$ENV_FILE" ]; then
+		token="$(sed -n 's/^POCKTERM_TOKEN=//p' "$ENV_FILE" | tail -n1)"
+	fi
+	url="$PRESENCE_URL"
+	if [ -n "$token" ]; then
+		url="$url?token=$token"
+	fi
+	body="$(curl -fsS --max-time 3 "$url" 2>/dev/null)" || { echo unknown; return; }
+	case "$body" in
+		*'"visible"'*) echo "$body" | sed -n 's/.*"visible"[: ]*\([0-9][0-9]*\).*/\1/p' ;;
+		*) echo unknown ;;
+	esac
+}
+
+# free reports whether this is a good moment to restart the unit. An
+# unreachable or too-old server answers "unknown", and that counts as free:
+# either it is not serving anyone, or it is a build old enough not to have the
+# endpoint, and both are moments worth taking.
+free() {
+	local v
+	v="$(viewers)"
+	case "$v" in
+		unknown) log "сервер не сказал, кто на странице — считаем, что никто"; return 0 ;;
+		0) return 0 ;;
+		*) log "на странице сейчас $v — ждём"; return 1 ;;
+	esac
+}
+
+# install replaces the binary and restarts the unit, rolling back if the new
+# one does not come up.
+install_binary() {
+	local file="$1" sig="$2" new_sum cur_sum prev="$BIN.prev"
+	new_sum="$(sha256sum "$file" | cut -d' ' -f1)"
+	cur_sum="$(sha256sum "$BIN" 2>/dev/null | cut -d' ' -f1 || true)"
+	if [ "$new_sum" = "$cur_sum" ]; then
+		# A docs-only push rebuilds the same bytes; restarting would drop
+		# every open terminal for nothing.
+		log "бинарь не изменился — перезапуск не нужен"
+		rm -f "$file" "$sig" "$SINCE"
+		return 0
+	fi
+
+	if [ -f "$BIN" ]; then
+		cp -a "$BIN" "$prev"
+	fi
+	install -o "$BIN_OWNER" -g "$BIN_GROUP" -m 0755 "$file" "$BIN.incoming"
+	mv -f "$BIN.incoming" "$BIN"
+	rm -f "$file" "$sig" "$SINCE"
+	log "поставлен $new_sum"
+
+	systemctl restart "$UNIT"
+	for _ in 1 2 3 4 5; do
+		systemctl is-active --quiet "$UNIT" && { log "$UNIT поднялся"; return 0; }
+		sleep 1
+	done
+
+	# Restart=always would keep the unit flapping on a broken binary; roll
+	# back to the copy just made instead of leaving the terminal unreachable.
+	if [ -f "$prev" ]; then
+		log "$UNIT не поднялся — откат на предыдущий бинарь"
+		mv -f "$prev" "$BIN"
+		systemctl restart "$UNIT" || true
+	fi
+	return 1
+}
+
+# park moves a verified build aside and starts the timer that will retry it.
+park() {
+	mv -f "$NEW" "$PENDING"
+	mv -f "$SIG" "$PENDING_SIG"
+	[ -f "$SINCE" ] || date +%s > "$SINCE"
+	systemctl start "$TIMER" 2>/dev/null || log "не удалось запустить $TIMER"
+	log "сборка ждёт свободной минуты ($PENDING)"
+}
+
+# waited prints how many seconds the pending build has been waiting.
+waited() {
+	local since now
+	[ -f "$SINCE" ] || { echo 0; return; }
+	since="$(cat "$SINCE" 2>/dev/null || echo 0)"
+	now="$(date +%s)"
+	echo $(( now - since ))
+}
+
+# A fresh drop: verify it, then either install it or park it.
+if [ -f "$NEW" ]; then
+	verify "$NEW" "$SIG" || fail "подпись не сходится или бинарь не запускается — отброшено"
+	# A newer build replaces one still waiting: nobody wants yesterday's fix.
+	rm -f "$PENDING" "$PENDING_SIG"
+	if free; then
+		rc=0
+		install_binary "$NEW" "$SIG" || rc=$?
+		systemctl stop "$TIMER" 2>/dev/null || true
+		exit "$rc"
+	fi
+	park
+	exit 0
+fi
+
+# A parked build: install it once the moment comes, or once it has waited too
+# long for one.
+if [ -f "$PENDING" ]; then
+	verify "$PENDING" "$PENDING_SIG" || {
+		log "отложенная сборка не проходит проверку — отброшена"
+		rm -f "$PENDING" "$PENDING_SIG" "$SINCE"
+		systemctl stop "$TIMER" 2>/dev/null || true
+		exit 1
+	}
+	forced=0
+	if [ "$FORCE_AFTER" -gt 0 ] && [ "$(waited)" -ge "$FORCE_AFTER" ]; then
+		forced=1
+	fi
+	if free || [ "$forced" = 1 ]; then
+		if [ "$forced" = 1 ]; then
+			log "ждём $(waited)с, дольше $FORCE_AFTER — ставим, не дожидаясь паузы"
+		fi
+		rc=0
+		install_binary "$PENDING" "$PENDING_SIG" || rc=$?
+		systemctl stop "$TIMER" 2>/dev/null || true
+		exit "$rc"
+	fi
+	exit 0
+fi
+
+log "нечего ставить"
+systemctl stop "$TIMER" 2>/dev/null || true
+exit 0

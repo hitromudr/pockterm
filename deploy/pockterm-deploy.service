@@ -1,0 +1,11 @@
+[Unit]
+Description=Install the pockterm binary dropped by CI
+Documentation=file:///usr/local/sbin/pockterm-deploy
+After=pockterm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pockterm-deploy
+# The script consumes pockterm.new itself — installing it, parking it as
+# pockterm.pending, or dropping it — so the path unit never sees the same
+# trigger twice and cannot loop.
