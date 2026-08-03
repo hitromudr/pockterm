@@ -199,8 +199,17 @@ tmux (`list-keys -T copy-mode WheelUpPane`) on every connect and sends it in the
 On the owner's host it is **one line since 2026-08-03**, set in `~/.tmux.conf`:
 five (tmux's default) meant a short swipe moved nothing until the finger had
 travelled five rows, two still left a two-row residue that read as the screen
-sliding back at the release. One is the floor. That file is hand-made and in no
-repository — changing the step is a change to it and to nothing in here.
+sliding back at the release. One is the floor. That file lives in the `dotfiles`
+repository since 2026-08-03 (`tmux/tmux.conf`, symlinked by its installer, and
+the small step is behind an `%if` on the hostname — one line is a step for a
+thumb, not for a mouse) — changing the step is a change to it and to nothing in
+here.
+
+**The count in that binding has to be a literal.** tmux does expand a format in
+`send-keys -N`, so a variable works as far as tmux is concerned, but `list-keys`
+prints the binding with the format unexpanded and that output is all this server
+knows: `ParseWheelLines` falls back to 5 on anything non-numeric. tmux would
+scroll one row while the page compensated for five.
 
 ## What the shift under the finger does not cover
 
