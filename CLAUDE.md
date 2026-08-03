@@ -139,6 +139,23 @@ session Makefile picks numbers that are free as both a session and a group
 name. Both guards exist because the trap is invisible from the page: two tabs,
 one window, and nothing anywhere saying why.
 
+## The session list is a drawer, not a screen
+
+It was a screen of its own, and switching to it tore the terminal down: the
+socket closed, `term.reset()` ran, and coming back redrew from tmux. The list is
+what you open to see what else is running, so what is running has to survive it.
+
+`#screen-sessions` is a fixed panel over the terminal now, off-screen by a
+transform rather than by `hidden` — a transform animates and leaves the terminal
+underneath untouched, where `display: none` would reflow it. `☰` toggles it, `✕`
+sits where `☰` is so the same spot closes it, and a tap on the scrim closes it
+too. With no session attached the terminal screen is hidden and the drawer is all
+there is, which is where the page starts and where closing the last session
+lands.
+
+The tab strip is the same list in miniature, so it carries the same `+` with the
+same four presets — and the same handler, because two would drift.
+
 ## Notifications are decided in one place
 
 `internal/watch` reads each watched session's pane with `capture-pane` and

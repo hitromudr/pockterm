@@ -20,17 +20,48 @@ html, body {
   overscroll-behavior: none;
 }
 
-/* A screen fills the visual viewport; only one is visible at a time.
-   The :not([hidden]) guard matters: a bare `#id { display: flex }` beats
-   the `hidden` attribute by specificity, which would leave the hidden
-   screen in flow (empty gap, broken layout, clicks landing on the wrong
-   layer). Scoping display:flex to the visible screen lets `hidden` win. */
-#screen-sessions:not([hidden]), #screen-term:not([hidden]) {
+/* The terminal fills the visual viewport.
+   The :not([hidden]) guard matters: a bare `#id { display: flex }` beats the
+   `hidden` attribute by specificity, which would leave a hidden screen in flow
+   (empty gap, broken layout, clicks landing on the wrong layer). */
+#screen-term:not([hidden]) {
   display: flex;
   flex-direction: column;
   height: var(--vvh);
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
            0 env(safe-area-inset-left);
+}
+
+/* The session list slides in from the left over the terminal and slides back on
+   the same button. It used to be a screen of its own, which meant the terminal
+   was torn down to look at the list — and the list is something you open to see
+   what else is running, not to leave what you are in.
+   Off-screen rather than hidden: a transform animates, `display: none` does not,
+   and the drawer has to be reachable by a swipe or a tap without a reflow of the
+   terminal underneath. */
+#screen-sessions {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(86%, 360px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  height: var(--vvh);
+  padding: env(safe-area-inset-top) 0 0 env(safe-area-inset-left);
+  background: var(--bg);
+  border-right: 1px solid #2a3345;
+  transform: translateX(-101%);
+  transition: transform 200ms ease;
+}
+#screen-sessions.open { transform: none; }
+/* What a tap outside the drawer lands on. */
+#drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  background: #00000099;
 }
 
 .bar {

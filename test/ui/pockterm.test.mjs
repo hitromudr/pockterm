@@ -38,6 +38,87 @@ describe('sessions screen', () => {
   });
 });
 
+describe('the session list is a drawer', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['demo', 'other'] }); });
+  after(async () => { await stand.stop(); });
+
+  const drawer = () => stand.page.evaluate(() => {
+    const el = document.getElementById('screen-sessions');
+    return {
+      open: el.classList.contains('open'),
+      x: Math.round(el.getBoundingClientRect().x),
+      scrim: !document.getElementById('drawer-scrim').hidden,
+      termHidden: document.getElementById('screen-term').hidden,
+    };
+  });
+
+  test('the terminal stays where it is while the list is open', async () => {
+    // It used to be a screen of its own: opening the list tore the terminal down
+    // and coming back reset it. The list is what you open to see what else is
+    // running, so what is running has to survive it.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    await page.click('#term');
+    await page.keyboard.type('still here');
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('still here'));
+
+    await page.click('#back');
+    // On the geometry, not the class: the drawer slides, so it is on screen a
+    // fifth of a second after it is told to be.
+    await page.waitForFunction(
+      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      null, { timeout: 3000 },
+    );
+    let d = await drawer();
+    assert.equal(d.open, true, `the drawer did not open: ${JSON.stringify(d)}`);
+    assert.equal(d.termHidden, false, 'the terminal was taken away to show the list');
+    assert.equal(d.scrim, true, 'nothing to tap outside the drawer');
+
+    // The same button closes it, and ✕ sits where ☰ is.
+    await page.click('#drawer-close');
+    await page.waitForFunction(() => !document.getElementById('screen-sessions').classList.contains('open'));
+    d = await drawer();
+    assert.equal(d.scrim, false);
+    assert.ok(await page.locator('.xterm-rows').textContent().then((t) => t.includes('still here')),
+      'the terminal was reset by a trip to the list');
+  });
+
+  test('a tap outside closes it, and a session in it switches', async () => {
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+
+    await page.click('#back');
+    await page.waitForFunction(
+      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      null, { timeout: 3000 },
+    );
+    // Outside the drawer, which is 86% of a 390px screen at most 360.
+    await page.mouse.click(380, 400);
+    await page.waitForFunction(() => !document.getElementById('screen-sessions').classList.contains('open'));
+
+    await page.click('#back');
+    await page.click('button.session:has-text("other")');
+    await page.waitForFunction(() => !document.getElementById('screen-sessions').classList.contains('open'));
+    // The strip follows the switch.
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tabs button.active');
+      return active && active.textContent === 'other';
+    }, null, { timeout: 5000 });
+  });
+
+  test('with nothing attached the drawer is where the page starts', async () => {
+    const { page } = stand;
+    await page.evaluate(() => sessionStorage.removeItem('pt-session'));
+    await page.goto(stand.base);
+    await page.waitForFunction(() => document.getElementById('screen-sessions').classList.contains('open'));
+    const d = await drawer();
+    assert.equal(d.termHidden, true, 'an empty terminal is sitting under the drawer');
+  });
+});
+
 describe('selection and the clipboard', () => {
   let stand;
   before(async () => { stand = await startStand(); });

@@ -11,9 +11,16 @@
   <title>pockterm</title>
 </head>
 <body>
-  <!-- Screen 1: pick a session. pockterm never creates one. -->
+  <!-- The session list is a drawer over the terminal, not a screen of its own.
+       Switching screens threw the terminal away while you looked at the list —
+       and looking at the list is something you do to check what else is running,
+       not to leave what you are in. -->
+  <div id="drawer-scrim" hidden></div>
   <div id="screen-sessions">
     <header class="bar">
+      <!-- Where ☰ is on the terminal's header, so the same spot opens and
+           closes it. -->
+      <button id="drawer-close" title="Close the list">&#10005;</button>
       <span class="title">pockterm</span>
       <!-- With no session left there is nowhere to type the command that
            would make one: this is the way back in. -->

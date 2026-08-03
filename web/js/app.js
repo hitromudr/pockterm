@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v84';
+const APP_VERSION = 'v85';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -289,13 +289,42 @@ function escapeHtml(s) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+// The drawer, and the two things that are not the same: showing the list, and
+// letting go of the session you are in.
+//
+// It was one screen replacing another, so opening the list closed the terminal —
+// and the list is what you open to see what else is running. Now the terminal
+// stays where it is underneath.
+const drawerScrim = document.getElementById('drawer-scrim');
+function openDrawer() {
+  screenSessions.classList.add('open');
+  drawerScrim.hidden = false;
+  loadSessions();
+}
+function closeDrawer() {
+  screenSessions.classList.remove('open');
+  drawerScrim.hidden = true;
+  // The rename field and the presets belong to the list; leaving them open would
+  // have them waiting behind a closed drawer.
+  renameBox.hidden = true;
+  newMenu.hidden = true;
+}
+function toggleDrawer() {
+  if (screenSessions.classList.contains('open')) closeDrawer();
+  else openDrawer();
+}
+drawerScrim.addEventListener('click', closeDrawer);
+document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+
+// No session attached: there is nothing to show under the drawer, so the
+// terminal goes away with it and the drawer is all there is. That is where the
+// page starts, and where closing the last session lands.
 function showSessions() {
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   current = null;
   try { sessionStorage.removeItem('pt-session'); } catch (_) {}
   screenTerm.hidden = true;
-  screenSessions.hidden = false;
-  loadSessions();
+  openDrawer();
 }
 
 function attach(name) {
@@ -312,8 +341,8 @@ function attach(name) {
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   current = name;
   try { sessionStorage.setItem('pt-session', name); } catch (_) {}
-  screenSessions.hidden = true;
   screenTerm.hidden = false;
+  closeDrawer();
   // A frozen screen belongs to the session it was frozen from.
   if (selectMode) setSelectMode(false);
   term.reset();
@@ -501,7 +530,7 @@ document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
   });
 });
 
-document.getElementById('back').addEventListener('click', showSessions);
+document.getElementById('back').addEventListener('click', toggleDrawer);
 document.getElementById('refresh').addEventListener('click', loadSessions);
 
 // Terminal text size (A-/A+), persisted; refit so the grid follows.
