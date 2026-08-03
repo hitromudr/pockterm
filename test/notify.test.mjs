@@ -47,3 +47,10 @@ test('a body longer than a notification can show is cut', () => {
   assert.ok(n.body.length < 1000);
   assert.ok(n.body.endsWith('…'));
 });
+
+test('the session travels with the notice — a tap has to land on it', () => {
+  assert.equal(noticeFrom(done).session, 'claude-1');
+  // Missing rather than wrong: an old server sends no session, and the tap
+  // falls back to whatever was open.
+  assert.equal(noticeFrom({ ...done, session: undefined }).session, '');
+});

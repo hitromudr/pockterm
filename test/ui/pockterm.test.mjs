@@ -455,3 +455,32 @@ describe('pasting an image', () => {
     assert.ok(saved.length >= 1, `uploads holds ${JSON.stringify(saved)}`);
   });
 });
+
+describe('opening a named session', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['one', 'two'] }); });
+  after(async () => { await stand.stop(); });
+
+  // How a tapped notification arrives: the app puts the session it was raised
+  // for into the URL. Before this, the tap opened whatever was open last —
+  // with several agents running, usually not the one that just finished.
+  test('?session= attaches to that session and leaves the address clean', async () => {
+    const { page } = stand;
+    await page.goto(`${stand.base}/?session=two`);
+    await page.waitForSelector('#screen-term:not([hidden])');
+    await page.waitForFunction(() => !document.getElementById('status') ||
+      document.getElementById('status').hidden);
+    const active = await page.locator('#tabs button.active').textContent();
+    assert.equal(active, 'two', `attached to ${active}, not to two`);
+
+    // The parameter is consumed: a later reload restores what is being looked
+    // at, not the session some notification named an hour ago.
+    assert.equal(new URL(page.url()).searchParams.get('session'), null);
+  });
+
+  test('an unknown session name lands on the list instead of nowhere', async () => {
+    const { page } = stand;
+    await page.goto(`${stand.base}/?session=killed-since`);
+    await page.waitForSelector('#session-list li');
+  });
+});

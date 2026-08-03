@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v61';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1023,7 +1023,15 @@ function show(notice) {
   if (!notice || !notifyOn) return;
   if (nativeNotifier()) {
     try {
-      const ok = window.PockNative.notify(notice.title, notice.body);
+      // Three arguments, so a tap opens the session the notice is about
+      // rather than whatever was open last. An app built before that takes
+      // two and refuses the call — hence the retry, which is what runs until
+      // the phone is updated.
+      let ok = false;
+      try {
+        ok = window.PockNative.notify(notice.title, notice.body, notice.session || '');
+      } catch (_) { ok = false; }
+      if (!ok) ok = window.PockNative.notify(notice.title, notice.body);
       report('notify', { via: 'native', ok: !!ok, tag: notice.tag });
       if (ok) return;
     } catch (e) {
@@ -1034,7 +1042,11 @@ function show(notice) {
   // tag replaces a previous notice of the same kind instead of stacking:
   // five "asks for an answer" in a row is noise, not information.
   const n = new Notification(notice.title, { body: notice.body, tag: notice.tag });
-  n.onclick = () => { window.focus(); n.close(); };
+  n.onclick = () => {
+    window.focus();
+    if (notice.session && notice.session !== current) attach(notice.session);
+    n.close();
+  };
 }
 
 // Scrolled back into tmux history (copy-mode): the numbered lines on screen
@@ -1164,13 +1176,27 @@ window.addEventListener('resize', measureKeyboard);
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
 
-// Restore the last session (survives an orientation-change reload / reopen).
+// Which session to open on load.
+//
+// `?session=<name>` wins over the restored one: it is how a tapped
+// notification arrives — the app puts the session it was raised for into the
+// URL. The parameter is dropped from the address afterwards, so a later reload
+// (an orientation change, the system reviving the page) restores what was
+// actually being looked at instead of reopening the notification's session
+// forever.
 async function init() {
+  const asked = new URLSearchParams(location.search).get('session');
+  if (asked) {
+    const url = new URL(location.href);
+    url.searchParams.delete('session');
+    try { history.replaceState(null, '', url.pathname + url.search + url.hash); } catch (_) {}
+  }
   let saved = null;
   try { saved = sessionStorage.getItem('pt-session'); } catch (_) {}
-  if (saved) {
+  const want = asked || saved;
+  if (want) {
     const { sessions } = await fetchSessions();
-    if (sessions.some((s) => s.name === saved)) { attach(saved); return; }
+    if (sessions.some((s) => s.name === want)) { attach(want); return; }
   }
   showSessions();
 }

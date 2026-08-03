@@ -20,10 +20,15 @@ const KINDS = { question: 'pockterm-question', done: 'pockterm-done' };
 // into a notification helps nobody.
 const MAX_BODY = 400;
 
-// noticeFrom returns {title, body, tag} for a frame worth showing, or null.
+// noticeFrom returns {title, body, tag, session} for a frame worth showing,
+// or null.
 //
 // The tag makes a second notice of the same kind replace the first instead of
 // stacking: five "asks for an answer" in a row is noise, not information.
+//
+// The session travels with the notice because a tap has to land on the session
+// that finished — with several running, "the last one you had open" is the
+// wrong one about as often as not.
 export function noticeFrom(frame) {
   if (!frame || frame.type !== 'notify') return null;
   const tag = KINDS[frame.kind];
@@ -32,5 +37,5 @@ export function noticeFrom(frame) {
   if (!title) return null;
   let body = String(frame.body == null ? '' : frame.body).trim();
   if (body.length > MAX_BODY) body = body.slice(0, MAX_BODY) + '…';
-  return { title, body, tag };
+  return { title, body, tag, session: String(frame.session == null ? '' : frame.session) };
 }
