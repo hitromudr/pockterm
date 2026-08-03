@@ -36,6 +36,16 @@ const VELOCITY_WINDOW = 90; // milliseconds
 // questions, and conflating them costs the inertia this is here to give.
 const PARK = 120; // milliseconds
 
+// How far the drawn screen may be shifted to cover for what tmux has not drawn
+// yet. The shift is a prediction, and a wrong one shows as a band of
+// background at one edge; two steps is what a slow drag needs, where a single
+// notch is in flight at a time.
+const MAX_TRACK = 2; // steps
+
+// How long a notch takes to come back as a redrawn screen, until the page has
+// measured it on this connection. The journal says 17-78ms here.
+const DEFAULT_LAG = 60; // milliseconds
+
 // A flick decays to a stop rather than running to the end of the history.
 // Tuned by hand on the device: lower is stickier.
 const FRICTION = 0.94;
@@ -57,9 +67,13 @@ export class Scroller {
   // glide are over. Scrolling crosses a network — every notch is a message to
   // tmux and a redraw coming back — so how a swipe felt cannot be judged from
   // the page alone; these numbers are what the journal gets.
-  constructor({ notch, onGesture = null, now = () => Date.now(), raf = (fn) => requestAnimationFrame(fn) }) {
+  // onTrack(px) is how the screen keeps up with the finger between whole
+  // lines: the page shifts what is drawn by px until tmux has caught up. See
+  // track() for why that is the page's job and not tmux's.
+  constructor({ notch, onGesture = null, onTrack = null, now = () => Date.now(), raf = (fn) => requestAnimationFrame(fn) }) {
     this.notch = notch;
     this.onGesture = onGesture;
+    this.onTrack = onTrack;
     this.now = now;
     this.raf = raf;
     this.pixelsPerNotch = 1;
@@ -74,11 +88,20 @@ export class Scroller {
     this.glided = 0;
     this.samples = [];
     this.idle = 0;
+    this.inFlight = [];
+    this.lagMs = DEFAULT_LAG;
+    this.ticking = false;
   }
 
   // report closes the books on a gesture: what was sent while the finger was
   // down, what the glide added, and how fast it was let go.
   report(at, speed) {
+    // The picture belongs to tmux again. What the finger covered beyond the
+    // last whole line cannot be drawn at all, so the shift is handed back
+    // rather than left as a standing offset — a screen parked half a line off
+    // its grid would misplace every tap after it.
+    this.inFlight = [];
+    if (this.onTrack) this.onTrack(0);
     if (!this.onGesture) return;
     this.onGesture({
       notches: this.notches,
@@ -98,6 +121,50 @@ export class Scroller {
   // tmux moves per notch.
   setStep(pixels) {
     this.pixelsPerNotch = Math.max(1, pixels);
+  }
+
+  // How long a notch takes to come back as a redrawn screen. Measured by the
+  // page on the live connection; the page also batches a frame's notches into
+  // one message, so what arrives here is a frame short of the whole trip.
+  setLag(ms) {
+    this.lagMs = Math.max(16, Math.min(200, ms || DEFAULT_LAG));
+  }
+
+  // Where the drawn screen has to be to sit under the finger.
+  //
+  // tmux moves whole lines — two per notch here — and answers over a tunnel,
+  // so between notches the screen has nothing to say about where the finger
+  // is: it stood still for a couple of lines of travel and then jumped, which
+  // is "the scroll sticks every few lines" during a slow drag. Nothing in the
+  // arithmetic of notches can fix that, because the smallest thing tmux can
+  // draw is a line.
+  //
+  // So the page shifts the screen it already has by the travel tmux has not
+  // drawn yet: the fraction of a line the finger is into (carry) plus the
+  // notches still in flight. As each redraw lands the shift is given back by
+  // exactly the amount the content moved, and the two cancel — the picture
+  // moves once, with the finger, instead of twice against it.
+  //
+  // A notch is counted as drawn on a clock rather than on the redraw itself.
+  // Frames arriving from the server are not attributable: under an agent the
+  // pane redraws on its own, and taking any of those as the answer would drop
+  // the shift while the content had not moved. A clock can be wrong by the
+  // error in lagMs; the redraw heuristic is wrong whenever anything else is
+  // printing, which here is most of the time.
+  track(at) {
+    if (!this.onTrack) return;
+    while (this.inFlight.length && at - this.inFlight[0].at >= this.lagMs) this.inFlight.shift();
+    let owed = 0;
+    for (const f of this.inFlight) owed += f.dir;
+    const limit = MAX_TRACK * this.pixelsPerNotch;
+    const px = this.carry + owed * this.pixelsPerNotch;
+    this.onTrack(Math.max(-limit, Math.min(limit, px)));
+    // A notch in flight stops being owed on a clock, so the shift has to be
+    // revisited even while the finger holds still.
+    if (this.inFlight.length && !this.gliding && !this.ticking) {
+      this.ticking = true;
+      this.raf((t) => { this.ticking = false; this.track(t); });
+    }
   }
 
   start(at) {
@@ -164,7 +231,7 @@ export class Scroller {
       this.moving = true;
       dy = this.travel; // spend what the finger has already covered
     }
-    this.emit(dy);
+    this.emit(dy, at);
     // Each sample carries the interval it covers, so the tail can be measured
     // without assuming the frames were evenly spaced.
     this.samples.push({ from: this.lastAt, at, dy });
@@ -173,6 +240,7 @@ export class Scroller {
     while (this.samples.length && this.samples[0].at <= at - VELOCITY_WINDOW) {
       this.samples.shift();
     }
+    this.track(at);
   }
 
   // Let go: keep going if the finger was still moving.
@@ -203,6 +271,8 @@ export class Scroller {
       this.report(at, this.thrownAt || 0);
       return;
     }
+    // The glide moves in whole lines too, so it needs the same cover.
+    this.track(at);
     this.raf((t) => this.glide(t));
   }
 
@@ -211,16 +281,20 @@ export class Scroller {
     this.speed = 0;
   }
 
-  emit(dy) {
+  // at is when the movement happened, so a notch can be remembered as owed
+  // until tmux has had time to draw it.
+  emit(dy, at = 0) {
     this.carry += dy;
     while (this.carry >= this.pixelsPerNotch) {
       this.carry -= this.pixelsPerNotch;
       this.notches++;
+      this.inFlight.push({ at, dir: 1 });
       this.notch(1);
     }
     while (this.carry <= -this.pixelsPerNotch) {
       this.carry += this.pixelsPerNotch;
       this.notches++;
+      this.inFlight.push({ at, dir: -1 });
       this.notch(-1);
     }
   }

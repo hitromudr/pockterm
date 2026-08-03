@@ -216,6 +216,97 @@ test('the gesture reports how long the finger had stopped before lifting', () =>
   assert.equal(play(steadyMoves(10), { lift: 0 }).idle, 0);
 });
 
+// The same clock and frame stand-in, plus the pixel shift the page applies to
+// the drawn screen. `step` is a whole notch: two lines of tmux on the device.
+function tracking({ step = 30, lag = 60 } = {}) {
+  const shifts = [];
+  let pending = [];
+  const s = new Scroller({
+    notch: () => {},
+    onTrack: (px) => shifts.push(px),
+    raf: (fn) => pending.push(fn),
+  });
+  s.setStep(step);
+  s.setLag(lag);
+  return {
+    s, shifts,
+    get last() { return shifts[shifts.length - 1]; },
+    // Let the clock run without the finger moving: the shift is given back on
+    // a clock, so this is how a notch lands.
+    idleTo(at) {
+      for (let i = 0; i < 20 && pending.length; i++) {
+        const fns = pending; pending = [];
+        for (const fn of fns) fn(at);
+      }
+    },
+  };
+}
+
+test('the screen follows the finger between two whole lines', () => {
+  // The reported defect: dragging slowly, the scroll stands still for a couple
+  // of lines and then jumps. tmux cannot draw less than a line, so the page
+  // shifts what it has — and the shift must equal the travel exactly, or the
+  // finger is still leading the picture.
+  const h = tracking({ step: 30 });
+  h.s.start(0);
+  h.s.move(10, 16);
+  assert.equal(h.last, 10, 'a third of a step of travel showed nothing');
+  h.s.move(10, 32);
+  assert.equal(h.last, 20);
+  // Here a notch goes out: the shift stays where the finger is, because the
+  // content has not moved yet. Giving it back now is what produced the jump
+  // back and forth.
+  h.s.move(10, 48);
+  assert.equal(h.last, 30, 'the picture jumped back when the notch went out');
+  h.s.move(10, 64);
+  assert.equal(h.last, 40, 'the shift stopped following the finger');
+});
+
+test('the shift is handed back by exactly what tmux drew', () => {
+  // A notch is counted as drawn a lag after it went out. What is left owed is
+  // the fraction of a line the finger is into — 10 of a 30px step here — and
+  // the content moving one step while the shift drops by one step is a picture
+  // that moves once.
+  const h = tracking({ step: 30, lag: 60 });
+  h.s.start(0);
+  for (const at of [16, 32, 48, 64]) h.s.move(10, at);
+  assert.equal(h.last, 40);
+  h.idleTo(48 + 60); // the notch sent at 48 has had its time
+  assert.equal(h.last, 10, `40px travelled, 30 drawn, ${h.last} left owed`);
+});
+
+test('the shift is bounded, so a fast swipe shows a line of background at most', () => {
+  // The shift covers for what has not arrived, and during a flick that is more
+  // than the screen should ever be displaced by: what appears at the edge is
+  // background, and a screenful of it would be worse than the jump it cures.
+  const h = tracking({ step: 30, lag: 200 });
+  h.s.start(0);
+  for (let i = 1; i <= 12; i++) h.s.move(40, i * 16); // 2.5 px/ms, notches piling up
+  assert.ok(Math.abs(h.last) <= 60, `shifted by ${h.last}, more than two steps`);
+});
+
+test('letting go hands the picture back to tmux', () => {
+  // A screen left parked a fraction of a line off its grid would misplace every
+  // tap after the gesture, so the shift is returned when the gesture is over —
+  // whichever way it ends.
+  const parked = tracking({ step: 30 });
+  parked.s.start(0);
+  parked.s.move(10, 16);
+  assert.equal(parked.last, 10);
+  parked.s.end(16 + 300); // rested before lifting: no glide to wait for
+  assert.equal(parked.last, 0, 'the shift outlived the gesture');
+
+  // Thrown: the shift belongs to the glide until the glide is done.
+  const thrown = tracking({ step: 30 });
+  thrown.s.start(0);
+  for (let i = 1; i <= 5; i++) thrown.s.move(20, i * 16);
+  thrown.s.end(80);
+  assert.notEqual(thrown.last, 0, 'the glide moves in whole lines too');
+  let at = 80;
+  for (let i = 0; i < 300; i++) { at += 16; thrown.idleTo(at); }
+  assert.equal(thrown.last, 0, 'the shift outlived the glide');
+});
+
 test('a gesture that never glides still reports', () => {
   const seen = [];
   const s = new Scroller({ notch: () => {}, onGesture: (g) => seen.push(g), raf: () => {} });

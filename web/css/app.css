@@ -188,7 +188,10 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#term { flex: 1; min-height: 0; position: relative; }
+/* overflow: the rows are shifted to follow the finger between whole lines
+   (trackScreen in app.js), and a shifted row must not be drawn over the bars
+   below the terminal. */
+#term { flex: 1; min-height: 0; position: relative; overflow: hidden; }
 /* Selection mode selects from a frozen copy of the screen laid over the
    terminal, not from the terminal itself.
    Two reasons, and lifting xterm's user-select:none fixed neither: the DOM

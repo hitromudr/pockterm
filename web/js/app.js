@@ -516,11 +516,45 @@ function flushWheel() {
 // not visible from anywhere else.
 let wheelSentAt = 0;
 let wheelLag = 0;
+let wheelLagAvg = 0;
 function noteFrameArrived() {
   if (!wheelSentAt) return;
   const lag = performance.now() - wheelSentAt;
   wheelSentAt = 0;
   wheelLag = Math.max(wheelLag, Math.round(lag));
+  // The shift below has to guess when a notch has landed, and this is the only
+  // measurement of that there is. Smoothed, because a single frame arriving
+  // late is not what the next notch will do.
+  wheelLagAvg = wheelLagAvg ? wheelLagAvg * 0.8 + lag * 0.2 : lag;
+  scroller.setLag(wheelLagAvg);
+}
+
+// Following the finger between two whole lines.
+//
+// tmux draws in lines and answers over the tunnel, so a slow drag got nothing
+// for a couple of lines of travel and then a jump — reported as the scroll
+// sticking every few lines. The page shifts the screen it has already been
+// given by the travel tmux has not drawn yet, and hands the shift back as the
+// content arrives; the arithmetic is in scroll.js, this is only where it
+// touches the DOM.
+//
+// The rows are shifted, not the viewport: what appears at the edge is then the
+// terminal's own background rather than the page's, and a shift of at most two
+// steps means at most two lines of it. `#term` clips, so nothing lands on the
+// bars.
+let trackEl = null;
+function trackScreen(px) {
+  if (!trackEl || !trackEl.isConnected) trackEl = document.querySelector('.xterm-screen');
+  if (!trackEl) return;
+  if (!px) {
+    // Let go: the leftover is a fraction of a line that tmux cannot draw, so
+    // it settles back instead of snapping.
+    trackEl.style.transition = 'transform 90ms ease-out';
+    trackEl.style.transform = '';
+    return;
+  }
+  trackEl.style.transition = 'none'; // following a finger cannot be eased
+  trackEl.style.transform = `translateY(${px.toFixed(1)}px)`;
 }
 
 // A row on screen, measured rather than computed: the font metrics of a
@@ -537,6 +571,7 @@ let wheelLines = 5;
 
 const scroller = new Scroller({
   notch: (dir) => sendWheel(dir > 0 ? 64 : 65), // +1 = towards history
+  onTrack: trackScreen,
   // How a swipe felt is not observable from here: the screen it moves lives in
   // tmux, a notch away over the network. These numbers are.
   onGesture: (g) => {
