@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v53';
+const APP_VERSION = 'v54';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -400,14 +400,27 @@ term.onData((d) => {
 // receives the right thing, and the screen shows "роттт" for a word, a space
 // and one delete. Clearing the layer and the textarea puts the two back in
 // agreement.
-// Hand over what the keyboard has not committed yet, then clear the layer.
+// Whether the keyboard is composing right now — the only honest way to know
+// whether the text in the textarea has been sent.
 //
-// Clearing alone threw that text away: typing a word and pressing ← lost the
-// word, because during composition xterm has sent nothing — the characters
-// live in the textarea and nowhere else.
+// Reading the textarea alone is not enough and produced a real duplicate: after
+// a space xterm has already sent the word, yet the value can still be sitting
+// there, so flushing it sent the word twice. During a composition xterm sends
+// nothing, and that is exactly when the text has to be handed over by hand.
+let composing = false;
+if (term.textarea) {
+  term.textarea.addEventListener('compositionstart', () => { composing = true; });
+  term.textarea.addEventListener('compositionend', () => { composing = false; });
+}
+
+// Hand over what the keyboard has not committed yet, then clear the layer.
+// Nothing is sent unless a composition is in progress: typing a word and
+// pressing ← must not lose it, and pressing a key after a finished word must
+// not repeat it.
 function flushComposition() {
   const pending = (term.textarea && term.textarea.value) || '';
-  if (pending) send(pending);
+  if (composing && pending) send(pending);
+  composing = false;
   clearComposition();
 }
 
@@ -440,8 +453,8 @@ if (term.textarea) {
     // With a composition in progress the keyboard is editing text that has
     // not been sent anywhere yet — let it. Taking the delete then would erase
     // a character the terminal never received, and doubling comes from the
-    // other case: nothing pending, so the delete belongs to the terminal.
-    if (term.textarea.value) return;
+    // other case: nothing composing, so the delete belongs to the terminal.
+    if (composing) return;
     e.preventDefault();
     send(keyBytes('backspace'));
     commitPendingInput();
