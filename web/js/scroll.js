@@ -232,7 +232,35 @@ export class Scroller {
     // of a line the finger travelled past the last whole one, and tmux cannot
     // draw that. It is the one thing the shift gives back without content
     // arriving.
-    if (this.settling && !this.air.length && !this.building) {
+    // Not while the glide is still running: there is nothing to round to yet,
+    // and rounding mid-flight would inject notches into a movement that is still
+    // making its own. (Before this gate the branch could fire in a gap between
+    // the glide's batches and drop the shift to zero mid-glide, which is a jump
+    // of its own.)
+    if (this.settling && !this.gliding && !this.air.length && !this.building) {
+      // Rounded to the nearest line rather than always down. Down was the last
+      // thing left of the old jumps: the picture came back by the whole residue,
+      // which is a line at the stop, smooth but backwards. Past half a step it
+      // is shorter to go on — one more notch, and the screen settles forward by
+      // what is left instead of back by what was covered. Either way the
+      // movement is at most half a line now, and in the direction the finger
+      // was going.
+      //
+      // Strictly more than half, so the leftover after a snap (which is at most
+      // half) cannot ask for another one.
+      if (Math.abs(this.carry) > this.pixelsPerNotch / 2) {
+        // Not emit(): that adds a step to the carry and takes it straight back
+        // out, so the residue would survive and ask for another notch on the
+        // next pass — a ratchet that scrolls on its own. What a snap means is
+        // the content going one line further than the finger did, so the step
+        // comes off the residue.
+        const dir = Math.sign(this.carry);
+        this.carry -= dir * this.pixelsPerNotch;
+        this.notches++;
+        this.building += dir;
+        this.notch(dir);
+        return; // the shift stays where it is until that notch is drawn
+      }
       this.settling = false;
       this.onTrack(0);
       return;

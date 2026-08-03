@@ -471,3 +471,73 @@ test('a cancel with no gesture under way is nothing', () => {
   s.cancel(100);
   assert.deepEqual(seen, [], 'a stray cancel reported a gesture that never happened');
 });
+
+test('the stop rounds to the nearest line, not down to the last one', () => {
+  // The last of the jumps: at the stop the picture came back by the whole
+  // residue, which is a line — smooth, but backwards, and against the direction
+  // the finger had been going. Past half a step it is shorter to go on, so one
+  // more notch goes out and the screen settles forward by what is left. Either
+  // way the movement is at most half a line.
+  const notches = [];
+  let pending = [];
+  const shifts = [];
+  const s = new Scroller({
+    notch: (d) => notches.push(d),
+    onTrack: (px) => shifts.push(px),
+    raf: (fn) => pending.push(fn),
+  });
+  s.setStep(30);
+
+  // 22px of travel: past half a step, so it goes on rather than back.
+  s.start(0);
+  s.move(22, 16);
+  s.batched(16);
+  assert.deepEqual(notches, [], 'a step was sent for 22px of travel');
+  assert.equal(shifts[shifts.length - 1], 22, 'the finger was not followed');
+  s.end(16 + 300); // rested, no glide
+  assert.deepEqual(notches, [1], 'the stop did not round up to the nearest line');
+  // And the picture holds still until that line is drawn: no movement at the
+  // stop at all, then forward by the 8px that were missing.
+  assert.equal(shifts[shifts.length - 1], 22, 'the picture moved before the line arrived');
+  s.batched(16 + 300);
+  s.drew(16 + 301);
+  assert.equal(shifts[shifts.length - 1], 0, 'the shift outlived the snap');
+
+  // 12px: not worth another line, so it comes back — 12px rather than 30.
+  const back = [];
+  const s2 = new Scroller({ notch: () => back.push(1), onTrack: () => {}, raf: () => {} });
+  s2.setStep(30);
+  s2.start(0);
+  s2.move(12, 16);
+  s2.batched(16);
+  s2.end(16 + 300);
+  assert.deepEqual(back, [], 'a line was sent for a residue not worth one');
+});
+
+test('the snap does not ratchet', () => {
+  // Rounding up with emit() adds a step to the residue and takes it straight
+  // back out, so the residue survives, asks for another notch on the next pass,
+  // and the screen scrolls on by itself. The step has to come off the residue.
+  const notches = [];
+  let pending = [];
+  const s = new Scroller({
+    notch: (d) => notches.push(d),
+    onTrack: () => {},
+    raf: (fn) => pending.push(fn),
+  });
+  s.setStep(30);
+  s.start(0);
+  s.move(25, 16);
+  s.batched(16);
+  s.end(16 + 300);
+  // Let every frame and every answer come in, as long as it takes.
+  let at = 400;
+  for (let i = 0; i < 50; i++) {
+    at += 16;
+    const fns = pending; pending = [];
+    for (const fn of fns) fn(at);
+    s.batched(at);
+    s.drew(at);
+  }
+  assert.equal(notches.length, 1, `the stop sent ${notches.length} lines and kept going`);
+});
