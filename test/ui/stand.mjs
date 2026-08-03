@@ -154,6 +154,18 @@ export async function startStand({ sessions = ['demo'], raw = false, desktop = f
   page.on('pageerror', (e) => { pageErrors.push(String(e)); consoleErrors.push(String(e)); });
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
 
+  // The session list is a drawer over the terminal, and every helper that clicks
+  // a session needs it open. By state, never by toggling ☰.
+  async function openDrawer() {
+    const open = await page.evaluate(
+      () => document.getElementById('screen-sessions').classList.contains('open'));
+    if (!open) await page.click('#back');
+    await page.waitForFunction(
+      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      null, { timeout: 5000 },
+    );
+  }
+
   return {
     page,
     base,
@@ -172,16 +184,24 @@ export async function startStand({ sessions = ['demo'], raw = false, desktop = f
     // режима клавиатуры (`?ime=`), и без этого его в стенде не потрогать.
     async open(query = '') {
       await page.goto(base + query);
-      // The app restores the session it was last attached to (that is what
-      // makes an orientation reload survivable), so a second open lands in
-      // the terminal, not on the list.
-      if (await page.locator('#screen-term:not([hidden])').count()) {
-        await page.click('#back');
-      }
+      // The app restores the session it was last attached to (that is what makes
+      // an orientation reload survivable), and it does so after load. Two things
+      // follow, both learned the hard way: wait for one of the two outcomes
+      // before touching anything, and open the drawer by its state rather than by
+      // tapping ☰ — ☰ toggles, so a blind tap raced the restore and closed the
+      // drawer that had just opened itself, leaving the next click to land on the
+      // terminal instead of a session.
+      await page.waitForFunction(() => {
+        const term = document.getElementById('screen-term');
+        const drawer = document.getElementById('screen-sessions');
+        return !term.hidden || drawer.classList.contains('open');
+      }, null, { timeout: 10000 });
+      await openDrawer();
       await page.waitForSelector('#session-list li');
     },
     // Attach to a session and wait until the terminal is live.
     async attach(name = sessions[0]) {
+      await openDrawer();
       await page.click(`button.session:has-text("${name}")`);
       await page.waitForSelector('#screen-term:not([hidden])');
       await page.waitForFunction(() => !document.getElementById('status') ||

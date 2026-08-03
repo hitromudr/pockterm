@@ -156,6 +156,19 @@ lands.
 The tab strip is the same list in miniature, so it carries the same `+` with the
 same four presets — and the same handler, because two would drift.
 
+**With nothing attached the drawer is modal.** The terminal screen is hidden then
+and `☰` lives in its header, so a drawer that could still be dismissed left a
+black page with nothing to tap and no way back but a reload — reported after
+closing the very session being used. `❮` and the scrim are gone in that state
+rather than inert: an exit that does nothing is worse than no exit.
+
+Anything in the tests that clicks a session has to open the drawer **by its
+state**, never by tapping `☰`. `☰` toggles, and the restore of the last session
+happens after load, so a blind tap raced it: the drawer that had just opened
+itself was closed again and the next click landed on the terminal. Two suites
+failed that way about one run in three before `startStand` grew its own
+`openDrawer`.
+
 ## Notifications are decided in one place
 
 `internal/watch` reads each watched session's pane with `capture-pane` and

@@ -131,6 +131,57 @@ describe('the session list is a drawer', () => {
     }, null, { timeout: 5000 });
   });
 
+  test('closing the session you are in does not leave a black page', async () => {
+    // Reported as the window hanging empty after closing the very session being
+    // used. With nothing attached the terminal screen is hidden and ☰ lives in
+    // its header, so a drawer that could still be dismissed left a black page
+    // with nothing to tap and no way back but a reload.
+    await stand.open();
+    const { page } = stand;
+    const before = await page.locator('#session-list li').count();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset="shell"]');
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
+    const name = (await page.locator('#session-list li').last().locator('.name').textContent()).trim();
+
+    await page.click(`button.session:has-text("${name}")`);
+    await page.waitForSelector('#screen-term:not([hidden])');
+    await page.click('#back');
+    await page.waitForFunction(
+      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      null, { timeout: 3000 });
+
+    const row = page.locator(`#session-list li:has-text("${name}")`);
+    await row.locator('button.close').click();
+    await row.locator('button.close').click();
+    await page.waitForFunction(() => document.getElementById('screen-term').hidden, null, { timeout: 5000 });
+
+    // Nothing behind it, so nothing offers a way out: no chevron, no scrim.
+    assert.equal(await page.locator('#drawer-close').isVisible(), false, 'a way out of an empty page');
+    assert.equal(await page.evaluate(() => document.getElementById('drawer-scrim').hidden), true);
+    // And it stays put even if something does tap where they were.
+    await page.mouse.click(380, 400);
+    await page.waitForTimeout(400);
+    assert.equal(
+      await page.evaluate(() => document.getElementById('screen-sessions').classList.contains('open')),
+      true, 'the drawer closed onto a black page',
+    );
+    // The strip went with the session rather than keeping its tab.
+    assert.equal(await page.locator('#tabs button').count(), 0);
+
+    // Attaching brings the way out back.
+    await page.click('button.session:has-text("demo")');
+    await page.waitForSelector('#screen-term:not([hidden])');
+    await page.click('#back');
+    await page.waitForFunction(
+      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      null, { timeout: 3000 });
+    assert.equal(await page.locator('#drawer-close').isVisible(), true, 'no way back with a session behind it');
+    await page.click('#drawer-close');
+    await page.waitForFunction(() => !document.getElementById('screen-sessions').classList.contains('open'));
+  });
+
   test('with nothing attached the drawer is where the page starts', async () => {
     const { page } = stand;
     await page.evaluate(() => sessionStorage.removeItem('pt-session'));

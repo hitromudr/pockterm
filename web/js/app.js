@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v88';
+const APP_VERSION = 'v89';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -305,12 +305,22 @@ function escapeHtml(s) {
 // and the list is what you open to see what else is running. Now the terminal
 // stays where it is underneath.
 const drawerScrim = document.getElementById('drawer-scrim');
+const drawerCloseBtn = document.getElementById('drawer-close');
+
+// With no session attached the drawer is the only thing on the page: the
+// terminal screen is hidden, and ☰ lives in its header. Closing it then left a
+// black page with nothing to tap and no way back but a reload — which is what
+// "the window hangs empty" was, after closing the very session you were sitting
+// in. So it is modal until there is something behind it: no way out, and nothing
+// pretending to be one.
 function openDrawer() {
   screenSessions.classList.add('open');
-  drawerScrim.hidden = false;
+  drawerScrim.hidden = !current;
+  drawerCloseBtn.hidden = !current;
   loadSessions();
 }
 function closeDrawer() {
+  if (!current) return;
   screenSessions.classList.remove('open');
   drawerScrim.hidden = true;
   // The rename field and the presets belong to the list; leaving them open would
@@ -323,7 +333,7 @@ function toggleDrawer() {
   else openDrawer();
 }
 drawerScrim.addEventListener('click', closeDrawer);
-document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+drawerCloseBtn.addEventListener('click', closeDrawer);
 
 // No session attached: there is nothing to show under the drawer, so the
 // terminal goes away with it and the drawer is all there is. That is where the
@@ -333,6 +343,10 @@ function showSessions() {
   current = null;
   try { sessionStorage.removeItem('pt-session'); } catch (_) {}
   screenTerm.hidden = true;
+  // The strip belongs to a session; leaving it standing would flash the closed
+  // one back on screen the moment the terminal is shown again.
+  tabsEl.innerHTML = '';
+  tabsSignature = null;
   openDrawer();
 }
 
@@ -351,6 +365,8 @@ function attach(name) {
   current = name;
   try { sessionStorage.setItem('pt-session', name); } catch (_) {}
   screenTerm.hidden = false;
+  // There is something behind the drawer again, so it has a way out again.
+  drawerCloseBtn.hidden = false;
   closeDrawer();
   // A frozen screen belongs to the session it was frozen from.
   if (selectMode) setSelectMode(false);
