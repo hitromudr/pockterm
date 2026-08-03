@@ -116,18 +116,18 @@ export class Scroller {
     this.building = 0;
     this.ticking = false;
     this.touching = false;
+    this.settling = false;
   }
 
   // report closes the books on a gesture: what was sent while the finger was
   // down, what the glide added, and how fast it was let go.
   report(at, speed) {
-    // The picture belongs to tmux again. What the finger covered beyond the
-    // last whole line cannot be drawn at all, so the shift is handed back
-    // rather than left as a standing offset — a screen parked half a line off
-    // its grid would misplace every tap after it.
-    this.air = [];
-    this.building = 0;
-    if (this.onTrack) this.onTrack(0);
+    // The shift is not touched here. It belongs to content still in the air,
+    // and track() gives it back as that lands — or lets it go when nothing is
+    // owed, which is the settle. Dropping it at this point is what made the
+    // screen fly backwards the moment a finger left.
+    this.settling = true;
+    this.track(at);
     if (!this.onGesture) return;
     this.onGesture({
       notches: this.notches,
@@ -159,6 +159,14 @@ export class Scroller {
     // Re-read the shift: the batch is now something that can go unanswered, and
     // that is what starts the clock that lets it go.
     this.track(at);
+  }
+
+  // The notches queued for the next message are not going out after all: the
+  // page threw the queue away, which is what leaving the history does. They
+  // were never sent, so nothing owes them — and without this they would stay
+  // owed for good, because only a message that went out can expire.
+  dropped() {
+    this.building = 0;
   }
 
   // The screen moved: the oldest batch in the air has been drawn.
@@ -205,16 +213,28 @@ export class Scroller {
   // miss was a step back and forth — reported as juddering. Counting redraws
   // has no average in it.
   track(at) {
-    // Only while the finger is down. A frame already queued when the finger
-    // lifts would otherwise put the shift back for one frame after the gesture
-    // handed it over — a flick that twitched once as it started.
-    if (!this.onTrack || !this.touching) return;
+    if (!this.onTrack) return;
+    if (!this.touching && !this.gliding && !this.settling) return;
+    // Read what is owed first: owed() is also what expires a batch nobody
+    // answered, and asking whether anything is left before that ran left the
+    // sub-line residue on screen for good — a screen parked a few pixels off
+    // its grid, which is the state this whole mechanism is meant to avoid.
+    const owed = this.owed(at);
+    // Nothing owed and nobody holding the screen: what is left is the fraction
+    // of a line the finger travelled past the last whole one, and tmux cannot
+    // draw that. It is the one thing the shift gives back without content
+    // arriving.
+    if (this.settling && !this.air.length && !this.building) {
+      this.settling = false;
+      this.onTrack(0);
+      return;
+    }
     const limit = MAX_TRACK * this.pixelsPerNotch;
-    const px = this.carry + this.owed(at) * this.pixelsPerNotch;
+    const px = this.carry + owed * this.pixelsPerNotch;
     this.onTrack(Math.max(-limit, Math.min(limit, px)));
     // A batch nobody answers has to expire on its own, so the shift is
-    // revisited even while the finger holds still.
-    if (this.air.length && !this.gliding && !this.ticking) {
+    // revisited even while nothing is moving.
+    if ((this.air.length || this.building) && !this.gliding && !this.ticking) {
       this.ticking = true;
       this.raf((t) => { this.ticking = false; this.track(t); });
     }
@@ -223,6 +243,7 @@ export class Scroller {
   start(at) {
     this.gliding = false; // a touch always catches the glide
     this.touching = true;
+    this.settling = false;
     this.ticking = false;
     this.carry = 0;
     this.speed = 0;
@@ -300,15 +321,15 @@ export class Scroller {
 
   // Let go: keep going if the finger was still moving.
   //
-  // The shift goes back here, before the glide rather than after it. Covering
-  // the glide as well was the first thing tried and it juddered: a flick at
-  // 1.4 px/ms has two or three notches in the air at once, the cover then runs
-  // into MAX_TRACK, and a shift that stops following and then catches up is the
-  // stutter it was supposed to remove. Under a finger there is at most one
-  // notch outstanding, which is the case worth covering — and nobody can judge
-  // a fraction of a line at flick speed anyway.
+  // The shift is not handed back here, and that was the mistake in between:
+  // for one version the lift dropped it at once, and with the cap at three
+  // steps that is a screen flying six rows backwards the instant the finger
+  // leaves — reported as exactly that. What the shift stands for does not
+  // change at the lift: it is content that has not arrived, and it goes back
+  // only as that content lands, which cancels out to no movement at all.
   end(at) {
     this.touching = false;
+    this.settling = true;
     this.idle = this.samples.length ? Math.max(0, Math.round(at - this.samples[this.samples.length - 1].at)) : 0;
     this.speed = this.velocity(at);
     const thrown = this.speed;
@@ -319,9 +340,6 @@ export class Scroller {
     this.gliding = true;
     this.lastAt = at;
     this.thrownAt = thrown;
-    this.air = [];
-    this.building = 0;
-    if (this.onTrack) this.onTrack(0);
     this.raf((t) => this.glide(t));
   }
 
@@ -338,6 +356,12 @@ export class Scroller {
       this.report(at, this.thrownAt || 0);
       return;
     }
+    // The glide moves in whole lines too, and the same accounting covers it —
+    // safely now that a batch is counted by the repaint that answers it rather
+    // than by a predicted time. A fast glide keeps more messages in the air
+    // than the cap allows, and then the picture rides at the cap instead of
+    // following exactly; what it does not do is jump.
+    this.track(at);
     this.raf((t) => this.glide(t));
   }
 

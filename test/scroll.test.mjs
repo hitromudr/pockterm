@@ -328,24 +328,44 @@ test('letting go hands the picture back to tmux', () => {
   parked.s.end(16 + 300); // rested before lifting: no glide to wait for
   assert.equal(parked.last, 0, 'the shift outlived the gesture');
 
-  // Thrown: the shift goes back at the lift, and stays back for the whole
-  // glide. Covering the glide too was tried first and juddered — a flick has
-  // two or three notches in the air at once, the cover runs into MAX_TRACK, and
-  // a shift that stops following and then catches up is the stutter it was
-  // meant to remove. Under a finger there is at most one notch outstanding.
+  // Thrown, with messages still in the air. The lift must change nothing about
+  // the shift: it stands for content that has not arrived, and handing it back
+  // there was reported as the screen flying backwards to the finger the moment
+  // it let go — six rows of it, with the cap at three steps.
   const thrown = tracking({ step: 30 });
   thrown.s.start(0);
   for (let i = 1; i <= 5; i++) { thrown.s.move(20, i * 16); thrown.send(i * 16); }
-  assert.notEqual(thrown.last, 0, 'the finger was not followed');
+  const beforeLift = thrown.last;
+  assert.notEqual(beforeLift, 0, 'the finger was not followed');
   thrown.s.end(80);
-  assert.equal(thrown.last, 0, 'the shift outlived the finger that asked for it');
+  assert.equal(thrown.last, beforeLift, 'the picture flew back when the finger left');
+
+  // It goes back as the content lands, which is the same movement forwards —
+  // and by the end of the glide, when nothing is owed, the residue settles.
+  // The page's half is modelled per frame, because that is what it does: the
+  // glide's notches go out with the next message and are answered by the next
+  // repaint.
   let at = 80;
-  const shiftsAtLift = thrown.shifts.length;
-  for (let i = 0; i < 300; i++) { at += 16; thrown.idleTo(at); }
-  assert.equal(thrown.last, 0, 'the shift came back during the glide');
-  for (const px of thrown.shifts.slice(shiftsAtLift)) {
-    assert.equal(px, 0, `the glide shifted the screen by ${px}`);
+  for (let i = 0; i < 300; i++) {
+    at += 16;
+    thrown.idleTo(at);
+    thrown.send(at);
+    thrown.drew(at);
   }
+  assert.equal(thrown.last, 0, 'the shift outlived the glide');
+});
+
+test('nothing is owed, so the residue settles by itself', () => {
+  // A drag that ends with everything drawn: what is left is the fraction of a
+  // line the finger travelled past the last whole one, and tmux cannot draw
+  // that. It is the one thing the shift gives back without content arriving.
+  const h = tracking({ step: 30 });
+  h.s.start(0);
+  h.s.move(10, 16);
+  h.send(16);
+  assert.equal(h.last, 10, 'the finger was not followed');
+  h.s.end(16 + 300); // rested, so no glide
+  assert.equal(h.last, 0, `the residue was left on screen: ${h.last}`);
 });
 
 test('a gesture that never glides still reports', () => {
@@ -375,4 +395,35 @@ test('a scroll is told from ordinary output by how much was repainted', () => {
   assert.equal(movedWholeScreen(0, 3, 4), true);
   // Nothing is known about a terminal with no rows yet.
   assert.equal(movedWholeScreen(0, 0, 0), false);
+});
+
+test('notches thrown away with the queue stop being owed', () => {
+  // Leaving the history drops whatever is queued for the next message — those
+  // notches never go out, so the shift must not go on covering them. Only a
+  // message that was sent can expire on the backstop, which is why this needs
+  // saying out loud: without it the screen would sit shifted until the next
+  // gesture reset it.
+  const h = tracking({ step: 30 });
+  h.s.start(0);
+  h.s.move(70, 16); // two whole notches and a remainder, none of it sent yet
+  assert.equal(h.last, 70, 'the finger was not followed');
+  h.s.dropped();
+  h.s.track(32);
+  assert.equal(h.last, 10, `the dropped notches are still owed: ${h.last}`);
+});
+
+test('the residue settles once the last unanswered batch expires', () => {
+  // The order inside track() is the whole of this case: what is owed has to be
+  // read — which is also what expires a batch nobody answered — before asking
+  // whether anything is left. Asking first left the sub-line residue on screen
+  // for good, a few pixels off the grid, which the browser test caught as a
+  // shift that never came back.
+  const h = tracking({ step: 30 });
+  h.s.start(0);
+  h.s.move(34, 16); // one whole notch and 4px over
+  h.send(16);
+  assert.equal(h.last, 34);
+  h.s.end(16 + 300); // rested before lifting, so there is no glide in the way
+  h.idleTo(16 + 300 + 401); // the batch nobody answered expires here
+  assert.equal(h.last, 0, `the residue stayed on screen: ${h.last}`);
 });

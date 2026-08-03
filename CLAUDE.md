@@ -163,10 +163,21 @@ The page shifts the drawn rows to follow the finger between whole lines
 (`track` in `web/js/scroll.js`), and two limits on that were learned by
 shipping it:
 
-- **Only while the finger is down.** Covering the glide as well was the first
-  version and it juddered: a flick at 1.4 px/ms has two or three notches in the
-  air at once, the cover then runs into `MAX_TRACK`, and a shift that stops
-  following and catches up in bursts is the stutter it was meant to remove.
+- **The lift changes nothing.** For one version the shift was handed back the
+  moment the finger left, on the theory that a glide is too fast to judge a
+  fraction of a line in. With the cap at three steps that is a screen flying six
+  rows backwards at the release, which is what it was reported as. The shift
+  stands for content that has not arrived; it goes back as that content lands,
+  and the two cancel to no movement at all. A glide keeps more messages in the
+  air than the cap allows, so the picture rides at the cap instead of following
+  exactly — what it does not do is jump.
+- **`track()` expires before it decides.** `owed()` is both the question and the
+  expiry, so asking whether anything is left before calling it leaves the
+  sub-line residue on screen for good — a terminal parked a few pixels off its
+  grid. The browser test caught that as a shift that never came back.
+- **Notches dropped with the queue must be disowned** (`dropped()`). Leaving the
+  history throws away what was queued for the next message, and only a message
+  that went out can expire on the backstop.
 - **A clock cannot say when a notch landed.** The shift first predicted it from
   the measured round trip, and the device settled that: the trip averages 40-50ms
   and peaks at 130. A short swipe has one notch and gets away with it; a longer
