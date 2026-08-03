@@ -13,7 +13,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v69';
+const APP_VERSION = 'v70';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -23,16 +23,13 @@ initDiag((line) => {
 });
 report('hello', environment(APP_VERSION));
 
-// The keyboard mode the page asks for at startup.
+// The keyboard mode the page asks for at startup — `raw` for the terminal
+// since it was finally measured rather than guessed (see IME_DEFAULT). The
+// composer asks for `text` on its own, because suggestions and dictation are
+// the reason it exists.
 //
-// `text` — the ordinary one — even for the terminal, because the composition
-// -free keyboard the app can give (2.1's `raw`) turned out not to come up at
-// all on the owner's phone: tapping a field did nothing, and no keyboard is
-// worse than a drifting one. The mechanism is kept and reachable with
-// `?ime=raw` so the next attempt does not need another release to test.
-//
-// The app's own default is raw, so this is not a no-op: it is the page
-// undoing it.
+// The switch behind ⋯ changes this at any time and the choice is remembered,
+// so a mode that misbehaves on some other phone costs a tap, not a release.
 setTimeout(() => setImeMode(imeWanted()), 0);
 
 // What is actually running, shown where it can be read without a console:
@@ -668,13 +665,24 @@ function setImeMode(mode) {
   try { localStorage.setItem('pt-ime', asked); } catch (_) {}
 })();
 
+// What the terminal asks for when nobody has chosen. `raw` since 2026-08-03:
+// measured on the owner's phone under app 2.3, it is the mode where a
+// backspace arrives as `deleteContentBackward` instead of a composition
+// rewriting the whole word — which is what put a second copy of the word into
+// the terminal — and the composing region covers the last word rather than
+// everything typed so far. The keyboard comes up, which is what 2.1 failed at.
+//
+// `raw-strict` replaces the input type outright and stays opt-in: that is the
+// variant that left the phone with no keyboard at all.
+const IME_DEFAULT = 'raw';
+
 function imeWanted() {
   let asked = null;
   try { asked = localStorage.getItem('pt-ime'); } catch (_) {}
-  // `raw` adds only "no dictionary" to what the WebView negotiated;
-  // `raw-strict` replaces the input type outright, which is what left the
-  // phone without a keyboard in app 2.1. Both are opt-in.
-  return (asked === 'raw' || asked === 'raw-strict') ? asked : 'text';
+  // A stored "text" is a decision, not an absence of one: whoever switched
+  // back gets what they asked for, default or no default.
+  if (asked === 'raw' || asked === 'raw-strict' || asked === 'text') return asked;
+  return IME_DEFAULT;
 }
 
 // The three modes, in the order the button walks through them. Three taps

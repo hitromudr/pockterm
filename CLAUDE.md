@@ -56,6 +56,18 @@ button cycles text → raw → raw-strict and stores the choice; the URL is read
 once at load, because re-reading it on every call made a lingering `?ime=`
 undo every tap.
 
+**The terminal defaults to `raw` since 2026-08-03**, and that is the first
+thing here decided by measurement rather than by argument. Under app 2.3 on
+the owner's phone, with the mode finally staying put long enough to type in
+it: a backspace arrives as `deleteContentBackward` instead of an
+`insertCompositionText` rewriting the whole word — which is what put a second
+copy of the word on screen — and the composing region covers the last word
+instead of everything typed so far. What was typed came out right. What is
+still true: xterm.js does not clear its hidden textarea while a composition is
+open, so the field accumulates (17 characters of it in the journal), and that
+accumulation is where the drift comes from when you edit the middle of a line.
+The remaining fix is the page's own input field, not another keyboard mode.
+
 `setImeMode` is not a fix, it is a lever with the strength picked at runtime.
 The app defaults to `raw`, and the page asks for `text` everywhere — including
 the terminal — because the strict variant that ships in app 2.1

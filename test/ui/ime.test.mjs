@@ -52,7 +52,24 @@ describe('the keyboard the page asks for', () => {
     await stand.open(path);
   };
 
-  test('without the parameter the ordinary keyboard is asked for', async () => {
+  test('with nothing chosen the terminal asks for raw', async () => {
+    // The default since it was measured on the device: raw is where a
+    // backspace arrives as a deletion instead of a composition rewriting the
+    // whole word.
+    await stand.page.evaluate(() => localStorage.removeItem('pt-ime')).catch(() => {});
+    await stand.open();
+    await stand.page.evaluate(() => localStorage.removeItem('pt-ime'));
+    await stand.open();
+    await stand.page.waitForFunction(() => window.__imeCalls.length > 0);
+    assert.equal(await lastAsked(), 'raw');
+  });
+
+  test('a stored text is a decision the default does not override', async () => {
+    await stand.open('/?ime=text');
+    await stand.page.waitForFunction(() => window.__imeCalls.length > 0);
+    assert.equal(await lastAsked(), 'text');
+
+    // Same page again, no parameter: whoever switched back keeps it.
     await stand.open();
     await stand.page.waitForFunction(() => window.__imeCalls.length > 0);
     assert.equal(await lastAsked(), 'text');
