@@ -107,6 +107,11 @@
            journal. Off by default: one line per keystroke, and the second tap
            records the typed text itself. -->
       <button id="input-diag" title="Record what the keyboard does">&#128269; Input log</button>
+      <!-- Which keyboard the app is asked for. `?ime=` was meant to make the
+           next attempt cost a reload rather than an APK release, but the
+           Android client loads a fixed URL and has no address bar to type it
+           into — so the switch lives here. -->
+      <button id="ime" title="Which keyboard the app gives the terminal">&#9000; text</button>
       <!-- "Did it update?" should be answerable without reinstalling. -->
       <span id="versions"></span>
       <!-- Unhidden only when the browser offers the install; see app.js. -->

@@ -43,6 +43,15 @@ describe('the keyboard the page asks for', () => {
   const lastAsked = () => stand.page.evaluate(() => window.__imeCalls.at(-1));
   const allAsked = () => stand.page.evaluate(() => window.__imeCalls);
 
+  // Which bar the page opens on is remembered in localStorage, so a test that
+  // switched bars decides what the next one starts with. Say it out loud
+  // instead: the terminal's keyboard is only asked for while the key bar is up.
+  const openWithBar = async (bar, path = '/') => {
+    await stand.open(path);
+    await stand.page.evaluate((b) => localStorage.setItem('pt-bar', b), bar);
+    await stand.open(path);
+  };
+
   test('without the parameter the ordinary keyboard is asked for', async () => {
     await stand.open();
     await stand.page.waitForFunction(() => window.__imeCalls.length > 0);
@@ -102,6 +111,60 @@ describe('the keyboard the page asks for', () => {
 
     const asked = await allAsked();
     assert.ok(asked.length >= 3, `asked ${asked.length} times: ${asked.join(', ')}`);
+  });
+
+  test('the mode is switchable from the page, because the app has no address bar', async () => {
+    // `?ime=` was meant to make the next attempt cost a reload instead of an
+    // APK release — but inside the owner's Android client the URL is fixed
+    // (POCKTERM_URL in MainActivity), so there was nowhere to type it. The
+    // button behind ⋯ is that missing address bar.
+    await openWithBar('keys', '/?ime=text');
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#more');
+    await page.click('#ime');
+    assert.match(await page.textContent('#ime'), /raw$/);
+    await page.waitForFunction(() => window.__imeCalls.at(-1) === 'raw');
+
+    await page.click('#ime');
+    await page.waitForFunction(() => window.__imeCalls.at(-1) === 'raw-strict');
+
+    // Round trip: three taps come back to where they started, so nobody is
+    // stuck in a mode that took their keyboard away.
+    await page.click('#ime');
+    await page.waitForFunction(() => window.__imeCalls.at(-1) === 'text');
+    assert.match(await page.textContent('#ime'), /text$/);
+  });
+
+  test('switching the mode in the composer does not disturb the composer', async () => {
+    // Its keyboard is the ordinary one on purpose — suggestions and dictation
+    // are the whole reason the composer exists.
+    await openWithBar('composer', '/?ime=text');
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#more');
+    await page.click('#ime');
+    assert.match(await page.textContent('#ime'), /raw$/);
+    assert.equal(await lastAsked(), 'text');
+  });
+
+  test('a mode chosen from the menu survives a reload', async () => {
+    await openWithBar('keys', '/?ime=text');
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#more');
+    await page.click('#ime');
+    assert.match(await page.textContent('#ime'), /raw$/);
+
+    // Same reason the URL parameter is remembered: an orientation change
+    // reloads the page, and losing the mode mid-test reads as the mode failing.
+    await stand.open();
+    await stand.page.waitForFunction(() => window.__imeCalls.length > 0);
+    assert.equal(await lastAsked(), 'raw');
+    assert.match(await stand.page.textContent('#ime'), /raw$/);
   });
 
   test('asking does not break the page', async () => {

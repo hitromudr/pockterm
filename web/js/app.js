@@ -13,7 +13,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v67';
+const APP_VERSION = 'v68';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -645,19 +645,51 @@ function setImeMode(mode) {
 
 // Raw is opt-in until it is known to work: `?ime=raw`, remembered for the
 // session so a reload keeps whatever was being tested.
+// The parameter is read once, on load, and then the stored value is the only
+// source. Re-reading it on every call meant a URL still carrying ?ime= undid
+// every tap on the switch in ⋯ — and inside the Android client that URL cannot
+// be edited, so the mode would have been stuck for good.
+(function imeFromURL() {
+  const fromUrl = new URLSearchParams(location.search).get('ime');
+  if (!fromUrl) return;
+  const asked = (fromUrl === 'raw' || fromUrl === 'raw-strict') ? fromUrl : 'text';
+  try { sessionStorage.setItem('pt-ime', asked); } catch (_) {}
+})();
+
 function imeWanted() {
   let asked = null;
   try { asked = sessionStorage.getItem('pt-ime'); } catch (_) {}
-  const fromUrl = new URLSearchParams(location.search).get('ime');
-  if (fromUrl) {
-    asked = (fromUrl === 'raw' || fromUrl === 'raw-strict') ? fromUrl : 'text';
-    try { sessionStorage.setItem('pt-ime', asked); } catch (_) {}
-  }
   // `raw` adds only "no dictionary" to what the WebView negotiated;
   // `raw-strict` replaces the input type outright, which is what left the
   // phone without a keyboard in app 2.1. Both are opt-in.
   return (asked === 'raw' || asked === 'raw-strict') ? asked : 'text';
 }
+
+// The three modes, in the order the button walks through them. Three taps
+// come back to the start: a mode that takes the keyboard away must not be a
+// one-way door on the only device that can test it.
+const IME_MODES = ['text', 'raw', 'raw-strict'];
+
+const imeBtn = document.getElementById('ime');
+
+function renderImeButton() {
+  if (imeBtn) imeBtn.textContent = '⌨ ' + imeWanted();
+}
+
+// Switch the mode from the page. The URL parameter cannot be reached inside
+// the Android client — it loads a fixed address — and this is the same lever
+// with somewhere to pull it.
+function cycleIme() {
+  const next = IME_MODES[(IME_MODES.indexOf(imeWanted()) + 1) % IME_MODES.length];
+  try { sessionStorage.setItem('pt-ime', next); } catch (_) {}
+  renderImeButton();
+  // The composer keeps the ordinary keyboard whatever the terminal asked for,
+  // so apply through the same rule rather than setting the new mode blindly.
+  setImeMode(promptMode ? 'text' : imeWanted());
+}
+
+if (imeBtn) imeBtn.addEventListener('click', cycleIme);
+renderImeButton();
 
 function setPromptMode(on) {
   promptMode = on;

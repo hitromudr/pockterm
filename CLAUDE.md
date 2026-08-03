@@ -48,6 +48,14 @@ page cannot do itself; `setImeMode` asks for a different kind of field. Neither
 is fixable inside the page — see `TerminalWebView` in the devops repo for what
 the app actually asks the keyboard for.
 
+The lever is pulled from the ⋯ menu, not from the URL. `?ime=` still works and
+still wins on load, but inside the Android client the address is fixed
+(`POCKTERM_URL` in `MainActivity`) and there is no address bar to type it into
+— the parameter was unreachable on the only device that can test it. The
+button cycles text → raw → raw-strict and stores the choice; the URL is read
+once at load, because re-reading it on every call made a lingering `?ime=`
+undo every tap.
+
 `setImeMode` is not a fix, it is a lever with the strength picked at runtime.
 The app defaults to `raw`, and the page asks for `text` everywhere — including
 the terminal — because the strict variant that ships in app 2.1
