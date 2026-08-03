@@ -43,6 +43,7 @@ type Options struct {
 	Notices      *Notices                               // route notifications to attached pages; nil disables it
 	PageVersion  string                                 // version of the page this binary serves; "" says nothing
 	WheelLines   func() int                             // lines tmux scrolls per wheel notch; nil leaves the page on its default
+	StatusRows   func() int                             // rows tmux's status line takes at the bottom; nil says nothing
 	Static       http.Handler                           // the embedded PWA
 	SaveUpload   func(io.Reader) (string, error)        // store a pasted image, return its path; nil disables /api/upload
 	LogClient    func(string)                           // record a line the browser sent; nil disables /api/log
@@ -363,6 +364,7 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 		cfg := struct {
 			Type       string `json:"type"`
 			WheelLines int    `json:"wheelLines,omitempty"`
+			StatusRows int    `json:"statusRows,omitempty"`
 			Version    string `json:"version,omitempty"`
 		}{Type: "config", Version: o.PageVersion}
 		if o.WheelLines != nil {
@@ -370,7 +372,12 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 				cfg.WheelLines = n
 			}
 		}
-		if cfg.WheelLines > 0 || cfg.Version != "" {
+		// How many rows at the bottom belong to tmux rather than to the pane.
+		// The page shifts the rows to follow a finger, and those must stay put.
+		if o.StatusRows != nil {
+			cfg.StatusRows = o.StatusRows()
+		}
+		if cfg.WheelLines > 0 || cfg.Version != "" || cfg.StatusRows > 0 {
 			writeMu.Lock()
 			conn.WriteJSON(cfg)
 			writeMu.Unlock()

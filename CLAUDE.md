@@ -193,6 +193,14 @@ shipping it:
 - **Notches dropped with the queue must be disowned** (`dropped()`). Leaving the
   history throws away what was queued for the next message, and only a message
   that went out can expire on the backstop.
+- **tmux's status line is not chrome.** It is drawn into the bottom row of the
+  same grid the pane lives in, so a transform on the screen takes it along —
+  reported as the green strip rising two rows on an upward swipe. The server asks
+  tmux how tall it is (`show-options -gv status`) and says so in the `config`
+  frame; the page takes the shift straight back off those rows, with the same
+  transition so the two cancel at every point of the settle and not only at its
+  end. Guessing is the wrong move here: too high pins a row of real output while
+  the rest follows the finger, so anything unreadable counts as none.
 - **The gesture is the page's, and the browser has to be told.** `#term` sets
   `touch-action: none`; without it the browser may decide mid-swipe that a long
   drag is its own scroll, take the touch and stop delivering moves — reported as

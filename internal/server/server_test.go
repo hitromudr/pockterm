@@ -782,3 +782,42 @@ func TestConfigFrameIsSkippedWhenThereIsNothingToSay(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigFrameSaysHowMuchOfTheBottomIsTmux(t *testing.T) {
+	// The page shifts the rows to follow a finger between whole lines, and
+	// tmux's status line is the bottom row of the same grid — so it rode along,
+	// which is what "the green strip rises two lines" was. The page cannot work
+	// out which rows those are; this is how it is told.
+	opts := testOptions("")
+	opts.StatusRows = func() int { return 2 }
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("waiting for the config frame: %v", err)
+		}
+		if mt != websocket.TextMessage {
+			continue
+		}
+		var f struct {
+			Type       string `json:"type"`
+			StatusRows int    `json:"statusRows"`
+		}
+		if err := json.Unmarshal(data, &f); err != nil || f.Type != "config" {
+			continue
+		}
+		if f.StatusRows != 2 {
+			t.Fatalf("config = %+v, want statusRows 2", f)
+		}
+		return
+	}
+}

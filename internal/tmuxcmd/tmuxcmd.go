@@ -187,6 +187,42 @@ func WheelLines(table string) []string {
 	return []string{"tmux", "list-keys", "-T", table, "WheelUpPane"}
 }
 
+// StatusLines returns the argv asking tmux how tall its status line is.
+//
+// The page needs it because that line is not chrome to it: tmux draws it into
+// the bottom row of the same grid the pane lives in, so the page's own shift —
+// the transform that keeps the picture under a finger between whole lines —
+// moved it along with everything else. Reported as the green strip rising two
+// lines on an upward swipe.
+//
+// The global option, not the target session's: the page attaches through its own
+// grouped session, which inherits the global one and not the neighbour's
+// override.
+func StatusLines() []string {
+	return []string{"tmux", "show-options", "-gv", "status"}
+}
+
+// ParseStatusLines reads that option: off is none, on is one, and tmux also
+// takes 2..5.
+//
+// Anything unreadable is none. Guessing high is the worse mistake: it would pin
+// a row of real output while the rest of the screen follows the finger, which
+// looks like the terminal tearing, where guessing low only brings back a strip
+// that moves.
+func ParseStatusLines(out string) int {
+	switch v := strings.TrimSpace(out); v {
+	case "off", "":
+		return 0
+	case "on":
+		return 1
+	default:
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 5 {
+			return n
+		}
+		return 0
+	}
+}
+
 // ParseWheelLines reads the count out of that binding. tmux's own default is
 //
 //	bind-key -T copy-mode WheelUpPane select-pane \; send-keys -X -N 5 scroll-up

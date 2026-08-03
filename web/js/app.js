@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v80';
+const APP_VERSION = 'v81';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -379,6 +379,8 @@ function onControl(raw) {
   // What tmux does per wheel notch, asked of tmux rather than assumed: the
   // swipe follows the finger only if the page knows the size of a step.
   if (c && c.type === 'config' && c.wheelLines > 0) { wheelLines = c.wheelLines; setScrollStep(); }
+  // How much of the bottom belongs to tmux's own status line.
+  if (c && c.type === 'config' && typeof c.statusRows === 'number') statusRows = c.statusRows;
   // And which page the server serves. CI installs a build as soon as it
   // arrives, so this frame is also how a reconnect after that restart is told
   // apart from any other reconnect.
@@ -611,10 +613,33 @@ function trackScreen(px) {
     // it settles back instead of snapping.
     trackEl.style.transition = 'transform 90ms ease-out';
     trackEl.style.transform = '';
+    holdStatusRows(0, 'transform 90ms ease-out');
     return;
   }
   trackEl.style.transition = 'none'; // following a finger cannot be eased
   trackEl.style.transform = `translateY(${px.toFixed(1)}px)`;
+  holdStatusRows(px, 'none');
+}
+
+// How many rows at the bottom of the grid are tmux's status line rather than
+// the pane. The server asks tmux; 0 until it says otherwise, because a wrong
+// guess here pins a row of real output while the rest follows the finger.
+let statusRows = 0;
+
+// The status line is not chrome to this page: tmux draws it into the bottom row
+// of the same grid the pane lives in, so the shift above moved it along with
+// everything else — reported as the green strip rising two lines on an upward
+// swipe. Those rows get the shift taken straight back off them.
+//
+// The same transition on both, so the two cancel at every point of the settle
+// rather than only at its end.
+function holdStatusRows(px, transition) {
+  if (statusRows <= 0) return;
+  const rows = document.querySelectorAll('.xterm-rows > div');
+  for (let i = Math.max(0, rows.length - statusRows); i < rows.length; i++) {
+    rows[i].style.transition = transition;
+    rows[i].style.transform = px ? `translateY(${(-px).toFixed(1)}px)` : '';
+  }
 }
 
 // A row on screen, measured rather than computed: the font metrics of a

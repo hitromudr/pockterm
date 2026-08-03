@@ -179,3 +179,29 @@ func TestNameConflict(t *testing.T) {
 		t.Error("renaming a session to its own group name changes nothing and must be allowed")
 	}
 }
+
+func TestStatusLinesArgv(t *testing.T) {
+	got := StatusLines()
+	want := []string{"tmux", "show-options", "-gv", "status"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestParseStatusLines(t *testing.T) {
+	for out, want := range map[string]int{
+		"on\n":  1,
+		"off\n": 1 - 1,
+		"2\n":   2,
+		"5":     5,
+		// Unreadable, and a dead server: none rather than a guess, because
+		// pinning a row of real output looks like the terminal tearing.
+		"":                                 0,
+		"no server running on /tmp/tmux\n": 0,
+		"9\n":                              0,
+	} {
+		if got := ParseStatusLines(out); got != want {
+			t.Fatalf("ParseStatusLines(%q) = %d, want %d", out, got, want)
+		}
+	}
+}

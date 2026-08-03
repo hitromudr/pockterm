@@ -228,6 +228,7 @@ func serve() {
 		Notices:     notices,
 		PageVersion: pockterm.PageVersion(),
 		WheelLines:  wheelLines,
+		StatusRows:  statusRows,
 		Static:      http.FileServer(http.FS(static)),
 		SaveUpload:  uploader(cfg),
 		// The browser has no console anyone can open on the phone this
@@ -398,6 +399,17 @@ func notifier(cfg config.Config, notices *server.Notices) server.Presence {
 // wheelLines asks tmux how many lines its copy-mode wheel binding scrolls.
 // Read once per attach: a binding can change while the server runs, and the
 // answer costs one tmux call against a page that will be open for hours.
+// statusRows asks tmux how many rows its status line takes. The page keeps them
+// still while it shifts the rest to follow a finger — see StatusLines.
+func statusRows() int {
+	argv := tmuxcmd.StatusLines()
+	out, err := exec.Command(argv[0], argv[1:]...).Output()
+	if err != nil {
+		return 0
+	}
+	return tmuxcmd.ParseStatusLines(string(out))
+}
+
 func wheelLines() int {
 	modeKeys := ""
 	if argv := tmuxcmd.ModeKeys(); true {

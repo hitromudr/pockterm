@@ -255,6 +255,62 @@ describe('a swipe follows the finger', () => {
     assert.equal(styles.snapshot, 'auto');
   });
 
+  test("tmux's status line does not ride along with the shift", async () => {
+    // Reported as the green strip at the bottom rising two lines on an upward
+    // swipe. It is not chrome to this page: tmux draws it into the bottom row of
+    // the same grid, so a transform on the screen takes it with everything else.
+    // The stand's tmux has its status line on, which is what makes this checkable
+    // here at all.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    await recordGesture(page);
+
+    // Where the last row sits before anything moves, and what is in it: the
+    // status line is tmux's, so it carries the session name.
+    const bottom = () => page.evaluate(() => {
+      const rows = document.querySelectorAll('.xterm-rows > div');
+      const el = rows[rows.length - 1];
+      const box = el.getBoundingClientRect();
+      return { y: box.y, text: (el.textContent || '').trim() };
+    });
+    // Painted by tmux a moment after the attach, and it names the client session
+    // the page attached through rather than the target.
+    await page.waitForFunction(() => {
+      const rows = document.querySelectorAll('.xterm-rows > div');
+      const last = rows[rows.length - 1];
+      return last && /pockterm-/.test(last.textContent || '');
+    }, null, { timeout: 5000 });
+    const before = await bottom();
+    assert.match(before.text, /pockterm-/, `the bottom row is not tmux's status line: ${JSON.stringify(before.text)}`);
+
+    let y = 500;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y }] });
+    y += 24;
+    await move(page, cdp, y);
+    for (let i = 0; i < 8; i++) { y += 8; await move(page, cdp, y); }
+
+    const shifted = await page.evaluate(() => {
+      const el = document.querySelector('.xterm-screen');
+      const t = el && getComputedStyle(el).transform;
+      return !t || t === 'none' ? 0 : new DOMMatrixReadOnly(t).f;
+    });
+    assert.ok(shifted > 4, `the finger was not followed: ${shifted}`);
+
+    const during = await bottom();
+    assert.ok(Math.abs(during.y - before.y) < 1.5,
+      `the status line moved ${(during.y - before.y).toFixed(1)}px with a shift of ${shifted.toFixed(1)}px`);
+
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.xterm-screen');
+      const t = el && getComputedStyle(el).transform;
+      return !t || t === 'none' || Math.abs(new DOMMatrixReadOnly(t).f) < 0.5;
+    }, null, { timeout: 4000 });
+    const after = await bottom();
+    assert.ok(Math.abs(after.y - before.y) < 1.5, 'the status line did not come back to where it was');
+  });
+
   test('the shifted rows stay inside the terminal', async () => {
     // The shift is a transform, and a row drawn over the key bar would be a
     // new defect in place of the old one.
