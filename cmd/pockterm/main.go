@@ -134,6 +134,7 @@ func serve() {
 		InMode:     inMode,
 		Presence:   notifier(cfg, notices),
 		Notices:    notices,
+		WheelLines: wheelLines,
 		Static:     http.FileServer(http.FS(static)),
 		SaveUpload: uploader(cfg),
 		// The browser has no console anyone can open on the phone this
@@ -287,6 +288,18 @@ func notifier(cfg config.Config, notices *server.Notices) server.Presence {
 		log.Printf("notifications on (page only, telegram not configured), idle threshold %s", cfg.Idle)
 	}
 	return watch.Presence{Watcher: w, Viewers: viewers}
+}
+
+// wheelLines asks tmux how many lines its copy-mode wheel binding scrolls.
+// Read once per attach: a binding can change while the server runs, and the
+// answer costs one tmux call against a page that will be open for hours.
+func wheelLines() int {
+	argv := tmuxcmd.WheelLines()
+	out, err := exec.Command(argv[0], argv[1:]...).Output()
+	if err != nil {
+		return tmuxcmd.ParseWheelLines("")
+	}
+	return tmuxcmd.ParseWheelLines(string(out))
 }
 
 // capturePane reads the visible text of a session's current pane.

@@ -101,3 +101,30 @@ func Attach(target, webSession string) []string {
 		";", "set-option", "mouse", "on",
 	}
 }
+
+// WheelLines returns the argv asking tmux what its copy-mode wheel binding
+// does. The page turns a swipe into wheel notches, so how far one notch
+// scrolls is the difference between the screen following the finger and the
+// screen running away from it — and it is a binding, not a constant.
+func WheelLines() []string {
+	return []string{"tmux", "list-keys", "-T", "copy-mode", "WheelUpPane"}
+}
+
+// ParseWheelLines reads the count out of that binding. tmux's own default is
+//
+//	bind-key -T copy-mode WheelUpPane select-pane \; send-keys -X -N 5 scroll-up
+//
+// and anything unparseable falls back to that 5 rather than to a guess of 1,
+// which would make every swipe five times too short on a stock tmux.
+func ParseWheelLines(out string) int {
+	fields := strings.Fields(out)
+	for i, f := range fields {
+		if f != "-N" || i+1 >= len(fields) {
+			continue
+		}
+		if n, err := strconv.Atoi(fields[i+1]); err == nil && n > 0 && n <= 100 {
+			return n
+		}
+	}
+	return 5
+}

@@ -88,3 +88,22 @@ func TestParseSessionsIgnoresJunk(t *testing.T) {
 		t.Fatalf("junk line parsed as a session: %+v", s)
 	}
 }
+
+func TestParseWheelLines(t *testing.T) {
+	// tmux's own default binding, as `list-keys` prints it.
+	stock := `bind-key -T copy-mode WheelUpPane select-pane \; send-keys -X -N 5 scroll-up`
+	if got := ParseWheelLines(stock); got != 5 {
+		t.Fatalf("ParseWheelLines(stock) = %d, want 5", got)
+	}
+	rebound := `bind-key -T copy-mode WheelUpPane select-pane \; send-keys -X -N 1 scroll-up`
+	if got := ParseWheelLines(rebound); got != 1 {
+		t.Fatalf("ParseWheelLines(rebound) = %d, want 1", got)
+	}
+	// No count in the binding, no tmux at all, nonsense: back to the default
+	// rather than to 1, which would make every swipe five times too short.
+	for _, in := range []string{"", "bind-key -T copy-mode WheelUpPane send-keys -X scroll-up", "-N", "-N x", "-N 0", "-N 1000"} {
+		if got := ParseWheelLines(in); got != 5 {
+			t.Fatalf("ParseWheelLines(%q) = %d, want the 5 it falls back to", in, got)
+		}
+	}
+}

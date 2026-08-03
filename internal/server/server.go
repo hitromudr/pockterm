@@ -38,6 +38,7 @@ type Options struct {
 	InMode       func(id int64) (bool, error)           // client pane in tmux copy-mode; nil disables the poll
 	Presence     Presence                               // notification bookkeeping; nil disables it
 	Notices      *Notices                               // route notifications to attached pages; nil disables it
+	WheelLines   func() int                             // lines tmux scrolls per wheel notch; nil leaves the page on its default
 	Static       http.Handler                           // the embedded PWA
 	SaveUpload   func(io.Reader) (string, error)        // store a pasted image, return its path; nil disables /api/upload
 	LogClient    func(string)                           // record a line the browser sent; nil disables /api/log
@@ -314,6 +315,20 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 		o.Presence.Watch(target)
 		o.Presence.Join(target, id)
 		defer o.Presence.Leave(target, id)
+	}
+
+	// How far one wheel notch scrolls. The page turns a swipe into notches
+	// and has to size them; asking tmux beats assuming its default, which is
+	// what made the screen move five times faster than the finger.
+	if o.WheelLines != nil {
+		if n := o.WheelLines(); n > 0 {
+			writeMu.Lock()
+			conn.WriteJSON(struct {
+				Type       string `json:"type"`
+				WheelLines int    `json:"wheelLines"`
+			}{"config", n})
+			writeMu.Unlock()
+		}
 	}
 
 	// The watcher's events reach this page the same way everything else does.

@@ -4,6 +4,8 @@ import { noticeFrom } from './notify.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
 import { snapshotText } from './select.js';
 import { initDiag, environment, report } from './diag.js';
+import { watch as watchInput } from './inputdiag.js';
+import { Scroller } from './scroll.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -11,7 +13,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v61';
+const APP_VERSION = 'v62';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -360,6 +362,9 @@ function onControl(raw) {
   try { c = JSON.parse(raw); } catch (_) { return; }
   if (c && c.type === 'mode') setCopyMode(!!c.in);
   if (c && c.type === 'notify') show(noticeFrom(c));
+  // What tmux does per wheel notch, asked of tmux rather than assumed: the
+  // swipe follows the finger only if the page knows the size of a step.
+  if (c && c.type === 'config' && c.wheelLines > 0) { wheelLines = c.wheelLines; setScrollStep(); }
 }
 
 function send(data) {
@@ -469,30 +474,46 @@ document.getElementById('term').addEventListener('click', () => {
 // under tmux.
 function sendWheel(btn) { send(`\x1b[<${btn};1;1M`); }
 
-// One wheel notch per row of movement, not per twenty pixels. A fixed step
-// scrolls a different distance at every text size and stutters between the
-// finger and the screen; a row is what tmux actually moves.
+// A row on screen, measured rather than computed: the font metrics of a
+// monospace face are not the line box xterm actually draws.
 function rowHeight() {
   const row = document.querySelector('.xterm-rows > div');
   const h = row && row.getBoundingClientRect().height;
   return h && h > 4 ? h : Math.max(8, fontSize * 1.2);
 }
 
+// How many lines tmux moves per wheel notch. Its own default is five, and the
+// server replaces this with what the running tmux actually says.
+let wheelLines = 5;
+
+const scroller = new Scroller({
+  notch: (dir) => sendWheel(dir > 0 ? 64 : 65), // +1 = towards history
+});
+function setScrollStep() { scroller.setStep(rowHeight() * wheelLines); }
+setScrollStep();
+
 let touchY = null;
 const termBox = document.getElementById('term');
 termBox.addEventListener('touchstart', (e) => {
   // Selection mode gives the drag gesture back to the browser: swiping has
   // to select text there, not scroll.
-  touchY = selectMode ? null : e.touches[0].clientY;
+  scroller.stop();
+  if (selectMode) { touchY = null; return; }
+  touchY = e.touches[0].clientY;
+  setScrollStep();
+  scroller.start(e.timeStamp);
 }, { passive: true });
 termBox.addEventListener('touchmove', (e) => {
   if (touchY === null) return;
-  let dy = e.touches[0].clientY - touchY;
-  const step = rowHeight();
-  while (dy >= step) { sendWheel(64); dy -= step; touchY += step; }   // swipe down → history
-  while (dy <= -step) { sendWheel(65); dy += step; touchY -= step; }  // swipe up → newer
+  const y = e.touches[0].clientY;
+  scroller.move(y - touchY, e.timeStamp);
+  touchY = y;
 }, { passive: true });
-termBox.addEventListener('touchend', () => { touchY = null; }, { passive: true });
+termBox.addEventListener('touchend', (e) => {
+  if (touchY === null) return;
+  touchY = null;
+  scroller.end(e.timeStamp);
+}, { passive: true });
 
 // Hide/show the bottom bar to give the terminal the whole screen.
 let panelsHidden = false;
@@ -979,6 +1000,37 @@ function visibleLines() {
 // its business any more, and why it stopped being it is in js/notify.js.
 const bellBtn = document.getElementById('bell');
 let notifyOn = false;
+
+// --- input log ------------------------------------------------------------
+// Records what the keyboard does to the terminal's field, into the server's
+// journal: `journalctl -u pockterm | grep '"event":"input"'`. Off, shapes, or
+// shapes plus the typed text — see js/inputdiag.js for why the last one is a
+// separate step and not a default.
+const inputDiagBtn = document.getElementById('input-diag');
+const DIAG_LEVELS = ['off', 'on', 'chars'];
+let inputDiag = 'off';
+let unwatchInput = null;
+try { inputDiag = DIAG_LEVELS.includes(localStorage.getItem('pt-input-diag')) ? localStorage.getItem('pt-input-diag') : 'off'; } catch (_) {}
+
+function applyInputDiag() {
+  if (unwatchInput) { unwatchInput(); unwatchInput = null; }
+  if (inputDiag !== 'off') {
+    unwatchInput = watchInput(term.textarea, inputDiag, report);
+    report('input-log', { level: inputDiag });
+  }
+  inputDiagBtn.classList.toggle('on', inputDiag !== 'off');
+  inputDiagBtn.title = inputDiag === 'off' ? 'Record what the keyboard does'
+    : inputDiag === 'on' ? 'Recording (no text) — tap for text too' : 'Recording with text — tap to stop';
+}
+
+inputDiagBtn.addEventListener('click', () => {
+  inputDiag = DIAG_LEVELS[(DIAG_LEVELS.indexOf(inputDiag) + 1) % DIAG_LEVELS.length];
+  try { localStorage.setItem('pt-input-diag', inputDiag); } catch (_) {}
+  applyInputDiag();
+  toast(inputDiag === 'off' ? 'input log off'
+    : inputDiag === 'on' ? 'input log on (no text)' : 'input log on — WITH TEXT');
+});
+applyInputDiag();
 try { notifyOn = localStorage.getItem('pt-notify') === 'on'; } catch (_) {}
 
 function renderBell() {
