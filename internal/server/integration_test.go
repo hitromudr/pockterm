@@ -47,13 +47,14 @@ func TestRealTmuxCopyMode(t *testing.T) {
 			base := tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 			return append([]string{"tmux", "-L", sock}, base[1:]...)
 		},
-		InMode: func(id int64) (bool, error) {
-			argv := tmuxcmd.PaneInMode(tmuxcmd.ClientName(id))
+		InMode: func(id int64) (bool, int, error) {
+			argv := tmuxcmd.PaneMode(tmuxcmd.ClientName(id))
 			out, err := tmuxL(sock, argv[1:]...).Output()
 			if err != nil {
-				return false, err
+				return false, 0, err
 			}
-			return tmuxcmd.ParsePaneInMode(string(out)), nil
+			in, back := tmuxcmd.ParsePaneMode(string(out))
+			return in, back, nil
 		},
 		Static: http.NotFoundHandler(),
 	}))
@@ -65,16 +66,34 @@ func TestRealTmuxCopyMode(t *testing.T) {
 	}
 	defer c.Close()
 
-	waitMode(t, c, false)
+	waitMode(t, c, false, 0)
 	client := tmuxcmd.ClientName(clientID.Load())
+
+	// Something to scroll back through: the pane runs cat, so what is sent
+	// comes back as output and becomes history.
+	for i := 0; i < 40; i++ {
+		if out, err := tmuxL(sock, "send-keys", "-t", client, fmt.Sprintf("line %d", i), "Enter").CombinedOutput(); err != nil {
+			t.Fatalf("tmux send-keys: %v: %s", err, out)
+		}
+	}
+
 	if out, err := tmuxL(sock, "copy-mode", "-t", client).CombinedOutput(); err != nil {
 		t.Fatalf("tmux copy-mode: %v: %s", err, out)
 	}
-	waitMode(t, c, true)
+	// In copy-mode at the live end. Both numbers matter here and this is the
+	// pair the page used to be unable to tell apart from the next one: it put a
+	// button offering the way back on screen with nowhere to go.
+	waitMode(t, c, true, 0)
+
+	if out, err := tmuxL(sock, "send-keys", "-t", client, "-X", "-N", "5", "scroll-up").CombinedOutput(); err != nil {
+		t.Fatalf("tmux scroll-up: %v: %s", err, out)
+	}
+	waitMode(t, c, true, 5)
+
 	if out, err := tmuxL(sock, "send-keys", "-t", client, "-X", "cancel").CombinedOutput(); err != nil {
 		t.Fatalf("tmux cancel: %v: %s", err, out)
 	}
-	waitMode(t, c, false)
+	waitMode(t, c, false, 0)
 }
 
 func TestRealTmuxRoundTrip(t *testing.T) {

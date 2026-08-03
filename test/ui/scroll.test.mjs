@@ -124,6 +124,81 @@ describe('a swipe follows the finger', () => {
     assert.deepEqual(stand.pageErrors, []);
   });
 
+  test('the way back to the end is offered only when there is one', async () => {
+    // Reported as the round ⇩ button often staying at the bottom with nothing
+    // behind it. It followed tmux's copy-mode, and that is a different state
+    // from being scrolled back: a pane can sit in copy-mode showing the live
+    // end — its own glide, a second client on the shared pane, or a mode
+    // entered by hand all land there — and then the button offers a way back
+    // from where the screen already is.
+    //
+    // The states are made with tmux rather than with a finger on purpose. A
+    // swipe on this stand ends with tmux leaving copy-mode by itself, so it
+    // cannot tell the old behaviour from the new one; copy-mode at position
+    // zero is exactly the case that could not be told apart, so it is the case
+    // asserted.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    // The page attaches through its own grouped session, and that is the one
+    // whose pane state the server reports.
+    const client = stand.tmux(['list-sessions', '-F', '#{session_name}'])
+      .split('\n').find((n) => n.startsWith('pockterm-'));
+    assert.ok(client, 'the page did not attach through a client session');
+
+    // History to scroll through: the session runs cat, so what is typed comes
+    // back as output.
+    await page.click('#term');
+    for (let i = 1; i <= 40; i++) await page.keyboard.type(`line ${i}\n`);
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('line 40'));
+    assert.ok(await page.locator('#to-bottom').isHidden(), 'the button is up before anything was scrolled');
+
+    // In copy-mode, at the live end. The button must stay down: this is the
+    // reported defect, and the page cannot see the difference without the
+    // position that now travels with the mode frame.
+    stand.tmux(['copy-mode', '-t', client]);
+    await page.waitForFunction(() => window.__modeSeen === true, null, { timeout: 5000 }).catch(() => {});
+    const atEnd = stand.tmux(['display-message', '-p', '-t', client, '#{pane_in_mode} #{scroll_position}']).trim();
+    assert.match(atEnd, /^1 0?$/, `the state under test was not reached: ${atEnd}`);
+    assert.ok(await page.locator('#to-bottom').isHidden(),
+      'copy-mode at the live end still offers a way back from it');
+
+    // Scrolled back: now there is somewhere to go.
+    stand.tmux(['send-keys', '-t', client, '-X', '-N', '5', 'scroll-up']);
+    await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
+
+    // And out again.
+    stand.tmux(['send-keys', '-t', client, '-X', 'cancel']);
+    await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
+    assert.deepEqual(stand.pageErrors, []);
+  });
+
+  test('a swipe into history offers the way back', async () => {
+    // The same button through the real path: a finger, the page's own notches,
+    // and whatever tmux makes of them.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    await recordGesture(page);
+    await page.click('#term');
+    for (let i = 1; i <= 40; i++) await page.keyboard.type(`line ${i}\n`);
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('line 40'));
+
+    let y = 200;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y }] });
+    for (let i = 0; i < 12; i++) { y += 30; await move(page, cdp, y); }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+    await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
+    // Tapping it is how the page leaves history: it sends q, and the pane comes
+    // back to the live end.
+    await page.click('#to-bottom');
+    await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
+    const after = stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_in_mode} #{scroll_position}']).trim();
+    assert.doesNotMatch(after, /^1 [1-9]/, `still scrolled back after tapping the way out: ${after}`);
+  });
+
   test('the shifted rows stay inside the terminal', async () => {
     // The shift is a transform, and a row drawn over the key bar would be a
     // new defect in place of the old one.

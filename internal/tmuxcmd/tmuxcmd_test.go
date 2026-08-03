@@ -60,22 +60,32 @@ func TestCapturePaneArgv(t *testing.T) {
 	}
 }
 
-func TestPaneInModeArgv(t *testing.T) {
-	got := PaneInMode("pockterm-7")
-	want := []string{"tmux", "display-message", "-p", "-t", "pockterm-7", "#{pane_in_mode}"}
+func TestPaneModeArgv(t *testing.T) {
+	got := PaneMode("pockterm-7")
+	want := []string{"tmux", "display-message", "-p", "-t", "pockterm-7", "#{pane_in_mode} #{scroll_position}"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v", got)
 	}
 }
 
-func TestParsePaneInMode(t *testing.T) {
-	if !ParsePaneInMode("1\n") {
-		t.Fatal(`"1" should mean the pane is in a mode`)
+func TestParsePaneMode(t *testing.T) {
+	// Scrolled back: both numbers say so, and how far.
+	if in, back := ParsePaneMode("1 30\n"); !in || back != 30 {
+		t.Fatalf("in = %v, back = %d, want true and 30", in, back)
+	}
+	// In copy-mode at the live end. This is the case the button used to be
+	// shown for: tmux is in a mode, and there is nowhere to come back from.
+	if in, back := ParsePaneMode("1 0\n"); !in || back != 0 {
+		t.Fatalf("in = %v, back = %d, want true and 0", in, back)
+	}
+	// A mode with no position at all (not copy-mode) is still a mode.
+	if in, back := ParsePaneMode("1 \n"); !in || back != 0 {
+		t.Fatalf("in = %v, back = %d, want true and 0", in, back)
 	}
 	// Not in a mode, and the failure cases: no such session, dead server.
-	for _, out := range []string{"0\n", "0", "", "can't find session: pockterm-7\n"} {
-		if ParsePaneInMode(out) {
-			t.Fatalf("%q wrongly read as in-mode", out)
+	for _, out := range []string{"0 \n", "0", "", "can't find session: pockterm-7\n"} {
+		if in, back := ParsePaneMode(out); in || back != 0 {
+			t.Fatalf("%q wrongly read as in-mode %v/%d", out, in, back)
 		}
 	}
 }

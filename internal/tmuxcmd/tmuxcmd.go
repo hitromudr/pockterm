@@ -110,19 +110,37 @@ func CapturePane(session string) []string {
 	return []string{"tmux", "capture-pane", "-p", "-t", session}
 }
 
-// PaneInMode returns the argv reporting whether the current pane of
-// session is in a tmux mode — copy-mode, which is what a touch swipe
-// enters to scroll the history. The web UI needs to know: while the pane
-// shows history, the numbered lines on screen belong to the past and
-// answering them would send digits to whatever is running now.
-func PaneInMode(session string) []string {
-	return []string{"tmux", "display-message", "-p", "-t", session, "#{pane_in_mode}"}
+// PaneMode returns the argv reporting two things about the current pane of
+// session: whether it is in a tmux mode — copy-mode, which is what a touch
+// swipe enters to scroll the history — and how far back it is scrolled.
+//
+// Both, because the page needs a different question answered than tmux asks
+// itself. While the pane shows history, the numbered lines on screen belong to
+// the past and answering them would send digits to whatever is running now; but
+// a pane sitting in copy-mode at the live end shows the present, and the way
+// back to it is nowhere. The button offering that way back is the thing that
+// was left on screen with nothing behind it.
+func PaneMode(session string) []string {
+	return []string{"tmux", "display-message", "-p", "-t", session, "#{pane_in_mode} #{scroll_position}"}
 }
 
-// ParsePaneInMode reads PaneInMode output. Only a bare "1" means in-mode;
-// empty output or an error message (dead server, session gone) does not.
-func ParsePaneInMode(out string) bool {
-	return strings.TrimSpace(out) == "1"
+// ParsePaneMode reads PaneMode output: whether the pane is in a mode, and how
+// many lines back it is scrolled.
+//
+// Only a bare "1" in the first field means in-mode; empty output or an error
+// message (dead server, session gone) does not. The position is empty for a
+// pane that is not in a mode, and tmux prints it as 0 at the live end.
+func ParsePaneMode(out string) (inMode bool, scrollBack int) {
+	fields := strings.Fields(out)
+	if len(fields) == 0 || fields[0] != "1" {
+		return false, 0
+	}
+	if len(fields) > 1 {
+		if n, err := strconv.Atoi(fields[1]); err == nil && n > 0 {
+			scrollBack = n
+		}
+	}
+	return true, scrollBack
 }
 
 // Attach returns the argv attaching a web client to its own grouped

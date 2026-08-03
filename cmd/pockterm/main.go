@@ -424,15 +424,17 @@ func capturePane(session string) (string, error) {
 }
 
 // inMode asks tmux whether the client's own grouped session is showing
-// copy-mode (the browser scrolled back into history). The client session is
-// the one to ask: its current window is what that browser tab displays.
-func inMode(id int64) (bool, error) {
-	argv := tmuxcmd.PaneInMode(tmuxcmd.ClientName(id))
+// copy-mode (the browser scrolled back into history) and how far back it is
+// scrolled. The client session is the one to ask: its current window is what
+// that browser tab displays.
+func inMode(id int64) (bool, int, error) {
+	argv := tmuxcmd.PaneMode(tmuxcmd.ClientName(id))
 	out, err := exec.Command(argv[0], argv[1:]...).Output()
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
-	return tmuxcmd.ParsePaneInMode(string(out)), nil
+	in, back := tmuxcmd.ParsePaneMode(string(out))
+	return in, back, nil
 }
 
 // listSessions runs `tmux list-sessions`. With no server running tmux

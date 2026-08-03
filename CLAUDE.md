@@ -81,6 +81,26 @@ the next attempt costs a reload instead of an APK release. The drift itself is
 still open: all that is known is that replacing the input type does not cure
 it.
 
+## Scrolled back is not the same as copy-mode
+
+The page shows two things while the pane is scrolled back into history: the
+round ⇩ button that returns to the live end, and no prompt buttons, because the
+numbered lines on screen belong to the past.
+
+Both used to follow `#{pane_in_mode}`, and that is a different state. tmux's own
+`WheelUpPane` binding enters copy-mode with `-e`, which leaves it again when a
+scroll reaches the bottom — but only when a scroll is what got there. The page's
+glide keeps sending notches after the finger is gone, a second client on the
+shared pane has its own idea of the position, and a mode entered by hand never
+had a scroll to end. All of those sit in copy-mode showing the present, which is
+what "the ⇩ stays at the bottom" was: a button offering the way back from where
+the screen already is.
+
+The mode frame carries `#{scroll_position}` as well now, and the page shows both
+by whether there is history above. Nothing here asks tmux to leave copy-mode:
+the pane is shared, and a page that sent `q` on its own would take the laptop's
+client out of a mode it chose to be in.
+
 ## A session name can be a group in disguise
 
 tmux names a session group after the session it was created from and never

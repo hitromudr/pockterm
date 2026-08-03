@@ -200,7 +200,8 @@ func TestCopyModeReported(t *testing.T) {
 	// the server has to push pane-mode changes as they happen.
 	opts := testOptions("")
 	var inMode atomic.Bool
-	opts.InMode = func(id int64) (bool, error) { return inMode.Load(), nil }
+	var back atomic.Int64
+	opts.InMode = func(id int64) (bool, int, error) { return inMode.Load(), int(back.Load()), nil }
 	srv := httptest.NewServer(Handler(opts))
 	defer srv.Close()
 
@@ -213,21 +214,28 @@ func TestCopyModeReported(t *testing.T) {
 
 	// The initial state arrives without a transition: a client attaching to
 	// a pane already scrolled back must not wait for one.
-	waitMode(t, c, false)
+	waitMode(t, c, false, 0)
 	inMode.Store(true)
-	waitMode(t, c, true)
+	back.Store(30)
+	waitMode(t, c, true, 30)
+	// Scrolled back to the live end while tmux stays in copy-mode. This is the
+	// reading the page needs and the one it used to be denied: the state has
+	// not changed, only the position, and without it the page goes on offering
+	// a way back from where it already is.
+	back.Store(0)
+	waitMode(t, c, true, 0)
 	inMode.Store(false)
-	waitMode(t, c, false)
+	waitMode(t, c, false, 0)
 }
 
 // waitMode reads until a mode frame with the wanted state arrives.
-func waitMode(t *testing.T, c *websocket.Conn, want bool) {
+func waitMode(t *testing.T, c *websocket.Conn, want bool, wantBack int) {
 	t.Helper()
 	c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	for {
 		mt, data, err := c.ReadMessage()
 		if err != nil {
-			t.Fatalf("waiting for mode=%v: %v", want, err)
+			t.Fatalf("waiting for mode=%v back=%d: %v", want, wantBack, err)
 		}
 		if mt != websocket.TextMessage {
 			continue
@@ -235,11 +243,12 @@ func waitMode(t *testing.T, c *websocket.Conn, want bool) {
 		var f struct {
 			Type string `json:"type"`
 			In   bool   `json:"in"`
+			Back int    `json:"back"`
 		}
 		if err := json.Unmarshal(data, &f); err != nil || f.Type != "mode" {
 			continue
 		}
-		if f.In == want {
+		if f.In == want && f.Back == wantBack {
 			return
 		}
 	}

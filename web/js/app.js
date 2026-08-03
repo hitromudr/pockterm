@@ -16,7 +16,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v75';
+const APP_VERSION = 'v76';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -294,7 +294,7 @@ function attach(name) {
   term.reset();
   document.getElementById('answers').hidden = true;
   lastAnswersSig = null;
-  inCopyMode = false; // the new socket reports the pane's state on connect
+  scrolledBack = false; // the new socket reports the pane's state on connect
   renderTabs();
   requestAnimationFrame(() => {
     // Size first, then the socket: tmux redraws immediately on attach.
@@ -373,7 +373,7 @@ function connect() {
 function onControl(raw) {
   let c = null;
   try { c = JSON.parse(raw); } catch (_) { return; }
-  if (c && c.type === 'mode') setCopyMode(!!c.in);
+  if (c && c.type === 'mode') setCopyMode(!!c.in, c.back | 0);
   if (c && c.type === 'notify') show(noticeFrom(c));
   // What tmux does per wheel notch, asked of tmux rather than assumed: the
   // swipe follows the finger only if the page knows the size of a step.
@@ -1359,10 +1359,18 @@ document.getElementById('update-now').addEventListener('click', () => {
   location.reload();
 });
 
-// Scrolled back into tmux history (copy-mode): the numbered lines on screen
-// belong to the past, so answering them would send digits to whatever is
-// running now. No buttons until the pane leaves the mode.
-let inCopyMode = false;
+// Scrolled back into tmux history: the numbered lines on screen belong to the
+// past, so answering them would send digits to whatever is running now.
+//
+// "Scrolled back", not "in copy-mode". They are not the same state and the
+// difference is what was reported: the round button offering the way back kept
+// sitting there with nowhere to go. A pane can be in copy-mode at the live end
+// — tmux does leave it when a scroll reaches the bottom, but only when the
+// scroll is what got it there, and the page's own glide, a second client on the
+// same pane or a mode entered by hand all end up in copy-mode showing the
+// present. What matters here is whether there is history above, which is the
+// second number in the mode frame.
+let scrolledBack = false;
 // Scrolled back into history, the way out was a tmux key nobody has on a
 // phone. This button is the way back to the live end of the output, and it is
 // on screen exactly while there is somewhere to come back from.
@@ -1373,17 +1381,21 @@ toBottomBtn.addEventListener('click', () => {
   send('q');
 });
 
-function setCopyMode(on) {
-  if (on === inCopyMode) return;
-  inCopyMode = on;
-  toBottomBtn.hidden = !on;
+function setCopyMode(inMode, back) {
+  const away = !!inMode && back > 0;
+  if (away === scrolledBack) return;
+  scrolledBack = away;
+  toBottomBtn.hidden = !away;
+  // Both numbers, not the conclusion: if the button lingers again, the journal
+  // has to say whether tmux was in a mode and where it thought it was.
+  report('mode', { in: !!inMode, back, shown: away });
   renderAnswers();
 }
 
 let lastAnswersSig = null;
 function renderAnswers() {
   const lines = visibleLines();
-  const q = inCopyMode ? null : detectQuestion(lines);
+  const q = scrolledBack ? null : detectQuestion(lines);
   // Only rebuild when the detected prompt actually changed; otherwise the
   // buttons flicker (and detach mid-tap) on every terminal update.
   const sig = q ? JSON.stringify(q.options) : null;

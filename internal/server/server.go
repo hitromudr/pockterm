@@ -38,7 +38,7 @@ type Options struct {
 	Token        string                                 // "" disables token auth (loopback-only deployments)
 	ListSessions func() ([]tmuxcmd.Session, error)      // current tmux sessions
 	Attach       func(id int64, target string) []string // argv attaching a client to target
-	InMode       func(id int64) (bool, error)           // client pane in tmux copy-mode; nil disables the poll
+	InMode       func(id int64) (bool, int, error)      // client pane in tmux copy-mode, and how far back it is scrolled; nil disables the poll
 	Presence     Presence                               // notification bookkeeping; nil disables it
 	Notices      *Notices                               // route notifications to attached pages; nil disables it
 	PageVersion  string                                 // version of the page this binary serves; "" says nothing
@@ -404,7 +404,7 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 	if o.InMode != nil {
 		done := make(chan struct{})
 		defer close(done)
-		go pollMode(conn, &writeMu, func() (bool, error) { return o.InMode(id) }, done)
+		go pollMode(conn, &writeMu, func() (bool, int, error) { return o.InMode(id) }, done)
 	}
 
 	// PTY → WS. On PTY EOF (client killed, tmux server gone) close the
@@ -469,6 +469,11 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 type modeFrame struct {
 	Type string `json:"type"`
 	In   bool   `json:"in"`
+	// How many lines the pane is scrolled back. The page shows its way back to
+	// the live end by this rather than by In alone: a pane in copy-mode at the
+	// end has nowhere to go back to, and the button offering it was left on
+	// screen with nothing behind it.
+	Back int `json:"back"`
 }
 
 // pollMode reports the pane's copy-mode state to the client until done is
@@ -476,25 +481,29 @@ type modeFrame struct {
 // already scrolled back must not wait for a transition), then only changes;
 // a failed reading is skipped rather than reported as "not in mode", so a
 // transient tmux error does not make the buttons flash back.
-func pollMode(conn *websocket.Conn, writeMu *sync.Mutex, in func() (bool, error), done <-chan struct{}) {
+//
+// A change in the scroll position is a change worth sending: it is what tells
+// the page it has arrived at the end, and tmux does not always leave copy-mode
+// when it gets there.
+func pollMode(conn *websocket.Conn, writeMu *sync.Mutex, in func() (bool, int, error), done <-chan struct{}) {
 	ticker := time.NewTicker(modePoll)
 	defer ticker.Stop()
-	last, known := false, false
+	last, lastBack, known := false, 0, false
 	for {
 		select {
 		case <-done:
 			return
 		case <-ticker.C:
-			cur, err := in()
+			cur, back, err := in()
 			if err != nil {
 				continue
 			}
-			if known && cur == last {
+			if known && cur == last && back == lastBack {
 				continue
 			}
-			last, known = cur, true
+			last, lastBack, known = cur, back, true
 			writeMu.Lock()
-			err = conn.WriteJSON(modeFrame{Type: "mode", In: cur})
+			err = conn.WriteJSON(modeFrame{Type: "mode", In: cur, Back: back})
 			writeMu.Unlock()
 			if err != nil {
 				return
