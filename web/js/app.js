@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v51';
+const APP_VERSION = 'v52';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -411,11 +411,25 @@ function flushComposition() {
 }
 
 function clearComposition() {
-  if (term.textarea) term.textarea.value = '';
   const view = document.querySelector('.xterm .composition-view');
+  const before = { value: (term.textarea && term.textarea.value) || '', view: (view && view.textContent) || '' };
+
+  if (term.textarea) {
+    // Telling xterm the composition is over, not just wiping the DOM it
+    // draws: its helper keeps state of its own and redraws the text from it,
+    // which showed the word twice — once echoed back from the pty, once still
+    // painted on top. Nothing extra was ever sent, and that was the clue.
+    try {
+      term.textarea.dispatchEvent(new CompositionEvent('compositionend', { data: '', bubbles: true }));
+    } catch (_) { /* older engines: the DOM clear below still helps */ }
+    term.textarea.value = '';
+  }
   if (view) {
     view.textContent = '';
     view.classList.remove('active');
+  }
+  if (before.value || before.view) {
+    report('composition-cleared', { value: before.value.length, view: before.view.length });
   }
 }
 
