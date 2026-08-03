@@ -44,11 +44,22 @@ Gboard keeps the word being typed as a composing region and rewrites it in
 place, and xterm.js only clears its hidden textarea while nothing is being
 composed — so under Gboard it never clears, offsets drift, and letters of one
 word end up spliced into the next. `commitInput` ends a composition, which the
-page cannot do itself; `setImeMode` asks for a keyboard that never opens one
-(`raw`, the terminal) or the ordinary one (`text`, the page's own composer,
-where a suggestion or dictation is the point). Neither is fixable inside the
-page — see `TerminalWebView` in the devops repo for what the app actually asks
-the keyboard for.
+page cannot do itself; `setImeMode` asks for a different kind of field. Neither
+is fixable inside the page — see `TerminalWebView` in the devops repo for what
+the app actually asks the keyboard for.
+
+`setImeMode` is not a fix, it is a lever with the strength picked at runtime.
+The app defaults to `raw`, and the page asks for `text` everywhere — including
+the terminal — because the strict variant that ships in app 2.1
+(`VISIBLE_PASSWORD` + `NO_SUGGESTIONS`, now `?ime=raw-strict`) brought up no
+keyboard at all on the owner's phone: `sawKeyboard:false` for a whole session
+under `ime-mode raw ok:true`. A drifting keyboard is bad and no keyboard is
+worse, so the default undoes the app's own, and it takes effect on reload
+rather than on an install. `?ime=raw` is the gentle variant — the WebView's
+negotiated input type plus "no dictionary" — kept behind a query parameter so
+the next attempt costs a reload instead of an APK release. The drift itself is
+still open: all that is known is that replacing the input type does not cure
+it.
 
 ## Notifications are decided in one place
 
