@@ -167,6 +167,20 @@ describe('the keyboard the page asks for', () => {
     assert.match(await stand.page.textContent('#ime'), /raw$/);
   });
 
+  test('the mode outlives the app restarting its activity', async () => {
+    // sessionStorage does not: the app recreates its activity on a rotation or
+    // on coming back from the launcher, and the journal showed `raw` chosen at
+    // 16:04 and `text` again on the next load. A mode nobody can keep is a
+    // mode nobody can evaluate.
+    await openWithBar('keys', '/?ime=raw');
+    await stand.page.waitForFunction(() => window.__imeCalls.at(-1) === 'raw');
+
+    await stand.page.evaluate(() => sessionStorage.clear());
+    await stand.open();
+    await stand.page.waitForFunction(() => window.__imeCalls.length > 0);
+    assert.equal(await lastAsked(), 'raw');
+  });
+
   test('asking does not break the page', async () => {
     // The trap this guards: a page that throws on load never renders the
     // session list, and on the phone that is indistinguishable from a machine

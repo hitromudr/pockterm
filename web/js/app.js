@@ -13,7 +13,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v68';
+const APP_VERSION = 'v69';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -599,12 +599,18 @@ document.querySelectorAll('button[data-macro]').forEach((b) => {
 function inApp() {
   return !!(window.PockNative && typeof window.PockNative.copy === 'function');
 }
+
+// Reported as "the input box sticks and it switches into it by itself". The
+// default only applies until a choice is made, so either the choice is not
+// being stored or something re-runs this — and from the page there is no way
+// to tell which. The startup report below says what was found and what was
+// chosen, so the next occurrence answers it from the journal.
 function defaultPromptMode() {
   let saved = null;
   try { saved = localStorage.getItem('pt-bar'); } catch (_) {}
-  if (saved === 'composer') return true;
-  if (saved === 'keys') return false;
-  return inApp();
+  const mode = saved === 'composer' ? true : saved === 'keys' ? false : inApp();
+  report('bars', { saved: saved || '', inApp: inApp(), composer: mode });
+  return mode;
 }
 
 let promptMode = defaultPromptMode();
@@ -649,16 +655,22 @@ function setImeMode(mode) {
 // source. Re-reading it on every call meant a URL still carrying ?ime= undid
 // every tap on the switch in ⋯ — and inside the Android client that URL cannot
 // be edited, so the mode would have been stuck for good.
+//
+// Stored in localStorage, not sessionStorage: the app restarts its activity
+// on a rotation or on coming back from the launcher, and the mode being
+// tested vanished with it — the journal shows `raw` chosen at 16:04 and
+// `text` again after the next load. A mode nobody can keep is a mode nobody
+// can evaluate.
 (function imeFromURL() {
   const fromUrl = new URLSearchParams(location.search).get('ime');
   if (!fromUrl) return;
   const asked = (fromUrl === 'raw' || fromUrl === 'raw-strict') ? fromUrl : 'text';
-  try { sessionStorage.setItem('pt-ime', asked); } catch (_) {}
+  try { localStorage.setItem('pt-ime', asked); } catch (_) {}
 })();
 
 function imeWanted() {
   let asked = null;
-  try { asked = sessionStorage.getItem('pt-ime'); } catch (_) {}
+  try { asked = localStorage.getItem('pt-ime'); } catch (_) {}
   // `raw` adds only "no dictionary" to what the WebView negotiated;
   // `raw-strict` replaces the input type outright, which is what left the
   // phone without a keyboard in app 2.1. Both are opt-in.
@@ -681,7 +693,7 @@ function renderImeButton() {
 // with somewhere to pull it.
 function cycleIme() {
   const next = IME_MODES[(IME_MODES.indexOf(imeWanted()) + 1) % IME_MODES.length];
-  try { sessionStorage.setItem('pt-ime', next); } catch (_) {}
+  try { localStorage.setItem('pt-ime', next); } catch (_) {}
   renderImeButton();
   // The composer keeps the ordinary keyboard whatever the terminal asked for,
   // so apply through the same rule rather than setting the new mode blindly.
