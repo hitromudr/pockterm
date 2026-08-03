@@ -1,4 +1,4 @@
-.PHONY: deps build build-arm64 test test-v lint format check clean deploy
+.PHONY: deps build build-arm64 build-amd64 release test test-v lint format check clean deploy
 
 GO      ?= go
 BIN_DIR := bin
@@ -18,6 +18,19 @@ build-arm64: ## Cross-compile linux/arm64 into bin/$(PROJECT)-linux-arm64
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build \
 		-o $(BIN_DIR)/$(PROJECT)-linux-arm64 ./cmd/$(PROJECT)
+
+build-amd64: ## Cross-compile linux/amd64 into bin/$(PROJECT)-linux-amd64
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build \
+		-o $(BIN_DIR)/$(PROJECT)-linux-amd64 ./cmd/$(PROJECT)
+
+# What a release publishes: both binaries and the sums install.sh verifies
+# them against. Static (CGO off), so they run on whatever libc is there.
+release: build-amd64 build-arm64 ## Build the release artifacts into dist/
+	@rm -rf dist && mkdir -p dist
+	cp $(BIN_DIR)/$(PROJECT)-linux-amd64 $(BIN_DIR)/$(PROJECT)-linux-arm64 dist/
+	cd dist && sha256sum $(PROJECT)-linux-* > SHA256SUMS
+	@echo "dist/:" && ls -1 dist
 
 test: ## Run tests
 	$(GO) test ./...

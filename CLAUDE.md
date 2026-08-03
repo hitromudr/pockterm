@@ -118,6 +118,13 @@ The host-side pieces — `pockterm-deploy`, its `.path`, `.service` and
 `test/deploy_test.sh` (`make test-deploy`), which stubs systemctl and curl.
 They were host-only files until 2026-08-03, owned by nothing.
 
+That path installs on the RPi5 only. For everyone else there are releases:
+`.github/workflows/release.yml` fires on a `v*` tag, runs `make release`
+(both architectures plus `SHA256SUMS`) and publishes them, and
+`deploy/install.sh` downloads one when no Go toolchain is present. The
+checksum check is not decoration — a binary that does not match is refused,
+and `test/install_test.sh` covers both outcomes with a `file://` release.
+
 The signing key is the repo Actions secret `DEPLOY_HMAC_KEY` and
 `/etc/pockterm/deploy-hmac.key` on the host. It exists because the drop
 directory is mounted into a job container and the runner serves other

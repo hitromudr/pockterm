@@ -6,7 +6,9 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -35,6 +37,7 @@ const usage = `pockterm — mobile web terminal for your tmux sessions
   pockterm token           print a fresh shared token
   pockterm unit [flags]    print a systemd unit
   pockterm qr [url]        print the client URL as a QR code for your phone
+  pockterm tg-setup        find your chat id and write the notification config
 
 Environment: POCKTERM_LISTEN, POCKTERM_TOKEN, POCKTERM_PUBLIC_URL,
 POCKTERM_TG_*, POCKTERM_IDLE, POCKTERM_UPLOAD_DIR and POCKTERM_SESSION_DIR.
@@ -109,6 +112,9 @@ func subcommand(name string, args []string) error {
 		fmt.Println(url)
 		return nil
 
+	case "tg-setup":
+		return tgSetup(args)
+
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return nil
@@ -121,6 +127,84 @@ func orDefault(v, def string) string {
 		return def
 	}
 	return v
+}
+
+// tgSetup turns the manual half of switching notifications on — create a bot,
+// then find your own chat id by reading getUpdates in a browser — into one
+// command. The token still comes from @BotFather; everything after that is
+// mechanical, and doing it by hand is where the instructions used to lose
+// people.
+func tgSetup(args []string) error {
+	fs := flag.NewFlagSet("tg-setup", flag.ExitOnError)
+	token := fs.String("token", os.Getenv("POCKTERM_TG_TOKEN"), "bot token from @BotFather")
+	chat := fs.String("chat", "", "chat id, when the bot has spoken to more than one")
+	link := fs.String("link", os.Getenv("POCKTERM_TG_LINK"), "URL to append to each message")
+	write := fs.String("write", "", "env file to update instead of printing the lines")
+	api := fs.String("api", os.Getenv("POCKTERM_TG_API"), "Bot API root")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *token == "" {
+		fmt.Print("bot token from @BotFather: ")
+		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("reading the token: %w", err)
+		}
+		*token = strings.TrimSpace(line)
+	}
+	if *token == "" {
+		return errors.New("no bot token — create a bot with @BotFather first, it takes a minute")
+	}
+
+	client := &telegram.Client{Token: *token, API: *api}
+	if *chat == "" {
+		chats, err := client.Chats()
+		if err != nil {
+			return err
+		}
+		switch len(chats) {
+		case 0:
+			// Telegram tells a bot nothing until somebody writes to it, so
+			// this is the normal first answer rather than a failure.
+			return errors.New("the bot has no messages yet — write anything to it in Telegram, then run this again")
+		case 1:
+			*chat = chats[0].ID
+			fmt.Printf("chat: %s (%s)\n", chats[0].Title, chats[0].ID)
+		default:
+			fmt.Println("this bot has been written to from several chats:")
+			for _, c := range chats {
+				fmt.Printf("  %-12s %s\n", c.ID, c.Title)
+			}
+			return errors.New("pick one and pass it: pockterm tg-setup --chat <id>")
+		}
+	}
+
+	client.Chat = *chat
+	if err := client.Send("pockterm: notifications are on"); err != nil {
+		return err
+	}
+	fmt.Println("sent a test message — check that it arrived")
+
+	kv := [][2]string{
+		{"POCKTERM_TG_TOKEN", *token},
+		{"POCKTERM_TG_CHAT", *chat},
+	}
+	if *link != "" {
+		kv = append(kv, [2]string{"POCKTERM_TG_LINK", *link})
+	}
+	if *write == "" {
+		fmt.Println("\nadd these to /etc/pockterm/pockterm.env (0600) and restart the service:")
+		for _, pair := range kv {
+			fmt.Printf("%s=%s\n", pair[0], pair[1])
+		}
+		return nil
+	}
+	if err := setup.UpdateEnvFile(*write, kv); err != nil {
+		return err
+	}
+	fmt.Printf("written to %s — restart the service to pick it up\n", *write)
+	return nil
 }
 
 func serve() {

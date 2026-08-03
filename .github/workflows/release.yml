@@ -1,0 +1,34 @@
+name: release
+
+# Tag a commit and the binaries appear on the release page. They exist so that
+# installing does not start with "first get a Go toolchain": deploy/install.sh
+# downloads one and checks it against SHA256SUMS.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # A release nobody tested is worse than no release.
+      - run: make lint test
+      - run: make release
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [ "$GITHUB_REF_TYPE" != tag ]; then
+            echo "not a tag ($GITHUB_REF_TYPE $tag) — artifacts built, nothing published"
+            exit 0
+          fi
+          gh release create "$tag" dist/* --generate-notes --title "$tag"

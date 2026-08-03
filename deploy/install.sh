@@ -53,15 +53,52 @@ uninstall() {
 # real bug: a stale build ignores the subcommands this script relies on and
 # starts the server instead, which hangs the install.
 build_binary() {
+	if [ -n "${POCKTERM_FROM_RELEASE:-}" ]; then
+		fetch_release
+		return
+	fi
 	if command -v go >/dev/null; then
 		log "building from source" >&2
 		(cd "$PROJECT_DIR" && go build -o bin/pockterm ./cmd/pockterm) >&2
 		echo "$PROJECT_DIR/bin/pockterm"
 		return
 	fi
-	[ -x "$PROJECT_DIR/bin/pockterm" ] || die "no go toolchain and no prebuilt bin/pockterm"
-	warn "no go toolchain — using the prebuilt $PROJECT_DIR/bin/pockterm" >&2
-	echo "$PROJECT_DIR/bin/pockterm"
+	if [ -x "$PROJECT_DIR/bin/pockterm" ]; then
+		warn "no go toolchain — using the prebuilt $PROJECT_DIR/bin/pockterm" >&2
+		echo "$PROJECT_DIR/bin/pockterm"
+		return
+	fi
+	log "no go toolchain — taking the published build instead" >&2
+	fetch_release
+}
+
+# fetch_release downloads a published binary for this architecture and checks
+# it against the release's SHA256SUMS. Without this, installing starts with
+# apt-getting a Go toolchain onto a machine that only needs to run one binary.
+fetch_release() {
+	local arch asset tmp base
+	case "$(uname -m)" in
+		x86_64 | amd64) arch=amd64 ;;
+		aarch64 | arm64) arch=arm64 ;;
+		*) die "no published build for $(uname -m) — install go and re-run to build from source" ;;
+	esac
+	command -v curl >/dev/null || die "curl is needed to download a release (or install go and build from source)"
+	base="${POCKTERM_RELEASE_BASE:-https://github.com/hitromudr/pockterm/releases/latest/download}"
+	asset="pockterm-linux-$arch"
+	tmp="$(mktemp -d)"
+
+	log "downloading $asset" >&2
+	curl -fsSL "$base/$asset" -o "$tmp/$asset" ||
+		die "could not download $base/$asset"
+	curl -fsSL "$base/SHA256SUMS" -o "$tmp/SHA256SUMS" ||
+		die "could not download $base/SHA256SUMS — refusing to install an unverified binary"
+	# --ignore-missing: the file lists every architecture, only one was fetched.
+	# Without --status the mismatch prints the sum, which says nothing useful.
+	(cd "$tmp" && sha256sum --check --ignore-missing --status SHA256SUMS) ||
+		die "checksum mismatch for $asset — the download is not what the release published"
+	chmod +x "$tmp/$asset"
+	ok "downloaded and verified $asset" >&2
+	echo "$tmp/$asset"
 }
 
 main() {

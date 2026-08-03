@@ -74,6 +74,13 @@ git clone https://github.com/hitromudr/pockterm && cd pockterm
 sudo bash deploy/install.sh        # or: make install
 ```
 
+Go is not always needed: with no toolchain around, the installer downloads the
+published build for this architecture (linux amd64 and arm64) and checks it
+against the release's `SHA256SUMS`. Force the download even when Go is present
+with `POCKTERM_FROM_RELEASE=1`, or point it elsewhere with
+`POCKTERM_RELEASE_BASE=<url>`. A file that does not match its sum is not
+installed.
+
 The script builds the binary into `/usr/local/bin`, generates a token in
 `/etc/pockterm/pockterm.env` (mode 600), writes a systemd unit and starts the
 service as the account whose tmux sessions you want served — under `sudo`,
@@ -187,8 +194,20 @@ the pane. Meaningful is the operative word — agent TUIs draw an input box
 and a shortcut hint below their output, and "the last non-blank line" is
 those.
 
-The easiest way to find your chat id: message the bot, then open
-`https://api.telegram.org/bot<token>/getUpdates`.
+Switching them on is one command. Create a bot with @BotFather, send it any
+message (until you do, Telegram tells the bot nothing about you), then run:
+
+```bash
+sudo pockterm tg-setup --write /etc/pockterm/pockterm.env
+sudo systemctl restart pockterm
+```
+
+It asks for the token, finds the chat id itself, sends a test message and
+writes the settings into the env file (0600), leaving every other line alone.
+If the bot has been written to from several chats it lists them and asks you
+to pick: `--chat <id>`. Without `--write` it just prints the lines to add.
+
+`--link https://your.address` sets the link the messages carry.
 
 ## Deployment
 

@@ -73,5 +73,36 @@ run_install POCKTERM_PUBLIC_URL=https://cc.example
 grep -q "https://cc.example/?token=$token" "$WORK/out" || bad "the public URL did not reach the QR"
 ok "POCKTERM_PUBLIC_URL is what gets encoded when it is set"
 
+# --- installing from a published release, no toolchain needed ---
+# A local directory stands in for the release page: curl reads file:// URLs,
+# so this exercises the real download path without a network.
+REL="$WORK/release"
+mkdir -p "$REL"
+arch="$(uname -m)"
+case "$arch" in
+	x86_64 | amd64) arch=amd64 ;;
+	aarch64 | arm64) arch=arm64 ;;
+esac
+cp "$WORK/pockterm" "$REL/pockterm-linux-$arch"
+(cd "$REL" && sha256sum "pockterm-linux-$arch" > SHA256SUMS)
+
+rm -f "$WORK/pockterm"
+run_install POCKTERM_FROM_RELEASE=1 POCKTERM_RELEASE_BASE="file://$REL"
+[ -x "$WORK/pockterm" ] || bad "the release binary was not installed"
+grep -q 'downloaded and verified' "$WORK/out" || bad "the installer did not verify the download"
+ok "a published release installs without a go toolchain"
+
+# --- a tampered binary is not installed ---
+printf 'not the binary you published\n' > "$REL/pockterm-linux-$arch"
+rm -f "$WORK/pockterm"
+if env PREFIX="$WORK" UNIT_DIR="$WORK" ENV_FILE="$WORK/pockterm.env" \
+	POCKTERM_FROM_RELEASE=1 POCKTERM_RELEASE_BASE="file://$REL" \
+	bash "$ROOT/deploy/install.sh" >"$WORK/out" 2>&1; then
+	bad "a binary that does not match SHA256SUMS was installed anyway"
+fi
+grep -q 'checksum mismatch' "$WORK/out" || bad "no word about the checksum in the failure"
+[ -x "$WORK/pockterm" ] && bad "the tampered binary reached $WORK/pockterm"
+ok "a download that does not match the published sums is refused"
+
 echo
 printf '\033[1;34m[install-test]\033[0m all checks passed\n'

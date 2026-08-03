@@ -2,6 +2,8 @@ package setup
 
 import (
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -136,6 +138,49 @@ func TestPickLAN(t *testing.T) {
 	if _, ok := PickLAN(nil); ok {
 		t.Fatal("no addresses means no answer")
 	}
+}
+
+func TestUpdateEnvFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "pockterm.env")
+
+	// A file that does not exist yet is the first-run case.
+	if err := UpdateEnvFile(path, [][2]string{{"POCKTERM_TG_TOKEN", "42:abc"}}); err != nil {
+		t.Fatal(err)
+	}
+	if mode := statMode(t, path); mode != 0o600 {
+		t.Fatalf("mode is %o, want 600 for a file holding a bot token", mode)
+	}
+
+	// Existing content survives, and an existing key is replaced where it
+	// stands rather than appended: systemd takes the last assignment, and a
+	// file with two of the same key is unreadable to whoever debugs it.
+	if err := os.WriteFile(path, []byte("# notes\nPOCKTERM_TOKEN=keepme\nPOCKTERM_TG_TOKEN=old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := UpdateEnvFile(path, [][2]string{
+		{"POCKTERM_TG_TOKEN", "42:new"},
+		{"POCKTERM_TG_CHAT", "777"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "# notes\nPOCKTERM_TOKEN=keepme\nPOCKTERM_TG_TOKEN=42:new\nPOCKTERM_TG_CHAT=777\n"
+	if string(got) != want {
+		t.Fatalf("file is:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func statMode(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
 }
 
 func TestQRContainsSomethingScannable(t *testing.T) {

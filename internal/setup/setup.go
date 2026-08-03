@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -139,6 +141,47 @@ func LANAddress() (string, error) {
 		return "", errors.New("no address of this machine is reachable from another one")
 	}
 	return ip.String(), nil
+}
+
+// UpdateEnvFile sets keys in a systemd EnvironmentFile, keeping everything
+// else — comments, order, unrelated keys — as it was. A key already present is
+// replaced in place rather than appended, because systemd takes the last
+// assignment and a file that accumulates duplicates stops being readable by
+// the human who has to debug it.
+//
+// The file is written 0600: it holds a bot token and the shared token.
+func UpdateEnvFile(path string, kv [][2]string) error {
+	old, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+	lines := []string{}
+	if len(old) > 0 {
+		lines = strings.Split(strings.TrimRight(string(old), "\n"), "\n")
+	}
+	for _, pair := range kv {
+		key, value := pair[0], pair[1]
+		assignment := key + "=" + value
+		replaced := false
+		for i, line := range lines {
+			if strings.HasPrefix(strings.TrimSpace(line), key+"=") {
+				lines[i] = assignment
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			lines = append(lines, assignment)
+		}
+	}
+	body := strings.Join(lines, "\n") + "\n"
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	return nil
 }
 
 // ClientURL is what the phone opens: the public address plus the token.
