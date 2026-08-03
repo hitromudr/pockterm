@@ -52,7 +52,12 @@ function assertPrivateTmux(socket, dir, env) {
   }
 }
 
-export async function startStand({ sessions = ['demo'] } = {}) {
+// raw:true starts the session under `stty raw -echo; cat -v` instead of a
+// shell. Then the screen is a transcript of the bytes that reached the pty —
+// escape sequences and control characters shown as ^[ and ^? — so a test can
+// assert what was sent rather than what it looks like. Duplicates and
+// swallowed keys become arithmetic instead of guesswork.
+export async function startStand({ sessions = ['demo'], raw = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'pockterm-ui-'));
   const uploads = join(dir, 'uploads');
   const env = {
@@ -74,8 +79,9 @@ export async function startStand({ sessions = ['demo'] } = {}) {
   mkdirSync(socketDir, { recursive: true, mode: 0o700 });
   const socket = join(socketDir, 'default');
 
+  const sessionCmd = raw ? 'stty raw -echo; exec cat -v' : 'cat';
   for (const name of sessions) {
-    execFileSync('tmux', tmuxArgs(socket, ['new-session', '-d', '-s', name, 'sh', '-c', 'cat']), { env });
+    execFileSync('tmux', tmuxArgs(socket, ['new-session', '-d', '-s', name, 'sh', '-c', sessionCmd]), { env });
   }
   assertPrivateTmux(socket, dir, env);
 

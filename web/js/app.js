@@ -386,103 +386,32 @@ term.onData((d) => {
   // No commitInput() here. Ending the composition after every single
   // character sounded thorough and was wrong: restartInput moves the caret
   // and reopens the input, so typing turned into jumping around the line.
-  // The composition is ended where it actually matters — before a key from
-  // the bar, and after the delete this page intercepts.
 });
 
-// Take the delete key itself, before the keyboard can turn it into a
-// re-commit. beforeinput fires for the on-screen Backspace as
-// deleteContentBackward; the terminal wants DEL for that, and nothing else
-// should reach the textarea.
-// xterm draws what the keyboard is composing in a layer of its own
-// (.composition-view) on top of the screen. Cancelling the delete above
-// leaves that layer holding text the terminal has already dealt with: the pty
-// receives the right thing, and the screen shows "роттт" for a word, a space
-// and one delete. Clearing the layer and the textarea puts the two back in
-// agreement.
-// Whether the keyboard is composing right now — the only honest way to know
-// whether the text in the textarea has been sent.
+// One owner for typing, one for the bar.
 //
-// Reading the textarea alone is not enough and produced a real duplicate: after
-// a space xterm has already sent the word, yet the value can still be sitting
-// there, so flushing it sent the word twice. During a composition xterm sends
-// nothing, and that is exactly when the text has to be handed over by hand.
-let composing = false;
-if (term.textarea) {
-  term.textarea.addEventListener('compositionstart', () => { composing = true; });
-  term.textarea.addEventListener('compositionend', () => { composing = false; });
-}
-
-// Hand over what the keyboard has not committed yet, then clear the layer.
-// Nothing is sent unless a composition is in progress: typing a word and
-// pressing ← must not lose it, and pressing a key after a finished word must
-// not repeat it.
-function flushComposition() {
-  const pending = (term.textarea && term.textarea.value) || '';
-  if (composing && pending) send(pending);
-  composing = false;
-  clearComposition();
-}
-
-function clearComposition() {
-  const view = document.querySelector('.xterm .composition-view');
-  const before = { value: (term.textarea && term.textarea.value) || '', view: (view && view.textContent) || '' };
-
-  if (term.textarea) {
-    // Telling xterm the composition is over, not just wiping the DOM it
-    // draws: its helper keeps state of its own and redraws the text from it,
-    // which showed the word twice — once echoed back from the pty, once still
-    // painted on top. Nothing extra was ever sent, and that was the clue.
-    try {
-      term.textarea.dispatchEvent(new CompositionEvent('compositionend', { data: '', bubbles: true }));
-    } catch (_) { /* older engines: the DOM clear below still helps */ }
-    term.textarea.value = '';
-  }
-  if (view) {
-    view.textContent = '';
-    view.classList.remove('active');
-  }
-  if (before.value || before.view) {
-    report('composition-cleared', { value: before.value.length, view: before.view.length });
-  }
-}
-
-if (term.textarea) {
-  term.textarea.addEventListener('beforeinput', (e) => {
-    if (e.inputType !== 'deleteContentBackward') return;
-    // With a composition in progress the keyboard is editing text that has
-    // not been sent anywhere yet — let it. Taking the delete then would erase
-    // a character the terminal never received, and doubling comes from the
-    // other case: nothing composing, so the delete belongs to the terminal.
-    if (composing) return;
-    e.preventDefault();
-    send(keyBytes('backspace'));
-    // Nothing else. Ending the composition here — a synthetic compositionend,
-    // an emptied textarea — left the keyboard believing something else about
-    // its own state, and the next space went nowhere. The keys from the bar
-    // still do that, because there the keyboard is not mid-word.
-  });
-}
-
-// Tapping a button must not take focus away from the terminal: on Android the
-// soft keyboard closes the moment the textarea loses focus, and a focus
-// restored later — in a timer, a frame callback, after an await — does not
-// bring it back, because it is no longer inside the touch. preventDefault on
-// the press keeps focus where it is; the click still fires.
-function keepsTerminalFocus(el) {
-  el.addEventListener('mousedown', (e) => e.preventDefault());
-}
-
+// Four things used to write to the same textarea: xterm with the IME, an
+// intercepted delete, a flush of whatever sat in the textarea, and a synthetic
+// compositionend. Every combination of them produced its own surprise — a word
+// reappearing, a space going nowhere, a line inserted by a delete. None of
+// that is IME behaviour; it is four authors editing one buffer.
+//
+// So: the keyboard and xterm own what is typed, and nothing here touches the
+// composition or the textarea. The bar sends bytes. The single exception is
+// asking the app to end the composition before Enter — without it the message
+// goes without the word the keyboard is still holding, which is a fact about
+// Gboard, not a choice.
 // --- key bar ---
 // Make the keyboard hand over the word it is still composing before a key
 // from this bar reaches the pty.
 //
-// Gboard keeps the current word to itself until it decides the word is over.
-// Enter sent from here arrived *before* that word, so the message went
-// without its last word; the same stale composing region is what makes
-// Backspace re-commit a word the terminal has already moved past. Only the
-// app can end a composition — a page cannot — so this asks it to, and does
-// nothing in a real browser, where the problem does not exist.
+// Gboard keeps the current word to itself until it decides the word is over,
+// so Enter sent from here arrived before that word and the message went
+// without it. Only the app can end a composition — a page cannot — so this
+// asks it to, and does nothing in a real browser, where there is no such
+// problem. Nothing else on the bar needs it: a key that is not an Enter does
+// not end an input, and meddling with the composition for those is exactly
+// what produced the mess.
 function commitPendingInput() {
   try {
     if (window.PockNative && typeof window.PockNative.commitInput === 'function') {
@@ -494,8 +423,8 @@ function commitPendingInput() {
 document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
   keepsTerminalFocus(b);
   b.addEventListener('click', () => {
-    flushComposition();
-    commitPendingInput();
+    // Only the keys that end an input need the keyboard to hand over its word.
+    if (b.dataset.key === 'enter' || b.dataset.key === 'alt-enter') commitPendingInput();
     send(keyBytes(b.dataset.key));
     // No focus() here: the press already kept it, and calling it for someone
     // who was only reading would raise the keyboard over the screen.
