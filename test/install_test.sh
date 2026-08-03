@@ -48,5 +48,30 @@ grep -q '^POCKTERM_TOKEN=keepme$' "$WORK/pockterm.env" || bad "existing token wa
 grep -q 'already has a token' "$WORK/out" || bad "no warning about the existing token"
 ok "an existing token survives, with a warning"
 
+# --- the install ends with something to act on, not with homework ---
+rm -f "$WORK/pockterm.env" "$WORK/pockterm.service"
+run_install
+token="$(sed -n 's/^POCKTERM_TOKEN=//p' "$WORK/pockterm.env")"
+grep -q "http://127.0.0.1:8130/?token=$token" "$WORK/out" || bad "no ready-to-open local link"
+grep -q 'POCKTERM_LISTEN=0.0.0.0' "$WORK/out" || bad "no hint about reaching it from a phone"
+ok "a loopback install prints the local link and how to widen it"
+
+# A wildcard listener is the try-it-from-the-phone case: the address of this
+# machine plus a QR to point a camera at.
+run_install POCKTERM_LISTEN=0.0.0.0:8130
+if grep -q 'could not work out this machine' "$WORK/out"; then
+	ok "no reachable address here, and the installer says so instead of guessing"
+else
+	grep -q "token=$token" "$WORK/out" || bad "no link with the token for the phone"
+	grep -q '█' "$WORK/out" || bad "no QR code printed"
+	grep -q '127.0.0.1' "$WORK/out" && bad "handed out loopback as the phone's address"
+	ok "a wildcard install prints a scannable link on this machine's address"
+fi
+
+# With a public URL the QR is the real thing, TLS and all.
+run_install POCKTERM_PUBLIC_URL=https://cc.example
+grep -q "https://cc.example/?token=$token" "$WORK/out" || bad "the public URL did not reach the QR"
+ok "POCKTERM_PUBLIC_URL is what gets encoded when it is set"
+
 echo
 printf '\033[1;34m[install-test]\033[0m all checks passed\n'

@@ -45,6 +45,28 @@ make build
 # open http://127.0.0.1:8130 and pick it
 ```
 
+## On your phone in three minutes
+
+The full route out — a domain, TLS, certificates — is what a permanent install
+needs. To simply see the thing working, your own network is enough:
+
+```bash
+sudo POCKTERM_LISTEN=0.0.0.0:8130 bash deploy/install.sh
+```
+
+The installer sets up the service, generates a token and prints a QR code
+carrying this machine's address. Point the camera of a phone on the same Wi-Fi
+at it.
+
+The traffic is plain HTTP: the token keeps strangers out, but nothing stops
+someone on the same network from reading what crosses it. For anything
+permanent put a reverse proxy in front (below) — the QR then carries the real
+address:
+
+```bash
+POCKTERM_PUBLIC_URL=https://pockterm.example.com sudo -E pockterm qr
+```
+
 ## Installing on a server
 
 ```bash

@@ -86,7 +86,18 @@ func subcommand(name string, args []string) error {
 			// configured machine.
 			base := os.Getenv("POCKTERM_PUBLIC_URL")
 			if base == "" {
-				base = "http://" + orDefault(os.Getenv("POCKTERM_LISTEN"), "127.0.0.1:8130")
+				listen := orDefault(os.Getenv("POCKTERM_LISTEN"), "127.0.0.1:8130")
+				host := ""
+				// A wildcard listener is reachable from the network but says
+				// nothing about how; the phone needs an address it can dial.
+				if setup.IsWildcard(listen) {
+					h, err := setup.LANAddress()
+					if err != nil {
+						return fmt.Errorf("%w — pass the address instead: pockterm qr http://<host>:<port>", err)
+					}
+					host = h
+				}
+				base = setup.ListenURL(listen, host)
 			}
 			url = setup.ClientURL(base, os.Getenv("POCKTERM_TOKEN"))
 		}

@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"net"
 	"strings"
 	"testing"
 )
@@ -70,6 +71,70 @@ func TestClientURL(t *testing.T) {
 				t.Fatalf("ClientURL(%q, %q) = %q, want %q", c.base, c.token, got, c.want)
 			}
 		})
+	}
+}
+
+func TestIsWildcard(t *testing.T) {
+	for _, listen := range []string{"0.0.0.0:8130", ":8130", "[::]:8130"} {
+		if !IsWildcard(listen) {
+			t.Errorf("%q is a wildcard address", listen)
+		}
+	}
+	for _, listen := range []string{"127.0.0.1:8130", "192.168.1.5:8130", "[::1]:8130", "nonsense"} {
+		if IsWildcard(listen) {
+			t.Errorf("%q is not a wildcard address", listen)
+		}
+	}
+}
+
+func TestListenURL(t *testing.T) {
+	cases := []struct {
+		name, listen, host, want string
+	}{
+		// The wildcard is the case this exists for: "http://0.0.0.0:8130" is
+		// what the phone cannot open.
+		{"wildcard takes the given host", "0.0.0.0:8130", "192.168.1.5", "http://192.168.1.5:8130"},
+		{"empty host is a wildcard too", ":8130", "192.168.1.5", "http://192.168.1.5:8130"},
+		{"a real address is left alone", "127.0.0.1:8130", "192.168.1.5", "http://127.0.0.1:8130"},
+		{"no host to substitute", "0.0.0.0:8130", "", "http://0.0.0.0:8130"},
+		{"ipv6 literal keeps its brackets", "[::]:8130", "fd00::5", "http://[fd00::5]:8130"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := ListenURL(c.listen, c.host); got != c.want {
+				t.Fatalf("ListenURL(%q, %q) = %q, want %q", c.listen, c.host, got, c.want)
+			}
+		})
+	}
+}
+
+func TestPickLAN(t *testing.T) {
+	ips := func(list ...string) []net.IP {
+		out := make([]net.IP, 0, len(list))
+		for _, s := range list {
+			out = append(out, net.ParseIP(s))
+		}
+		return out
+	}
+
+	// A host running docker and wireguard has several addresses; the one worth
+	// printing is the private IPv4 a phone on the same Wi-Fi can reach.
+	got, ok := PickLAN(ips("127.0.0.1", "172.17.0.1", "192.168.1.5"))
+	if !ok || got.String() != "172.17.0.1" {
+		t.Fatalf("picked %v (ok=%v), want the first private IPv4", got, ok)
+	}
+
+	got, ok = PickLAN(ips("127.0.0.1", "169.254.3.4", "203.0.113.7"))
+	if !ok || got.String() != "203.0.113.7" {
+		t.Fatalf("picked %v (ok=%v), want the global address when nothing is private", got, ok)
+	}
+
+	if _, ok := PickLAN(ips("127.0.0.1", "::1", "169.254.3.4")); ok {
+		t.Fatal("loopback and link-local addresses reach nobody else")
+	}
+
+	if _, ok := PickLAN(nil); ok {
+		t.Fatal("no addresses means no answer")
 	}
 }
 

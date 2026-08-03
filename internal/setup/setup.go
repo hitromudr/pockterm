@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -63,6 +64,81 @@ RestartSec=3
 WantedBy=multi-user.target
 `)
 	return b.String()
+}
+
+// IsWildcard reports whether a listen address accepts connections on every
+// interface — the case where the address itself is useless to a phone.
+func IsWildcard(listen string) bool {
+	host, _, err := net.SplitHostPort(listen)
+	if err != nil {
+		return false
+	}
+	if host == "" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsUnspecified()
+}
+
+// ListenURL turns a listen address into something a browser can open. A
+// wildcard address is rewritten to host, which is what the machine is
+// reachable as from the rest of the network.
+func ListenURL(listen, host string) string {
+	h, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return "http://" + listen
+	}
+	if host != "" && (h == "" || net.ParseIP(h).IsUnspecified()) {
+		h = host
+	}
+	// JoinHostPort brackets an IPv6 literal itself.
+	return "http://" + net.JoinHostPort(h, port)
+}
+
+// PickLAN chooses the address to hand out from a machine's own addresses.
+//
+// A private IPv4 wins: that is what a phone on the same Wi-Fi can reach, and
+// on a host with docker or wireguard the list is long enough that "the first
+// one" is a coin toss. Loopback and link-local are never useful here.
+func PickLAN(addrs []net.IP) (net.IP, bool) {
+	var global net.IP
+	for _, ip := range addrs {
+		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
+			continue
+		}
+		if v4 := ip.To4(); v4 != nil {
+			if v4.IsPrivate() {
+				return v4, true
+			}
+			if global == nil {
+				global = v4
+			}
+			continue
+		}
+		if global == nil {
+			global = ip
+		}
+	}
+	return global, global != nil
+}
+
+// LANAddress is PickLAN over this machine's interfaces.
+func LANAddress() (string, error) {
+	ifaceAddrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", fmt.Errorf("reading interface addresses: %w", err)
+	}
+	var ips []net.IP
+	for _, a := range ifaceAddrs {
+		if n, ok := a.(*net.IPNet); ok {
+			ips = append(ips, n.IP)
+		}
+	}
+	ip, ok := PickLAN(ips)
+	if !ok {
+		return "", errors.New("no address of this machine is reachable from another one")
+	}
+	return ip.String(), nil
 }
 
 // ClientURL is what the phone opens: the public address plus the token.

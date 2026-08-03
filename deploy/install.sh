@@ -126,12 +126,58 @@ main() {
 	fi
 
 	echo
-	log "next: publish it and open the link on your phone"
-	echo "  the terminal listens on $LISTEN — put TLS and authentication in front"
-	echo "  examples: deploy/nginx-token.conf.example, deploy/nginx-mtls.conf.example"
+	show_link
+}
+
+# show_link ends the install with something to point a camera at, rather than
+# with homework. Which link depends on where the service listens:
+#
+#   PUBLIC_URL given   the real address, TLS in front — the end state
+#   wildcard listen    this machine on the local network, over plain HTTP
+#   loopback           nothing to scan; say how to get a phone on it instead
+#
+# The local-network case is a first run, not a deployment: the token keeps
+# strangers on the Wi-Fi out, but the traffic is not encrypted, which is why
+# the TLS examples still get printed.
+show_link() {
+	local token url
+	# No env file at all is a normal state here (POCKTERM_NO_TOKEN), and sed
+	# exits 2 over a missing file — which would end the install on its last
+	# line, after everything already succeeded.
+	token="$(sed -n 's/^POCKTERM_TOKEN=//p' "$ENV_FILE" 2>/dev/null | tail -n1 || true)"
+
+	if [ -n "${POCKTERM_PUBLIC_URL:-}" ]; then
+		log "open this on your phone"
+		POCKTERM_PUBLIC_URL="$POCKTERM_PUBLIC_URL" POCKTERM_TOKEN="$token" "$BIN" qr
+		return
+	fi
+
+	if [ "${LISTEN%%:*}" = "0.0.0.0" ] || [ "${LISTEN#:}" != "$LISTEN" ]; then
+		log "open this on your phone — same Wi-Fi, no TLS yet"
+		if ! POCKTERM_LISTEN="$LISTEN" POCKTERM_TOKEN="$token" "$BIN" qr; then
+			warn "could not work out this machine's address — run: $BIN qr http://<address>:${LISTEN##*:}"
+		fi
+		echo
+		echo "  plain HTTP over your own network is fine to try it; before it lives"
+		echo "  anywhere permanent, put TLS in front:"
+		echo "    deploy/nginx-token.conf.example, deploy/nginx-mtls.conf.example"
+		return
+	fi
+
+	log "the terminal is up, and reachable only from this machine"
+	url="http://$LISTEN/"
+	if [ -n "$token" ]; then
+		url="$url?token=$token"
+	fi
+	echo "  here: $url"
 	echo
-	echo "  then show the QR for your phone:"
-	echo "    POCKTERM_PUBLIC_URL=https://your.domain sudo -E $BIN qr"
+	echo "  to try it from your phone on the same network, listen wider:"
+	echo "    sudo POCKTERM_LISTEN=0.0.0.0:${LISTEN##*:} bash deploy/install.sh"
+	echo "  the installer then prints a QR code to scan."
+	echo
+	echo "  for anything permanent, put TLS and authentication in front:"
+	echo "    deploy/nginx-token.conf.example, deploy/nginx-mtls.conf.example"
+	echo "    then: POCKTERM_PUBLIC_URL=https://your.domain sudo -E $BIN qr"
 }
 
 main "$@"
