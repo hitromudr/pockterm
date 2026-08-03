@@ -9,6 +9,7 @@
 // sessions through the same tmux, and a test must not list, attach to, or
 // kill any of them. TMUX_TMPDIR gives the test its own server.
 import { spawn, execFileSync } from 'node:child_process';
+import { createServer } from 'node:net';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -17,7 +18,20 @@ import { chromium } from 'playwright';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CHROME = process.env.PT_UI_CHROME || '/usr/bin/chromium';
-const PORT = Number(process.env.PT_UI_PORT || 8139);
+
+// A port per stand, not per suite. `node --test test/ui/` runs the files in
+// parallel processes, so a fixed port means the second stand's server never
+// binds and its page talks to the first one's — which showed up as a session
+// list that was somebody else's, not as a port error.
+// PT_UI_PORT still pins it for a single file, which is what a debugger wants.
+async function freePort() {
+  if (process.env.PT_UI_PORT) return Number(process.env.PT_UI_PORT);
+  const probe = createServer();
+  await new Promise((res) => probe.listen(0, '127.0.0.1', res));
+  const { port } = probe.address();
+  await new Promise((res) => probe.close(res));
+  return port;
+}
 
 async function waitForServer(url, attempts = 100) {
   for (let i = 0; i < attempts; i++) {
@@ -59,11 +73,12 @@ function assertPrivateTmux(socket, dir, env) {
 // swallowed keys become arithmetic instead of guesswork.
 export async function startStand({ sessions = ['demo'], raw = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'pockterm-ui-'));
+  const port = await freePort();
   const uploads = join(dir, 'uploads');
   const env = {
     ...process.env,
     TMUX_TMPDIR: dir,
-    POCKTERM_LISTEN: `127.0.0.1:${PORT}`,
+    POCKTERM_LISTEN: `127.0.0.1:${port}`,
     POCKTERM_UPLOAD_DIR: uploads,
     POCKTERM_TG_TOKEN: '',
     POCKTERM_TG_CHAT: '',
@@ -82,6 +97,13 @@ export async function startStand({ sessions = ['demo'], raw = false } = {}) {
   const sessionCmd = raw ? 'stty raw -echo; exec cat -v' : 'cat';
   for (const name of sessions) {
     execFileSync('tmux', tmuxArgs(socket, ['new-session', '-d', '-s', name, 'sh', '-c', sessionCmd]), { env });
+  }
+  // In raw mode the screen is read as a transcript that only ever grows at the
+  // end. tmux's status line breaks that reading twice over: it sits below the
+  // pane, so it lands at the end of the screen's text, and it rewrites itself
+  // with the clock. Off, the screen holds the bytes and nothing else.
+  if (raw) {
+    execFileSync('tmux', tmuxArgs(socket, ['set-option', '-g', 'status', 'off']), { env });
   }
   assertPrivateTmux(socket, dir, env);
 
@@ -102,7 +124,7 @@ export async function startStand({ sessions = ['demo'], raw = false } = {}) {
   server.stdout.on('data', (d) => log.push(String(d)));
   server.stderr.on('data', (d) => log.push(String(d)));
 
-  const base = `http://127.0.0.1:${PORT}`;
+  const base = `http://127.0.0.1:${port}`;
   await waitForServer(`${base}/api/sessions`);
 
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });

@@ -39,8 +39,23 @@ describe('what the key bar puts on the wire', () => {
     return page.evaluate(() => (document.querySelector('.xterm-rows')?.textContent || '').replace(/\s+$/, ''));
   }
 
+  // Opening the page again re-attaches, and tmux repaints the pane from its
+  // buffer — not instantly. Reading the transcript mid-repaint makes the last
+  // bytes of the previous case look like the first bytes of this one, so a
+  // reading is taken only once two of them in a row agree.
+  async function settled(page) {
+    let last = await transcript(page);
+    for (let i = 0; i < 20; i++) {
+      await page.waitForTimeout(150);
+      const now = await transcript(page);
+      if (now === last) return now;
+      last = now;
+    }
+    return last;
+  }
+
   async function afterPressing(page, keys) {
-    const before = await transcript(page);
+    const before = await settled(page);
     for (const k of keys) await page.click(`#keybar [data-key="${k}"]`);
     // Give the echo a moment to come back through tmux.
     await page.waitForTimeout(400);
@@ -76,7 +91,7 @@ describe('what the key bar puts on the wire', () => {
     await stand.attach('wire');
     const { page } = stand;
 
-    const before = await transcript(page);
+    const before = await settled(page);
     await page.click('#term');
     await page.keyboard.type('abc');
     await page.click('#keybar [data-key="backspace"]');
@@ -94,7 +109,7 @@ describe('what the key bar puts on the wire', () => {
     await stand.attach('wire');
     const { page } = stand;
 
-    const before = await transcript(page);
+    const before = await settled(page);
     await page.click('#keybar [data-macro="accept"]');
     await page.waitForTimeout(400);
     const added = (await transcript(page)).slice(before.length);
