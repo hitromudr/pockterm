@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v83';
+const APP_VERSION = 'v84';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -175,15 +175,35 @@ const renameBox = document.getElementById('rename-box');
 const renameInput = document.getElementById('rename-input');
 let renameTarget = null;
 
+// The same four presets live on two screens now: the list, and the tab strip of
+// the session you are already in. One handler for both — two would drift, and the
+// day they do somebody gets a session started by a different command than they
+// thought they asked for.
+const newMenuTerm = document.getElementById('new-menu-term');
+const newTermBtn = document.getElementById('new-term');
+
 newBtn.addEventListener('click', () => {
   newMenu.hidden = !newMenu.hidden;
   renameBox.hidden = true;
 });
 
-for (const b of newMenu.querySelectorAll('button[data-preset]')) {
+if (newTermBtn) {
+  keepsTerminalFocus(newTermBtn);
+  newTermBtn.addEventListener('click', () => {
+    newMenuTerm.hidden = !newMenuTerm.hidden;
+    newTermBtn.classList.toggle('on', !newMenuTerm.hidden);
+  });
+}
+
+for (const b of document.querySelectorAll('button[data-preset]')) {
+  keepsTerminalFocus(b);
   b.addEventListener('click', async () => {
     const preset = b.dataset.preset;
     newMenu.hidden = true;
+    if (newMenuTerm) {
+      newMenuTerm.hidden = true;
+      newTermBtn.classList.remove('on');
+    }
     toast(`starting ${preset}…`);
     try {
       const res = await fetch(`/api/sessions/new?${tokenQS}`, {
@@ -200,6 +220,10 @@ for (const b of newMenu.querySelectorAll('button[data-preset]')) {
       report('start-session', { preset, ok: true });
       // tmux needs a moment before the session shows up in the listing.
       setTimeout(loadSessions, 400);
+      // Started from the terminal screen: the tab strip is the session list
+      // there, and a plus that adds nothing visible is a plus that did nothing
+      // as far as anyone can tell. The strip only ever refreshed on an attach.
+      if (!screenTerm.hidden) setTimeout(renderTabs, 500);
     } catch (_) {
       toast('no connection to the server');
     }

@@ -112,11 +112,16 @@ describe('a swipe follows the finger', () => {
     // Something was shifted at some point: without this the invariant below
     // holds trivially for a page that never follows the finger at all.
     assert.ok(seen.some((s) => s.px > 1), `the rows never moved: ${seen.map((v) => v.px.toFixed(1))}`);
-    // Nothing here assumes how big a step is — the binding is tmux's to choose,
-    // and the stand reads the same ~/.tmux.conf as the host, so it changed under
-    // these tests once already.
-    const step = gaps.find((g) => g > row / 2);
-    assert.ok(step, `no whole line was drawn in ${y - start}px of travel: ${gaps.map((g) => g.toFixed(1))}`);
+    // The step comes from tmux, the same way the page is told it: a row times the
+    // lines its binding scrolls. Deriving it from the gaps was the first attempt
+    // and it read the wrong number whenever the first sample already had two
+    // lines drawn — the stand reads the same ~/.tmux.conf as the host, so the
+    // binding has changed under these tests once already.
+    const binding = stand.tmux(['list-keys', '-T', 'copy-mode'])
+      .split('\n').find((l) => l.includes('WheelUpPane')) || '';
+    const lines = Number(/-N (\d+)/.exec(binding)?.[1] || 5);
+    const step = row * lines;
+    assert.ok(step > 4, `a step measures nothing sensible: ${step} (${binding})`);
     // One exception, and it is a decision rather than a slip: the shift is
     // capped (MAX_TRACK), because it is content that has not arrived and shows
     // as a band of background. While it is at the cap the picture cannot follow
@@ -414,5 +419,45 @@ describe('a swipe follows the finger', () => {
     await stand.attach();
     const clips = await stand.page.evaluate(() => getComputedStyle(document.getElementById('term')).overflow);
     assert.equal(clips, 'hidden');
+  });
+});
+
+describe('the laptop is a client too', () => {
+  let stand;
+  before(async () => { stand = await startStand({ desktop: true }); });
+  after(async () => { await stand.stop(); });
+
+  test('the key bar is there on a device with a mouse', async () => {
+    // It used to be hidden behind `(hover: hover) and (pointer: fine)`, on the
+    // grounds that a real keyboard has the keys. Reported from the laptop as
+    // there being no arrow block at all — and the bar carries more than arrows:
+    // ✓ (accept) and Alt+Enter are on no keyboard.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    assert.equal(await page.locator('#keybar').isVisible(), true, 'no key bar on a mouse device');
+    await page.locator('#keybar [data-key="down"]').click({ trial: true });
+  });
+
+  test('the way back to the end appears for a wheel too', async () => {
+    // Reported as the ⇩ not appearing there. It does — the journal from the
+    // laptop had `mode in:true back:10 shown:true` — so this pins the path that
+    // gets it on screen: a wheel over the terminal, not a finger.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    await page.click('#term');
+    for (let i = 1; i <= 60; i++) await page.keyboard.type(`line ${i}\n`);
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('line 60'));
+    assert.ok(await page.locator('#to-bottom').isHidden(), 'the button is up before anything scrolled');
+
+    await page.mouse.move(600, 300);
+    for (let i = 0; i < 5; i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(120); }
+
+    await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
+    const state = stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_in_mode} #{scroll_position}']).trim();
+    assert.match(state, /^1 [1-9]/, `the wheel did not scroll tmux: ${state}`);
+    await page.click('#to-bottom');
+    await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
   });
 });

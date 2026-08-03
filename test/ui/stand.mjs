@@ -71,7 +71,7 @@ function assertPrivateTmux(socket, dir, env) {
 // escape sequences and control characters shown as ^[ and ^? — so a test can
 // assert what was sent rather than what it looks like. Duplicates and
 // swallowed keys become arithmetic instead of guesswork.
-export async function startStand({ sessions = ['demo'], raw = false } = {}) {
+export async function startStand({ sessions = ['demo'], raw = false, desktop = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'pockterm-ui-'));
   const port = await freePort();
   const uploads = join(dir, 'uploads');
@@ -130,7 +130,13 @@ export async function startStand({ sessions = ['demo'], raw = false } = {}) {
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
   // A phone, not a desktop: touch, a narrow viewport, and the clipboard
   // permissions Chrome would ask a human for.
-  const context = await browser.newContext({
+  // A phone by default. `desktop` is the other client this serves — the owner's
+  // laptop opens the same page in Chrome, with a mouse and no touch at all, and
+  // nothing covered it until a report came in from there.
+  const context = await browser.newContext(desktop ? {
+    viewport: { width: 1280, height: 800 },
+    permissions: ['clipboard-read', 'clipboard-write'],
+  } : {
     viewport: { width: 390, height: 780 },
     deviceScaleFactor: 3,
     hasTouch: true,

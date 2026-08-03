@@ -155,6 +155,30 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 #empty code { color: var(--fg); background: #1b2230; padding: 2px 6px; border-radius: 4px; }
 
 /* --- terminal screen --- */
+/* The presets on the terminal screen: an overlay under the header, so opening it
+   does not resize the terminal underneath. */
+#new-menu-term {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 13;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bar);
+  border-bottom: 1px solid #2a3345;
+}
+#new-menu-term button {
+  flex: 1 1 45%;
+  padding: 12px 8px;
+  font-size: 14px;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 8px;
+}
+
 /* Overlay, not a flex child: toggling it must not resize #term (otherwise
    the terminal jumps every time the reconnect banner appears). */
 #status {
@@ -507,12 +531,12 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   border-radius: 8px;
 }
 
-/* The key bar exists for touch keyboards (Esc, Tab, arrows, Ctrl aren't
-   on a phone's on-screen keyboard). On a device with a real keyboard and
-   a mouse it only gets in the way, so hide it there — you just type. */
-@media (hover: hover) and (pointer: fine) {
-  #keybar { display: none; }
-}
+/* The key bar used to be hidden on a device with a mouse and a real keyboard,
+   on the grounds that you just type there. It is shown everywhere now: reported
+   from the laptop as there being no arrow block at all, and the bar carries more
+   than arrows — ✓ (accept), Alt+Enter and the way back to the end are not on any
+   keyboard. Hiding a control because another way to reach it exists is the kind
+   of cleverness that reads as a defect. */
 
 /* Landscape phones are short: put the key bar on one row (width is ample)
    and shrink the panels so terminal + controls fit without overlapping. */

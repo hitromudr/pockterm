@@ -191,6 +191,30 @@ describe('starting and renaming sessions', () => {
     );
   });
 
+  test('a session can be started without leaving the one you are in', async () => {
+    // The tab strip is the session list on the terminal screen, so the same plus
+    // belongs at the end of it — asked for from the phone, where going back to
+    // the list to start something means losing sight of what is running.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    const before = await page.locator('#tabs button').count();
+
+    await page.click('#new-term');
+    await page.click('#new-menu-term button[data-preset="shell"]');
+    // The popup closes itself: it covers the top of the terminal.
+    await page.waitForSelector('#new-menu-term', { state: 'hidden' });
+
+    // The strip picks the session up on its own, and the terminal is still the
+    // one that was open.
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#tabs button').length > n,
+      before,
+      { timeout: 8000 },
+    );
+    assert.equal(await page.locator('#screen-term:not([hidden])').count(), 1, 'it left the terminal');
+  });
+
   test('closing takes two taps, and the first one is reversible', async () => {
     await stand.open();
     const { page } = stand;
