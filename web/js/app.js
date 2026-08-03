@@ -13,7 +13,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v66';
+const APP_VERSION = 'v67';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -582,7 +582,32 @@ document.querySelectorAll('button[data-macro]').forEach((b) => {
 // (composer and key bar both steal the taps a selection needs), prompt mode
 // swaps the key bar for the composer + quick macros. Detected answer buttons
 // live above all of them and show in every mode.
-let promptMode = false;
+// Which bar the phone opens on.
+//
+// Inside the app the composer comes first, and that is a decision about the
+// keyboard rather than about layout: the terminal's own field is the one an
+// IME rewrites behind the page's back — a word re-composed after a backspace,
+// letters of one word spliced into the next — and dictation, which arrives in
+// whole phrases, is the worst case of exactly that. The composer is an
+// ordinary textarea: the text is finished before any of it reaches the pty.
+//
+// Nothing is taken away. Tapping the terminal still types straight into it,
+// and ⌨ brings back the full key bar — and is remembered, so this is what
+// shows until a choice is made, not a rule.
+//
+// In a browser the old default stands: there the keyboard is a keyboard.
+function inApp() {
+  return !!(window.PockNative && typeof window.PockNative.copy === 'function');
+}
+function defaultPromptMode() {
+  let saved = null;
+  try { saved = localStorage.getItem('pt-bar'); } catch (_) {}
+  if (saved === 'composer') return true;
+  if (saved === 'keys') return false;
+  return inApp();
+}
+
+let promptMode = defaultPromptMode();
 let selectMode = false;
 let hadTerminalFocus = false;
 // focusNow: only a tap that asked for a mode may raise the keyboard. This
@@ -636,12 +661,17 @@ function imeWanted() {
 
 function setPromptMode(on) {
   promptMode = on;
+  try { localStorage.setItem('pt-bar', on ? 'composer' : 'keys'); } catch (_) {}
   // The composer always wants the ordinary keyboard; the terminal gets
   // whatever is being tested, which for now is the same thing.
   setImeMode(on ? 'text' : imeWanted());
   renderBars(true);
 }
 modeBtn.addEventListener('click', () => setPromptMode(!promptMode));
+// The bars start hidden in the markup, so the chosen mode has to be drawn
+// once — without focus, or opening a session would raise the keyboard at
+// somebody who only wanted to read.
+renderBars();
 
 // Installing puts pockterm on the home screen as its own app: a standalone
 // window with no tabs and no address bar, which is also the only way the

@@ -484,3 +484,41 @@ describe('opening a named session', () => {
     await page.waitForSelector('#session-list li');
   });
 });
+
+describe('which bar the phone opens on', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['one'] }); });
+  after(async () => { await stand.stop(); });
+
+  test('a browser opens on the key bar', async () => {
+    await stand.open();
+    await stand.attach('one');
+    const { page } = stand;
+    assert.equal(await page.locator('#keybar').isVisible(), true, 'the key bar is the browser default');
+    assert.equal(await page.locator('#composer').isVisible(), false);
+  });
+
+  // Inside the app the composer comes first: the terminal's own field is the
+  // one an IME rewrites behind the page's back, and dictation — whole phrases
+  // at a time — is the worst case of it.
+  test('inside the app the composer comes first, and ⌨ is remembered', async () => {
+    const { page } = stand;
+    await page.addInitScript(() => { window.PockNative = { copy: () => true }; });
+    // open() knows the page may come back straight into the terminal: it
+    // restores the session it was last attached to.
+    await stand.open();
+    await stand.attach('one');
+    assert.equal(await page.locator('#composer').isVisible(), true, 'the composer is the app default');
+    assert.equal(await page.locator('#keybar').isVisible(), false);
+
+    // Nothing is taken away: ⌨ brings the key bar back...
+    await page.click('#mode');
+    assert.equal(await page.locator('#keybar').isVisible(), true);
+
+    // ...and the choice outlives a reload, so the default is what shows until
+    // a choice is made, not a rule.
+    await stand.open();
+    await stand.attach('one');
+    assert.equal(await page.locator('#keybar').isVisible(), true, 'the choice was forgotten');
+  });
+});
