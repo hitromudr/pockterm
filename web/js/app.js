@@ -13,7 +13,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v70';
+const APP_VERSION = 'v71';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -497,6 +497,9 @@ let wheelLines = 5;
 
 const scroller = new Scroller({
   notch: (dir) => sendWheel(dir > 0 ? 64 : 65), // +1 = towards history
+  // How a swipe felt is not observable from here: the screen it moves lives in
+  // tmux, a notch away over the network. These numbers are.
+  onGesture: (g) => report('scroll', { ...g, lines: wheelLines }),
 });
 function setScrollStep() { scroller.setStep(rowHeight() * wheelLines); }
 setScrollStep();

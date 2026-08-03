@@ -20,6 +20,12 @@
 // smallest visible step is five lines. Tracking and inertia make it feel like
 // scrolling; only a one-line binding would make it look continuous.
 
+// How far the finger must travel before any of it becomes scrolling. A tap
+// and a hold both wobble by a pixel or two, and with tmux moving whole lines
+// per notch that wobble was visible movement. Nothing is lost: the travel so
+// far is spent the moment the threshold is passed.
+const SLOP = 6; // pixels
+
 // A flick decays to a stop rather than running to the end of the history.
 // Tuned by hand on the device: lower is stickier.
 const FRICTION = 0.94;
@@ -37,8 +43,13 @@ const MAX_STEP_MS = 50;
 export class Scroller {
   // notch(direction) is called for each wheel notch, +1 = towards history.
   // now() and raf() are injected so tests drive the clock.
-  constructor({ notch, now = () => Date.now(), raf = (fn) => requestAnimationFrame(fn) }) {
+  // onGesture({notches, glided, speed, ms}) is called when a gesture and its
+  // glide are over. Scrolling crosses a network — every notch is a message to
+  // tmux and a redraw coming back — so how a swipe felt cannot be judged from
+  // the page alone; these numbers are what the journal gets.
+  constructor({ notch, onGesture = null, now = () => Date.now(), raf = (fn) => requestAnimationFrame(fn) }) {
     this.notch = notch;
+    this.onGesture = onGesture;
     this.now = now;
     this.raf = raf;
     this.pixelsPerNotch = 1;
@@ -46,6 +57,23 @@ export class Scroller {
     this.speed = 0;
     this.lastAt = 0;
     this.gliding = false;
+    this.startedAt = 0;
+    this.travel = 0;
+    this.moving = false;
+    this.notches = 0;
+    this.glided = 0;
+  }
+
+  // report closes the books on a gesture: what was sent while the finger was
+  // down, what the glide added, and how fast it was let go.
+  report(at, speed) {
+    if (!this.onGesture) return;
+    this.onGesture({
+      notches: this.notches,
+      glided: this.glided,
+      speed: Math.round(Math.abs(speed) * 100) / 100,
+      ms: Math.max(0, Math.round(at - this.startedAt)),
+    });
   }
 
   // How many pixels of travel make one notch: the row height times the lines
@@ -59,11 +87,25 @@ export class Scroller {
     this.carry = 0;
     this.speed = 0;
     this.lastAt = at;
+    this.startedAt = at;
+    this.travel = 0;
+    this.moving = false;
+    this.notches = 0;
+    this.glided = 0;
   }
 
   // dy is the movement since the last call, in pixels; positive = downwards
   // (towards older output).
   move(dy, at) {
+    if (!this.moving) {
+      this.travel += dy;
+      if (Math.abs(this.travel) < SLOP) {
+        this.lastAt = at;
+        return;
+      }
+      this.moving = true;
+      dy = this.travel; // spend what the finger has already covered
+    }
     this.emit(dy);
     const dt = Math.max(1, at - this.lastAt);
     this.lastAt = at;
@@ -75,9 +117,14 @@ export class Scroller {
   // Let go: keep going if the finger was still moving.
   end(at) {
     if (at - this.lastAt > 100) this.speed = 0; // held still before lifting
-    if (Math.abs(this.speed) < MIN_SPEED) return;
+    const thrown = this.speed;
+    if (Math.abs(this.speed) < MIN_SPEED) {
+      this.report(at, 0);
+      return;
+    }
     this.gliding = true;
     this.lastAt = at;
+    this.thrownAt = thrown;
     this.raf((t) => this.glide(t));
   }
 
@@ -85,9 +132,15 @@ export class Scroller {
     if (!this.gliding) return;
     const dt = Math.min(MAX_STEP_MS, Math.max(1, at - this.lastAt));
     this.lastAt = at;
+    const before = this.notches;
     this.emit(this.speed * dt);
+    this.glided += this.notches - before;
     this.speed *= Math.pow(FRICTION, dt / 16.7);
-    if (Math.abs(this.speed) < MIN_SPEED) { this.gliding = false; return; }
+    if (Math.abs(this.speed) < MIN_SPEED) {
+      this.gliding = false;
+      this.report(at, this.thrownAt || 0);
+      return;
+    }
     this.raf((t) => this.glide(t));
   }
 
@@ -100,10 +153,12 @@ export class Scroller {
     this.carry += dy;
     while (this.carry >= this.pixelsPerNotch) {
       this.carry -= this.pixelsPerNotch;
+      this.notches++;
       this.notch(1);
     }
     while (this.carry <= -this.pixelsPerNotch) {
       this.carry += this.pixelsPerNotch;
+      this.notches++;
       this.notch(-1);
     }
   }

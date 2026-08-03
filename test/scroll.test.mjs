@@ -81,6 +81,24 @@ test('holding still before lifting kills the glide', () => {
   assert.equal(h.notches.length, before, 'a parked finger still threw the screen');
 });
 
+test('a fingertip resting on the screen does not scroll it', () => {
+  // A tap and a hold both jitter by a pixel or two, and every one of those
+  // used to move the history. The gesture only starts once the finger has
+  // clearly travelled.
+  // The step is small here on purpose: with a large one the carry hides the
+  // jitter, and the test would pass without the threshold existing.
+  const h = harness({ step: 3 });
+  h.s.start(0);
+  h.s.move(2, 16);
+  h.s.move(-1, 32);
+  h.s.move(2, 48);
+  assert.equal(h.notches.length, 0, 'jitter scrolled the screen');
+  // And once it does travel, nothing of the movement is lost: 2-1+2+20 = 23px
+  // is seven whole steps of three.
+  h.s.move(20, 64);
+  assert.equal(h.notches.length, 7, 'the travel before the threshold was dropped');
+});
+
 test('a new touch catches the glide', () => {
   const h = harness({ step: 100 });
   h.s.start(0);
@@ -91,4 +109,45 @@ test('a new touch catches the glide', () => {
   h.s.stop();
   h.frames(50, 200);
   assert.equal(h.notches.length, caught, 'the screen kept moving under the finger');
+});
+
+test('a gesture reports what it sent, because the feel is not visible from here', () => {
+  // Every notch is a message to tmux and a redraw coming back over the
+  // network, so "the swipe feels wrong" is only answerable with numbers from
+  // the device: how many notches went out, how many of them after the finger
+  // left, and how fast it was thrown.
+  const seen = [];
+  let pending = [];
+  const s = new Scroller({
+    notch: () => {},
+    onGesture: (g) => seen.push(g),
+    raf: (fn) => pending.push(fn),
+  });
+  s.setStep(50);
+
+  s.start(0);
+  for (let i = 1; i <= 5; i++) s.move(60, i * 16);
+  s.end(80);
+  for (let i = 0; i < 200 && pending.length; i++) {
+    const fns = pending; pending = [];
+    for (const fn of fns) fn(96 + i * 16);
+  }
+
+  assert.equal(seen.length, 1, 'one gesture, one report');
+  const g = seen[0];
+  assert.ok(g.notches > 0, 'nothing was sent');
+  assert.ok(g.glided > 0, 'the glide is not accounted for');
+  assert.ok(g.speed > 0, 'the throw speed is missing');
+  assert.ok(g.ms >= 80, `the gesture lasted ${g.ms}ms`);
+});
+
+test('a gesture that never glides still reports', () => {
+  const seen = [];
+  const s = new Scroller({ notch: () => {}, onGesture: (g) => seen.push(g), raf: () => {} });
+  s.setStep(50);
+  s.start(0);
+  s.move(20, 200);
+  s.end(400); // held still: no glide
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].glided, 0);
 });
