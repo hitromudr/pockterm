@@ -83,21 +83,17 @@
     <div id="keybar">
       <button data-key="esc">Esc</button>
       <button data-key="up">&#8593;</button>
-      <button data-macro="accept">&#10003;</button>
-      <!-- Directly above Ctrl and away from the edge: an accidental ^C is
-           the most expensive misfire on this bar. -->
       <button data-key="ctrl-c">^C</button>
-      <!-- Deletes without asking the on-screen keyboard; see keys.js. -->
+      <!-- Deletes without asking the on-screen keyboard; see keys.js. Above
+           forward delete, so the two erasers share a column. -->
       <button data-key="backspace">&#9003;</button>
-      <!-- A second line in the message: the Enter below sends, this one wraps. -->
+      <!-- Over Enter: one sends the message, the other adds a line to it. -->
       <button data-key="alt-enter" class="small">Alt&#9166;</button>
+      <button data-macro="accept">&#10003;</button>
 
       <button data-key="left">&#8592;</button>
       <button data-key="down">&#8595;</button>
       <button data-key="right">&#8594;</button>
-      <!-- Forward delete; Ctrl went away with the latch nobody used from a
-           phone, and ^C — the one combination that matters here — has had its
-           own key all along. -->
       <button data-key="delete">&#8998;</button>
       <button data-key="enter">&#9166;</button>
       <button id="hide" title="Hide the bars">&#9662;</button>

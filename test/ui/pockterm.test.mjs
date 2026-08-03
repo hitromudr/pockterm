@@ -294,45 +294,45 @@ describe('the key bar', () => {
 
   const box = (page, sel) => page.locator(sel).boundingBox();
 
-  test('the arrows form their cross on the left, delete sits above enter', async () => {
+  test('the bar is laid out as asked: cross on the left, pairs in columns', async () => {
     await stand.open();
     await stand.attach();
     const { page } = stand;
 
-    const up = await box(page, '[data-key="up"]');
-    const down = await box(page, '[data-key="down"]');
-    const left = await box(page, '[data-key="left"]');
-    const right = await box(page, '[data-key="right"]');
-    const del = await box(page, '[data-key="backspace"]');
-    const enter = await box(page, '[data-key="enter"]');
-    const esc = await box(page, '[data-key="esc"]');
+    const at = async (sel) => box(page, sel);
+    const esc = await at('[data-key="esc"]');
+    const up = await at('[data-key="up"]');
+    const down = await at('[data-key="down"]');
+    const left = await at('[data-key="left"]');
+    const right = await at('[data-key="right"]');
+    const stop = await at('[data-key="ctrl-c"]');
+    const bs = await at('[data-key="backspace"]');
+    const del = await at('[data-key="delete"]');
+    const altEnter = await at('[data-key="alt-enter"]');
+    const enter = await at('[data-key="enter"]');
+    // Prompt mode has its own Accept; this is about the key bar's.
+    const accept = await at('#keybar [data-macro="accept"]');
+    const hide = await at('#hide');
 
-    // The cross: up over down, left beside it on the left, right on the right.
-    assert.ok(up.y < down.y, 'up is not above down');
-    assert.ok(Math.abs(up.x - down.x) < 2, 'up and down are not in one column');
+    const sameColumn = (a, b, what) => {
+      assert.ok(Math.abs(a.x - b.x) < 2, `${what} are not in one column`);
+      assert.ok(a.y < b.y, `${what} are in the wrong order`);
+    };
+
+    // Escape holds the top-left corner, the arrows keep their cross beside it.
+    assert.ok(esc.x < up.x && esc.y < down.y, 'escape is not the top-left key');
+    sameColumn(up, down, 'up and down');
     assert.ok(left.x < down.x, 'left is not to the left of down');
     assert.ok(right.x > down.x, 'right is not to the right of down');
-    assert.ok(Math.abs(left.y - down.y) < 2 && Math.abs(right.y - down.y) < 2,
-      'the bottom of the cross is not one row');
-    // Delete above enter, also one column, and to the right of everything.
-    assert.ok(del.y < enter.y, 'delete is not above enter');
-    assert.ok(Math.abs(del.x - enter.x) < 2, 'delete and enter are not in one column');
-    // Delete and enter moved off the right edge; the stop and hide keys took
-    // that corner instead.
-    assert.ok(del.x > esc.x, 'the delete column drifted to the left edge');
-    // ^C sits over Ctrl, one column in from the edge: hitting it by accident
-    // is the most expensive mistake this bar can cause.
-    const stop = await box(page, '[data-key="ctrl-c"]');
-    const del2 = await box(page, '[data-key="delete"]');
-    assert.ok(Math.abs(stop.x - del2.x) < 2, 'the stop key is not above forward delete');
-    assert.ok(stop.y < del2.y, 'the stop key is not above forward delete');
-    const hide = await box(page, '#hide');
-    assert.ok(hide.x > stop.x, 'the stop key still holds the corner');
-    // Delete and enter sit to the right of the Ctrl column.
-    assert.ok(del.x > stop.x, 'delete is not to the right of ^C');
-    // Escape is the top-left corner; the cross sits next to it.
-    assert.ok(esc.x < up.x && esc.y < down.y, 'escape is not the top-left key');
-    assert.ok(left.x <= esc.x + 2, 'the cross is not against the left edge');
+
+    // The pairs, each asked for by name: the two erasers, the two enters, and
+    // accept over the hide toggle.
+    sameColumn(bs, del, 'backspace and forward delete');
+    sameColumn(altEnter, enter, 'alt+enter and enter');
+    sameColumn(accept, hide, 'accept and hide');
+
+    // ^C keeps away from both edges: it is the most expensive misfire here.
+    assert.ok(stop.x > up.x && stop.x < accept.x, '^C drifted to an edge');
   });
 
   test('accept is one tap from the key bar', async () => {
@@ -340,7 +340,7 @@ describe('the key bar', () => {
     await stand.attach();
     const { page } = stand;
     // The macro is right-arrow then Enter — the answer given most often.
-    assert.equal(await page.locator('#keybar button[data-macro="accept"]').count(), 1);
+    assert.equal(await page.locator('#keybar [data-macro="accept"]').count(), 1);
   });
 
   test('tab and shift-tab are gone', async () => {
