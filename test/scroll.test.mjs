@@ -141,6 +141,81 @@ test('a gesture reports what it sent, because the feel is not visible from here'
   assert.ok(g.ms >= 80, `the gesture lasted ${g.ms}ms`);
 });
 
+// A whole swipe played out at a chosen pace, returning the one gesture report
+// it produced. Speeds here are stated as px/ms so the assertions can be read
+// against what the journal prints.
+function play(moves, { step = 10, lift = 16 } = {}) {
+  const seen = [];
+  let pending = [];
+  const s = new Scroller({
+    notch: () => {},
+    onGesture: (g) => seen.push(g),
+    raf: (fn) => pending.push(fn),
+  });
+  s.setStep(step);
+  let at = 0;
+  s.start(at);
+  for (const m of moves) { at += m.dt; s.move(m.dy, at); }
+  at += lift;
+  s.end(at);
+  for (let i = 0; i < 500 && pending.length; i++) {
+    const fns = pending; pending = [];
+    at += 16;
+    for (const fn of fns) fn(at);
+  }
+  return seen[0];
+}
+
+// 16px every 16ms is exactly 1 px/ms, for as long as the caller wants.
+function steadyMoves(n, dy = 16, dt = 16) {
+  return Array.from({ length: n }, () => ({ dy, dt }));
+}
+
+test('the throw is the speed the finger actually had, not a fraction more', () => {
+  // The arithmetic that reads fast: summing a window of travel and dividing by
+  // the gap between its first and last timestamps leaves out the first
+  // sample's own interval — 96px over 80ms instead of over 96ms, a fifth too
+  // much on every gesture. Inertia tuned against that number is tuned against
+  // a bias, so it is pinned here rather than left to feel.
+  const g = play(steadyMoves(20));
+  assert.ok(g.speed >= 0.9 && g.speed <= 1.1, `1 px/ms was read as ${g.speed}`);
+});
+
+test('what the tail of the swipe did decides the throw', () => {
+  // A swipe that runs fast and then eases off before lifting is a swipe being
+  // placed, not thrown. A running average keeps a residue of the fast part and
+  // throws it anyway; the last fraction of a second is what a flick means.
+  const steady = play(steadyMoves(16));
+  const easing = play([...steadyMoves(10), ...steadyMoves(6, 2)]);
+  assert.ok(steady.speed > 0.9, `the steady swipe reported ${steady.speed}`);
+  assert.ok(easing.speed < steady.speed / 4, `the fast start was still in the throw: ${easing.speed}`);
+  assert.ok(easing.glided < steady.glided, 'the eased swipe glided as far as the steady one');
+});
+
+test('a lift that arrives late does not cancel the throw', () => {
+  // Two questions with two answers: how fast the finger was going, and whether
+  // it had stopped. Measuring the travel against the lift instead of against
+  // the samples answers the first with the second, so a WebView that reports
+  // touchend a frame or two after the last touchmove loses the inertia — which
+  // is the complaint, not a cure for it. Beyond PARK the finger did rest, and
+  // then the screen stays put.
+  const prompt = play(steadyMoves(10), { lift: 16 });
+  const late = play(steadyMoves(10), { lift: 100 });
+  const parked = play(steadyMoves(10), { lift: 300 });
+  assert.ok(late.speed > 0.9, `a 100ms lift dropped the throw to ${late.speed}`);
+  assert.equal(late.speed, prompt.speed, 'the lift latency changed the measured speed');
+  assert.equal(parked.speed, 0, 'a parked finger still threw the screen');
+  assert.equal(parked.glided, 0);
+});
+
+test('the gesture reports how long the finger had stopped before lifting', () => {
+  // Whether PARK is set anywhere near right is a property of the device, and
+  // this is the only number that says so: if it is routinely above PARK, no
+  // choice of estimator leaves any inertia on that phone.
+  assert.equal(play(steadyMoves(10), { lift: 48 }).idle, 48);
+  assert.equal(play(steadyMoves(10), { lift: 0 }).idle, 0);
+});
+
 test('a gesture that never glides still reports', () => {
   const seen = [];
   const s = new Scroller({ notch: () => {}, onGesture: (g) => seen.push(g), raf: () => {} });

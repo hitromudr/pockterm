@@ -26,6 +26,16 @@
 // far is spent the moment the threshold is passed.
 const SLOP = 6; // pixels
 
+// How much of the swipe's tail decides the throw. Long enough to smooth out a
+// jittery sample, short enough that a finger slowing to a halt is read as a
+// halt.
+const VELOCITY_WINDOW = 90; // milliseconds
+
+// How long a finger may rest on the screen before lifting and still throw it.
+// Deliberately larger than the window above: the two answer different
+// questions, and conflating them costs the inertia this is here to give.
+const PARK = 120; // milliseconds
+
 // A flick decays to a stop rather than running to the end of the history.
 // Tuned by hand on the device: lower is stickier.
 const FRICTION = 0.94;
@@ -43,7 +53,7 @@ const MAX_STEP_MS = 50;
 export class Scroller {
   // notch(direction) is called for each wheel notch, +1 = towards history.
   // now() and raf() are injected so tests drive the clock.
-  // onGesture({notches, glided, speed, ms}) is called when a gesture and its
+  // onGesture({notches, glided, speed, ms, idle}) is called when a gesture and its
   // glide are over. Scrolling crosses a network — every notch is a message to
   // tmux and a redraw coming back — so how a swipe felt cannot be judged from
   // the page alone; these numbers are what the journal gets.
@@ -62,6 +72,8 @@ export class Scroller {
     this.moving = false;
     this.notches = 0;
     this.glided = 0;
+    this.samples = [];
+    this.idle = 0;
   }
 
   // report closes the books on a gesture: what was sent while the finger was
@@ -73,6 +85,12 @@ export class Scroller {
       glided: this.glided,
       speed: Math.round(Math.abs(speed) * 100) / 100,
       ms: Math.max(0, Math.round(at - this.startedAt)),
+      // How long the finger had already stopped moving when the lift arrived.
+      // It decides whether PARK is set anywhere near right: if this is
+      // routinely above it, every swipe on the device ends without inertia
+      // however the velocity is measured, and the number says so instead of
+      // leaving it to taste.
+      idle: this.idle,
     });
   }
 
@@ -92,6 +110,46 @@ export class Scroller {
     this.moving = false;
     this.notches = 0;
     this.glided = 0;
+    this.samples = [];
+    this.idle = 0;
+  }
+
+  // How fast the finger was going over the last VELOCITY_WINDOW, rather than a
+  // running average of the whole swipe.
+  //
+  // Reported as "a hard stop instead of inertia". A swipe on this device lasts
+  // 1.3-1.9 seconds in the journal, and a smoothed average carries a residue
+  // of all of it into the throw; what the hand did in the last fraction of a
+  // second is what a flick means. The estimate is also read once, at the lift,
+  // instead of being folded sample by sample — one jittery frame moves it by
+  // its own share of the window and no further.
+  //
+  // Two spans, not one. The travel is measured between the samples themselves,
+  // so a lift arriving late does not divide the distance by a longer time and
+  // report a slower throw than the finger made; whether the lift is late is a
+  // property of the WebView, not of the gesture. Resting before lifting is a
+  // separate question with a separate answer, PARK below.
+  velocity(at) {
+    if (!this.samples.length) return 0;
+    const last = this.samples[this.samples.length - 1].at;
+    // Parked, then lifted: the screen stays where it was let go.
+    if (at - last > PARK) return 0;
+    const cutoff = last - VELOCITY_WINDOW;
+    let dy = 0;
+    let from = last;
+    for (const s of this.samples) {
+      if (s.at <= cutoff) continue;
+      dy += s.dy;
+      // The interval the sample covers, not the instant it arrived: taking the
+      // first sample's timestamp leaves out its own interval and reads fast.
+      from = Math.min(from, s.from);
+    }
+    const dt = last - from;
+    if (dt < 1) return 0;
+    // A careful drag is not a throw: without this every slow correction ended
+    // in a glide of its own.
+    if (Math.abs(dy) < SLOP) return 0;
+    return dy / dt;
   }
 
   // dy is the movement since the last call, in pixels; positive = downwards
@@ -107,16 +165,20 @@ export class Scroller {
       dy = this.travel; // spend what the finger has already covered
     }
     this.emit(dy);
-    const dt = Math.max(1, at - this.lastAt);
+    // Each sample carries the interval it covers, so the tail can be measured
+    // without assuming the frames were evenly spaced.
+    this.samples.push({ from: this.lastAt, at, dy });
     this.lastAt = at;
-    // Smoothed, so one jittery sample does not decide the whole flick.
-    const sample = dy / dt;
-    this.speed = this.speed === 0 ? sample : this.speed * 0.7 + sample * 0.3;
+    // Only the tail matters; anything older cannot describe a flick.
+    while (this.samples.length && this.samples[0].at <= at - VELOCITY_WINDOW) {
+      this.samples.shift();
+    }
   }
 
   // Let go: keep going if the finger was still moving.
   end(at) {
-    if (at - this.lastAt > 100) this.speed = 0; // held still before lifting
+    this.idle = this.samples.length ? Math.max(0, Math.round(at - this.samples[this.samples.length - 1].at)) : 0;
+    this.speed = this.velocity(at);
     const thrown = this.speed;
     if (Math.abs(this.speed) < MIN_SPEED) {
       this.report(at, 0);
