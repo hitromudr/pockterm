@@ -223,13 +223,13 @@ func serve() {
 		Attach: func(id int64, target string) []string {
 			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 		},
-		InMode:        inMode,
-		Presence:      notifier(cfg, notices),
-		UpdateWaiting: updateWaiting(cfg),
-		Notices:       notices,
-		WheelLines:    wheelLines,
-		Static:        http.FileServer(http.FS(static)),
-		SaveUpload:    uploader(cfg),
+		InMode:      inMode,
+		Presence:    notifier(cfg, notices),
+		Notices:     notices,
+		PageVersion: pockterm.PageVersion(),
+		WheelLines:  wheelLines,
+		Static:      http.FileServer(http.FS(static)),
+		SaveUpload:  uploader(cfg),
 		// The browser has no console anyone can open on the phone this
 		// serves; its own words land here instead.
 		LogClient:    func(line string) { log.Printf("client: %s", line) },
@@ -260,24 +260,6 @@ func uploader(cfg config.Config) func(io.Reader) (string, error) {
 	}
 	log.Printf("image paste on, saving to %s", dir)
 	return upload.Store{Dir: dir}.Save
-}
-
-// updateWaiting reports whether the deploy script is holding a build back.
-//
-// It exists because the wait is invisible from the page, and the page is where
-// somebody sits wondering why the version does not change: the install waits
-// for nobody to be looking, and looking is exactly what they are doing. The
-// server only checks whether the file is there — what to do about it stays
-// with pockterm-deploy.
-func updateWaiting(cfg config.Config) func() bool {
-	path := cfg.PendingFile
-	if path == "off" {
-		return nil
-	}
-	return func() bool {
-		_, err := os.Stat(path)
-		return err == nil
-	}
 }
 
 // starter runs one of the fixed presets through the same Makefile the owner

@@ -21,11 +21,6 @@ type Config struct {
 	// Empty means the working directory; "off" refuses to start any.
 	SessionMakeDir string // POCKTERM_SESSION_DIR
 
-	// File the deploy script parks a build in while it waits for nobody to be
-	// looking. Its presence is what the page reports as "an update is
-	// waiting"; "off" leaves the page silent about deploys.
-	PendingFile string // POCKTERM_PENDING_FILE
-
 	// Telegram notifications; empty TGToken disables them entirely.
 	TGToken   string        // POCKTERM_TG_TOKEN, bot token
 	TGChat    string        // POCKTERM_TG_CHAT, chat id to notify
@@ -45,7 +40,6 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		Token:          getenv("POCKTERM_TOKEN"),
 		UploadDir:      getenv("POCKTERM_UPLOAD_DIR"),
 		SessionMakeDir: getenv("POCKTERM_SESSION_DIR"),
-		PendingFile:    orDefault(getenv("POCKTERM_PENDING_FILE"), "/var/lib/pockterm/incoming/pockterm.pending"),
 		TGToken:        getenv("POCKTERM_TG_TOKEN"),
 		TGChat:         getenv("POCKTERM_TG_CHAT"),
 		TGLink:         getenv("POCKTERM_TG_LINK"),

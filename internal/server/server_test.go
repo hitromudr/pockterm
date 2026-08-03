@@ -90,37 +90,10 @@ func TestPresenceEndpointReportsWhoIsLooking(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	// The deploy script reads "visible": a pocketed phone holds a socket, so
-	// only this number ever reaches zero.
+	// Two counts, not one: a pocketed phone holds a socket for hours, so only
+	// "visible" ever reaches zero, and the watcher's question is that one.
 	if got["clients"] != 3.0 || got["visible"] != 1.0 {
 		t.Fatalf("presence = %v, want clients 3 and visible 1", got)
-	}
-	// Nothing wired to report a parked build: the page must not claim one.
-	if got["waiting"] != false {
-		t.Fatalf("waiting = %v with no UpdateWaiting, want false", got["waiting"])
-	}
-}
-
-func TestPresenceReportsAParkedBuild(t *testing.T) {
-	// The page shows this because the wait is otherwise invisible from the one
-	// place somebody sits watching the version not change.
-	opts := testOptions("")
-	opts.Presence = &fakePresence{clients: 1, viewing: 1}
-	opts.UpdateWaiting = func() bool { return true }
-	srv := httptest.NewServer(Handler(opts))
-	t.Cleanup(srv.Close)
-
-	resp, err := http.Get(srv.URL + "/api/presence")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var got map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
-		t.Fatal(err)
-	}
-	if got["waiting"] != true {
-		t.Fatalf("waiting = %v, want true", got["waiting"])
 	}
 }
 
@@ -724,4 +697,79 @@ func TestNoticesForgetAClosedPage(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	notices.Send("demo", Notice{Type: "notify", Kind: "done", Session: "demo", Title: "x"})
+}
+
+func TestConfigFrameNamesThePageItServes(t *testing.T) {
+	// The page cannot work out on its own that its own code is out of date: it
+	// reconnects after CI restarts the unit and looks exactly as healthy as
+	// before. So the server says what it serves, on every connect, and the page
+	// compares — one number, and the button in the page depends on it.
+	opts := testOptions("")
+	opts.PageVersion = "v99"
+	opts.WheelLines = func() int { return 2 }
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("waiting for the config frame: %v", err)
+		}
+		if mt != websocket.TextMessage {
+			continue
+		}
+		var f struct {
+			Type       string `json:"type"`
+			WheelLines int    `json:"wheelLines"`
+			Version    string `json:"version"`
+		}
+		if err := json.Unmarshal(data, &f); err != nil || f.Type != "config" {
+			continue
+		}
+		// Both in one frame: the page sizes a gesture and judges its own age
+		// from the same message, so neither can arrive without the other.
+		if f.Version != "v99" || f.WheelLines != 2 {
+			t.Fatalf("config = %+v, want version v99 and 2 lines", f)
+		}
+		return
+	}
+}
+
+func TestConfigFrameIsSkippedWhenThereIsNothingToSay(t *testing.T) {
+	// A deployment with neither number configured must not send an empty frame
+	// the page would have to guard against.
+	opts := testOptions("")
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	readBinaryUntil(t, c, "ready")
+	c.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			return // nothing more arrived, which is the point
+		}
+		if mt != websocket.TextMessage {
+			continue
+		}
+		var f struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(data, &f) == nil && f.Type == "config" {
+			t.Fatalf("a config frame arrived with nothing in it: %s", data)
+		}
+	}
 }

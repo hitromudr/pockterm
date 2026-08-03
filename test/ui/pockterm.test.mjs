@@ -523,32 +523,51 @@ describe('which bar the phone opens on', () => {
   });
 });
 
-describe('a build waiting for the page to look away', () => {
+describe('a new version on the server', () => {
   let stand;
   before(async () => { stand = await startStand(); });
   after(async () => { await stand.stop(); });
 
-  test('the menu says why the version is not changing', async () => {
-    // The install waits for nobody to be looking, and the person waiting for
-    // it is looking — at this very menu, next to a version that will not
-    // change while they watch. Without the line there is nothing to read.
+  test('the page offers the update and the button takes it', async () => {
+    // CI installs a build the moment it arrives, so the unit restarts under
+    // whoever is looking and every page reconnects — still running the assets
+    // it loaded before the restart. That is the one thing a page cannot work
+    // out for itself: its own code is the old code, and it looks exactly as
+    // healthy as before. The server names what it serves; this is the page
+    // acting on it.
     const { page } = stand;
     await stand.open();
     await stand.attach();
-    await page.click('#more');
-    assert.equal(await page.locator('#update-waiting').isVisible(), false,
-      'nothing is parked, so nothing should be claimed');
+    assert.equal(await page.locator('#update-bar').isVisible(), false,
+      'the page is the one the server serves, so nothing should be offered');
 
-    stand.parkBuild();
-    // Reopening the menu is what asks: the answer is fetched on open rather
-    // than polled.
-    await page.click('#more');
-    await page.click('#more');
-    await page.waitForSelector('#update-waiting:not([hidden])');
+    // A page from before the deploy, made the way the phone gets one: the
+    // assets it is running are older than the ones on the server. Rewriting
+    // the response is the only way to have both versions in one test — the
+    // binary parses its own embedded app.js, so the two agree by construction.
+    await page.context().route('**/js/app.js', async (route) => {
+      const res = await route.fetch();
+      const body = (await res.text()).replace(/APP_VERSION = '[^']+'/, "APP_VERSION = 'v0'");
+      await route.fulfill({ response: res, body });
+    });
+    await stand.open();
+    await stand.attach();
 
-    stand.unparkBuild();
-    await page.click('#more');
-    await page.click('#more');
-    await page.waitForSelector('#update-waiting', { state: 'hidden' });
+    await page.waitForSelector('#update-bar:not([hidden])');
+    const said = await page.locator('#update-text').textContent();
+    assert.match(said, /v0/, `the bar does not say what the page is running: ${said}`);
+    assert.doesNotMatch(said, /^\s*$/, 'the bar is empty');
+
+    // Taking it is a reload, and a reload of the real assets lands on a page
+    // the server agrees with. The marker proves the document is a new one:
+    // hiding the bar without reloading would be the same defect, quieter.
+    await page.context().unroute('**/js/app.js');
+    await page.evaluate(() => { window.__beforeReload = true; });
+    await page.click('#update-now');
+    await page.waitForFunction(() => window.__beforeReload === undefined, null, { timeout: 5000 });
+    await page.waitForSelector('#screen-term:not([hidden])');
+    await page.waitForSelector('#update-bar', { state: 'hidden' });
+
+    assert.deepEqual(stand.pageErrors, []);
   });
 });

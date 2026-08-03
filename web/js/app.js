@@ -6,14 +6,17 @@ import { snapshotText } from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { Scroller } from './scroll.js';
+import { staleNotice } from './update.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 
-// Version of the code actually running. Bumped with the service worker's
-// cache name: a mismatch between the two is itself a diagnosis, because an
-// installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v72';
+// Version of the code actually running. Bumped with the service worker's cache
+// name — assets_test.go fails if the two drift, because a page that misreports
+// itself is a page that never looks out of date. An installed PWA can keep
+// running the version it was installed with, which is what makes the number
+// worth having at all.
+const APP_VERSION = 'v75';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -375,6 +378,10 @@ function onControl(raw) {
   // What tmux does per wheel notch, asked of tmux rather than assumed: the
   // swipe follows the finger only if the page knows the size of a step.
   if (c && c.type === 'config' && c.wheelLines > 0) { wheelLines = c.wheelLines; setScrollStep(); }
+  // And which page the server serves. CI installs a build as soon as it
+  // arrives, so this frame is also how a reconnect after that restart is told
+  // apart from any other reconnect.
+  if (c && c.type === 'config') offerUpdate(c.version);
 }
 
 function send(data) {
@@ -840,25 +847,10 @@ const versionsEl = document.getElementById('versions');
   versionsEl.textContent = app ? `page ${APP_VERSION} · app ${app}` : `page ${APP_VERSION}`;
 }
 const overflowEl = document.getElementById('overflow');
-const updateEl = document.getElementById('update-waiting');
-
-// Whether a build is parked waiting for this page to go away. Asked when the
-// menu opens rather than polled: it is the moment somebody wonders why the
-// version next to it has not changed, and the answer costs one request.
-async function refreshUpdateWaiting() {
-  if (!updateEl) return;
-  try {
-    const res = await fetch(`/api/presence?${tokenQS}`);
-    if (!res.ok) return;
-    const { waiting } = await res.json();
-    updateEl.hidden = !waiting;
-  } catch (_) { /* the menu works fine without this line */ }
-}
 
 moreBtn.addEventListener('click', () => {
   overflowEl.hidden = !overflowEl.hidden;
   moreBtn.classList.toggle('on', !overflowEl.hidden);
-  if (!overflowEl.hidden) refreshUpdateWaiting();
   refit();
 });
 
@@ -1333,6 +1325,39 @@ function show(notice) {
     n.close();
   };
 }
+
+// A new page on the server: say so, and let the owner take it.
+//
+// Not an automatic reload. Whatever is half-typed in the composer would go with
+// it, and a terminal that reloads itself under the thumb is worse than one that
+// is a version behind — the choice of moment is the point of the button. The
+// notification goes out through the same path as the watcher's, so a phone with
+// the page in the background hears about it too.
+const updateBarEl = document.getElementById('update-bar');
+const updateTextEl = document.getElementById('update-text');
+let updateOffered = '';
+function offerUpdate(served) {
+  const notice = staleNotice(served, APP_VERSION);
+  if (!notice) {
+    updateBarEl.hidden = true;
+    return;
+  }
+  updateTextEl.textContent = notice.text;
+  updateBarEl.hidden = false;
+  // The bar stays for as long as the version does; the notification is raised
+  // once per version, because a tunnel that drops twice is not two deploys.
+  if (updateOffered === served) return;
+  updateOffered = served;
+  report('update-offered', { served, running: APP_VERSION });
+  show(notice);
+}
+
+document.getElementById('update-now').addEventListener('click', () => {
+  report('update-taken', { served: updateOffered, running: APP_VERSION });
+  // A plain reload is enough: the service worker is network-first, so the new
+  // assets come from the server and the cache is only the offline fallback.
+  location.reload();
+});
 
 // Scrolled back into tmux history (copy-mode): the numbered lines on screen
 // belong to the past, so answering them would send digits to whatever is

@@ -219,26 +219,30 @@ The proxy must also preserve the original Host header (nginx:
 `proxy_set_header Host $host;`) — the server checks `Origin` against the
 request's `Host` and rejects the upgrade if the proxy rewrites it.
 
-## Updating without cutting a session short
+## Updating: installed at once, the page offers to reload
 
 Installing a new binary restarts the unit, and somebody is usually working in
-the terminal it serves. So that this is not a choice between a fresh build and
-an intact session, `deploy/pockterm-deploy` asks the running server through
-`/api/presence` and installs only while nobody has the page on screen:
+the terminal it serves. That used to make the install wait for nobody to be
+looking — which meant waiting for the very person waiting for the fix. Now
+`deploy/pockterm-deploy` installs a build as it arrives: a restart costs one
+reconnect, and the tmux session behind it is untouched.
 
 | File | What it does |
 |---|---|
-| `deploy/pockterm-deploy` | verifies the signature, waits for a gap, installs, rolls back |
+| `deploy/pockterm-deploy` | verifies the signature, installs, restarts, rolls back |
 | `deploy/pockterm-deploy.path` | notices a build arriving |
-| `deploy/pockterm-deploy.timer` | retries every minute while the terminal is in use |
 | `deploy/pockterm-deploy.service` | runs the script |
 
-`/api/presence` answers `{"clients":N,"visible":M}`: `clients` counts open
-sockets, `visible` counts tabs on screen. The wait is on `visible` — a
-backgrounded PWA holds its socket for hours, so the other number never reaches
-zero. A server that does not answer counts as free. `FORCE_AFTER` (6h by
-default) bounds the wait, identical bytes cause no restart, and a binary that
-fails to start is rolled back to the previous one.
+Identical bytes cause no restart, and a binary that fails to start is rolled
+back to the previous one.
+
+An open page reconnects after the restart and carries on running the assets it
+already had. It cannot tell that by itself — its own code is the old code. So
+the server names the page version it serves in the `config` frame (`APP_VERSION`
+from its embedded `web/js/app.js`), the page compares it with its own and shows
+a bar with an **Обновить** ("update") button. A reload on a tap rather than by
+itself: the composer can hold a half-written message. The service worker is
+network-first, so a plain reload is enough.
 
 The scheme expects a CI job that drops a signed file into
 `/var/lib/pockterm/incoming`; the signature matters because that directory is

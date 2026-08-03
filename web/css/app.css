@@ -168,6 +168,39 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   padding: 4px;
   font-size: 14px;
 }
+/* Overlay, like #status and #toast: a new version arriving must not resize the
+   terminal under the thumb that is scrolling it. Green rather than the
+   reconnect banner's red — nothing is wrong, there is something to take.
+   Placed like the toast, and full width would be wrong for a different reason
+   than looks: an absolutely positioned child of a flex container starts at the
+   container's content box, which is behind the header — so a bar spanning the
+   top covers ☰ and the session tabs, and this one stays until it is tapped.
+   The browser test found that by being unable to reach ☰. */
+#update-bar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 52px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 92%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #24422ce6;
+  color: var(--fg);
+  font-size: 13px;
+}
+#update-bar button {
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #0b0e14;
+  font-size: 13px;
+}
+
 /* Overlay too, for the same reason as #status: a toast must never resize
    the terminal. Short-lived feedback for copy/paste, which is otherwise
    invisible — the whole point is knowing what landed in the clipboard. */
