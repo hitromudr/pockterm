@@ -20,6 +20,10 @@ const KEYS = {
   '1': '1',
   '2': '2',
   '3': '3',
+  // A newline inside the message instead of sending it: ESC then CR, which is
+  // what Alt+Enter puts on the wire. There is no other way to write a second
+  // line from a phone — the on-screen Enter sends.
+  'alt-enter': '\x1b\r',
 };
 
 export function keyBytes(name) {

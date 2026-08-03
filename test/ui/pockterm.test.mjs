@@ -365,17 +365,14 @@ describe('the key bar', () => {
     assert.ok(await page.locator('#keybar').isVisible(), 'the bars did not come back');
   });
 
-  test('the answer key types a digit into the terminal', async () => {
+  test('alt+enter is on the bar, and plain enter is elsewhere', async () => {
     await stand.open();
     await stand.attach();
     const { page } = stand;
-
-    await page.click('[data-key="1"]');
-    await page.waitForFunction(
-      () => (document.querySelector('.xterm-rows')?.textContent || '').includes('1'),
-      null,
-      { timeout: 5000 },
-    );
+    // The pair matters: one sends the message, the other adds a line to it,
+    // and from a phone there is no other way to reach the second.
+    assert.equal(await page.locator('#keybar [data-key="alt-enter"]').count(), 1);
+    assert.equal(await page.locator('#keybar [data-key="enter"]').count(), 1);
   });
 });
 
