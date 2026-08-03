@@ -201,6 +201,26 @@ shipping it:
   transition so the two cancel at every point of the settle and not only at its
   end. Guessing is the wrong move here: too high pins a row of real output while
   the rest follows the finger, so anything unreadable counts as none.
+- **One repaint accounts for every message it can have drawn.** Counting one
+  batch per repaint was the first rule and the numbers killed it: xterm renders
+  once per animation frame, so several of tmux's answers arrive in one repaint,
+  the rest stayed owed, and the shift sat at `MAX_TRACK` — where it stops
+  following the finger. A repaint now clears everything sent more than a frame
+  ago (`ACK_MARGIN`), because tmux acts on a message at once and it is the
+  picture coming back that is slow.
+- **The whole terminal screen is the gesture surface**, not the box the text is
+  drawn in: the bars take a third of a phone, and a thumb reaching them mid-swipe
+  is how a long swipe ends. `#composer`, `#snapshot` and the tab strip keep their
+  own gestures.
+- **`〰 smooth` in the ⋯ menu turns the shift off.** Whether holding the picture
+  between whole lines reads better than moving in whole ones is a question about
+  feel — and the shift moves everything in the pane, an agent's own input box
+  included, which is what it looks like when it is not wanted. The lever is
+  remembered, so answering costs a tap instead of a deploy.
+- **A pane with no history cannot answer anything.** Every message is then a
+  message tmux has nothing to draw, the air fills up and the shift pins at the
+  cap. Two measurements were read as defects before this was noticed, so a test
+  that swipes has to print some output first.
 - **The gesture is the page's, and the browser has to be told.** `#term` sets
   `touch-action: none`; without it the browser may decide mid-swipe that a long
   drag is its own scroll, take the touch and stop delivering moves — reported as

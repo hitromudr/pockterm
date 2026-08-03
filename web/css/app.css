@@ -223,13 +223,21 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 }
 /* overflow: the rows are shifted to follow the finger between whole lines
    (trackScreen in app.js), and a shifted row must not be drawn over the bars
-   below the terminal.
-   touch-action: the swipe is the page's to interpret. Without this the browser
-   is free to decide mid-gesture that a long swipe is its own scroll, take the
-   touch away and stop delivering moves — which is what "a long swipe gets
-   interrupted" was. The listeners stay passive; this says it declaratively
-   instead of fighting for it with preventDefault. */
-#term { flex: 1; min-height: 0; position: relative; overflow: hidden; touch-action: none; }
+   below the terminal. */
+#term { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+/* The swipe is the page's to interpret, over the whole screen and not only the
+   box the text is drawn in: the bars take a third of a phone, and a thumb
+   reaching them mid-swipe is how a long swipe normally ends — it used to stop
+   there. Without touch-action the browser is also free to decide mid-gesture
+   that a long swipe is its own scroll, take the touch away and stop delivering
+   moves, which was reported as a long swipe being interrupted. The listeners
+   stay passive; this says it declaratively instead of fighting for it with
+   preventDefault.
+   Three exceptions, and they own their gestures for good reasons: the composer
+   is a field a finger drags a caret through, the frozen copy is where a
+   selection is made, and the tab strip scrolls sideways. */
+#screen-term { touch-action: none; }
+#composer, #snapshot, header.bar { touch-action: auto; }
 /* Selection mode selects from a frozen copy of the screen laid over the
    terminal, not from the terminal itself.
    Two reasons, and lifting xterm's user-select:none fixed neither: the DOM

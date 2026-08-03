@@ -49,6 +49,12 @@ const PARK = 120; // milliseconds
 // is down.
 const MAX_TRACK = 3; // steps
 
+// How recently a message must have gone out to survive a repaint that arrives
+// now. tmux acts on a message at once — the delay is the picture coming back —
+// so anything older than a frame is already in what just arrived, and only the
+// newest is still in doubt.
+const ACK_MARGIN = 20; // milliseconds
+
 // How long an unanswered batch stays owed. This is a backstop, not a
 // prediction: the page is told when the screen actually moved, and the only
 // case with no answer at all is a scroll tmux cannot make — the top of the
@@ -176,14 +182,21 @@ export class Scroller {
     this.building = 0;
   }
 
-  // The screen moved: the oldest batch in the air has been drawn.
+  // The screen moved: everything tmux had already been told is now drawn.
   //
-  // One redraw, one batch, oldest first. tmux draws a scroll as a repaint of
-  // the whole pane and answers each message with one of them, so counting is
-  // enough — and unlike a clock it cannot be wrong about a trip that took three
-  // times the average, which is what made a long swipe judder.
+  // Not one batch per repaint. That was the first rule and the numbers killed
+  // it: xterm renders once per animation frame, so several of tmux's answers
+  // arrive inside one repaint, and the batches nobody counted piled up until the
+  // shift sat at MAX_TRACK — where it stops following the finger, which is the
+  // sticking all of this started with.
+  //
+  // So a repaint clears everything sent more than a frame ago. A repaint shows
+  // tmux's current position, and tmux is local: what delays an answer is the way
+  // back, not the way in, so a batch older than a frame is one tmux has already
+  // acted on. The margin is what keeps the very newest batch owed, because that
+  // one may genuinely not be in this picture yet.
   drew(at) {
-    this.air.shift();
+    this.air = this.air.filter((b) => at - b.at < ACK_MARGIN);
     this.track(at);
   }
 

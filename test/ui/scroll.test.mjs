@@ -20,7 +20,12 @@ const X = 195; // middle of a 390px viewport
 async function recordGesture(page) {
   await page.evaluate(() => {
     window.__gesture = { n: 0, seen: [] };
-    document.getElementById('term').addEventListener('touchmove', (e) => {
+    // On the same element as the page's own handler, and registered after it, so
+    // this reads the shift the page has just applied. On #term it read the one
+    // before: the page listens on the screen, the event bubbles up from the rows,
+    // and a listener on the way there runs first — which showed up as every
+    // sample being one move behind.
+    document.getElementById('screen-term').addEventListener('touchmove', (e) => {
       if (!e.touches.length) return;
       const el = document.querySelector('.xterm-screen');
       const t = el && getComputedStyle(el).transform;
@@ -67,6 +72,14 @@ describe('a swipe follows the finger', () => {
     });
     assert.ok(row > 4, `a row measures nothing sensible: ${row}`);
 
+    // History to scroll through. Without it the pane cannot move at all: the
+    // first notch enters copy-mode and everything after it is a message tmux has
+    // nothing to answer with, so the shift piles up to its cap and the invariant
+    // below reads like a defect. Measured that way once already.
+    await page.click('#term');
+    for (let i = 1; i <= 40; i++) await page.keyboard.type(`line ${i}\n`);
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('line 40'));
+
     const start = 300;
     let y = start;
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y }] });
@@ -96,8 +109,12 @@ describe('a swipe follows the finger', () => {
     // is. What a step has to be is the same every time, so it is measured off
     // the first line drawn and the rest are held against it.
     const gaps = seen.map((s) => s.y - start - s.px);
-    assert.ok(gaps[0] < row,
-      `the first ${(seen[0].y - start).toFixed(0)}px of travel moved the rows ${seen[0].px.toFixed(1)}px`);
+    // Something was shifted at some point: without this the invariant below
+    // holds trivially for a page that never follows the finger at all.
+    assert.ok(seen.some((s) => s.px > 1), `the rows never moved: ${seen.map((v) => v.px.toFixed(1))}`);
+    // Nothing here assumes how big a step is — the binding is tmux's to choose,
+    // and the stand reads the same ~/.tmux.conf as the host, so it changed under
+    // these tests once already.
     const step = gaps.find((g) => g > row / 2);
     assert.ok(step, `no whole line was drawn in ${y - start}px of travel: ${gaps.map((g) => g.toFixed(1))}`);
     // One exception, and it is a decision rather than a slip: the shift is
@@ -246,13 +263,19 @@ describe('a swipe follows the finger', () => {
     await stand.attach();
     const { page } = stand;
     const styles = await page.evaluate(() => ({
-      term: getComputedStyle(document.getElementById('term')).touchAction,
-      // The frozen copy is a scrollable, selectable <pre>: it needs the
-      // browser's gestures back.
+      // The whole screen, not just the box the text is drawn in: a swipe that
+      // runs into the bars has to go on scrolling.
+      screen: getComputedStyle(document.getElementById('screen-term')).touchAction,
+      // Three exceptions that own their gestures: a field a caret is dragged
+      // through, the frozen copy a selection is made in, and the tab strip.
+      composer: getComputedStyle(document.getElementById('composer')).touchAction,
       snapshot: getComputedStyle(document.getElementById('snapshot')).touchAction,
+      header: getComputedStyle(document.querySelector('#screen-term header.bar')).touchAction,
     }));
-    assert.equal(styles.term, 'none');
+    assert.equal(styles.screen, 'none');
+    assert.equal(styles.composer, 'auto');
     assert.equal(styles.snapshot, 'auto');
+    assert.equal(styles.header, 'auto');
   });
 
   test("tmux's status line does not ride along with the shift", async () => {
@@ -309,6 +332,79 @@ describe('a swipe follows the finger', () => {
     }, null, { timeout: 4000 });
     const after = await bottom();
     assert.ok(Math.abs(after.y - before.y) < 1.5, 'the status line did not come back to where it was');
+  });
+
+  test('a swipe over the bars scrolls the terminal too', async () => {
+    // Reported as the scroll being cut off rather than covering the screen: the
+    // bars take a third of a phone, a swipe that started over them did nothing,
+    // and a downward one that ran into them had nowhere left to go.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    await page.click('#term');
+    for (let i = 1; i <= 40; i++) await page.keyboard.type(`line ${i}\n`);
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('line 40'));
+
+    const bar = await page.locator('#keybar').boundingBox();
+    assert.ok(bar, 'no key bar to swipe over');
+    // Starting inside the key bar, going up: the terminal must scroll back.
+    await page.evaluate(() => { window.__n = 0; document.getElementById('screen-term').addEventListener('touchmove', () => { window.__n++; }, { passive: true }); });
+    let y = bar.y + bar.height / 2;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y }] });
+    for (let i = 0; i < 12; i++) {
+      y += 30; // finger down the screen is towards history
+      const before = await page.evaluate(() => window.__n);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: X, y }] });
+      await page.waitForFunction((n) => window.__n > n, before, { timeout: 3000 }).catch(() => {});
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+    await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
+    const state = stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_in_mode} #{scroll_position}']).trim();
+    assert.match(state, /^1 [1-9]/, `a swipe from the key bar did not scroll: ${state}`);
+    stand.tmux(['send-keys', '-t', 'demo', '-X', 'cancel']);
+  });
+
+  test('the lever turns the shift off without touching the scrolling', async () => {
+    // Whether holding the picture between whole lines reads better than moving
+    // in whole ones is a question about feel, and the phone is the only place it
+    // can be answered — so it is a tap, and it is remembered.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    await recordGesture(page);
+
+    await page.click('#more');
+    await page.click('#smooth');
+    assert.match(await page.locator('#smooth').textContent(), /lines/);
+    await page.click('#more');
+
+    let y = 300;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y }] });
+    y += 24;
+    await move(page, cdp, y);
+    for (let i = 0; i < 8; i++) { y += 8; await move(page, cdp, y); }
+    const shifted = await page.evaluate(() => {
+      const el = document.querySelector('.xterm-screen');
+      const t = el && getComputedStyle(el).transform;
+      return !t || t === 'none' ? 0 : new DOMMatrixReadOnly(t).f;
+    });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    assert.equal(shifted, 0, `the rows were still shifted with the lever off: ${shifted}`);
+
+    // The scrolling itself is untouched: notches still go to tmux.
+    const state = stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_in_mode} #{scroll_position}']).trim();
+    assert.match(state, /^1 [1-9]/, `nothing scrolled with the lever off: ${state}`);
+    stand.tmux(['send-keys', '-t', 'demo', '-X', 'cancel']);
+
+    // And the choice survives a reload, because a lever that forgets is a lever
+    // pulled twice.
+    await stand.open();
+    await stand.attach();
+    await page.click('#more');
+    assert.match(await page.locator('#smooth').textContent(), /lines/);
+    await page.click('#smooth'); // back on, so the tests after this see the default
+    await page.click('#more');
   });
 
   test('the shifted rows stay inside the terminal', async () => {

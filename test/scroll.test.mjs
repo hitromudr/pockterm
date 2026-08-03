@@ -500,7 +500,10 @@ test('the stop rounds to the nearest line, not down to the last one', () => {
   // stop at all, then forward by the 8px that were missing.
   assert.equal(shifts[shifts.length - 1], 22, 'the picture moved before the line arrived');
   s.batched(16 + 300);
-  s.drew(16 + 301);
+  // A repaint a frame later, not the same millisecond: a message that has only
+  // just gone out cannot be in a picture that is already on screen, and drew()
+  // keeps exactly that one owed.
+  s.drew(16 + 300 + 60);
   assert.equal(shifts[shifts.length - 1], 0, 'the shift outlived the snap');
 
   // 12px: not worth another line, so it comes back — 12px rather than 30.
@@ -540,4 +543,35 @@ test('the snap does not ratchet', () => {
     s.drew(at);
   }
   assert.equal(notches.length, 1, `the stop sent ${notches.length} lines and kept going`);
+});
+
+test('one repaint accounts for every message it can have drawn', () => {
+  // xterm renders once per animation frame, so several of tmux's answers arrive
+  // inside one repaint. Counting one batch per repaint left the rest owed, the
+  // shift climbed to MAX_TRACK and stopped following the finger — measured on
+  // the stand as a gap that grew by every pixel the finger moved after that.
+  const h = tracking({ step: 16 });
+  h.s.start(0);
+  // Three messages out in quick succession, none answered yet.
+  h.s.move(20, 16); h.send(16);
+  h.s.move(20, 32); h.send(32);
+  h.s.move(20, 48); h.send(48);
+  assert.equal(h.last, 48, 'the finger was not followed while the air filled up');
+
+  // One repaint, well after all three went out.
+  h.drew(200);
+  assert.equal(h.last, 60 - 48, `three messages were not accounted for: ${h.last}`);
+});
+
+test('the newest message survives a repaint that cannot show it', () => {
+  // A message that went out this frame is not in a picture already on its way
+  // back, and acking it would drop the shift a step before the content moved.
+  const h = tracking({ step: 16 });
+  h.s.start(0);
+  h.s.move(20, 16);
+  h.send(16);
+  h.drew(20); // 4ms later: the same frame
+  assert.equal(h.last, 20, `the newest message was written off: ${h.last}`);
+  h.drew(100); // a repaint that can have shown it
+  assert.equal(h.last, 4, `the message was never accounted for: ${h.last}`);
 });

@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v82';
+const APP_VERSION = 'v83';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -604,8 +604,23 @@ function noteScreenMoved(start, end) {
 // The rows are shifted, not the viewport: what appears at the edge is then the
 // terminal's own background rather than the page's, and the shift is capped at a
 // few steps of it (MAX_TRACK). `#term` clips, so nothing lands on the bars.
+// Whether the page holds the picture between whole lines at all.
+//
+// On, the rows are shifted to follow the finger and everything in the pane moves
+// with them — the agent's own input box and prompt included, which is what
+// "the input field keeps riding away" is about. Off, the screen moves only in
+// whole lines, the way tmux draws it, and nothing in the pane can be off its
+// grid by a fraction.
+//
+// A lever, not a decision. Which of the two reads better is a question about
+// feel on a phone the stand cannot imitate, and the choice is remembered so
+// answering it costs one tap rather than a deploy.
+let smoothScroll = true;
+try { smoothScroll = localStorage.getItem('pt-smooth') !== 'off'; } catch (_) {}
+
 let trackEl = null;
 function trackScreen(px) {
+  if (!smoothScroll) px = 0;
   if (!trackEl || !trackEl.isConnected) trackEl = document.querySelector('.xterm-screen');
   if (!trackEl) return;
   if (!px) {
@@ -686,17 +701,32 @@ setScrollStep();
 term.onRender((e) => noteScreenMoved(e.start, e.end));
 
 let touchY = null;
-const termBox = document.getElementById('term');
-termBox.addEventListener('touchstart', (e) => {
+// The whole terminal screen scrolls it, not just the box the text is drawn in.
+//
+// Reported as the scroll being cut off rather than covering the screen: a swipe
+// that started over the key bar did nothing, and a downward one that ran into it
+// had nowhere left to go. The bars take a third of a phone screen, and a thumb
+// reaching them mid-swipe is the normal way a long swipe ends.
+const gestureArea = document.getElementById('screen-term');
+
+// Where a swipe is not the page's business: the composer is a text field the
+// finger drags a caret through, the frozen copy is what a selection is made in,
+// and the tab strip scrolls sideways under its own gesture.
+function ownsGesture(target) {
+  return !(target instanceof Element) ||
+    !target.closest('#composer, #snapshot, header.bar');
+}
+
+gestureArea.addEventListener('touchstart', (e) => {
   // Selection mode gives the drag gesture back to the browser: swiping has
   // to select text there, not scroll.
   scroller.stop();
-  if (selectMode) { touchY = null; return; }
+  if (selectMode || !ownsGesture(e.target)) { touchY = null; return; }
   touchY = e.touches[0].clientY;
   setScrollStep();
   scroller.start(e.timeStamp);
 }, { passive: true });
-termBox.addEventListener('touchmove', (e) => {
+gestureArea.addEventListener('touchmove', (e) => {
   if (touchY === null) return;
   const y = e.touches[0].clientY;
   scroller.move(y - touchY, e.timeStamp);
@@ -706,14 +736,14 @@ termBox.addEventListener('touchmove', (e) => {
 // screen edge, a second finger, its own scrolling. Reported as a long swipe
 // being interrupted: without this the page never heard the gesture end, so the
 // screen stayed shifted where the last touchmove left it and nothing moved
-// again until the next touch. `touch-action: none` on #term is the other half —
-// it asks the browser not to take it in the first place.
-termBox.addEventListener('touchcancel', (e) => {
+// again until the next touch. `touch-action: none` on the screen is the other
+// half — it asks the browser not to take it in the first place.
+gestureArea.addEventListener('touchcancel', (e) => {
   if (touchY === null) return;
   touchY = null;
   scroller.cancel(e.timeStamp);
 }, { passive: true });
-termBox.addEventListener('touchend', (e) => {
+gestureArea.addEventListener('touchend', (e) => {
   if (touchY === null) return;
   touchY = null;
   scroller.end(e.timeStamp);
@@ -961,6 +991,20 @@ const versionsEl = document.getElementById('versions');
   versionsEl.textContent = app ? `page ${APP_VERSION} · app ${app}` : `page ${APP_VERSION}`;
 }
 const overflowEl = document.getElementById('overflow');
+const smoothBtn = document.getElementById('smooth');
+function renderSmooth() {
+  smoothBtn.textContent = smoothScroll ? '〰 smooth' : '〰 lines';
+  smoothBtn.classList.toggle('on', smoothScroll);
+}
+renderSmooth();
+smoothBtn.addEventListener('click', () => {
+  smoothScroll = !smoothScroll;
+  try { localStorage.setItem('pt-smooth', smoothScroll ? 'on' : 'off'); } catch (_) {}
+  renderSmooth();
+  // Whatever the shift was at that moment belongs to the mode being left.
+  trackScreen(0);
+  report('smooth', { on: smoothScroll });
+});
 
 moreBtn.addEventListener('click', () => {
   overflowEl.hidden = !overflowEl.hidden;
