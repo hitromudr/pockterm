@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v52';
+const APP_VERSION = 'v53';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -283,7 +283,8 @@ function attach(name) {
   inCopyMode = false; // the new socket reports the pane's state on connect
   renderTabs();
   requestAnimationFrame(() => {
-    refit();
+    // Size first, then the socket: tmux redraws immediately on attach.
+    fitNow();
     connect();
     // The keyboard reappearing on a switch is not this code focusing
     // anything: on Android the textarea keeps focus after the keyboard is
@@ -1129,6 +1130,23 @@ function scheduleScan() {
 // Keep the terminal grid in sync with the visible viewport. Debounced:
 // a resize drag fires a burst of events and refitting on each flickers.
 let refitTimer = null;
+// The immediate half of refit. A switch must use this one: the socket opens
+// at once, and tmux redraws for whatever size we have already reported. With
+// the fit debounced, that size was still the previous session's — and the
+// redraw arrived wrapped against the wrong width, which is what covered the
+// screen in the same line repeated with mangled characters.
+function fitNow() {
+  const box = document.getElementById('term');
+  if (screenTerm.hidden || !box || box.clientWidth < 8 || box.clientHeight < 8) return false;
+  try {
+    fit.fit();
+  } catch (e) {
+    report('fit-failed', { message: String((e && e.message) || e).slice(0, 120) });
+    return false;
+  }
+  return true;
+}
+
 function refit() {
   if (current === null) return;
   clearTimeout(refitTimer);
@@ -1138,14 +1156,7 @@ function refit() {
     // from inside the renderer, after which the terminal stops drawing and
     // looks hung. A hidden screen, a collapsed layout mid-transition, a
     // keyboard covering everything — all produce that box.
-    const box = document.getElementById('term');
-    if (screenTerm.hidden || !box || box.clientWidth < 8 || box.clientHeight < 8) return;
-    try {
-      fit.fit();
-    } catch (e) {
-      report('fit-failed', { message: String((e && e.message) || e).slice(0, 120) });
-      return;
-    }
+    if (!fitNow()) return;
     sendResize();
   }, 100);
 }
@@ -1161,22 +1172,31 @@ if (window.ResizeObserver) {
 // judged against.
 let keyboardUp = false;
 // Whether this device has a soft keyboard at all, learned by watching one
-// appear. Without it the rule below would blur the terminal on a desktop,
-// where focus is the only thing that makes typing possible.
+// appear. Without it the rule that gives up focus would blur the terminal on a
+// desktop, where focus is the only thing that makes typing possible.
 let sawKeyboard = false;
+// Comparing the visible height against window.innerHeight cannot work here:
+// this page asks for `interactive-widget=resizes-content`, so the keyboard
+// shrinks both of them and the ratio never moves. The honest reference is the
+// tallest the viewport has ever been in this orientation.
+const tallestSeen = new Map();
+function measureKeyboard() {
+  const w = Math.round(window.innerWidth);
+  const h = Math.round(window.visualViewport ? window.visualViewport.height : window.innerHeight);
+  tallestSeen.set(w, Math.max(tallestSeen.get(w) || 0, h));
+  keyboardUp = h < tallestSeen.get(w) * 0.8;
+  if (keyboardUp) sawKeyboard = true;
+}
+measureKeyboard();
 if (window.visualViewport) {
   const vv = window.visualViewport;
-  const measure = () => {
-    keyboardUp = vv.height < window.innerHeight * 0.75;
-    if (keyboardUp) sawKeyboard = true;
-  };
-  measure();
   vv.addEventListener('resize', () => {
     document.documentElement.style.setProperty('--vvh', `${vv.height}px`);
-    measure();
+    measureKeyboard();
     refit();
   });
 }
+window.addEventListener('resize', measureKeyboard);
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
 
