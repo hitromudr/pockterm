@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v79';
+const APP_VERSION = 'v80';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -600,9 +600,8 @@ function noteScreenMoved(start, end) {
 // touches the DOM.
 //
 // The rows are shifted, not the viewport: what appears at the edge is then the
-// terminal's own background rather than the page's, and a shift of at most two
-// steps means at most two lines of it. `#term` clips, so nothing lands on the
-// bars.
+// terminal's own background rather than the page's, and the shift is capped at a
+// few steps of it (MAX_TRACK). `#term` clips, so nothing lands on the bars.
 let trackEl = null;
 function trackScreen(px) {
   if (!trackEl || !trackEl.isConnected) trackEl = document.querySelector('.xterm-screen');
@@ -677,6 +676,17 @@ termBox.addEventListener('touchmove', (e) => {
   const y = e.touches[0].clientY;
   scroller.move(y - touchY, e.timeStamp);
   touchY = y;
+}, { passive: true });
+// The browser can take a gesture away mid-swipe — a system gesture at the
+// screen edge, a second finger, its own scrolling. Reported as a long swipe
+// being interrupted: without this the page never heard the gesture end, so the
+// screen stayed shifted where the last touchmove left it and nothing moved
+// again until the next touch. `touch-action: none` on #term is the other half —
+// it asks the browser not to take it in the first place.
+termBox.addEventListener('touchcancel', (e) => {
+  if (touchY === null) return;
+  touchY = null;
+  scroller.cancel(e.timeStamp);
 }, { passive: true });
 termBox.addEventListener('touchend', (e) => {
   if (touchY === null) return;

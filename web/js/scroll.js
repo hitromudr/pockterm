@@ -117,6 +117,7 @@ export class Scroller {
     this.ticking = false;
     this.touching = false;
     this.settling = false;
+    this.cancelled = false;
   }
 
   // report closes the books on a gesture: what was sent while the finger was
@@ -129,6 +130,7 @@ export class Scroller {
     this.settling = true;
     this.track(at);
     if (!this.onGesture) return;
+    const cancelled = this.cancelled;
     this.onGesture({
       notches: this.notches,
       glided: this.glided,
@@ -140,6 +142,11 @@ export class Scroller {
       // however the velocity is measured, and the number says so instead of
       // leaving it to taste.
       idle: this.idle,
+      // Whether the browser took this gesture rather than the finger ending it.
+      // In the journal because the page cannot tell how often it happens, and
+      // how often it happens is the difference between a defect and a fact of
+      // the platform.
+      cancelled,
     });
   }
 
@@ -193,7 +200,8 @@ export class Scroller {
   //
   // Only under the finger: see end() for why the glide is left alone.
   //
-  // tmux moves whole lines — two per notch here — and answers over a tunnel,
+  // tmux moves whole lines — one per notch on the owner's host since 2026-08-03,
+  // five on a stock server — and answers over a tunnel,
   // so between notches the screen has nothing to say about where the finger
   // is: it stood still for a couple of lines of travel and then jumped, which
   // is "the scroll sticks every few lines" during a slow drag. Nothing in the
@@ -244,6 +252,7 @@ export class Scroller {
     this.gliding = false; // a touch always catches the glide
     this.touching = true;
     this.settling = false;
+    this.cancelled = false;
     this.ticking = false;
     this.carry = 0;
     this.speed = 0;
@@ -317,6 +326,22 @@ export class Scroller {
       this.samples.shift();
     }
     this.track(at);
+  }
+
+  // The browser took the gesture away — its own idea of a scroll, a system
+  // gesture at the screen edge, a second finger. What follows is not a lift:
+  // there was no release to read a throw from, and inventing inertia for a
+  // swipe whose end was never seen would be guessing. Reported as a long swipe
+  // being interrupted, because without this the page never learned the gesture
+  // was over: the shift stayed where the last touchmove left it and nothing
+  // moved again until the next touch.
+  cancel(at) {
+    if (!this.touching) return;
+    this.touching = false;
+    this.gliding = false;
+    this.speed = 0;
+    this.cancelled = true;
+    this.report(at, 0);
   }
 
   // Let go: keep going if the finger was still moving.

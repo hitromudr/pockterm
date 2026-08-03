@@ -427,3 +427,47 @@ test('the residue settles once the last unanswered batch expires', () => {
   h.idleTo(16 + 300 + 401); // the batch nobody answered expires here
   assert.equal(h.last, 0, `the residue stayed on screen: ${h.last}`);
 });
+
+test('a gesture the browser takes away ends cleanly', () => {
+  // A long swipe can be taken by the browser mid-way — its own scrolling, a
+  // system gesture, a second finger. Without an end the page keeps thinking a
+  // finger is down: the shift stays where the last move left it and nothing
+  // moves again until the next touch, which is what "the long swipe gets
+  // interrupted" was.
+  const seen = [];
+  let pending = [];
+  const shifts = [];
+  const s = new Scroller({
+    notch: () => {},
+    onGesture: (g) => seen.push(g),
+    onTrack: (px) => shifts.push(px),
+    raf: (fn) => pending.push(fn),
+  });
+  s.setStep(30);
+  s.start(0);
+  for (let i = 1; i <= 5; i++) { s.move(20, i * 16); s.batched(i * 16); }
+  assert.notEqual(shifts[shifts.length - 1], 0, 'the finger was not followed');
+
+  s.cancel(80);
+  assert.equal(seen.length, 1, 'the gesture was never reported');
+  assert.equal(seen[0].cancelled, true, 'the report does not say the browser took it');
+  assert.equal(seen[0].glided, 0, 'a cancelled gesture threw the screen');
+  assert.equal(pending.length, 1, 'a glide was started from a gesture with no end');
+
+  // And the shift lets go, rather than sitting there until the next touch.
+  let at = 80;
+  for (let i = 0; i < 40; i++) {
+    at += 16;
+    const fns = pending; pending = [];
+    for (const fn of fns) fn(at);
+  }
+  assert.equal(shifts[shifts.length - 1], 0, 'the shift outlived the cancelled gesture');
+});
+
+test('a cancel with no gesture under way is nothing', () => {
+  const seen = [];
+  const s = new Scroller({ notch: () => {}, onGesture: (g) => seen.push(g), raf: () => {} });
+  s.setStep(30);
+  s.cancel(100);
+  assert.deepEqual(seen, [], 'a stray cancel reported a gesture that never happened');
+});

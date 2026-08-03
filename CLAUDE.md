@@ -157,6 +157,21 @@ Body text comes from `watch.Tail`, not from the last non-blank line: agent TUIs
 draw an input box and a shortcut hint under their output, so the last line on
 screen is usually `? for shortcuts` or a row of `─`.
 
+## The wheel step is a tmux setting, and it is the floor for everything here
+
+A wheel notch is the smallest movement tmux can draw, so it bounds every
+smoothness question on this page: the residue the shift has to give back at the
+end of a gesture, the size of a jump when a prediction is wrong, the band of
+background at the leading edge. The page does not assume it — the server asks
+tmux (`list-keys -T copy-mode WheelUpPane`) on every connect and sends it in the
+`config` frame.
+
+On the owner's host it is **one line since 2026-08-03**, set in `~/.tmux.conf`:
+five (tmux's default) meant a short swipe moved nothing until the finger had
+travelled five rows, two still left a two-row residue that read as the screen
+sliding back at the release. One is the floor. That file is hand-made and in no
+repository — changing the step is a change to it and to nothing in here.
+
 ## What the shift under the finger does not cover
 
 The page shifts the drawn rows to follow the finger between whole lines
@@ -178,6 +193,14 @@ shipping it:
 - **Notches dropped with the queue must be disowned** (`dropped()`). Leaving the
   history throws away what was queued for the next message, and only a message
   that went out can expire on the backstop.
+- **The gesture is the page's, and the browser has to be told.** `#term` sets
+  `touch-action: none`; without it the browser may decide mid-swipe that a long
+  drag is its own scroll, take the touch and stop delivering moves — reported as
+  a long swipe being interrupted. `touchcancel` is handled too, because the
+  declaration is a request and not a guarantee: a cancelled gesture ends without
+  a throw (there was no release to read a speed from) and says so in the journal
+  as `cancelled`, which is how often it happens becomes a fact rather than a
+  guess.
 - **A clock cannot say when a notch landed.** The shift first predicted it from
   the measured round trip, and the device settled that: the trip averages 40-50ms
   and peaks at 130. A short swipe has one notch and gets away with it; a longer

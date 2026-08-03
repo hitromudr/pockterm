@@ -209,6 +209,52 @@ describe('a swipe follows the finger', () => {
     assert.doesNotMatch(after, /^1 [1-9]/, `still scrolled back after tapping the way out: ${after}`);
   });
 
+  test('a gesture the browser takes away does not leave the screen shifted', async () => {
+    // Reported as a long swipe being interrupted. The browser can decide
+    // mid-gesture that the swipe is its own and stop delivering moves; the page
+    // then never hears an end, and the screen stays shifted where the last move
+    // left it. `touch-action: none` asks it not to, and this is the other half —
+    // what happens when it does anyway.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    await recordGesture(page);
+
+    let y = 300;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y }] });
+    y += 24;
+    await move(page, cdp, y);
+    for (let i = 0; i < 6; i++) { y += 8; await move(page, cdp, y); }
+    const shifted = await page.evaluate(() => {
+      const el = document.querySelector('.xterm-screen');
+      const t = el && getComputedStyle(el).transform;
+      return !t || t === 'none' ? 0 : new DOMMatrixReadOnly(t).f;
+    });
+    assert.ok(shifted > 4, `the finger was not followed: ${shifted}`);
+
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.xterm-screen');
+      const t = el && getComputedStyle(el).transform;
+      return !t || t === 'none' || Math.abs(new DOMMatrixReadOnly(t).f) < 0.5;
+    }, null, { timeout: 4000 });
+    assert.deepEqual(stand.pageErrors, []);
+  });
+
+  test('the swipe is the page\'s to interpret, not the browser\'s', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    const styles = await page.evaluate(() => ({
+      term: getComputedStyle(document.getElementById('term')).touchAction,
+      // The frozen copy is a scrollable, selectable <pre>: it needs the
+      // browser's gestures back.
+      snapshot: getComputedStyle(document.getElementById('snapshot')).touchAction,
+    }));
+    assert.equal(styles.term, 'none');
+    assert.equal(styles.snapshot, 'auto');
+  });
+
   test('the shifted rows stay inside the terminal', async () => {
     // The shift is a transform, and a row drawn over the key bar would be a
     // new defect in place of the old one.
