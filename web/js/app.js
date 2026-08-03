@@ -13,7 +13,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v64';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -22,6 +22,11 @@ initDiag((line) => {
   } catch (_) { /* never break the app over a log line */ }
 });
 report('hello', environment(APP_VERSION));
+
+// The terminal is what the page opens on, so this is the mode it starts in.
+// Defined here because it has to run before the first focus reaches the
+// keyboard; the function itself lives with the mode switch below.
+setTimeout(() => setImeMode('raw'), 0);
 
 // What is actually running, shown where it can be read without a console:
 // the page's own version, and the app's when the page is inside it.
@@ -587,7 +592,30 @@ function renderBars(focusNow = false) {
   if (focusNow && promptMode && !selectMode) promptEl.focus();
   refit();
 }
-function setPromptMode(on) { promptMode = on; renderBars(true); }
+// Which keyboard the app should give this screen.
+//
+// The terminal wants a keyboard with no composing region: Gboard's document
+// model is what made typed text drift, and only the app can turn it off (see
+// TerminalWebView in the devops repo). The composer wants the opposite — it is
+// an ordinary text field, and suggestions and dictation are the reason to use
+// it. An app older than this call simply says no.
+function setImeMode(mode) {
+  try {
+    if (window.PockNative && typeof window.PockNative.setImeMode === 'function') {
+      const ok = window.PockNative.setImeMode(mode);
+      report('ime-mode', { mode, ok: !!ok });
+      return;
+    }
+  } catch (e) {
+    report('ime-mode', { mode, error: (e && e.name) || 'error' });
+  }
+}
+
+function setPromptMode(on) {
+  promptMode = on;
+  setImeMode(on ? 'text' : 'raw');
+  renderBars(true);
+}
 modeBtn.addEventListener('click', () => setPromptMode(!promptMode));
 
 // Installing puts pockterm on the home screen as its own app: a standalone
