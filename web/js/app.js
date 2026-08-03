@@ -13,7 +13,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v64';
+const APP_VERSION = 'v65';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -23,10 +23,17 @@ initDiag((line) => {
 });
 report('hello', environment(APP_VERSION));
 
-// The terminal is what the page opens on, so this is the mode it starts in.
-// Defined here because it has to run before the first focus reaches the
-// keyboard; the function itself lives with the mode switch below.
-setTimeout(() => setImeMode('raw'), 0);
+// The keyboard mode the page asks for at startup.
+//
+// `text` — the ordinary one — even for the terminal, because the composition
+// -free keyboard the app can give (2.1's `raw`) turned out not to come up at
+// all on the owner's phone: tapping a field did nothing, and no keyboard is
+// worse than a drifting one. The mechanism is kept and reachable with
+// `?ime=raw` so the next attempt does not need another release to test.
+//
+// The app's own default is raw, so this is not a no-op: it is the page
+// undoing it.
+setTimeout(() => setImeMode(imeWanted()), 0);
 
 // What is actually running, shown where it can be read without a console:
 // the page's own version, and the app's when the page is inside it.
@@ -611,9 +618,24 @@ function setImeMode(mode) {
   }
 }
 
+// Raw is opt-in until it is known to work: `?ime=raw`, remembered for the
+// session so a reload keeps whatever was being tested.
+function imeWanted() {
+  let asked = null;
+  try { asked = sessionStorage.getItem('pt-ime'); } catch (_) {}
+  const fromUrl = new URLSearchParams(location.search).get('ime');
+  if (fromUrl) {
+    asked = fromUrl === 'raw' ? 'raw' : 'text';
+    try { sessionStorage.setItem('pt-ime', asked); } catch (_) {}
+  }
+  return asked === 'raw' ? 'raw' : 'text';
+}
+
 function setPromptMode(on) {
   promptMode = on;
-  setImeMode(on ? 'text' : 'raw');
+  // The composer always wants the ordinary keyboard; the terminal gets
+  // whatever is being tested, which for now is the same thing.
+  setImeMode(on ? 'text' : imeWanted());
   renderBars(true);
 }
 modeBtn.addEventListener('click', () => setPromptMode(!promptMode));

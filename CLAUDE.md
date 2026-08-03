@@ -33,13 +33,22 @@ On the owner's phone this runs inside a WebView in his own Android app
 asynchronous Clipboard API, no Notification API, no file chooser and no PWA
 install; it also cannot be opened in devtools. Every clipboard, image and
 notification bug reported here came from that gap, and the app now injects a
-bridge — `window.PockNative` with `copy`, `read`, `commitInput`, `notify` and
-`appVersion`. The page prefers it when present and falls back to browser APIs
-where there are any.
+bridge — `window.PockNative` with `copy`, `read`, `commitInput`, `setImeMode`,
+`notify` and `appVersion`. The page prefers it when present and falls back to
+browser APIs where there are any; a call the installed app does not know
+returns false rather than throwing, which is how the page tells "no" from "this
+app is older than the request".
 
-`commitInput` deserves its own line: Gboard keeps the word being typed as a
-composing region, and both the lost last word on Enter and the doubled word on
-Backspace come from it. Only the app can end a composition.
+The keyboard's document model is the source of a whole class of bugs here.
+Gboard keeps the word being typed as a composing region and rewrites it in
+place, and xterm.js only clears its hidden textarea while nothing is being
+composed — so under Gboard it never clears, offsets drift, and letters of one
+word end up spliced into the next. `commitInput` ends a composition, which the
+page cannot do itself; `setImeMode` asks for a keyboard that never opens one
+(`raw`, the terminal) or the ordinary one (`text`, the page's own composer,
+where a suggestion or dictation is the point). Neither is fixable inside the
+page — see `TerminalWebView` in the devops repo for what the app actually asks
+the keyboard for.
 
 ## Notifications are decided in one place
 
