@@ -13,7 +13,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v65';
+const APP_VERSION = 'v66';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -625,10 +625,13 @@ function imeWanted() {
   try { asked = sessionStorage.getItem('pt-ime'); } catch (_) {}
   const fromUrl = new URLSearchParams(location.search).get('ime');
   if (fromUrl) {
-    asked = fromUrl === 'raw' ? 'raw' : 'text';
+    asked = (fromUrl === 'raw' || fromUrl === 'raw-strict') ? fromUrl : 'text';
     try { sessionStorage.setItem('pt-ime', asked); } catch (_) {}
   }
-  return asked === 'raw' ? 'raw' : 'text';
+  // `raw` adds only "no dictionary" to what the WebView negotiated;
+  // `raw-strict` replaces the input type outright, which is what left the
+  // phone without a keyboard in app 2.1. Both are opt-in.
+  return (asked === 'raw' || asked === 'raw-strict') ? asked : 'text';
 }
 
 function setPromptMode(on) {
