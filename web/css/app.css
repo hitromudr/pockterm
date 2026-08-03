@@ -56,6 +56,20 @@ html, body {
   transition: transform 200ms ease;
 }
 #screen-sessions.open { transform: none; }
+/* The chevron is centred by the box rather than by padding: ornament glyphs
+   like ❮ carry their own uneven side bearings, so `padding: 8px 12px` — which
+   is what every other bar button uses — leaves it visibly off to one side. Same
+   box as ☰ on the terminal's header, because it stands in the same place. */
+#screen-sessions header.bar #drawer-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 37px;
+  height: 34px;
+  padding: 0;
+  font-size: 17px;
+  line-height: 1;
+}
 /* What a tap outside an open popup lands on. Invisible on purpose — a menu does
    not need the screen dimmed, it needs one tap anywhere to dismiss it. It covers
    the header too, so the + that opened the menu closes it by being tapped

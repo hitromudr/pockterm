@@ -85,6 +85,28 @@ describe('the session list is a drawer', () => {
       'the terminal was reset by a trip to the list');
   });
 
+  test('the way back sits exactly where the way in was', async () => {
+    // ☰ opens it and ❮ closes it, and they are the same spot — that is the whole
+    // idea, so the box is asserted rather than left to the padding. Ornament
+    // glyphs carry uneven side bearings, so ❮ under the bar's usual padding sat
+    // visibly off to one side.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    const box = (id) => page.evaluate((i) => {
+      const r = document.getElementById(i).getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+    }, id);
+
+    const hamburger = await box('back');
+    await page.click('#back');
+    await page.waitForFunction(
+      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      null, { timeout: 3000 });
+    const chevron = await box('drawer-close');
+    assert.deepEqual(chevron, hamburger, 'the way out is not where the way in was');
+  });
+
   test('a tap outside closes it, and a session in it switches', async () => {
     await stand.open();
     await stand.attach('demo');
