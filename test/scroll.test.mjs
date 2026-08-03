@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Scroller } from '../web/js/scroll.js';
+import { Scroller, movedWholeScreen } from '../web/js/scroll.js';
 
 // A stand-in for the clock and the frame callback, so a flick can be played
 // out without waiting for one.
@@ -218,7 +218,11 @@ test('the gesture reports how long the finger had stopped before lifting', () =>
 
 // The same clock and frame stand-in, plus the pixel shift the page applies to
 // the drawn screen. `step` is a whole notch: two lines of tmux on the device.
-function tracking({ step = 30, lag = 60 } = {}) {
+//
+// The page's part of the accounting is modelled too, because it is half the
+// rule: notches go out as one message per animation frame (`batched`), and each
+// message is answered by one repaint of the screen (`drew`).
+function tracking({ step = 30 } = {}) {
   const shifts = [];
   let pending = [];
   const s = new Scroller({
@@ -227,12 +231,15 @@ function tracking({ step = 30, lag = 60 } = {}) {
     raf: (fn) => pending.push(fn),
   });
   s.setStep(step);
-  s.setLag(lag);
   return {
     s, shifts,
     get last() { return shifts[shifts.length - 1]; },
-    // Let the clock run without the finger moving: the shift is given back on
-    // a clock, so this is how a notch lands.
+    // What the page does on the next frame after a notch: one message out.
+    send(at) { s.batched(at); },
+    // And what comes back: tmux repainted the pane, so a batch has landed.
+    drew(at) { s.drew(at); },
+    // Let frames pass without the finger moving. Nothing lands by itself now —
+    // this is what proves it.
     idleTo(at) {
       for (let i = 0; i < 20 && pending.length; i++) {
         const fns = pending; pending = [];
@@ -257,32 +264,56 @@ test('the screen follows the finger between two whole lines', () => {
   // content has not moved yet. Giving it back now is what produced the jump
   // back and forth.
   h.s.move(10, 48);
+  h.send(48);
   assert.equal(h.last, 30, 'the picture jumped back when the notch went out');
   h.s.move(10, 64);
   assert.equal(h.last, 40, 'the shift stopped following the finger');
 });
 
-test('the shift is handed back by exactly what tmux drew', () => {
-  // A notch is counted as drawn a lag after it went out. What is left owed is
-  // the fraction of a line the finger is into — 10 of a 30px step here — and
-  // the content moving one step while the shift drops by one step is a picture
-  // that moves once.
-  const h = tracking({ step: 30, lag: 60 });
+test('the shift is handed back by what was drawn, not by a clock', () => {
+  // The first version predicted this from the measured round trip, and the
+  // device settled it: the trip averages 40-50ms and peaks at 130, so a swipe
+  // of twenty notches mispredicted several of them and every miss was a step
+  // back and then forward. Nothing lands here until the screen is seen to move.
+  const h = tracking({ step: 30 });
   h.s.start(0);
   for (const at of [16, 32, 48, 64]) h.s.move(10, at);
-  assert.equal(h.last, 40);
-  h.idleTo(48 + 60); // the notch sent at 48 has had its time
+  h.send(64);
+  assert.equal(h.last, 40, 'the finger was not followed');
+
+  // Time alone changes nothing now.
+  h.idleTo(300);
+  assert.equal(h.last, 40, 'a clock handed the shift back on its own');
+
+  // The screen moves: one message, one repaint. What is left owed is the
+  // fraction of a line the finger is into — 10 of a 30px step — and the content
+  // moving one step while the shift drops one step is a picture that moves once.
+  h.drew(320);
   assert.equal(h.last, 10, `40px travelled, 30 drawn, ${h.last} left owed`);
 });
 
-test('the shift is bounded, so a fast swipe shows a line of background at most', () => {
-  // The shift covers for what has not arrived, and during a flick that is more
-  // than the screen should ever be displaced by: what appears at the edge is
-  // background, and a screenful of it would be worse than the jump it cures.
-  const h = tracking({ step: 30, lag: 200 });
+test('a batch nobody answers lets go by itself', () => {
+  // At the top of the history there is no scroll for tmux to make and no
+  // repaint to count, and a shift held for good would be a band of background
+  // parked at the edge of the screen.
+  const h = tracking({ step: 30 });
   h.s.start(0);
-  for (let i = 1; i <= 12; i++) h.s.move(40, i * 16); // 2.5 px/ms, notches piling up
-  assert.ok(Math.abs(h.last) <= 60, `shifted by ${h.last}, more than two steps`);
+  for (const at of [16, 32, 48]) h.s.move(10, at);
+  h.send(48);
+  assert.equal(h.last, 30);
+  h.idleTo(48 + 401);
+  assert.equal(h.last, 0, `the unanswered batch is still owed: ${h.last}`);
+});
+
+test('the shift is bounded, so a fast drag shows a line of background at most', () => {
+  // The shift covers for what has not arrived, and a drag fast enough to keep
+  // several messages in the air would displace the screen further than it should
+  // ever be: what appears at the edge is background, and a screenful of it would
+  // be worse than the jump it cures.
+  const h = tracking({ step: 30 });
+  h.s.start(0);
+  for (let i = 1; i <= 12; i++) { h.s.move(40, i * 16); h.send(i * 16); } // nothing answered
+  assert.ok(Math.abs(h.last) <= 90, `shifted by ${h.last}, more than three steps`);
 });
 
 test('letting go hands the picture back to tmux', () => {
@@ -292,6 +323,7 @@ test('letting go hands the picture back to tmux', () => {
   const parked = tracking({ step: 30 });
   parked.s.start(0);
   parked.s.move(10, 16);
+  parked.send(16);
   assert.equal(parked.last, 10);
   parked.s.end(16 + 300); // rested before lifting: no glide to wait for
   assert.equal(parked.last, 0, 'the shift outlived the gesture');
@@ -303,7 +335,7 @@ test('letting go hands the picture back to tmux', () => {
   // meant to remove. Under a finger there is at most one notch outstanding.
   const thrown = tracking({ step: 30 });
   thrown.s.start(0);
-  for (let i = 1; i <= 5; i++) thrown.s.move(20, i * 16);
+  for (let i = 1; i <= 5; i++) { thrown.s.move(20, i * 16); thrown.send(i * 16); }
   assert.notEqual(thrown.last, 0, 'the finger was not followed');
   thrown.s.end(80);
   assert.equal(thrown.last, 0, 'the shift outlived the finger that asked for it');
@@ -325,4 +357,22 @@ test('a gesture that never glides still reports', () => {
   s.end(400); // held still: no glide
   assert.equal(seen.length, 1);
   assert.equal(seen[0].glided, 0);
+});
+
+test('a scroll is told from ordinary output by how much was repainted', () => {
+  // What makes a wheel batch count as drawn. Both mistakes are silent: too
+  // eager hands the shift back while the content has not moved, too strict
+  // holds it until the backstop lets go. The numbers come from the stand — a
+  // character echoed into a 36-row screen renders [34,34], a scroll renders
+  // [0,34].
+  assert.equal(movedWholeScreen(0, 34, 36), true, 'a scroll was not recognised');
+  assert.equal(movedWholeScreen(0, 35, 36), true);
+  assert.equal(movedWholeScreen(34, 34, 36), false, 'one printed row counted as a scroll');
+  assert.equal(movedWholeScreen(0, 1, 36), false, 'two rows counted as a scroll');
+  // A screen small enough that a couple of rows are most of it: the slack must
+  // not swallow it whole.
+  assert.equal(movedWholeScreen(0, 2, 4), false, 'three rows of four is not the screen moving');
+  assert.equal(movedWholeScreen(0, 3, 4), true);
+  // Nothing is known about a terminal with no rows yet.
+  assert.equal(movedWholeScreen(0, 0, 0), false);
 });

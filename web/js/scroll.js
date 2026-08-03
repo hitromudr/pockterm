@@ -37,14 +37,23 @@ const VELOCITY_WINDOW = 90; // milliseconds
 const PARK = 120; // milliseconds
 
 // How far the drawn screen may be shifted to cover for what tmux has not drawn
-// yet. The shift is a prediction, and a wrong one shows as a band of
-// background at one edge; two steps is what a slow drag needs, where a single
-// notch is in flight at a time.
-const MAX_TRACK = 2; // steps
+// yet.
+//
+// The shift is content that has not arrived, so it shows as a band of
+// background at the leading edge — which is the cost of following the finger
+// over a network, and the cap is where that cost stops being worth paying.
+// Two steps was too tight: at a moderate drag the trip keeps two or three
+// messages in the air at once, and a clamped shift stops following the finger
+// for a step of travel, which is the sticking this was meant to remove. Three
+// steps is six rows of the device's screen at worst, and only while the finger
+// is down.
+const MAX_TRACK = 3; // steps
 
-// How long a notch takes to come back as a redrawn screen, until the page has
-// measured it on this connection. The journal says 17-78ms here.
-const DEFAULT_LAG = 60; // milliseconds
+// How long an unanswered batch stays owed. This is a backstop, not a
+// prediction: the page is told when the screen actually moved, and the only
+// case with no answer at all is a scroll tmux cannot make — the top of the
+// history, where the shift reads as an overscroll and has to let go by itself.
+const AIR_MAX = 400; // milliseconds
 
 // A flick decays to a stop rather than running to the end of the history.
 // Tuned by hand on the device: lower is stickier.
@@ -53,6 +62,21 @@ const FRICTION = 0.94;
 const MIN_SPEED = 0.02; // pixels per millisecond
 // A frame's worth of time when the clock misbehaves (a backgrounded tab).
 const MAX_STEP_MS = 50;
+
+// movedWholeScreen tells a scroll from ordinary output by how much of the
+// viewport xterm repainted.
+//
+// It decides when a wheel batch counts as drawn, so getting it wrong is silent
+// in both directions: too eager and the shift is handed back while the content
+// has not moved, too strict and it is held until the backstop expires. The
+// numbers are measured on the stand rather than reasoned about — a character
+// echoed into a 36-row screen renders [34,34], a scroll of the same screen
+// renders [0,34]. Two rows of slack, because a scroll that lands together with
+// output on the last row need not be missed.
+export function movedWholeScreen(start, end, rows) {
+  if (!(rows > 0)) return false;
+  return end - start + 1 >= Math.max(4, rows - 2);
+}
 
 // Scroller converts finger movement into whole wheel notches, carrying the
 // remainder so nothing is lost between events and the direction can reverse
@@ -88,8 +112,8 @@ export class Scroller {
     this.glided = 0;
     this.samples = [];
     this.idle = 0;
-    this.inFlight = [];
-    this.lagMs = DEFAULT_LAG;
+    this.air = [];
+    this.building = 0;
     this.ticking = false;
     this.touching = false;
   }
@@ -101,7 +125,8 @@ export class Scroller {
     // last whole line cannot be drawn at all, so the shift is handed back
     // rather than left as a standing offset — a screen parked half a line off
     // its grid would misplace every tap after it.
-    this.inFlight = [];
+    this.air = [];
+    this.building = 0;
     if (this.onTrack) this.onTrack(0);
     if (!this.onGesture) return;
     this.onGesture({
@@ -124,11 +149,36 @@ export class Scroller {
     this.pixelsPerNotch = Math.max(1, pixels);
   }
 
-  // How long a notch takes to come back as a redrawn screen. Measured by the
-  // page on the live connection; the page also batches a frame's notches into
-  // one message, so what arrives here is a frame short of the whole trip.
-  setLag(ms) {
-    this.lagMs = Math.max(16, Math.min(200, ms || DEFAULT_LAG));
+  // The notches emitted so far have gone out as one message. The page batches
+  // them per animation frame, and one batch is answered by one redrawn screen,
+  // so this is what makes the two countable against each other.
+  batched(at) {
+    if (!this.building) return;
+    this.air.push({ n: this.building, at });
+    this.building = 0;
+    // Re-read the shift: the batch is now something that can go unanswered, and
+    // that is what starts the clock that lets it go.
+    this.track(at);
+  }
+
+  // The screen moved: the oldest batch in the air has been drawn.
+  //
+  // One redraw, one batch, oldest first. tmux draws a scroll as a repaint of
+  // the whole pane and answers each message with one of them, so counting is
+  // enough — and unlike a clock it cannot be wrong about a trip that took three
+  // times the average, which is what made a long swipe judder.
+  drew(at) {
+    this.air.shift();
+    this.track(at);
+  }
+
+  // Notches emitted and not yet known to be on the screen: what is queued for
+  // the next message, plus every batch still in the air.
+  owed(at) {
+    while (this.air.length && at - this.air[0].at > AIR_MAX) this.air.shift();
+    let n = this.building;
+    for (const b of this.air) n += b.n;
+    return n;
   }
 
   // Where the drawn screen has to be to sit under the finger.
@@ -148,26 +198,23 @@ export class Scroller {
   // exactly the amount the content moved, and the two cancel — the picture
   // moves once, with the finger, instead of twice against it.
   //
-  // A notch is counted as drawn on a clock rather than on the redraw itself.
-  // Frames arriving from the server are not attributable: under an agent the
-  // pane redraws on its own, and taking any of those as the answer would drop
-  // the shift while the content had not moved. A clock can be wrong by the
-  // error in lagMs; the redraw heuristic is wrong whenever anything else is
-  // printing, which here is most of the time.
+  // A batch stops being owed when the screen moves, not when a clock says it
+  // should have. The first version predicted it from the measured round trip and
+  // that could not work: on the device the trip averages 40-50ms and peaks at
+  // 130, so a long swipe mispredicted several of its twenty notches and each
+  // miss was a step back and forth — reported as juddering. Counting redraws
+  // has no average in it.
   track(at) {
     // Only while the finger is down. A frame already queued when the finger
     // lifts would otherwise put the shift back for one frame after the gesture
     // handed it over — a flick that twitched once as it started.
     if (!this.onTrack || !this.touching) return;
-    while (this.inFlight.length && at - this.inFlight[0].at >= this.lagMs) this.inFlight.shift();
-    let owed = 0;
-    for (const f of this.inFlight) owed += f.dir;
     const limit = MAX_TRACK * this.pixelsPerNotch;
-    const px = this.carry + owed * this.pixelsPerNotch;
+    const px = this.carry + this.owed(at) * this.pixelsPerNotch;
     this.onTrack(Math.max(-limit, Math.min(limit, px)));
-    // A notch in flight stops being owed on a clock, so the shift has to be
+    // A batch nobody answers has to expire on its own, so the shift is
     // revisited even while the finger holds still.
-    if (this.inFlight.length && !this.gliding && !this.ticking) {
+    if (this.air.length && !this.gliding && !this.ticking) {
       this.ticking = true;
       this.raf((t) => { this.ticking = false; this.track(t); });
     }
@@ -272,7 +319,8 @@ export class Scroller {
     this.gliding = true;
     this.lastAt = at;
     this.thrownAt = thrown;
-    this.inFlight = [];
+    this.air = [];
+    this.building = 0;
     if (this.onTrack) this.onTrack(0);
     this.raf((t) => this.glide(t));
   }
@@ -298,20 +346,20 @@ export class Scroller {
     this.speed = 0;
   }
 
-  // at is when the movement happened, so a notch can be remembered as owed
-  // until tmux has had time to draw it.
+  // Notches emitted here are owed until the screen is seen to move: they go
+  // into the batch being built, which the page closes when it sends it.
   emit(dy, at = 0) {
     this.carry += dy;
     while (this.carry >= this.pixelsPerNotch) {
       this.carry -= this.pixelsPerNotch;
       this.notches++;
-      this.inFlight.push({ at, dir: 1 });
+      this.building += 1;
       this.notch(1);
     }
     while (this.carry <= -this.pixelsPerNotch) {
       this.carry += this.pixelsPerNotch;
       this.notches++;
-      this.inFlight.push({ at, dir: -1 });
+      this.building -= 1;
       this.notch(-1);
     }
   }

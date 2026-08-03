@@ -5,7 +5,7 @@ import { pickImage, carriesFiles, firstImage } from './paste.js';
 import { snapshotText } from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
-import { Scroller } from './scroll.js';
+import { Scroller, movedWholeScreen } from './scroll.js';
 import { staleNotice } from './update.js';
 import { endingKeys } from './ender.js';
 
@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v77';
+const APP_VERSION = 'v78';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -538,6 +538,9 @@ function flushWheel() {
   wheelPending = 0;
   wheelSentAt = performance.now();
   send(`\x1b[<${btn};1;1M`.repeat(n));
+  // One message, one batch: what the shift below counts against the redraws
+  // coming back.
+  scroller.batched(wheelSentAt);
 }
 
 // When the last batch went out and whether its answer has arrived. The lag
@@ -566,11 +569,23 @@ function noteFrameArrived() {
     return;
   }
   wheelLag = Math.max(wheelLag, Math.round(lag));
-  // The shift has to predict when a notch has landed, and this is the only
-  // measurement of that there is. Smoothed, because one frame arriving late is
-  // not what the next notch will do.
+  // Kept as a diagnostic only. The shift used to be predicted from this average
+  // and that is what juddered: the trip averages 40-50ms here and peaks at 130,
+  // so a long swipe mispredicted several of its notches. What the shift goes by
+  // now is the screen moving — see noteScreenMoved.
   wheelLagAvg = wheelLagAvg ? wheelLagAvg * 0.8 + lag * 0.2 : lag;
-  scroller.setLag(wheelLagAvg);
+}
+
+// The pane's content moved: xterm repainted the whole viewport.
+//
+// This is the answer to a wheel batch, and it is an observation rather than a
+// guess. A scroll is a repaint of every row; ordinary output touches the row it
+// prints on — measured on the stand, a spinner renders [34,34] and a scroll
+// [0,34] of 36 rows. While the pane is scrolled back tmux does not move the view
+// for new output at all, which is the whole of the gesture this matters for.
+function noteScreenMoved(start, end) {
+  if (!movedWholeScreen(start, end, term.rows)) return;
+  scroller.drew(performance.now());
 }
 
 // Following the finger between two whole lines.
@@ -637,6 +652,12 @@ const scroller = new Scroller({
 });
 function setScrollStep() { scroller.setStep(rowHeight() * wheelLines); }
 setScrollStep();
+
+// Registered here rather than next to the terminal's other handlers: xterm
+// renders while it is being opened, and a handler that reaches `scroller`
+// before this line would throw on load — which is how the page once died with
+// a ReferenceError and the phone showed an empty session list.
+term.onRender((e) => noteScreenMoved(e.start, e.end));
 
 let touchY = null;
 const termBox = document.getElementById('term');

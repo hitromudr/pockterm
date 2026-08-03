@@ -100,8 +100,16 @@ describe('a swipe follows the finger', () => {
       `the first ${(seen[0].y - start).toFixed(0)}px of travel moved the rows ${seen[0].px.toFixed(1)}px`);
     const step = gaps.find((g) => g > row / 2);
     assert.ok(step, `no whole line was drawn in ${y - start}px of travel: ${gaps.map((g) => g.toFixed(1))}`);
+    // One exception, and it is a decision rather than a slip: the shift is
+    // capped (MAX_TRACK), because it is content that has not arrived and shows
+    // as a band of background. While it is at the cap the picture cannot follow
+    // the finger, so the gap grows by whatever the finger does. A test driven
+    // over a real tunnel does reach it — the moves here are faster than the
+    // repaints coming back.
+    const cap = 3 * step;
     let drawn = 0;
     for (const [i, gap] of gaps.entries()) {
+      if (Math.abs(seen[i].px - cap) < 1.5) continue; // pinned at the cap
       const lines = gap / step;
       assert.ok(
         Math.abs(lines - Math.round(lines)) < 0.08,

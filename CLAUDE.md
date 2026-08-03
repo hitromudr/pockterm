@@ -167,14 +167,25 @@ shipping it:
   version and it juddered: a flick at 1.4 px/ms has two or three notches in the
   air at once, the cover then runs into `MAX_TRACK`, and a shift that stops
   following and catches up in bursts is the stutter it was meant to remove.
-- **The lag estimate has to be guarded.** The shift predicts when a notch has
-  landed from the measured round trip, and the journal showed a reading of
-  5791ms — notches sent, six quiet seconds, then unrelated output counted as the
-  answer. That pushed the estimate to its ceiling and made every notch look
-  outstanding five times too long: the picture lagged the finger and jumped,
-  reported as juddering and still sticking. A wait past `LAG_MAX` is now counted
-  as a batch whose answer never came (`lost` in the gesture report) instead of
-  as a measurement.
+- **A clock cannot say when a notch landed.** The shift first predicted it from
+  the measured round trip, and the device settled that: the trip averages 40-50ms
+  and peaks at 130. A short swipe has one notch and gets away with it; a longer
+  one has twenty, mispredicts several, and every miss is a step back and then
+  forward — reported as juddering, and as sticking where a misprediction ran the
+  shift into `MAX_TRACK`. The page now counts what it can observe: one message
+  out (`batched`), one repaint of the whole viewport back (`drew`).
+  `movedWholeScreen` is what tells a scroll from output — measured on the stand,
+  a printed character repaints one row and a scroll repaints all of them. A batch
+  nobody answers expires after `AIR_MAX`: that is the top of the history, where
+  there is no scroll for tmux to make.
+- **The cap is a decision, not a safety valve.** The shift is content that has
+  not arrived, so it shows as a band of background at the leading edge. While it
+  is at the cap the picture stops following the finger, which is the sticking
+  being fixed — the cap trades one for the other, and three steps (six rows
+  here) is where it sits.
+
+`lag`, `predicted` and `lost` in the gesture report are diagnostics now, not
+controls: the shift no longer reads them.
 
 ## Diagnostics
 
