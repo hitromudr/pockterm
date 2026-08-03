@@ -522,3 +522,33 @@ describe('which bar the phone opens on', () => {
     assert.equal(await page.locator('#keybar').isVisible(), true, 'the choice was forgotten');
   });
 });
+
+describe('a build waiting for the page to look away', () => {
+  let stand;
+  before(async () => { stand = await startStand(); });
+  after(async () => { await stand.stop(); });
+
+  test('the menu says why the version is not changing', async () => {
+    // The install waits for nobody to be looking, and the person waiting for
+    // it is looking — at this very menu, next to a version that will not
+    // change while they watch. Without the line there is nothing to read.
+    const { page } = stand;
+    await stand.open();
+    await stand.attach();
+    await page.click('#more');
+    assert.equal(await page.locator('#update-waiting').isVisible(), false,
+      'nothing is parked, so nothing should be claimed');
+
+    stand.parkBuild();
+    // Reopening the menu is what asks: the answer is fetched on open rather
+    // than polled.
+    await page.click('#more');
+    await page.click('#more');
+    await page.waitForSelector('#update-waiting:not([hidden])');
+
+    stand.unparkBuild();
+    await page.click('#more');
+    await page.click('#more');
+    await page.waitForSelector('#update-waiting', { state: 'hidden' });
+  });
+});

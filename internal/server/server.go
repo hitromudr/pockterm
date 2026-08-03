@@ -35,19 +35,20 @@ type Presence interface {
 }
 
 type Options struct {
-	Token        string                                 // "" disables token auth (loopback-only deployments)
-	ListSessions func() ([]tmuxcmd.Session, error)      // current tmux sessions
-	Attach       func(id int64, target string) []string // argv attaching a client to target
-	InMode       func(id int64) (bool, error)           // client pane in tmux copy-mode; nil disables the poll
-	Presence     Presence                               // notification bookkeeping; nil disables it
-	Notices      *Notices                               // route notifications to attached pages; nil disables it
-	WheelLines   func() int                             // lines tmux scrolls per wheel notch; nil leaves the page on its default
-	Static       http.Handler                           // the embedded PWA
-	SaveUpload   func(io.Reader) (string, error)        // store a pasted image, return its path; nil disables /api/upload
-	LogClient    func(string)                           // record a line the browser sent; nil disables /api/log
-	StartSession func(preset string) error              // create a session from a fixed preset; nil disables /api/sessions/new
-	RenameSess   func(from, to string) error            // rename a session; nil disables /api/sessions/rename
-	KillSession  func(name string) error                // close a session; nil disables /api/sessions/kill
+	Token         string                                 // "" disables token auth (loopback-only deployments)
+	ListSessions  func() ([]tmuxcmd.Session, error)      // current tmux sessions
+	Attach        func(id int64, target string) []string // argv attaching a client to target
+	InMode        func(id int64) (bool, error)           // client pane in tmux copy-mode; nil disables the poll
+	Presence      Presence                               // notification bookkeeping; nil disables it
+	UpdateWaiting func() bool                            // a build parked until nobody is looking; nil means the page says nothing
+	Notices       *Notices                               // route notifications to attached pages; nil disables it
+	WheelLines    func() int                             // lines tmux scrolls per wheel notch; nil leaves the page on its default
+	Static        http.Handler                           // the embedded PWA
+	SaveUpload    func(io.Reader) (string, error)        // store a pasted image, return its path; nil disables /api/upload
+	LogClient     func(string)                           // record a line the browser sent; nil disables /api/log
+	StartSession  func(preset string) error              // create a session from a fixed preset; nil disables /api/sessions/new
+	RenameSess    func(from, to string) error            // rename a session; nil disables /api/sessions/rename
+	KillSession   func(name string) error                // close a session; nil disables /api/sessions/kill
 }
 
 // modePoll is how often a client's pane is checked for tmux copy-mode. The
@@ -105,9 +106,11 @@ func serveSessions(o Options, w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(sessions)
 }
 
-// servePresence answers who is on the page right now. Its reader is the
-// deploy script on the host: installing a binary restarts this unit, and the
-// answer decides whether that is a good moment.
+// servePresence answers who is on the page right now, and whether a build is
+// waiting for them to look away. Its readers are the deploy script on the host
+// — installing a binary restarts this unit, and the answer decides whether
+// that is a good moment — and the page itself, which would otherwise leave
+// somebody watching a version that will not change while they watch it.
 //
 // "clients" counts open sockets, "visible" counts the tabs actually on
 // screen. A phone in a pocket keeps its socket for hours, so waiting for
@@ -123,8 +126,16 @@ func servePresence(o Options, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clients, visible := o.Presence.Counts()
+	waiting := false
+	if o.UpdateWaiting != nil {
+		waiting = o.UpdateWaiting()
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]int{"clients": clients, "visible": visible})
+	json.NewEncoder(w).Encode(struct {
+		Clients int  `json:"clients"`
+		Visible int  `json:"visible"`
+		Waiting bool `json:"waiting"`
+	}{clients, visible, waiting})
 }
 
 // serveUpload takes an image pasted in the browser and answers with the path

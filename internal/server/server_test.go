@@ -86,14 +86,41 @@ func TestPresenceEndpointReportsWhoIsLooking(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	var got map[string]int
+	var got map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
 	// The deploy script reads "visible": a pocketed phone holds a socket, so
 	// only this number ever reaches zero.
-	if got["clients"] != 3 || got["visible"] != 1 {
+	if got["clients"] != 3.0 || got["visible"] != 1.0 {
 		t.Fatalf("presence = %v, want clients 3 and visible 1", got)
+	}
+	// Nothing wired to report a parked build: the page must not claim one.
+	if got["waiting"] != false {
+		t.Fatalf("waiting = %v with no UpdateWaiting, want false", got["waiting"])
+	}
+}
+
+func TestPresenceReportsAParkedBuild(t *testing.T) {
+	// The page shows this because the wait is otherwise invisible from the one
+	// place somebody sits watching the version not change.
+	opts := testOptions("")
+	opts.Presence = &fakePresence{clients: 1, viewing: 1}
+	opts.UpdateWaiting = func() bool { return true }
+	srv := httptest.NewServer(Handler(opts))
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/api/presence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got["waiting"] != true {
+		t.Fatalf("waiting = %v, want true", got["waiting"])
 	}
 }
 

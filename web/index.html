@@ -114,6 +114,10 @@
       <button id="ime" title="Which keyboard the app gives the terminal">&#9000; text</button>
       <!-- "Did it update?" should be answerable without reinstalling. -->
       <span id="versions"></span>
+      <!-- The deploy waits for nobody to be looking, and the person waiting
+           for it is looking. Without this line the version simply never
+           changes and nothing says why. -->
+      <span id="update-waiting" hidden>&#11014; update waiting — look away for a minute</span>
       <!-- Unhidden only when the browser offers the install; see app.js. -->
       <button id="install" title="Install as an app" hidden>&#11015; Install</button>
     </div>

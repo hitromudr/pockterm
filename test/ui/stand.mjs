@@ -82,6 +82,10 @@ export async function startStand({ sessions = ['demo'], raw = false } = {}) {
     POCKTERM_UPLOAD_DIR: uploads,
     POCKTERM_TG_TOKEN: '',
     POCKTERM_TG_CHAT: '',
+    // Its default is the host's real drop directory, and on the machine this
+    // is developed on a build is sometimes parked there — the stand would
+    // then report an update waiting in every test.
+    POCKTERM_PENDING_FILE: join(dir, 'pockterm.pending'),
   };
   // Inside a tmux session these two point every child at that session's
   // server, whatever TMUX_TMPDIR says.
@@ -155,6 +159,10 @@ export async function startStand({ sessions = ['demo'], raw = false } = {}) {
     consoleErrors,
     pageErrors,
     serverLog: () => log.join(''),
+    // Stand-in for the deploy script parking a build: the server only looks
+    // at whether this file is there.
+    parkBuild() { writeFileSync(env.POCKTERM_PENDING_FILE, 'binary'); },
+    unparkBuild() { rmSync(env.POCKTERM_PENDING_FILE, { force: true }); },
     // `query` открывает страницу с параметрами адреса — их читает выбор
     // режима клавиатуры (`?ime=`), и без этого его в стенде не потрогать.
     async open(query = '') {

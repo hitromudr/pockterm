@@ -738,9 +738,25 @@ const versionsEl = document.getElementById('versions');
   versionsEl.textContent = app ? `page ${APP_VERSION} · app ${app}` : `page ${APP_VERSION}`;
 }
 const overflowEl = document.getElementById('overflow');
+const updateEl = document.getElementById('update-waiting');
+
+// Whether a build is parked waiting for this page to go away. Asked when the
+// menu opens rather than polled: it is the moment somebody wonders why the
+// version next to it has not changed, and the answer costs one request.
+async function refreshUpdateWaiting() {
+  if (!updateEl) return;
+  try {
+    const res = await fetch(`/api/presence?${tokenQS}`);
+    if (!res.ok) return;
+    const { waiting } = await res.json();
+    updateEl.hidden = !waiting;
+  } catch (_) { /* the menu works fine without this line */ }
+}
+
 moreBtn.addEventListener('click', () => {
   overflowEl.hidden = !overflowEl.hidden;
   moreBtn.classList.toggle('on', !overflowEl.hidden);
+  if (!overflowEl.hidden) refreshUpdateWaiting();
   refit();
 });
 

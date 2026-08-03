@@ -149,6 +149,23 @@ func TestSessionDirOffRefusesToStart(t *testing.T) {
 	}
 }
 
+func TestPendingFileDefaultsToWhereTheDeployScriptParks(t *testing.T) {
+	c, err := FromEnv(env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.PendingFile != "/var/lib/pockterm/incoming/pockterm.pending" {
+		t.Fatalf("PendingFile = %q", c.PendingFile)
+	}
+	c, err = FromEnv(env(map[string]string{"POCKTERM_PENDING_FILE": "off"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.PendingFile != "off" {
+		t.Fatalf("PendingFile = %q, want the switch to survive", c.PendingFile)
+	}
+}
+
 func TestInvalidListenRejected(t *testing.T) {
 	_, err := FromEnv(env(map[string]string{"POCKTERM_LISTEN": "no-port"}))
 	if err == nil {
