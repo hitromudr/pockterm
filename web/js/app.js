@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v85';
+const APP_VERSION = 'v86';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -102,6 +102,12 @@ const enc = new TextEncoder();
 async function loadSessions() {
   sessionList.innerHTML = '';
   emptyMsg.hidden = true;
+  // The tab strip is the same list, so it is refreshed by the same call. It used
+  // to be redrawn only when a session was attached: closing one from the drawer
+  // left its tab at the top, renaming one left the old name there, and starting
+  // one showed nothing until you switched. Reported as the strip not being
+  // redrawn when a terminal is closed.
+  if (!screenTerm.hidden) renderTabs();
   const { sessions, error } = await fetchSessions();
   if (error) {
     emptyMsg.hidden = false;
@@ -187,12 +193,22 @@ newBtn.addEventListener('click', () => {
   renameBox.hidden = true;
 });
 
+// Opening the presets over the terminal, and — the part that was missing —
+// closing them again. One tap anywhere outside does it, through an invisible
+// scrim that covers the header as well, so the + closes the menu it opened.
+const menuScrim = document.getElementById('menu-scrim');
+function setTermMenu(open) {
+  if (!newMenuTerm) return;
+  newMenuTerm.hidden = !open;
+  menuScrim.hidden = !open;
+  newTermBtn.classList.toggle('on', open);
+}
+
 if (newTermBtn) {
   keepsTerminalFocus(newTermBtn);
-  newTermBtn.addEventListener('click', () => {
-    newMenuTerm.hidden = !newMenuTerm.hidden;
-    newTermBtn.classList.toggle('on', !newMenuTerm.hidden);
-  });
+  keepsTerminalFocus(menuScrim);
+  newTermBtn.addEventListener('click', () => setTermMenu(newMenuTerm.hidden));
+  menuScrim.addEventListener('click', () => setTermMenu(false));
 }
 
 for (const b of document.querySelectorAll('button[data-preset]')) {
@@ -200,10 +216,7 @@ for (const b of document.querySelectorAll('button[data-preset]')) {
   b.addEventListener('click', async () => {
     const preset = b.dataset.preset;
     newMenu.hidden = true;
-    if (newMenuTerm) {
-      newMenuTerm.hidden = true;
-      newTermBtn.classList.remove('on');
-    }
+    setTermMenu(false);
     toast(`starting ${preset}…`);
     try {
       const res = await fetch(`/api/sessions/new?${tokenQS}`, {
@@ -220,10 +233,6 @@ for (const b of document.querySelectorAll('button[data-preset]')) {
       report('start-session', { preset, ok: true });
       // tmux needs a moment before the session shows up in the listing.
       setTimeout(loadSessions, 400);
-      // Started from the terminal screen: the tab strip is the session list
-      // there, and a plus that adds nothing visible is a plus that did nothing
-      // as far as anyone can tell. The strip only ever refreshed on an attach.
-      if (!screenTerm.hidden) setTimeout(renderTabs, 500);
     } catch (_) {
       toast('no connection to the server');
     }

@@ -296,6 +296,66 @@ describe('starting and renaming sessions', () => {
     assert.equal(await page.locator('#screen-term:not([hidden])').count(), 1, 'it left the terminal');
   });
 
+  test('the presets over the terminal can be dismissed', async () => {
+    // Reported as there being no way to cancel that plus. The popup was laid out
+    // from the top of the screen — an absolutely positioned flex child starts at
+    // the content box, which is behind the header — so it covered ☰, the tabs and
+    // the + itself: the tap meant to dismiss it landed on a preset and started a
+    // session.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    const before = await page.locator('#tabs button').count();
+
+    await page.click('#new-term');
+    await page.waitForSelector('#new-menu-term:not([hidden])');
+    // The header is reachable: what sits on the + is the scrim, not a preset.
+    const onThePlus = await page.evaluate(() => {
+      const r = document.getElementById('new-term').getBoundingClientRect();
+      const el = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return el ? (el.id || el.className) : '';
+    });
+    assert.match(onThePlus, /menu-scrim|new-term/, `a ${onThePlus} is sitting on the plus`);
+
+    // One tap anywhere outside closes it, and starts nothing.
+    await page.mouse.click(200, 400);
+    await page.waitForSelector('#new-menu-term', { state: 'hidden' });
+    await page.waitForTimeout(1200);
+    assert.equal(await page.locator('#tabs button').count(), before, 'dismissing it started a session');
+  });
+
+  test('closing a session takes its tab with it', async () => {
+    // Reported as the strip at the top not being redrawn when a terminal is
+    // closed. It was only ever redrawn on an attach, so a closed session kept
+    // its tab, a renamed one kept its old name, and a new one showed up nowhere.
+    await stand.open();
+    const { page } = stand;
+    const before = await page.locator('#session-list li').count();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset="shell"]');
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
+
+    // Attach to the fixture, then close the one just started from the drawer.
+    await stand.attach('demo');
+    await page.waitForFunction(() => document.querySelectorAll('#tabs button').length >= 2, null, { timeout: 5000 });
+    const tabs = await page.locator('#tabs button').count();
+
+    await page.click('#back');
+    await page.waitForFunction(
+      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      null, { timeout: 3000 });
+    const victim = page.locator('#session-list li').last();
+    const name = (await victim.locator('.name').textContent()).trim();
+    await victim.locator('button.close').click();
+    await victim.locator('button.close').click(); // armed, then confirmed
+
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#tabs button').length < n, tabs, { timeout: 8000 });
+    const left = await page.locator('#tabs button').allTextContents();
+    assert.ok(!left.includes(name), `the closed session is still a tab: ${left.join(', ')}`);
+  });
+
   test('closing takes two taps, and the first one is reversible', async () => {
     await stand.open();
     const { page } = stand;

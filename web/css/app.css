@@ -56,6 +56,16 @@ html, body {
   transition: transform 200ms ease;
 }
 #screen-sessions.open { transform: none; }
+/* What a tap outside an open popup lands on. Invisible on purpose — a menu does
+   not need the screen dimmed, it needs one tap anywhere to dismiss it. It covers
+   the header too, so the + that opened the menu closes it by being tapped
+   through this. */
+#menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+}
+
 /* What a tap outside the drawer lands on. */
 #drawer-scrim {
   position: fixed;
@@ -187,11 +197,18 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
 
 /* --- terminal screen --- */
 /* The presets on the terminal screen: an overlay under the header, so opening it
-   does not resize the terminal underneath. */
+   does not resize the terminal underneath.
+   `top` is not decoration. An absolutely positioned child of a flex container
+   starts at the container's content box — which is behind the header — so
+   without it this popup covered ☰, the tabs and the very + that opens it: the
+   tap meant to dismiss the menu landed on a preset and started a session
+   instead. Reported as there being no way to cancel it. The same trap caught
+   #update-bar earlier. */
 #new-menu-term {
   position: absolute;
   left: 0;
   right: 0;
+  top: 52px;
   z-index: 13;
   display: flex;
   flex-wrap: wrap;
@@ -216,6 +233,11 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
   position: absolute;
   left: 0;
   right: 0;
+  /* Under the header, for the same reason as the popup above: an absolutely
+     positioned flex child starts at the content box, so without this the
+     reconnect banner covered ☰ and the tabs — and a reconnect is exactly when
+     somebody reaches for another session. */
+  top: 52px;
   z-index: 10;
   background: #7a3b3b;
   color: #fff;
