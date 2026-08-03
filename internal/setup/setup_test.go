@@ -36,6 +36,9 @@ func TestUnitRendersTheEssentials(t *testing.T) {
 	})
 	for _, want := range []string{
 		"User=pi",
+		// Without it the unit runs in "/", and the session Makefile the "+"
+		// button looks for by default would never be found.
+		"WorkingDirectory=-~",
 		"Environment=POCKTERM_LISTEN=127.0.0.1:8130",
 		// The leading "-" keeps the unit starting when the file is absent.
 		"EnvironmentFile=-/etc/pockterm/pockterm.env",

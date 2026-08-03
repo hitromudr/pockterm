@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"os"
 	"time"
 )
 
@@ -17,7 +18,7 @@ type Config struct {
 	UploadDir string // POCKTERM_UPLOAD_DIR
 
 	// Directory holding the session Makefile the page may run presets from.
-	// Empty means the default work directory; "off" refuses to start any.
+	// Empty means the working directory; "off" refuses to start any.
 	SessionMakeDir string // POCKTERM_SESSION_DIR
 
 	// Telegram notifications; empty TGToken disables them entirely.
@@ -54,6 +55,28 @@ func FromEnv(getenv func(string) string) (Config, error) {
 
 // Notify reports whether Telegram notifications are configured.
 func (c Config) Notify() bool { return c.TGToken != "" && c.TGChat != "" }
+
+// SessionDir resolves the directory whose Makefile the page runs presets
+// from, and reports whether starting sessions is allowed at all.
+//
+// The fallback is the process's working directory — for a unit, whatever
+// WorkingDirectory= says. It used to be one absolute path compiled into the
+// binary, which is the author's own work directory: the button then worked on
+// exactly one machine and silently did nothing everywhere else.
+func (c Config) SessionDir() (dir string, on bool, err error) {
+	switch c.SessionMakeDir {
+	case "off":
+		return "", false, nil
+	case "":
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", false, fmt.Errorf("no working directory to look for a session Makefile in: %w", err)
+		}
+		return wd, true, nil
+	default:
+		return c.SessionMakeDir, true, nil
+	}
+}
 
 func orDefault(v, def string) string {
 	if v == "" {

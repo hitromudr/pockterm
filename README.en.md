@@ -110,7 +110,27 @@ URL.
 | `POCKTERM_TG_API` | `https://api.telegram.org` | Bot API root: a local bot server or a test double. |
 | `POCKTERM_IDLE` | `30s` | How much silence counts as "finished". |
 | `POCKTERM_UPLOAD_DIR` | user cache dir | Where pasted images are saved; `off` disables uploads. |
-| `POCKTERM_SESSION_DIR` | work dir | Where the session Makefile lives (the + button); `off` refuses to start any. |
+| `POCKTERM_SESSION_DIR` | the service's working dir | Where the session Makefile lives (the + button); `off` refuses to start any. |
+
+## Starting sessions from the phone (the + button)
+
+The page never sends a command — only a preset name (`shell`, `claude`,
+`yolo`, `continue`) — and the server runs `make -C <dir> <preset>`. What a
+session is stays the Makefile's decision, not pockterm's: it remains the one
+place that knows about a sandbox wrapper, session numbering and slices.
+
+`deploy/sessions.mk.example` is a working starting point:
+
+```bash
+cp deploy/sessions.mk.example ~/work/Makefile   # edit CLAUDE inside
+echo 'POCKTERM_SESSION_DIR=/home/youruser/work' | sudo tee -a /etc/pockterm/pockterm.env
+sudo systemctl restart pockterm
+```
+
+Without `POCKTERM_SESSION_DIR` the server looks in its own working directory —
+for a unit, whatever `WorkingDirectory=` says (the example unit and the one the
+installer writes both use the user's home). No Makefile, no + button; the log
+says so at startup.
 
 ## Notifications
 

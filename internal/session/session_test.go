@@ -1,6 +1,9 @@
 package session
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -64,9 +67,28 @@ func TestKillMatchesExactly(t *testing.T) {
 }
 
 func TestStartGoesThroughTheMakefile(t *testing.T) {
-	argv := Start("/home/dms/work", "claude")
-	want := "make -C /home/dms/work claude"
+	argv := Start("/srv/work", "claude")
+	want := "make -C /srv/work claude"
 	if strings.Join(argv, " ") != want {
 		t.Errorf("argv is %v, want %q", argv, want)
+	}
+}
+
+func TestExampleMakefileCoversEveryPreset(t *testing.T) {
+	// deploy/sessions.mk.example is what someone without the author's own
+	// Makefile starts from, so a preset added here and not there would give
+	// them a button that fails with make's "no rule to make target".
+	src, err := os.ReadFile(filepath.Join("..", "..", "deploy", "sessions.mk.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name := range Presets {
+		target, err := Target(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(target) + `:`).Match(src) {
+			t.Errorf("the example Makefile has no %q target", target)
+		}
 	}
 }

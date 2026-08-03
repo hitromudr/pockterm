@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -97,6 +98,54 @@ func TestInvalidIdleRejected(t *testing.T) {
 		if _, err := FromEnv(env(map[string]string{"POCKTERM_IDLE": bad})); err == nil {
 			t.Fatalf("expected an error for POCKTERM_IDLE=%q", bad)
 		}
+	}
+}
+
+func TestSessionDirFallsBackToTheWorkingDirectory(t *testing.T) {
+	// No fixed path: a binary that looked in one absolute directory started
+	// sessions on the machine it was written on and nowhere else.
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := FromEnv(env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, on, err := c.SessionDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !on || dir != wd {
+		t.Fatalf("dir = %q, on = %v, want %q and on", dir, on, wd)
+	}
+}
+
+func TestSessionDirHonoursTheVariable(t *testing.T) {
+	c, err := FromEnv(env(map[string]string{"POCKTERM_SESSION_DIR": "/srv/work"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, on, err := c.SessionDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !on || dir != "/srv/work" {
+		t.Fatalf("dir = %q, on = %v", dir, on)
+	}
+}
+
+func TestSessionDirOffRefusesToStart(t *testing.T) {
+	c, err := FromEnv(env(map[string]string{"POCKTERM_SESSION_DIR": "off"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, on, err := c.SessionDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if on || dir != "" {
+		t.Fatalf("dir = %q, on = %v, want the feature off", dir, on)
 	}
 }
 

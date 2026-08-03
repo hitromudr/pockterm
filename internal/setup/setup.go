@@ -44,6 +44,11 @@ After=network.target
 Type=simple
 `)
 	fmt.Fprintf(&b, "User=%s\n", o.User)
+	// The working directory is where the "+" button looks for a session
+	// Makefile when POCKTERM_SESSION_DIR says nothing; systemd's own default
+	// is "/", where nobody keeps one. The leading "-" keeps the unit starting
+	// for an account without a home directory.
+	b.WriteString("WorkingDirectory=-~\n")
 	fmt.Fprintf(&b, "Environment=POCKTERM_LISTEN=%s\n", o.Listen)
 	if o.EnvFile != "" {
 		// The leading "-" keeps the unit starting when the file is absent.

@@ -9,7 +9,12 @@ After=network.target
 [Service]
 Type=simple
 User=youruser
+# Where the "+" button looks for a session Makefile when POCKTERM_SESSION_DIR
+# says nothing; systemd's own default is "/". The "-" keeps the unit starting
+# for an account without a home directory.
+WorkingDirectory=-~
 Environment=POCKTERM_LISTEN=127.0.0.1:8130
+# Environment=POCKTERM_SESSION_DIR=/home/youruser/work   # see deploy/sessions.mk.example
 # Environment=POCKTERM_TOKEN=change-me   # required if LISTEN is not loopback
 Restart=always
 RestartSec=3

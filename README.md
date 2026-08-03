@@ -108,7 +108,27 @@ QR-код печатается прямо в терминал: наведите 
 | `POCKTERM_TG_API` | `https://api.telegram.org` | Корень Bot API: локальный bot-server или тестовая заглушка. |
 | `POCKTERM_IDLE` | `30s` | Сколько тишины считать завершением работы. |
 | `POCKTERM_UPLOAD_DIR` | кэш пользователя | Куда сохранять вставленные картинки; `off` — выключить загрузку. |
-| `POCKTERM_SESSION_DIR` | рабочий каталог | Где лежит Makefile с целями сессий (кнопка «+»); `off` — не давать создавать. |
+| `POCKTERM_SESSION_DIR` | рабочий каталог сервиса | Где лежит Makefile с целями сессий (кнопка «+»); `off` — не давать создавать. |
+
+## Создание сессий с телефона (кнопка «+»)
+
+Команду страница не передаёт — только имя пресета (`shell`, `claude`,
+`yolo`, `continue`), и сервер запускает `make -C <каталог> <пресет>`. Что
+такое сессия, решает этот Makefile, а не pockterm: он же и остаётся
+единственным местом, которое знает про песочницу, нумерацию и slice.
+
+Готовый образец — `deploy/sessions.mk.example`:
+
+```bash
+cp deploy/sessions.mk.example ~/work/Makefile   # поправьте CLAUDE внутри
+echo 'POCKTERM_SESSION_DIR=/home/youruser/work' | sudo tee -a /etc/pockterm/pockterm.env
+sudo systemctl restart pockterm
+```
+
+Без `POCKTERM_SESSION_DIR` сервер ищет Makefile в своём рабочем каталоге —
+для юнита это то, что сказано в `WorkingDirectory=` (в примере юнита и в том,
+что пишет установщик, это домашний каталог пользователя). Makefile не найден
+— кнопка «+» просто выключается, о чём сказано в журнале при старте.
 
 ## Уведомления
 

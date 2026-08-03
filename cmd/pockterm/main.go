@@ -29,10 +29,6 @@ import (
 	"github.com/hitromudr/pockterm/internal/watch"
 )
 
-// Where the session Makefile lives when POCKTERM_SESSION_DIR says nothing.
-// The role that installs pockterm puts it in the user's work directory.
-const defaultSessionDir = "/home/dms/work"
-
 const usage = `pockterm — mobile web terminal for your tmux sessions
 
   pockterm                 run the server (configured through the environment)
@@ -41,7 +37,8 @@ const usage = `pockterm — mobile web terminal for your tmux sessions
   pockterm qr [url]        print the client URL as a QR code for your phone
 
 Environment: POCKTERM_LISTEN, POCKTERM_TOKEN, POCKTERM_PUBLIC_URL,
-POCKTERM_TG_*, POCKTERM_IDLE and POCKTERM_UPLOAD_DIR. See the README.
+POCKTERM_TG_*, POCKTERM_IDLE, POCKTERM_UPLOAD_DIR and POCKTERM_SESSION_DIR.
+See the README.
 `
 
 func main() {
@@ -178,15 +175,17 @@ func uploader(cfg config.Config) func(io.Reader) (string, error) {
 // service's cgroup. Two launchers would drift apart, and the day they do,
 // somebody loses their sessions.
 func starter(cfg config.Config) func(string) error {
-	dir := cfg.SessionMakeDir
-	if dir == "off" {
+	dir, on, err := cfg.SessionDir()
+	if err != nil {
+		log.Printf("%v, starting sessions is off", err)
 		return nil
 	}
-	if dir == "" {
-		dir = defaultSessionDir
+	if !on {
+		return nil
 	}
 	if _, err := os.Stat(filepath.Join(dir, "Makefile")); err != nil {
-		log.Printf("no Makefile in %s, starting sessions is off", dir)
+		log.Printf("no Makefile in %s, starting sessions is off "+
+			"(POCKTERM_SESSION_DIR points at one; deploy/sessions.mk.example is a starting point)", dir)
 		return nil
 	}
 	log.Printf("starting sessions on, via make -C %s", dir)

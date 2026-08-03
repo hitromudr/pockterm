@@ -1,0 +1,75 @@
+# Session helpers for pockterm's "+" button — an example to copy and edit.
+#
+# pockterm lists and attaches; it does not invent a way to start a session.
+# When the page asks for a preset it runs `make -C $POCKTERM_SESSION_DIR
+# <preset>` here, so this file — not the server — decides what a session
+# actually is. The presets the page may ask for are fixed: shell, claude,
+# yolo, continue (internal/session/session.go). A target missing from this
+# file simply makes that button fail with make's own message.
+#
+# Install:
+#   cp deploy/sessions.mk.example ~/work/Makefile   # edit CLAUDE below
+#   POCKTERM_SESSION_DIR=~/work                     # in /etc/pockterm/pockterm.env
+# Without POCKTERM_SESSION_DIR the server looks in its working directory,
+# which for a systemd unit is whatever WorkingDirectory= says.
+
+.DEFAULT_GOAL := help
+
+# The agent command. Point it at a wrapper if sessions should be sandboxed:
+# the wrapper, not this file, is then the single place that knows how.
+CLAUDE ?= claude
+
+# Where a new session starts. Override per call: make claude DIR=~/proj
+DIR ?= $(CURDIR)
+
+.PHONY: help shell claude yolo continue ls kill
+
+# spawn,<command>[,<prefix>] — start a fresh <prefix>-N session detached.
+# The prefix defaults to "claude"; `shell` passes its own so the two do not
+# share a numbering line.
+#
+# The number must be free as a session name AND as a group name: pockterm
+# attaches with `new-session -t <name>`, and tmux resolves that to a group of
+# that name first. A group outlives the session that formed it, so reusing the
+# number would attach the phone to the old window instead of the new session.
+#
+# systemd-run puts the tmux server in the user's own slice. Without it a
+# server first started from the web terminal inherits pockterm.service's
+# cgroup, and `systemctl restart pockterm` — which any deploy does — takes
+# every session down with it. The fallback keeps this working where there is
+# no user manager to ask.
+define spawn
+p="$(or $(2),claude)"; \
+n=1; while tmux ls 2>/dev/null | grep -qE "^$$p-$$n:|\(group $$p-$$n\)"; do n=$$((n+1)); done; \
+export XDG_RUNTIME_DIR="$${XDG_RUNTIME_DIR:-/run/user/$$(id -u)}"; \
+launch=""; \
+if systemd-run --user --scope --quiet --collect true >/dev/null 2>&1; then \
+	launch="systemd-run --user --scope --quiet --collect"; \
+fi; \
+$$launch tmux new-session -d -s "$$p-$$n" -c "$(DIR)" $(1); \
+echo "started $$p-$$n in $(DIR)$${launch:+ (own slice)}"
+endef
+
+help: ## Show this help
+	@grep -hE '^[a-z][a-z-]*:.*## ' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*## "}; {printf "  make %-9s %s\n", $$1, $$2}'
+
+shell: ## New plain shell session (its own numbering line)
+	@$(call spawn,$${SHELL:-/bin/sh},shell)
+
+claude: ## New agent session
+	@$(call spawn,$(CLAUDE))
+
+yolo: ## New agent session that does not ask for permissions
+	@$(call spawn,'$(CLAUDE) --dangerously-skip-permissions')
+
+continue: ## New agent session continuing the last conversation
+	@$(call spawn,'$(CLAUDE) -c')
+
+ls: ## List sessions, hiding the clients pockterm attaches with
+	@tmux ls 2>/dev/null | grep -v '^pockterm-' || echo "no sessions"
+
+kill: ## Kill one session: make kill NAME=claude-2
+	@if [ -z "$(NAME)" ]; then echo "usage: make kill NAME=<session>  (see: make ls)"; \
+	 elif tmux kill-session -t "=$(NAME)" 2>/dev/null; then echo "killed $(NAME)"; \
+	 else echo "no session $(NAME)"; fi
