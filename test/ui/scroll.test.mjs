@@ -5,7 +5,7 @@
 // draw, so the screen follows the finger only if the page shifts the rows it
 // already has — a transform on an element xterm owns and rebuilds on every
 // write, which is not a thing to take on trust.
-import { test, before, after, describe } from 'node:test';
+import { test, before, beforeEach, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { startStand } from './stand.mjs';
 
@@ -59,6 +59,15 @@ describe('a swipe follows the finger', () => {
     cdp = await stand.page.context().newCDPSession(stand.page);
   });
   after(async () => { await stand.stop(); });
+
+  // Every case here starts from the live end of the output. The pane is shared
+  // and a drag that ended scrolled back leaves it that way, so without this the
+  // case after it inherits a scrolled-back pane — which showed up as the ⇩ being
+  // on screen "before anything was scrolled", failing about once in three runs
+  // depending on where the previous drag happened to stop.
+  beforeEach(() => {
+    try { stand.tmux(['send-keys', '-t', 'demo', '-X', 'cancel']); } catch (_) { /* not in a mode */ }
+  });
 
   test('the rows move with a slow drag, not in jumps of whole lines', async () => {
     await stand.open();
@@ -188,7 +197,10 @@ describe('a swipe follows the finger', () => {
     // reported defect, and the page cannot see the difference without the
     // position that now travels with the mode frame.
     stand.tmux(['copy-mode', '-t', client]);
-    await page.waitForFunction(() => window.__modeSeen === true, null, { timeout: 5000 }).catch(() => {});
+    // A poll interval and a half: the state travels to the page on a 400ms
+    // clock, and what is being asserted is that nothing appears, so the wait has
+    // to be long enough for it to have appeared.
+    await page.waitForTimeout(700);
     const atEnd = stand.tmux(['display-message', '-p', '-t', client, '#{pane_in_mode} #{scroll_position}']).trim();
     assert.match(atEnd, /^1 0?$/, `the state under test was not reached: ${atEnd}`);
     assert.ok(await page.locator('#to-bottom').isHidden(),
