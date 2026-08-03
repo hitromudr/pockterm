@@ -550,3 +550,81 @@ func TestRenameWorks(t *testing.T) {
 		t.Errorf("renamed %q -> %q", gotFrom, gotTo)
 	}
 }
+
+func TestNoticeReachesTheAttachedPage(t *testing.T) {
+	// The watcher decides; the page only renders. That handover is this
+	// frame, and before it existed the page guessed from the byte stream —
+	// which on a tmux session is mostly the status line's clock.
+	opts := testOptions("")
+	notices := NewNotices()
+	opts.Notices = notices
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	readBinaryUntil(t, c, "ready")
+
+	// Sent for a session with nobody attached: nothing to deliver, and
+	// nothing to panic over either.
+	notices.Send("nobody", Notice{Type: "notify", Kind: "done", Session: "nobody", Title: "x"})
+
+	notices.Send("demo", Notice{
+		Type: "notify", Kind: "done", Session: "demo",
+		Title: "✅ demo закончил", Body: "тесты зелёные",
+	})
+
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("waiting for the notify frame: %v", err)
+		}
+		if mt != websocket.TextMessage {
+			continue
+		}
+		var f Notice
+		if err := json.Unmarshal(data, &f); err != nil || f.Type != "notify" {
+			continue
+		}
+		if f.Session != "demo" || f.Kind != "done" || f.Title != "✅ demo закончил" || f.Body != "тесты зелёные" {
+			t.Fatalf("frame arrived mangled: %+v", f)
+		}
+		return
+	}
+}
+
+func TestNoticesForgetAClosedPage(t *testing.T) {
+	opts := testOptions("")
+	notices := NewNotices()
+	opts.Notices = notices
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readBinaryUntil(t, c, "ready")
+	c.Close()
+
+	// The registry drops the client when its socket goes; sending after that
+	// must not write to a dead connection.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		notices.mu.Lock()
+		n := len(notices.m["demo"])
+		notices.mu.Unlock()
+		if n == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the closed page is still registered")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	notices.Send("demo", Notice{Type: "notify", Kind: "done", Session: "demo", Title: "x"})
+}

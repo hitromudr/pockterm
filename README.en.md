@@ -116,16 +116,34 @@ URL.
 
 A session comes under watch once you attach to it through pockterm, and
 stays there while it lives. The server reads its screen every two seconds
-and sends two kinds of event to Telegram:
+with `capture-pane` and tells two events apart:
 
 - **asks for an answer** — an interactive menu appeared (one message per
   menu, not per poll);
 - **finished** — the screen has not changed for `POCKTERM_IDLE` after
   something happened.
 
+**One decision, two channels.** The event goes to Telegram and, as a frame
+on the websocket, to an open page, which raises a system notification (in
+the app through the bridge, in a browser through the Notification API).
+The page used to decide this itself, and it was wrong twice over: it read
+every byte off the socket as activity, and tmux redraws its status line on
+a clock, so the countdown to "finished" rarely ran out; the timer checking
+it is throttled to about once a minute once Android backgrounds the
+WebView. What arrived, and when, was unexplainable. The server reads the
+pane directly — no status line in it, and nothing throttles it.
+
 While the session is open in pockterm and the tab is on screen, its
 notifications stay quiet — you can already see it. A backgrounded PWA
 keeps its socket open but counts as not looking, so the message arrives.
+If the system suspends the socket too, the frame never lands; Telegram
+still does.
+
+The text is short and identical in both channels: the title names the
+session (`✅ claude-1 finished`), the body is the last meaningful line of
+the pane. Meaningful is the operative word — agent TUIs draw an input box
+and a shortcut hint below their output, and "the last non-blank line" is
+those.
 
 The easiest way to find your chat id: message the bot, then open
 `https://api.telegram.org/bot<token>/getUpdates`.

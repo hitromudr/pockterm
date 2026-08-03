@@ -41,6 +41,24 @@ where there are any.
 composing region, and both the lost last word on Enter and the doubled word on
 Backspace come from it. Only the app can end a composition.
 
+## Notifications are decided in one place
+
+`internal/watch` reads each watched session's pane with `capture-pane` and
+emits two events: a menu appeared, or the screen went quiet after doing
+something. Both channels — Telegram and a `notify` frame to an open page —
+render that same event, through `watch.Format` and `watch.Notice`.
+
+The page decides nothing. It used to, and the result was notifications nobody
+could predict: it counted "activity" from bytes on the socket, but tmux redraws
+its status line on a clock, so the silence never lasted; and the timer that
+checked was throttled once Android backgrounded the WebView. If you are tempted
+to raise a notice from the browser again, read the header of `web/js/notify.js`
+first.
+
+Body text comes from `watch.Tail`, not from the last non-blank line: agent TUIs
+draw an input box and a shortcut hint under their output, so the last line on
+screen is usually `? for shortcuts` or a row of `─`.
+
 ## Diagnostics
 
 The page posts what decides an outcome to `/api/log`, which the server writes

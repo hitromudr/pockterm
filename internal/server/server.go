@@ -37,7 +37,7 @@ type Options struct {
 	Attach       func(id int64, target string) []string // argv attaching a client to target
 	InMode       func(id int64) (bool, error)           // client pane in tmux copy-mode; nil disables the poll
 	Presence     Presence                               // notification bookkeeping; nil disables it
-	Idle         time.Duration                          // silence that counts as "finished"; told to the client
+	Notices      *Notices                               // route notifications to attached pages; nil disables it
 	Static       http.Handler                           // the embedded PWA
 	SaveUpload   func(io.Reader) (string, error)        // store a pasted image, return its path; nil disables /api/upload
 	LogClient    func(string)                           // record a line the browser sent; nil disables /api/log
@@ -316,6 +316,18 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 		defer o.Presence.Leave(target, id)
 	}
 
+	// The watcher's events reach this page the same way everything else does.
+	// It fires only for a session nobody has visible, so a frame arriving
+	// here means: open, in the background, and worth a notification.
+	if o.Notices != nil {
+		o.Notices.add(target, id, func(n Notice) {
+			writeMu.Lock()
+			defer writeMu.Unlock()
+			conn.WriteJSON(n)
+		})
+		defer o.Notices.remove(target, id)
+	}
+
 	t, err := term.Start(o.Attach(id, target), 80, 24)
 	if err != nil {
 		log.Printf("attach failed: %v", err)
@@ -325,18 +337,6 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer t.Close()
-
-	// The page raises its own notifications while it is open, and it has to
-	// agree with the server about what counts as "finished" — otherwise the
-	// same run is announced twice, at two different moments.
-	if o.Idle > 0 {
-		writeMu.Lock()
-		conn.WriteJSON(struct {
-			Type string `json:"type"`
-			Idle int    `json:"idle"`
-		}{"config", int(o.Idle.Seconds())})
-		writeMu.Unlock()
-	}
 
 	// Tell the client when its pane enters or leaves copy-mode, so prompt
 	// buttons can disappear while it is scrolled back into history.

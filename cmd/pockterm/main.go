@@ -124,6 +124,7 @@ func serve() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	notices := server.NewNotices()
 	h := server.Handler(server.Options{
 		Token:        cfg.Token,
 		ListSessions: listSessions,
@@ -131,8 +132,8 @@ func serve() {
 			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 		},
 		InMode:     inMode,
-		Presence:   notifier(cfg),
-		Idle:       cfg.Idle,
+		Presence:   notifier(cfg, notices),
+		Notices:    notices,
 		Static:     http.FileServer(http.FS(static)),
 		SaveUpload: uploader(cfg),
 		// The browser has no console anyone can open on the phone this
@@ -247,17 +248,31 @@ func firstLine(s string) string {
 	return s
 }
 
-// notifier wires the Telegram notifications, or returns nil when they are
-// not configured — in which case nothing is watched and nothing is sent.
-func notifier(cfg config.Config) server.Presence {
-	if !cfg.Notify() {
-		return nil
+// notifier wires the one watcher both channels use: Telegram for a session
+// nobody has open, and a frame down the socket for a page that is open but in
+// the background. Telegram is optional; the watcher is not, because the page
+// no longer works out on its own when a run ended — it renders what it is
+// told, and there has to be someone to tell it.
+func notifier(cfg config.Config, notices *server.Notices) server.Presence {
+	var bot *telegram.Client
+	if cfg.Notify() {
+		bot = &telegram.Client{Token: cfg.TGToken, Chat: cfg.TGChat, API: cfg.TGAPI}
 	}
-	bot := &telegram.Client{Token: cfg.TGToken, Chat: cfg.TGChat, API: cfg.TGAPI}
 	viewers := watch.NewViewers()
 	w := watch.New(watch.Options{
 		Capture: capturePane,
 		Notify: func(e watch.Event) {
+			title, body := watch.Notice(e)
+			notices.Send(e.Session, server.Notice{
+				Type:    "notify",
+				Kind:    string(e.Kind),
+				Session: e.Session,
+				Title:   title,
+				Body:    body,
+			})
+			if bot == nil {
+				return
+			}
 			if err := bot.Send(watch.Format(e, cfg.TGLink, cfg.TGPreview)); err != nil {
 				log.Printf("telegram: %v", err)
 			}
@@ -266,7 +281,11 @@ func notifier(cfg config.Config) server.Presence {
 		IdleAfter: cfg.Idle,
 	})
 	go w.Run(context.Background())
-	log.Printf("telegram notifications on, idle threshold %s", cfg.Idle)
+	if bot != nil {
+		log.Printf("notifications on (page + telegram), idle threshold %s", cfg.Idle)
+	} else {
+		log.Printf("notifications on (page only, telegram not configured), idle threshold %s", cfg.Idle)
+	}
 	return watch.Presence{Watcher: w, Viewers: viewers}
 }
 

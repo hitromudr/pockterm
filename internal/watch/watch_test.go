@@ -235,3 +235,56 @@ func TestFormat(t *testing.T) {
 		t.Fatalf("session name missing: %q", quiet)
 	}
 }
+
+// The pane a Claude Code session leaves behind when it stops: the last thing
+// it said, then its input box, then the shortcut hint. "The last non-blank
+// line" picks the hint; a notification saying "? for shortcuts" tells the
+// owner nothing about what finished.
+func TestTailSkipsTheInterface(t *testing.T) {
+	pane := []string{
+		"● Готово: правки в трёх файлах, тесты зелёные",
+		"",
+		"╭──────────────────────────────────────────────╮",
+		"│ >                                            │",
+		"╰──────────────────────────────────────────────╯",
+		"  ? for shortcuts                    ⏵⏵ auto-accept edits on",
+		"",
+	}
+	if got, want := Tail(pane), "● Готово: правки в трёх файлах, тесты зелёные"; !strings.Contains(got, "Готово") {
+		t.Fatalf("Tail = %q, want the line saying %q", got, want)
+	}
+
+	// A line inside the box is content, not decoration — the frame comes off.
+	boxed := []string{"╭────────╮", "│ собрано за 4с │", "╰────────╯"}
+	if got := Tail(boxed); got != "собрано за 4с" {
+		t.Fatalf("Tail = %q, want the text without the frame", got)
+	}
+
+	// Nothing worth saying: the caller falls back to a fixed phrase.
+	if got := Tail([]string{"", "──────", "   "}); got != "" {
+		t.Fatalf("Tail = %q, want empty", got)
+	}
+}
+
+func TestNoticeSaysWhichSessionAndWhat(t *testing.T) {
+	title, body := Notice(Event{
+		Kind:    Question,
+		Session: "claude-1",
+		Prompt:  "Apply this change?",
+		Options: []detect.Option{{Key: "1", Label: "Yes"}, {Key: "2", Label: "No"}},
+	})
+	if !strings.Contains(title, "claude-1") {
+		t.Fatalf("title %q does not name the session", title)
+	}
+	for _, want := range []string{"Apply this change?", "1. Yes", "2. No"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body %q is missing %q", body, want)
+		}
+	}
+
+	// Done with nothing readable on screen still says something.
+	title, body = Notice(Event{Kind: Done, Session: "claude-1"})
+	if !strings.Contains(title, "claude-1") || body == "" {
+		t.Fatalf("done notice is empty: %q / %q", title, body)
+	}
+}

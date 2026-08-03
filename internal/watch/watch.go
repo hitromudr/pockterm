@@ -28,8 +28,8 @@ const (
 type Event struct {
 	Kind    Kind
 	Session string
-	// Question: the prompt line above the menu. Done: the last non-blank
-	// line on screen.
+	// Question: the prompt line above the menu. Done: the last line of the
+	// pane worth showing a human — see Tail.
 	Prompt  string
 	Options []detect.Option
 }
@@ -164,7 +164,7 @@ func (w *Watcher) poll(session string) {
 	}
 	if st.active && !st.doneSent && now.Sub(st.changed) >= w.o.IdleAfter {
 		st.doneSent = true
-		events = append(events, Event{Kind: Done, Session: session, Prompt: lastLine(lines)})
+		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines)})
 	}
 	w.mu.Unlock()
 
@@ -193,13 +193,4 @@ func menuSig(m *detect.Menu) string {
 		b.WriteString("\x00" + o.Key + "\x00" + o.Label)
 	}
 	return b.String()
-}
-
-func lastLine(lines []string) string {
-	for i := len(lines) - 1; i >= 0; i-- {
-		if t := strings.TrimSpace(lines[i]); t != "" {
-			return t
-		}
-	}
-	return ""
 }

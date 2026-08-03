@@ -1,6 +1,6 @@
 import { keyBytes } from './keys.js';
 import { detectQuestion } from './detect.js';
-import { newState, questionNotice, noteActivity, doneNotice } from './notify.js';
+import { noticeFrom } from './notify.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
 import { snapshotText } from './select.js';
 import { initDiag, environment, report } from './diag.js';
@@ -11,7 +11,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // Version of the code actually running. Bumped with the service worker's
 // cache name: a mismatch between the two is itself a diagnosis, because an
 // installed PWA can keep running the version it was installed with.
-const APP_VERSION = 'v59';
+const APP_VERSION = 'v60';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -336,7 +336,6 @@ function connect() {
   ws.onopen = () => { statusEl.hidden = true; retry = 1000; sendResize(); sendVisible(); };
   ws.onmessage = (e) => {
     if (typeof e.data === 'string') { onControl(e.data); return; }
-    noteActivity(notifyState, Date.now());
     // One bad write must not take the socket handler with it: an exception
     // here leaves the terminal frozen with output still arriving.
     try {
@@ -354,14 +353,13 @@ function connect() {
   };
 }
 
-// Server control frames: pong, error, and the pane's copy-mode state.
+// Server control frames: pong, error, the pane's copy-mode state, and a
+// notification the watcher decided to raise.
 function onControl(raw) {
   let c = null;
   try { c = JSON.parse(raw); } catch (_) { return; }
   if (c && c.type === 'mode') setCopyMode(!!c.in);
-  // The server's own idle threshold, so its Telegram notice and this page's
-  // notification mean the same thing.
-  if (c && c.type === 'config' && c.idle > 0) idleMs = c.idle * 1000;
+  if (c && c.type === 'notify') show(noticeFrom(c));
 }
 
 function send(data) {
@@ -974,14 +972,13 @@ function visibleLines() {
 }
 
 // --- notifications while the page is open ---------------------------------
-// The server messages Telegram for a session nobody is watching. This covers
-// the case in between: the page is open but in the background — another tab,
-// a phone with the screen off — where the client already has the whole
-// stream and a notification costs nothing.
+// One watcher decides for both channels: the server messages Telegram for a
+// session nobody has open, and sends this page a frame when it is open but in
+// the background — another tab, a phone with the screen off. The page keeps
+// only the switch and the permission; deciding when to raise a notice is not
+// its business any more, and why it stopped being it is in js/notify.js.
 const bellBtn = document.getElementById('bell');
-const notifyState = newState();
 let notifyOn = false;
-let idleMs = 30_000; // overwritten by the server's own threshold on connect
 try { notifyOn = localStorage.getItem('pt-notify') === 'on'; } catch (_) {}
 
 function renderBell() {
@@ -1040,10 +1037,6 @@ function show(notice) {
   n.onclick = () => { window.focus(); n.close(); };
 }
 
-// Checked on a timer rather than on output, because "finished" is defined by
-// the absence of output.
-setInterval(() => show(doneNotice(notifyState, Date.now(), idleMs, document.hidden)), 5000);
-
 // Scrolled back into tmux history (copy-mode): the numbered lines on screen
 // belong to the past, so answering them would send digits to whatever is
 // running now. No buttons until the pane leaves the mode.
@@ -1069,10 +1062,6 @@ let lastAnswersSig = null;
 function renderAnswers() {
   const lines = visibleLines();
   const q = inCopyMode ? null : detectQuestion(lines);
-  // Kept for the "finished" notice: the last line of output says more than
-  // "the run ended" on its own.
-  notifyState.tail = [...lines].reverse().find((l) => l.trim()) || '';
-  show(questionNotice(notifyState, q, document.hidden));
   // Only rebuild when the detected prompt actually changed; otherwise the
   // buttons flicker (and detach mid-tap) on every terminal update.
   const sig = q ? JSON.stringify(q.options) : null;

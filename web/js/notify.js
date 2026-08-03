@@ -1,53 +1,36 @@
-// Decide when the open page should raise a desktop notification.
+// Turn the server's notification frame into something the page can show.
 //
-// The server already notifies Telegram for a session nobody is looking at.
-// This covers the other half: the page is open but in the background — a
-// switched tab, a phone with the screen off — where a notification is both
-// useful and free, since the client already receives the whole stream.
+// The page used to decide for itself when a run had finished: it treated every
+// byte off the socket as activity and counted the silence afterwards on a
+// timer. Both halves were wrong. tmux redraws its status line on a clock, so
+// "output arrived" meant "a minute passed" and the countdown rarely ran out;
+// and Android throttles timers in a backgrounded WebView, which is precisely
+// when the notification was wanted. What arrived, and when, was unexplainable.
 //
-// Kept pure and tested: the rules are easy to get subtly wrong (notifying
-// twice for one prompt, or announcing "finished" for a session that never
-// started anything), and those mistakes are the kind users stop trusting.
+// The server already watches the pane with capture-pane — no status line in
+// it, no throttling, and it stays quiet for a session somebody has open. So it
+// decides; this only shapes what it sends.
+//
+// Kept pure and tested: what is left is small, but it is the last thing
+// between a notification and the user.
 
-// A prompt is worth announcing once, when it appears or changes.
-export function questionNotice(state, menu, hidden) {
-  // The prompt is part of the signature, not just the options: "Yes / No" is
-  // the most common pair there is, and two different questions offering it
-  // would otherwise look like the same one.
-  const sig = menu ? JSON.stringify([menu.prompt, menu.options]) : null;
-  const changed = sig !== state.lastMenu;
-  state.lastMenu = sig;
-  if (!menu || !changed || !hidden) return null;
-  return {
-    title: 'Агент просит ответ',
-    body: [menu.prompt, ...menu.options.map((o) => `${o.key}. ${o.label}`)]
-      .filter(Boolean).join('\n'),
-    tag: 'pockterm-question',
-  };
-}
+const KINDS = { question: 'pockterm-question', done: 'pockterm-done' };
 
-// Output arrived: the session is doing something, and whatever "finished"
-// was announced before no longer applies.
-export function noteActivity(state, now) {
-  state.lastOutput = now;
-  state.active = true;
-  state.doneSent = false;
-}
+// Two lines are shown collapsed, the rest on expand — but a whole pane pasted
+// into a notification helps nobody.
+const MAX_BODY = 400;
 
-// Silence for long enough, after something actually happened, means the run
-// is over. Announced once per quiet period.
-export function doneNotice(state, now, idleMs, hidden) {
-  if (!state.active || state.doneSent) return null;
-  if (state.lastOutput === null || now - state.lastOutput < idleMs) return null;
-  state.doneSent = true;
-  if (!hidden) return null;
-  return {
-    title: 'Агент закончил',
-    body: state.tail || 'Вывод остановился',
-    tag: 'pockterm-done',
-  };
-}
-
-export function newState() {
-  return { lastMenu: null, lastOutput: null, active: false, doneSent: false, tail: '' };
+// noticeFrom returns {title, body, tag} for a frame worth showing, or null.
+//
+// The tag makes a second notice of the same kind replace the first instead of
+// stacking: five "asks for an answer" in a row is noise, not information.
+export function noticeFrom(frame) {
+  if (!frame || frame.type !== 'notify') return null;
+  const tag = KINDS[frame.kind];
+  if (!tag) return null;
+  const title = String(frame.title == null ? '' : frame.title).trim();
+  if (!title) return null;
+  let body = String(frame.body == null ? '' : frame.body).trim();
+  if (body.length > MAX_BODY) body = body.slice(0, MAX_BODY) + '…';
+  return { title, body, tag };
 }
