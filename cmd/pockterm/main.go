@@ -294,7 +294,13 @@ func notifier(cfg config.Config, notices *server.Notices) server.Presence {
 // Read once per attach: a binding can change while the server runs, and the
 // answer costs one tmux call against a page that will be open for hours.
 func wheelLines() int {
-	argv := tmuxcmd.WheelLines()
+	modeKeys := ""
+	if argv := tmuxcmd.ModeKeys(); true {
+		if out, err := exec.Command(argv[0], argv[1:]...).Output(); err == nil {
+			modeKeys = string(out)
+		}
+	}
+	argv := tmuxcmd.WheelLines(tmuxcmd.CopyModeTable(modeKeys))
 	out, err := exec.Command(argv[0], argv[1:]...).Output()
 	if err != nil {
 		return tmuxcmd.ParseWheelLines("")

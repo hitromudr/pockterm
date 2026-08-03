@@ -89,6 +89,22 @@ func TestParseSessionsIgnoresJunk(t *testing.T) {
 	}
 }
 
+func TestCopyModeTable(t *testing.T) {
+	// mode-keys decides which table the wheel binding lives in; asking the
+	// other one answers about bindings nothing uses.
+	if got := CopyModeTable("vi\n"); got != "copy-mode-vi" {
+		t.Fatalf("CopyModeTable(vi) = %q", got)
+	}
+	for _, in := range []string{"emacs", "", "nonsense"} {
+		if got := CopyModeTable(in); got != "copy-mode" {
+			t.Fatalf("CopyModeTable(%q) = %q", in, got)
+		}
+	}
+	if got := WheelLines(""); got[len(got)-2] != "copy-mode" {
+		t.Fatalf("WheelLines(\"\") asks about %q", got)
+	}
+}
+
 func TestParseWheelLines(t *testing.T) {
 	// tmux's own default binding, as `list-keys` prints it.
 	stock := `bind-key -T copy-mode WheelUpPane select-pane \; send-keys -X -N 5 scroll-up`

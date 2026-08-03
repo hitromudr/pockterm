@@ -102,12 +102,30 @@ func Attach(target, webSession string) []string {
 	}
 }
 
-// WheelLines returns the argv asking tmux what its copy-mode wheel binding
-// does. The page turns a swipe into wheel notches, so how far one notch
+// ModeKeys returns the argv asking which key table copy-mode uses. With
+// `mode-keys vi` the bindings live in copy-mode-vi, and reading copy-mode
+// there answers about a table nothing uses.
+func ModeKeys() []string {
+	return []string{"tmux", "show-options", "-gv", "mode-keys"}
+}
+
+// CopyModeTable names the table for a mode-keys value.
+func CopyModeTable(modeKeys string) string {
+	if strings.TrimSpace(modeKeys) == "vi" {
+		return "copy-mode-vi"
+	}
+	return "copy-mode"
+}
+
+// WheelLines returns the argv asking tmux what its wheel binding in that
+// table does. The page turns a swipe into wheel notches, so how far one notch
 // scrolls is the difference between the screen following the finger and the
 // screen running away from it — and it is a binding, not a constant.
-func WheelLines() []string {
-	return []string{"tmux", "list-keys", "-T", "copy-mode", "WheelUpPane"}
+func WheelLines(table string) []string {
+	if table == "" {
+		table = "copy-mode"
+	}
+	return []string{"tmux", "list-keys", "-T", table, "WheelUpPane"}
 }
 
 // ParseWheelLines reads the count out of that binding. tmux's own default is
