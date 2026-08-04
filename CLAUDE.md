@@ -155,6 +155,22 @@ finished. And the search window is the last 20 non-blank lines rather than the
 footer's four, because what the agent draws under the counter — its input box,
 its own status line, a task list, a tip — is as tall as it feels like.
 
+**Once a session has been seen counting, the counter is the whole answer, and a
+change on screen is not an answer at all.** Any change used to count as work
+resuming, and the change a person makes most often is typing the next message into
+the agent's own input box: the tab went green when the turn ended and purple again
+at the first keystroke — reported from the phone as "it does not detect the stop
+and jumps from green to purple". A tab was calling the human's typing the machine's
+work. It cost notifications as well, and worse: every keystroke re-armed
+"finished", so a turn already reported was reported again. The regression test
+types four characters and demands one event; against the old rule it produced five.
+
+So `sawLive` is a property of the session rather than an arming flag, and
+`Activity` answers `done` for any session that has counted before and is not
+counting now. Silence keeps its job where there is nothing else: a shell running a
+build has no counter, and for it a change on screen is still the only evidence of
+work there is.
+
 **`ActivityAsking` outranks both and waits for nothing.** A menu on screen is the
 only state that is about the person holding the phone — output arriving is the
 machine's business, a question is theirs — so it beats working and done, and it

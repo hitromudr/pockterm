@@ -67,6 +67,13 @@ func (w *Watcher) Activity(session string) Activity {
 	if st.live {
 		return ActivityWorking
 	}
+	// And once this session has been seen counting, the counter is the whole
+	// answer: no counter, no turn. What the screen does in between is somebody
+	// typing their next message, and a tab that called that "working" was
+	// reporting the person as the machine.
+	if st.sawLive {
+		return ActivityDone
+	}
 	if !st.active {
 		return ActivityUnknown
 	}
@@ -121,12 +128,18 @@ type state struct {
 	doneSent bool
 	menuSig  string
 	bg       detect.Background // shells and monitors the footer says are running
-	// live is the agent's counter on screen at the last poll, and wasLive that
-	// it has been seen at all since the last "done". Together they are the end
-	// of a turn observed rather than waited out: the counter going away is the
-	// event, and it can only be read by someone who saw it there.
+	// live is the agent's counter on screen at the last poll; sawLive is that a
+	// counter has ever been seen in this session at all.
+	//
+	// Together they make the end of a turn something observed rather than waited
+	// out — and, once sawLive is set, they are the *only* authority on whether
+	// this session is working. That second part was learned the hard way: any
+	// change to the pane used to count as work resuming, and the change a person
+	// makes most often is typing into the agent's own input box. A tab went green
+	// when the turn ended and purple again at the first keystroke of the reply,
+	// reporting the human's typing as the machine's work.
 	live    bool
-	wasLive bool
+	sawLive bool
 }
 
 type Watcher struct {
@@ -219,7 +232,15 @@ func (w *Watcher) poll(session string) {
 		// already on screen when watching started.
 		if st.hash != "" {
 			st.active = true
-			st.doneSent = false
+			// A pane whose agent reports its own turns says when work resumes, and
+			// a change to the screen is not that: the commonest change of all is a
+			// person typing their next message into the input box. Re-arming here
+			// is what took a finished tab back to purple at the first keystroke —
+			// and, on the notification side, raised a second "finished" for a turn
+			// that had already been reported.
+			if !st.sawLive {
+				st.doneSent = false
+			}
 		}
 		st.hash = h
 		st.changed = now
@@ -232,11 +253,13 @@ func (w *Watcher) poll(session string) {
 	st.bg = detect.ReadBackground(lines)
 	st.live = detect.Live(lines)
 	if st.live {
-		// A counter on screen is activity by itself. The screen's hash used to be
-		// the only evidence there was, and it is the weaker one: an agent thinking
-		// for a minute can redraw to the same bytes.
+		// A counter on screen is activity by itself, and it is what re-arms the
+		// next "finished". The screen's hash used to be the only evidence there
+		// was, and it is the weaker one in both directions: an agent thinking for
+		// a minute can redraw to the same bytes, and a person typing changes them
+		// without anything working at all.
 		st.active = true
-		st.wasLive = true
+		st.sawLive = true
 		st.doneSent = false
 	}
 	var events []Event
@@ -268,9 +291,8 @@ func (w *Watcher) poll(session string) {
 	switch {
 	case menu != nil || st.live || st.doneSent:
 		// A question, a turn still counting, or a turn already reported.
-	case st.wasLive:
+	case st.sawLive:
 		st.doneSent = true
-		st.wasLive = false
 		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines)})
 	case st.active && now.Sub(st.changed) >= w.o.IdleAfter:
 		st.doneSent = true

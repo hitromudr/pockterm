@@ -147,6 +147,68 @@ func TestDoneWhenTheCounterGoes(t *testing.T) {
 	}
 }
 
+func TestTypingIsNotWork(t *testing.T) {
+	// Reported from the phone: the tab went green when the turn ended and purple
+	// again straight after, "and it does not detect the stop". What changed the
+	// pane was the owner typing the next message into the agent's own input box —
+	// the commonest change there is — and any change used to count as work
+	// resuming. A tab then reported the person as the machine.
+	h := newHarness(30 * time.Second)
+	h.screen = turnRunning
+	h.w.Tick()
+	h.screen = turnOver
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("the turn ended: %q, want %q", got, ActivityDone)
+	}
+
+	// The reply being typed, a character at a time.
+	for i, typed := range []string{"а", "а ч", "а чего", "а чего он"} {
+		h.screen = turnOver + "\n❯ " + typed
+		h.advance(2 * time.Second)
+		h.w.Tick()
+		if got := h.w.Activity("claude"); got != ActivityDone {
+			t.Fatalf("keystroke %d: %q, want %q — typing is not the agent working", i, got, ActivityDone)
+		}
+	}
+	// And no second "finished" for a turn already reported.
+	if got := h.kinds(); len(got) != 1 || got[0] != Done {
+		t.Fatalf("events = %+v, want the one done", h.events)
+	}
+	// Sending it starts a turn, and that is what the colour is for.
+	h.screen = turnRunning
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("the answer sent: %q, want %q", got, ActivityWorking)
+	}
+	h.screen = turnOver
+	h.w.Tick()
+	if got := h.kinds(); len(got) != 2 || got[1] != Done {
+		t.Fatalf("events = %+v, want a done for the second turn too", h.events)
+	}
+}
+
+func TestAPaneWithNoCounterStillAnswersBySilence(t *testing.T) {
+	// The counter rules only where there is one. A shell running a build has none,
+	// and for it a change on screen is still the only evidence of work there is.
+	h := newHarness(30 * time.Second)
+	h.screen = "$ make check\n"
+	h.w.Tick()
+	h.screen = "$ make check\nok  internal/watch\n"
+	h.w.Tick()
+	h.advance(31 * time.Second)
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("after the threshold: %q, want %q", got, ActivityDone)
+	}
+	// More output is work again here, because nothing else can say so.
+	h.screen = "$ make check\nok  internal/watch\nok  internal/detect\n"
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("output after a quiet spell: %q, want %q", got, ActivityWorking)
+	}
+}
+
 func TestCounterOutlastsTheThreshold(t *testing.T) {
 	// A turn thinking for longer than the idle threshold: the screen can redraw
 	// to the same bytes, and silence would call that finished while it runs.
