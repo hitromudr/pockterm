@@ -129,17 +129,32 @@ html, body {
 #tabs button.done.active { border-color: #7fdca4; color: #a8ecc4; }
 /* Output is arriving. The movement is the point: a still purple says "this one
    is different", a moving one says "it is going right now", and that is the
-   question you hold a phone up to answer. */
+   question you hold a phone up to answer.
+
+   It sweeps slowly and both ways, and each tab starts somewhere else in the
+   sweep (the delay is set per button, from the session name). A fast one-way
+   sweep with the whole row in step was a strip of decoration flickering at the
+   corner of the eye; the point is to be noticed when looked at, not to demand
+   it. */
 #tabs button.working {
   color: #e6dcff;
   background: linear-gradient(100deg, #2f2350 0%, #2f2350 35%, #7d5cff 50%, #2f2350 65%, #2f2350 100%);
   background-size: 300% 100%;
-  animation: tab-working 1.4s linear infinite;
+  animation: tab-working 4.2s linear infinite alternate;
 }
 #tabs button.working.active { border-color: #b9a4ff; }
 @keyframes tab-working {
   from { background-position: 150% 0; }
   to { background-position: -150% 0; }
+}
+/* Something is still running in there while the agent says nothing: a shell, a
+   monitor, or several. Drawn from an attribute rather than written into the
+   label — the label is the session's name, and rewriting it would rebuild the
+   button the finger is on. */
+#tabs button[data-bg]::after {
+  content: ' ' attr(data-bg);
+  font-size: 11px;
+  opacity: 0.8;
 }
 /* Someone who has asked not to be moved gets the colour and not the movement —
    the state is information, the animation is only how it is told. */

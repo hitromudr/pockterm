@@ -57,6 +57,24 @@ func (w *Watcher) Activity(session string) Activity {
 	return ActivityWorking
 }
 
+// Background reports what the agent still has running in that session — the
+// shells and monitors it counts in its own footer.
+//
+// It is a second answer and not part of Activity because it answers a
+// different question: Activity says whether the agent is speaking, this says
+// whether anything is working while it is quiet. A session sitting at "done"
+// with two monitors alive is not the same thing as one with nothing left, and
+// on a strip of tabs that difference is the whole reason to look.
+func (w *Watcher) Background(session string) detect.Background {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	st, ok := w.s[session]
+	if !ok {
+		return detect.Background{}
+	}
+	return st.bg
+}
+
 // Event is what happened in a session.
 type Event struct {
 	Kind    Kind
@@ -83,6 +101,7 @@ type state struct {
 	active   bool // the screen changed at least once since we started watching
 	doneSent bool
 	menuSig  string
+	bg       detect.Background // shells and monitors the footer says are running
 }
 
 type Watcher struct {
@@ -182,6 +201,9 @@ func (w *Watcher) poll(session string) {
 	}
 
 	lines := strings.Split(text, "\n")
+	// Read off the same pane, on the same poll: the tab's colour and its badge
+	// come from one reading, so they cannot describe two different moments.
+	st.bg = detect.ReadBackground(lines)
 	var events []Event
 	menu := detect.Question(lines)
 	if sig := menuSig(menu); sig != st.menuSig {

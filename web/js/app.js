@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v93';
+const APP_VERSION = 'v94';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -442,6 +442,39 @@ function toggleDrawer() {
 drawerScrim.addEventListener('click', closeDrawer);
 drawerCloseBtn.addEventListener('click', closeDrawer);
 
+// A swipe to the left puts the drawer away, next to ✕ and the scrim.
+//
+// It is where the panel goes anyway — the closed state is a transform off the
+// left edge — so the gesture and the animation say the same thing. Nothing here
+// makes the panel follow the finger: it closes once the swipe is unmistakably a
+// swipe, and the transition carries the rest.
+//
+// Three ways it must not fire. The list scrolls vertically, so a drag that is
+// mostly up or down is the list's. A text field (the rename box) drags a caret
+// sideways, and taking that away would make renaming impossible. And with no
+// session attached the drawer is modal — closeDrawer refuses then, which is the
+// same refusal ✕ and the scrim get.
+const DRAWER_SWIPE = 45; // px of leftward travel that means "away"
+let drawerTouch = null;
+screenSessions.addEventListener('touchstart', (e) => {
+  drawerTouch = null;
+  if (e.touches.length !== 1) return;
+  const t = e.touches[0];
+  if (t.target instanceof Element && t.target.closest('input, textarea')) return;
+  drawerTouch = { x: t.clientX, y: t.clientY };
+}, { passive: true });
+screenSessions.addEventListener('touchmove', (e) => {
+  if (!drawerTouch || e.touches.length !== 1) return;
+  const dx = e.touches[0].clientX - drawerTouch.x;
+  const dy = e.touches[0].clientY - drawerTouch.y;
+  if (dx > -DRAWER_SWIPE || Math.abs(dx) <= Math.abs(dy)) return;
+  drawerTouch = null;
+  closeDrawer();
+}, { passive: true });
+for (const end of ['touchend', 'touchcancel']) {
+  screenSessions.addEventListener(end, () => { drawerTouch = null; }, { passive: true });
+}
+
 // No session attached: there is nothing to show under the drawer, so the
 // terminal goes away with it and the drawer is all there is. That is where the
 // page starts, and where closing the last session lands.
@@ -529,6 +562,7 @@ async function renderTabs() {
       const b = document.createElement('button');
       b.textContent = s.name;
       b.dataset.session = s.name;
+      b.style.animationDelay = workingPhase(s.name);
       keepsTerminalFocus(b);
       b.addEventListener('click', () => { if (s.name !== current) attach(s.name); });
       tabsEl.appendChild(b);
@@ -538,12 +572,33 @@ async function renderTabs() {
   // and back several times a minute would otherwise take the row — and with it
   // the keyboard — along every time.
   const state = new Map(sessions.map((s) => [s.name, s.state || '']));
+  // What is still running while the agent says nothing. It rides in the same
+  // list as the colour, and it is drawn as an attribute for the same reason the
+  // colour is drawn as a class: the label must not be rewritten.
+  const bg = new Map(sessions.map((s) => [s.name, (s.shells || 0) + (s.monitors || 0)]));
   for (const b of tabsEl.querySelectorAll('button')) {
     const st = state.get(b.dataset.session) || '';
     b.classList.toggle('active', b.dataset.session === current);
     b.classList.toggle('working', st === 'working');
     b.classList.toggle('done', st === 'done');
+    const n = bg.get(b.dataset.session) || 0;
+    // One badge for both kinds, with the count only when there is more than one
+    // thing to count: "◉1" on every quiet tab is noise, "◉" is a fact.
+    if (n > 0) b.dataset.bg = n > 1 ? `◉${n}` : '◉';
+    else delete b.dataset.bg;
   }
+}
+
+// Where in the working animation a tab starts.
+//
+// Every tab used to start it at the same instant, so a row of busy sessions
+// pulsed in unison — which reads as one decoration for the whole strip rather
+// than as several sessions each doing their own thing. The offset comes from the
+// name so a tab keeps its phase across rebuilds instead of jumping.
+function workingPhase(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 100000;
+  return `-${h % 4200}ms`;
 }
 
 // The state is read rather than pushed, and this is what reads it — only while

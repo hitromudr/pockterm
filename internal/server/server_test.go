@@ -278,12 +278,21 @@ type fakePresence struct {
 	// What Activity reports per session, set by the test. A tab is coloured by
 	// it, so the list has to carry it.
 	activity map[string]string
+	// What Background reports per session: shells and monitors still running.
+	background map[string][2]int
 }
 
 func (p *fakePresence) Activity(s string) string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.activity[s]
+}
+
+func (p *fakePresence) Background(s string) (int, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	bg := p.background[s]
+	return bg[0], bg[1]
 }
 
 func (p *fakePresence) Watch(s string) {
@@ -1143,6 +1152,56 @@ func TestSessionListCarriesWhatEachSessionIsDoing(t *testing.T) {
 	}
 	if len(got) != 1 || got[0]["state"] != "working" {
 		t.Fatalf("sessions = %v", got)
+	}
+}
+
+func TestSessionListCarriesBackgroundWork(t *testing.T) {
+	// A session can be quiet and still have shells and monitors running, and the
+	// tab says so with a badge. Same list as the colour: one fetch, one answer.
+	opts := testOptions("")
+	opts.Presence = &fakePresence{
+		activity:   map[string]string{"demo": "done"},
+		background: map[string][2]int{"demo": {1, 2}},
+	}
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var got []map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0]["shells"] != float64(1) || got[0]["monitors"] != float64(2) {
+		t.Fatalf("sessions = %v", got)
+	}
+}
+
+func TestSessionListLeavesOutBackgroundWhenThereIsNone(t *testing.T) {
+	// Nothing running is the common case, and it says nothing rather than
+	// sending two zeroes the page would have to know to ignore.
+	opts := testOptions("")
+	opts.Presence = &fakePresence{activity: map[string]string{"demo": "done"}}
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var got []map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got[0]["shells"]; ok {
+		t.Fatalf("a count appeared with nothing running: %v", got[0])
+	}
+	if _, ok := got[0]["monitors"]; ok {
+		t.Fatalf("a count appeared with nothing running: %v", got[0])
 	}
 }
 

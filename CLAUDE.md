@@ -150,6 +150,28 @@ state is applied as a class, never by rebuilding the row**: a rebuild takes the
 focused button with it and a WebView answers that by raising the keyboard, so a
 session flipping between working and done would flip the keyboard with it.
 
+The purple sweeps over 4.2s and `alternate`, with a per-tab phase set from the
+session name (`workingPhase`). It was 1.4s one-way with every tab in step, which
+read as one decoration flickering along the whole strip; the name is the source of
+the offset so a tab keeps its phase when the row is rebuilt instead of jumping.
+
+**The fill answers what the agent is saying, and a fourth question is what it left
+running.** `watch.Background` reads the shells and monitors off the agent's own
+footer (`detect.ReadBackground`, on the same poll as the colour, so the two cannot
+describe different moments) and the tab carries them as a `◉` badge — with the
+count only when there is more than one, because `◉1` on every quiet tab is noise.
+A session at "done" with two monitors alive is not a session with nothing left,
+and the colour cannot say so: it goes green the moment the agent stops speaking.
+The badge is drawn from `data-bg` through a `::after`, for the same reason the
+state is a class — the label is the session's name and rewriting it rebuilds the
+button under the finger.
+
+Only the footer counts, and only its lowest line with a number in it. The same
+words appear in the line an agent prints when a turn ends ("Cogitated for 2m 23s ·
+1 shell, 1 monitor still running"), which was true when printed and says nothing
+about now — that one is skipped by its wording, and output scrolled above the last
+few lines is out of range by position.
+
 ## A session is started in a folder, and named after it
 
 The drawer has two lists and shows one at a time: the sessions, and the folders
@@ -226,11 +248,20 @@ lands.
 The tab strip is the same list in miniature, so it carries the same `+` with the
 same four presets — and the same handler, because two would drift.
 
+**A swipe to the left closes it too**, which is where the panel goes anyway — the
+closed state is a transform off the left edge, so the gesture and the animation say
+the same thing. It closes once the drag is unmistakably horizontal and past 45px;
+nothing follows the finger, because the transition already covers the distance. Two
+drags must not trigger it and both were the reason for the guard: the list scrolls
+vertically under the same finger, and the rename field drags a caret sideways.
+
 **With nothing attached the drawer is modal.** The terminal screen is hidden then
 and `☰` lives in its header, so a drawer that could still be dismissed left a
 black page with nothing to tap and no way back but a reload — reported after
 closing the very session being used. `❮` and the scrim are gone in that state
-rather than inert: an exit that does nothing is worse than no exit.
+rather than inert: an exit that does nothing is worse than no exit. The swipe obeys
+that too — it goes through `closeDrawer`, which refuses then, rather than checking
+for itself.
 
 Anything in the tests that clicks a session has to open the drawer **by its
 state**, never by tapping `☰`. `☰` toggles, and the restore of the last session

@@ -207,6 +207,20 @@ A frame rather than a fill for the attached tab, because the fill is spoken for:
 it used to say "you are here", which left the session you are sitting in as the
 one tab that could not tell you whether its agent was still running.
 
+The purple sweeps slowly and both ways, and every tab starts somewhere else in the
+sweep (the phase comes from the session name, so a rebuild of the row does not
+reset it): a row pulsing in step read as one decoration for the whole strip rather
+than as several sessions each doing their own thing.
+
+Besides the colour a tab carries a **`◉` badge** — how many shells and monitors the
+agent still has running, with the number next to it when there is more than one.
+It is a second answer rather than a shade of the first: the colour goes out the
+moment the agent stops speaking, while what it left running does not stop with it,
+and "gone quiet" is not "gone quiet with two monitors watching". The count is read
+off the agent's own status line (`1 shell, 1 monitor`) and travels in the same
+session list as `shells` and `monitors`. The "… still running" line an agent prints
+when a turn ends does not count: it was true then and says nothing about now.
+
 ## Notifications
 
 A session comes under watch once you attach to it through pockterm, and

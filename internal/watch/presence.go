@@ -26,3 +26,11 @@ func (p Presence) Counts() (clients, visible int) { return p.Viewers.Counts() }
 // the server must not have to import this package to describe its own wire
 // format, which is the same reason Presence exists at all.
 func (p Presence) Activity(session string) string { return string(p.Watcher.Activity(session)) }
+
+// Background travels with the session list for the same reason Activity does,
+// and is spelled in plain ints for the same reason it is spelled as a string:
+// the server describes its own wire format without importing this package.
+func (p Presence) Background(session string) (shells, monitors int) {
+	bg := p.Watcher.Background(session)
+	return bg.Shells, bg.Monitors
+}

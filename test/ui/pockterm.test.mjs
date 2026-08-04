@@ -135,6 +135,43 @@ describe('the session list is a drawer', () => {
     }, null, { timeout: 5000 });
   });
 
+  test('a swipe to the left puts it away, a drag down does not', async () => {
+    // The panel closes by sliding off the left edge, so the gesture that sends it
+    // there is the one the hand already expects. The list scrolls up and down
+    // under the same finger, which is why a mostly-vertical drag has to be left
+    // alone — a drawer that closed on a scroll would be unusable.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    const cdp = await page.context().newCDPSession(page);
+    const open = () => page.waitForFunction(
+      () => document.getElementById('screen-sessions').getBoundingClientRect().x === 0,
+      null, { timeout: 3000 });
+    const drag = async (dx, dy) => {
+      let [x, y] = [250, 420];
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let i = 0; i < 8; i++) {
+        x += dx / 8;
+        y += dy / 8;
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+
+    await page.click('#back');
+    await open();
+    await drag(0, 160);
+    await page.waitForTimeout(400);
+    assert.equal(
+      await page.evaluate(() => document.getElementById('screen-sessions').classList.contains('open')),
+      true, 'scrolling the list closed the drawer');
+
+    await drag(-160, 0);
+    await page.waitForFunction(
+      () => !document.getElementById('screen-sessions').classList.contains('open'),
+      null, { timeout: 3000 });
+  });
+
   test('closing the session you are in does not leave a black page', async () => {
     // Reported as the window hanging empty after closing the very session being
     // used. With nothing attached the terminal screen is hidden and ☰ lives in
@@ -927,5 +964,68 @@ describe('a tab says what its session is doing', () => {
     // Both states at once would be a tab claiming two things; the classes are
     // exclusive because the state is one value, not two flags.
     assert.equal(await page.locator('#tabs button.working.done').count(), 0);
+  });
+
+  test('a badge says what is still running while the session is quiet', async () => {
+    // The colour goes green the moment the agent stops speaking, and the shells
+    // and monitors it left behind do not stop with it. The watcher reads their
+    // count off the agent's own footer; the stand's session runs `cat`, so
+    // sending that footer through it puts the real thing on the pane.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    stand.tmux(['send-keys', '-t', 'demo', 'bypass permissions on · 1 shell, 2 monitors ·', 'Enter']);
+    await page.waitForFunction(
+      () => document.querySelector('#tabs button[data-session="demo"]')?.dataset.bg === '◉3',
+      null, { timeout: 20000 });
+
+    // And it goes away when the bottom of the pane stops claiming it: a badge
+    // that only ever appeared would say "something is running" about every
+    // session that was ever busy.
+    //
+    // Two lines, not one, and the reason is the stand rather than the page: a
+    // real TUI redraws its footer over itself, while `cat` on an echoing pty
+    // leaves a transcript — every line appears twice, once from the terminal's
+    // echo and once from cat. So the claim is pushed out of the pane's last few
+    // lines here instead of being overwritten.
+    stand.tmux(['send-keys', '-t', 'demo', 'bypass permissions on', 'Enter']);
+    stand.tmux(['send-keys', '-t', 'demo', 'bypass permissions on', 'Enter']);
+    await page.waitForFunction(
+      () => !document.querySelector('#tabs button[data-session="demo"]')?.dataset.bg,
+      null, { timeout: 20000 });
+  });
+
+  test('the working sweep is slow, goes both ways, and is not in step across tabs', async () => {
+    // A fast one-way sweep with every tab in phase was a strip of decoration
+    // flickering at the corner of the eye. The phase comes from the session name
+    // so it survives a rebuild of the row instead of jumping.
+    await stand.open();
+    const { page } = stand;
+    const before = await page.locator('#session-list li').count();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset="shell"]');
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
+    await stand.attach('demo');
+    await page.waitForFunction(() => document.querySelectorAll('#tabs button').length >= 2,
+      null, { timeout: 8000 });
+
+    const seen = await page.evaluate(() => {
+      const tabs = [...document.querySelectorAll('#tabs button')];
+      // The class is added by the state and taken away again; this asks the
+      // stylesheet what it draws, which is what the report was about.
+      tabs.forEach((b) => b.classList.add('working'));
+      const out = tabs.map((b) => {
+        const s = getComputedStyle(b);
+        return { duration: s.animationDuration, direction: s.animationDirection, delay: s.animationDelay };
+      });
+      tabs.forEach((b) => b.classList.remove('working'));
+      return out;
+    });
+    for (const s of seen) {
+      assert.equal(s.duration, '4.2s', `the sweep is ${s.duration}`);
+      assert.equal(s.direction, 'alternate', `the sweep runs ${s.direction}`);
+    }
+    assert.notEqual(seen[0].delay, seen[1].delay, 'every tab starts the sweep at the same instant');
   });
 });

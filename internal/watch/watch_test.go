@@ -382,3 +382,50 @@ func TestActivityFollowsThePane(t *testing.T) {
 		t.Fatalf("a session tmux lost: %q", got)
 	}
 }
+
+func TestBackgroundFollowsTheFooter(t *testing.T) {
+	// The other half of what a tab says. Activity goes quiet the moment the agent
+	// stops speaking; the shells and monitors it left running do not, and a tab
+	// painted green with two monitors alive was claiming the wrong thing.
+	now := time.Unix(1700000000, 0)
+	screen := "❯ \n  ctx 4% | dms@ai:~/work (main) $\n  bypass permissions on · 1 shell, 2 monitors ·"
+	w := New(Options{
+		Capture:   func(string) (string, error) { return screen, nil },
+		Notify:    func(Event) {},
+		IdleAfter: 30 * time.Second,
+		Now:       func() time.Time { return now },
+	})
+
+	// Not watched: nothing claimed, exactly as for Activity.
+	if got := w.Background("build"); got.Total() != 0 {
+		t.Fatalf("before watching: %+v", got)
+	}
+
+	w.Watch("build")
+	w.Tick()
+	got := w.Background("build")
+	if got.Shells != 1 || got.Monitors != 2 {
+		t.Fatalf("from the footer: %+v, want 1 shell and 2 monitors", got)
+	}
+
+	// It is read off every poll, so the counts follow the footer down as well as
+	// up — a badge that only ever appeared would be worse than none.
+	screen = "❯ \n  ctx 4% | dms@ai:~/work (main) $\n  bypass permissions on"
+	now = now.Add(time.Second)
+	w.Tick()
+	if got := w.Background("build"); got.Total() != 0 {
+		t.Fatalf("after the footer stopped claiming: %+v", got)
+	}
+
+	// Quiet for long enough to be "done" — and the footer is still the footer.
+	screen = "❯ \n  ctx 4% | dms@ai:~/work (main) $\n  bypass permissions on · 1 monitor ·"
+	w.Tick()
+	now = now.Add(2 * time.Minute)
+	w.Tick()
+	if got := w.Activity("build"); got != ActivityDone {
+		t.Fatalf("activity = %q, want %q", got, ActivityDone)
+	}
+	if got := w.Background("build"); got.Monitors != 1 {
+		t.Fatalf("a monitor outliving the agent's last word: %+v", got)
+	}
+}

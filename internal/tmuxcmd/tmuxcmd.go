@@ -45,6 +45,12 @@ type Session struct {
 	// watcher's answer, put here by the server so the page reads one list
 	// instead of joining two that can disagree.
 	State string `json:"state,omitempty"`
+	// What the agent still has running while it is quiet, read off its own
+	// footer by the watcher. Same provenance as State, and tmux fills neither:
+	// "gone quiet" and "gone quiet with a monitor still watching" are not the
+	// same answer, and the second one is why a tab is worth looking at.
+	Shells   int `json:"shells,omitempty"`
+	Monitors int `json:"monitors,omitempty"`
 }
 
 // listFormat keeps the field order ParseSessions expects.
