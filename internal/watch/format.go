@@ -2,6 +2,7 @@ package watch
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 )
@@ -123,10 +124,36 @@ var chrome = []string{
 	"context left until auto-compact",
 }
 
+// The agent's status line, which is the interface at its most convincing: it is
+// full of words and none of them is about the work.
+//
+//	ctx 71% | dms@ai:~/work/exante (main) $ | Opus 5 (1M context)
+//
+// It arrived in a notification on the owner's phone as the entire body of "exante
+// закончил" — a message saying how much context was left and in which directory,
+// where the agent's own last sentence should have been. Matched by its shape
+// rather than by a phrase, because everything in it changes but the shape.
+var statusLine = regexp.MustCompile(`^ctx\s+\d+%\s*\|`)
+
+// And the line an agent leaves where its turn was: the same verb it was counting
+// under, in the past tense.
+//
+//	✻ Cooked for 19s · 1 shell, 1 monitor still running
+//	✻ Sautéed for 18s
+//
+// True, and no use as the body of a notice whose title already says the session
+// finished. What is wanted under that title is the last thing the agent said, and
+// this line sits between the two. The verbs turn over between releases, so what is
+// matched is "<one word> for <a duration>".
+var turnSummary = regexp.MustCompile(`^\P{L}*\p{L}+\s+for\s+\d+[hms]`)
+
 func isChrome(s string) bool {
 	l := strings.ToLower(s)
 	// The prompt line of an empty input box: a caret and nothing else.
 	if l == ">" || l == "> " || strings.TrimLeft(l, "> ") == "" {
+		return true
+	}
+	if statusLine.MatchString(l) || turnSummary.MatchString(s) {
 		return true
 	}
 	for _, c := range chrome {

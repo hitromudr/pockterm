@@ -438,6 +438,46 @@ func TestTailSkipsTheInterface(t *testing.T) {
 	}
 }
 
+func TestTailSkipsTheStatusLineAndTheTurnSummary(t *testing.T) {
+	// The pane of a finished session, captured off this machine. What arrived on
+	// the phone as the whole body of "exante закончил" was the status line: how
+	// much context was left and in which directory, under a title about a session
+	// having finished. The agent's own last sentence was three lines above it.
+	pane := []string{
+		"● Жду прогон.",
+		"✻ Cooked for 19s · 1 shell, 1 monitor still running",
+		"────────────────────────────────",
+		"❯ ",
+		"────────────────────────────────",
+		"  ctx 61% | dms@ai:~/work/exante (main) $ | Opus 5 (1M context)",
+		"  ⏵⏵ bypass permissions on · 1 shell, 1 monitor · ← for agents",
+	}
+	if got := Tail(pane); got != "● Жду прогон." {
+		t.Fatalf("Tail = %q, want the agent's own last line", got)
+	}
+	// The summary is skipped by its shape — one word and a duration — because the
+	// verb in it changes with every release.
+	for _, l := range []string{
+		"✻ Cooked for 19s",
+		"✻ Sautéed for 18s",
+		"✻ Crunched for 4m 3s · 1 monitor still running",
+		"✻ Cogitated for 2m 23s · 1 shell, 1 monitor still running",
+	} {
+		if got := Tail([]string{"● сказанное агентом", l}); got != "● сказанное агентом" {
+			t.Errorf("Tail returned the summary %q", got)
+		}
+	}
+	// And a sentence that merely reads like one is still a sentence: the shape has
+	// to start the line, or every "ждал 5s" in prose would vanish from a notice.
+	if got := Tail([]string{"● собрал за 4s и ушёл"}); got != "● собрал за 4s и ушёл" {
+		t.Errorf("Tail dropped a real line: %q", got)
+	}
+	// A status line is all there is: nothing to say beats saying that.
+	if got := Tail([]string{"  ctx 61% | dms@ai:~/work (main) $ | Opus 5"}); got != "" {
+		t.Errorf("Tail = %q, want empty", got)
+	}
+}
+
 func TestNoticeSaysWhichSessionAndWhat(t *testing.T) {
 	title, body := Notice(Event{
 		Kind:    Question,

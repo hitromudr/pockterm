@@ -520,6 +520,23 @@ Body text comes from `watch.Tail`, not from the last non-blank line: agent TUIs
 draw an input box and a shortcut hint under their output, so the last line on
 screen is usually `? for shortcuts` or a row of `─`.
 
+Two more lines had to be named there, and both are the interface at its most
+convincing — full of words, none of them about the work. The **status line**
+(`ctx 71% | dms@ai:~/work/exante (main) $ | Opus 5`) arrived on the phone as the
+entire body of "exante закончил": how much context was left and in which
+directory, under a title about a session finishing. And the **turn summary**
+(`✻ Cooked for 19s`) is true and says nothing the title has not, while sitting
+between the title and the sentence you actually want. Both are matched by shape —
+`^ctx \d+%\s*\|` and `<one word> for <duration>` — because the numbers and the
+verbs change with every release while the shapes do not. The shape has to start
+the line, or a "собрал за 4s" in prose would vanish from a notice too.
+
+**A notification cannot be coloured**, and that is the API rather than a decision
+here: `title` and `body` are plain strings, and the shade renders them in its own
+type. So the colour the status line has on screen cannot come along — which is
+another reason not to send that line at all, since colour is most of what makes it
+readable in the terminal.
+
 **What is wanted is one switch, and it is the server's.** `watch.Pref` holds
 `off`, `pwa` or `pwa+tg`, `watch.Deliver` turns it into the two booleans the
 notifier obeys, and the page reads and writes it over `/api/notify` — plus
