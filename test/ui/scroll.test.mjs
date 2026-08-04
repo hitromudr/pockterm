@@ -391,10 +391,10 @@ describe('a swipe follows the finger', () => {
     const { page } = stand;
     await recordGesture(page);
 
-    await page.click('#more');
+    await stand.openSettings();
     await page.click('#smooth');
     assert.match(await page.locator('#smooth').textContent(), /lines/);
-    await page.click('#more');
+    await stand.shutDrawer();
 
     let y = 300;
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y }] });
@@ -418,10 +418,10 @@ describe('a swipe follows the finger', () => {
     // pulled twice.
     await stand.open();
     await stand.attach();
-    await page.click('#more');
+    await stand.openSettings();
     assert.match(await page.locator('#smooth').textContent(), /lines/);
     await page.click('#smooth'); // back on, so the tests after this see the default
-    await page.click('#more');
+    await stand.shutDrawer();
   });
 
   test('the shifted rows stay inside the terminal', async () => {

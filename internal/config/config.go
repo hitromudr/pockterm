@@ -33,6 +33,11 @@ type Config struct {
 	// the user's config directory; "off" keeps the mode in memory, which loses
 	// it on the next restart — and CI restarts this binary on every push.
 	NotifyFile string // POCKTERM_NOTIFY_FILE
+
+	// Where the owner's custom session buttons are kept, on the same terms as
+	// NotifyFile: empty means a file under the user's config directory, "off"
+	// keeps them in memory and loses them on the next restart.
+	PresetsFile string // POCKTERM_PRESETS_FILE
 }
 
 func FromEnv(getenv func(string) string) (Config, error) {
@@ -52,6 +57,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		TGAPI:          getenv("POCKTERM_TG_API"),
 		Idle:           idle,
 		NotifyFile:     getenv("POCKTERM_NOTIFY_FILE"),
+		PresetsFile:    getenv("POCKTERM_PRESETS_FILE"),
 	}
 	if err := c.validate(); err != nil {
 		return Config{}, err

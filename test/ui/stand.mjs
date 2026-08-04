@@ -95,6 +95,10 @@ export async function startStand({
     // the owner's phone does, and the run before it would decide what this one
     // starts with.
     POCKTERM_NOTIFY_FILE: join(dir, 'notify'),
+    // The custom buttons are kept on the host, and without this the host is the
+    // machine running the tests: a run would edit the owner's own buttons and
+    // start from whatever the run before it left behind.
+    POCKTERM_PRESETS_FILE: join(dir, 'buttons.json'),
     // How much silence counts as "finished". Two seconds instead of thirty so a
     // test can watch a tab go from working to done inside one run — the same
     // threshold the notification uses, and the state the strip is coloured by.
@@ -146,11 +150,18 @@ export async function startStand({
     `\t tmux -S ${socket} new-session -d -s "$$n" -c "$(or $(DIR),$(CURDIR))" sh -c ${cmd}; \\`,
     '\t echo "started $$n in $(or $(DIR),$(CURDIR))"',
   ];
+  // `custom` is what the drawer's own buttons run, with their command in CMD.
+  // Here it echoes the command into the session instead of running it: what the
+  // test needs to see is that the command the owner typed arrived, and `qwen` is
+  // not installed on a CI runner.
   writeFileSync(join(dir, 'Makefile'), [
     'shell:',
     ...spawnLine('shell', 'cat'),
     'claude:',
     ...spawnLine('claude', 'cat'),
+    'custom:',
+    `\t@test -n "$(CMD)" || { echo "usage: make custom CMD='qwen'"; exit 2; }`,
+    ...spawnLine('custom', `'echo ran: $(CMD); exec cat'`),
     '',
   ].join('\n'));
   env.POCKTERM_SESSION_DIR = dir;
@@ -202,10 +213,39 @@ export async function startStand({
     );
   }
 
+  // The settings live at the bottom of the drawer since the ⋯ menu was emptied
+  // into it, so every test that pulls a lever opens them the same way: by state,
+  // like the drawer itself, because the toggle toggles.
+  async function openSettings() {
+    await openDrawer();
+    const open = await page.evaluate(() => !document.getElementById('settings').hidden);
+    if (!open) await page.click('#settings-toggle');
+    await page.waitForSelector('#settings:not([hidden])');
+  }
+
+  // Put the drawer away again, by state. A test that pulled a lever in the
+  // settings has to: the drawer covers the terminal, and a swipe or a keystroke
+  // aimed at the terminal would land on the scrim instead.
+  async function shutDrawer() {
+    const open = await page.evaluate(
+      () => document.getElementById('screen-sessions').classList.contains('open'));
+    if (open) await page.click('#drawer-close');
+    // On the geometry, not the class: the panel slides out over 200ms, and a
+    // touch aimed at the terminal in the meantime lands on the drawer that is
+    // still covering it — which is a swipe that never reaches the page.
+    await page.waitForFunction(() => {
+      const el = document.getElementById('screen-sessions');
+      return !el.classList.contains('open') && el.getBoundingClientRect().right <= 0;
+    }, null, { timeout: 5000 });
+  }
+
   return {
     page,
     base,
     uploads,
+    openDrawer,
+    openSettings,
+    shutDrawer,
     // The private tmux server this stand created. Exposed so a test can ask
     // tmux what state the page put it in: what the page shows and what tmux
     // actually thinks are two different facts, and the interesting bugs live

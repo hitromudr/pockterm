@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v96';
+const APP_VERSION = 'v97';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -306,10 +306,13 @@ if (newTermBtn) {
   menuScrim.addEventListener('click', () => setTermMenu(false));
 }
 
-for (const b of document.querySelectorAll('button[data-preset]')) {
+function wirePreset(b) {
   keepsTerminalFocus(b);
   b.addEventListener('click', async () => {
     const preset = b.dataset.preset;
+    // What to call it out loud. A custom button's preset is an id — "custom:b2"
+    // in a toast says nothing to the person who named it "Квен".
+    const shown = b.dataset.name || preset;
     // Read before the menu closes: closing clears it, and a tap that started a
     // session in the root while the caption said otherwise would be worse than
     // an error.
@@ -317,7 +320,7 @@ for (const b of document.querySelectorAll('button[data-preset]')) {
     newMenu.hidden = true;
     setTermMenu(false);
     setPendingDir(null);
-    toast(dir && dir !== '.' ? `starting ${preset} in ${dir}…` : `starting ${preset}…`);
+    toast(dir && dir !== '.' ? `starting ${shown} in ${dir}…` : `starting ${shown}…`);
     try {
       const res = await fetch(`/api/sessions/new?${tokenQS}`, {
         method: 'POST',
@@ -343,6 +346,7 @@ for (const b of document.querySelectorAll('button[data-preset]')) {
     }
   });
 }
+for (const b of document.querySelectorAll('button[data-preset]')) wirePreset(b);
 
 async function killSession(name) {
   try {
@@ -405,6 +409,125 @@ function escapeHtml(s) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+// --- the owner's own session buttons ---
+//
+// The four presets are make targets and always were: the Makefile decides how a
+// session is launched and stays the only place that knows. A custom button does
+// not break that — it names one target and carries a command to it — but it does
+// answer the thing the four could not: a new agent (`qwen`, `opencode`) meant
+// editing a Makefile that on the host this serves is written by ansible, which is
+// a laptop and a deploy away from a phone that wants it now.
+//
+// The list is the host's, not the browser's, for the same reasons the
+// notification switch is: what it starts happens on the host, a second phone must
+// find the same buttons, and CI restarts the binary several times a day.
+const customList = document.getElementById('custom-list');
+const customLabel = document.getElementById('custom-label');
+const customCmd = document.getElementById('custom-cmd');
+const customAdd = document.getElementById('custom-add');
+const customNote = document.getElementById('custom-note');
+const buttonsBox = document.getElementById('buttons-box');
+let customButtons = [];
+
+function note(text) {
+  customNote.textContent = text || '';
+  customNote.hidden = !text;
+}
+
+// Draw the editor and, from the same list, the entries under +.
+function renderCustom() {
+  customList.innerHTML = '';
+  for (const c of customButtons) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="name">${escapeHtml(c.label)}</span>` +
+      `<code>${escapeHtml(c.cmd)}</code>`;
+    const del = document.createElement('button');
+    del.className = 'close';
+    del.textContent = '✕';
+    del.title = `Remove ${c.label}`;
+    // One tap, unlike closing a session: this removes a button, not a running
+    // agent, and adding it back is two fields.
+    del.addEventListener('click', () => saveCustom(customButtons.filter((x) => x.id !== c.id)));
+    li.appendChild(del);
+    customList.appendChild(li);
+  }
+  for (const menu of [newMenu, newMenuTerm]) {
+    if (!menu) continue;
+    for (const old of menu.querySelectorAll('button.custom')) old.remove();
+    for (const c of customButtons) {
+      const b = document.createElement('button');
+      b.className = 'custom';
+      b.dataset.preset = `custom:${c.id}`;
+      b.dataset.name = c.label;
+      b.textContent = `★ ${c.label}`;
+      wirePreset(b);
+      menu.appendChild(b);
+    }
+  }
+}
+
+async function loadCustom() {
+  try {
+    const res = await fetch(`/api/presets?${tokenQS}`);
+    if (!res.ok) {
+      // A host without a store says 404, and then there is nothing to edit:
+      // an editor whose Save can never work is worse than no editor.
+      if (res.status === 404) buttonsBox.hidden = true;
+      return;
+    }
+    const data = await res.json();
+    customButtons = data.buttons || [];
+    renderCustom();
+  } catch (_) { /* offline: the buttons are the least of it */ }
+}
+
+// Save the whole list and draw what the host says it now has — never what was
+// just typed. A refusal is shown as it came: which button and why is the only
+// thing that makes it actionable on a phone.
+async function saveCustom(list) {
+  note('');
+  try {
+    const res = await fetch(`/api/presets?${tokenQS}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ buttons: list }),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      note(text.trim() || `не сохранилось: ${res.status}`);
+      report('custom-buttons', { ok: false, status: res.status });
+      return false;
+    }
+    customButtons = (JSON.parse(text).buttons) || [];
+    renderCustom();
+    report('custom-buttons', { ok: true, count: customButtons.length });
+    return true;
+  } catch (_) {
+    note('нет связи с сервером');
+    return false;
+  }
+}
+
+customAdd.addEventListener('click', async () => {
+  const label = customLabel.value.trim();
+  const cmd = customCmd.value.trim();
+  if (!label || !cmd) { note('нужны подпись и команда'); return; }
+  if (await saveCustom([...customButtons, { label, cmd }])) {
+    customLabel.value = '';
+    customCmd.value = '';
+  }
+});
+loadCustom();
+
+// --- settings, at the bottom of the drawer ---
+const settingsEl = document.getElementById('settings');
+const settingsToggle = document.getElementById('settings-toggle');
+function showSettings(on) {
+  settingsEl.hidden = !on;
+  settingsToggle.classList.toggle('on', on);
+}
+settingsToggle.addEventListener('click', () => showSettings(settingsEl.hidden));
+
 // The drawer, and the two things that are not the same: showing the list, and
 // letting go of the session you are in.
 //
@@ -435,6 +558,7 @@ function closeDrawer() {
   // reopening the drawer to see what is running should show what is running.
   renameBox.hidden = true;
   newMenu.hidden = true;
+  showSettings(false);
   showFolders(false);
 }
 function toggleDrawer() {
@@ -1320,16 +1444,15 @@ installBtn.addEventListener('click', async () => {
 });
 window.addEventListener('appinstalled', () => report('installed', {}));
 
-// Text size, notifications and hiding the bars are settings, not controls:
-// they belong behind one button instead of taking four permanent slots away
-// from the session tabs.
-const moreBtn = document.getElementById('more');
+// Text size, notifications, the keyboard mode and the smooth lever are settings,
+// not controls — they live at the bottom of the drawer now (see #settings in
+// index.html), where a decision is made, rather than over the terminal, where
+// work is done.
 const versionsEl = document.getElementById('versions');
 {
   const app = appVersion();
   versionsEl.textContent = app ? `page ${APP_VERSION} · app ${app}` : `page ${APP_VERSION}`;
 }
-const overflowEl = document.getElementById('overflow');
 const smoothBtn = document.getElementById('smooth');
 function renderSmooth() {
   smoothBtn.textContent = smoothScroll ? '〰 smooth' : '〰 lines';
@@ -1343,12 +1466,6 @@ smoothBtn.addEventListener('click', () => {
   // Whatever the shift was at that moment belongs to the mode being left.
   trackScreen(0);
   report('smooth', { on: smoothScroll });
-});
-
-moreBtn.addEventListener('click', () => {
-  overflowEl.hidden = !overflowEl.hidden;
-  moreBtn.classList.toggle('on', !overflowEl.hidden);
-  refit();
 });
 
 // Send the composed prompt (text + Enter), then clear and keep the field.
@@ -1421,7 +1538,7 @@ function setSelectMode(on) {
     term.focus();
   }
 }
-for (const b of document.querySelectorAll('#modebar button, #modebar label, #overflow button, #show-bars')) {
+for (const b of document.querySelectorAll('#modebar button, #modebar label, #settings button, #show-bars')) {
   keepsTerminalFocus(b);
 }
 selectBtn.addEventListener('click', () => setSelectMode(!selectMode));

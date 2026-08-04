@@ -293,6 +293,109 @@ button.rename, button.close {
 /* Armed: the next tap ends processes, and it should look like it. */
 button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340; }
 
+/* --- settings, at the bottom of the drawer ---
+   The row that opens them is pinned under the list rather than scrolling with
+   it: the list is what the drawer is for, and a settings row that had to be
+   scrolled to would be a settings row nobody finds. The panel itself scrolls
+   when it has to, so a long list of custom buttons cannot push the toggle off
+   the screen. */
+#settings-toggle {
+  flex: 0 0 auto;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  color: #8b93a7;
+  background: #11161f;
+  border: none;
+  border-top: 1px solid #2a3345;
+  font-size: 14px;
+  text-align: left;
+}
+#settings-toggle.on { color: var(--fg); background: #1b2230; }
+#settings {
+  flex: 0 1 auto;
+  overflow-y: auto;
+  padding: 8px;
+  background: #11161f;
+  border-top: 1px solid #2a3345;
+}
+#settings .row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+#settings .row button {
+  flex: 1;
+  padding: 10px 4px;
+  font-size: 14px;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+#settings .row button.on { background: var(--accent); color: #0b0e14; }
+/* The owner's own session buttons. A row is a label, the command under it, and
+   one tap to remove — removing a button is not closing a session, so it does not
+   ask twice. */
+#buttons-box { margin-bottom: 8px; }
+#buttons-box .head { padding: 4px 2px; font-size: 12px; color: #8b93a7; }
+#custom-list { list-style: none; }
+#custom-list li {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+  background: #1b2230;
+  border: 1px solid #2a3345;
+  border-radius: 8px;
+}
+#custom-list li .name { font-weight: 600; }
+#custom-list li code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: #8b93a7;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#custom-list li button.close { flex: 0 0 34px; padding: 4px 0; font-size: 14px; }
+#buttons-box .add { display: flex; flex-wrap: wrap; gap: 6px; }
+#buttons-box .add input {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  color: var(--fg);
+  background: #0f141d;
+  border: 1px solid #2a3345;
+  border-radius: 8px;
+  font-size: 14px;
+}
+#buttons-box .add button {
+  flex: 1;
+  padding: 10px 0;
+  color: #0b0e14;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+/* Why a button was refused, in the words the host used: on a phone there is no
+   log to open, and "не сохранилось" is not something anyone can act on. */
+#custom-note {
+  margin-top: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #ffd7a8;
+  background: #2b2214;
+  border: 1px solid #4a3a1c;
+  border-radius: 8px;
+}
+/* A custom entry under +, next to the four presets it joins. */
+#new-menu button.custom, #new-menu-term button.custom { color: #ffe9a8; }
+
 /* --- session list --- */
 /* The bottom safe-area inset is the reason the last session was unreachable
    on a phone: the screen itself only pads top/left/right (see #screen-*
@@ -530,7 +633,6 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #screen-term.panels-hidden #composer,
 #screen-term.panels-hidden #quickbar,
 #screen-term.panels-hidden #selbar,
-#screen-term.panels-hidden #overflow,
 #screen-term.panels-hidden #modebar { display: none !important; }
 #to-bottom {
   position: absolute;
@@ -676,25 +778,9 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   border: none;
   border-radius: 8px;
 }
-#modebar #more, #modebar #select, #modebar #mode { flex: 0 0 48px; font-size: 17px; }
+#modebar #select, #modebar #mode { flex: 0 0 48px; font-size: 17px; }
 #modebar #paste { flex: 1; }
 #modebar button.on { background: var(--accent); color: #0b0e14; font-weight: 600; }
-#overflow {
-  display: flex;
-  gap: 6px;
-  padding: 6px 6px 0;
-  background: var(--bar);
-}
-#overflow button {
-  flex: 1;
-  padding: 10px 0;
-  font-size: 14px;
-  color: var(--fg);
-  background: #232a38;
-  border: none;
-  border-radius: 8px;
-}
-#overflow button.on { background: var(--accent); color: #0b0e14; }
 /* Not a control: what is running, for when something looks stale. */
 #versions {
   flex: 0 0 auto;

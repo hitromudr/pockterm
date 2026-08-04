@@ -1,0 +1,227 @@
+package session
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"unicode"
+)
+
+// Custom is a button the owner added: a label to tap and a command to run.
+//
+// The four built-in presets are make targets, and that was the whole rule for a
+// long time — the Makefile decides how a session is launched and stays the only
+// place that knows. A custom button does not break that rule, it parameterises
+// it: the command travels as `CMD=` to one target (`custom`), which wraps it in
+// the same sandbox launcher as every other target. Nothing here runs anything.
+//
+// Why they are not just more targets: adding an agent would then mean editing a
+// Makefile that is an ansible template on the host this serves — a laptop, a
+// deploy and a working day between wanting `qwen` on the phone and having it.
+type Custom struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Cmd   string `json:"cmd"`
+}
+
+// CustomTarget is the make target a custom button runs. It takes the command in
+// `CMD=`; a Makefile without it fails with make's own message, which travels
+// back to the drawer as text.
+const CustomTarget = "custom"
+
+// customPrefix marks a preset name as a custom button's id.
+const customPrefix = "custom:"
+
+// CustomID reads the button id out of a preset name, or "" for a built-in one.
+func CustomID(preset string) string {
+	if !strings.HasPrefix(preset, customPrefix) {
+		return ""
+	}
+	return strings.TrimPrefix(preset, customPrefix)
+}
+
+// PresetName is what the page sends to start this button's session.
+func (c Custom) PresetName() string { return customPrefix + c.ID }
+
+// Limits on what a button may carry. Both are about a phone: a label longer
+// than this is unreadable in the menu it sits in, and a command longer than
+// this is not something anyone types on a touch keyboard.
+const (
+	maxLabel = 24
+	maxCmd   = 120
+)
+
+// What a command may be made of.
+//
+// This is a gate, not advice: the value becomes `CMD=` on a make command line
+// and make hands it to the shell inside the recipe, single-quoted. Everything
+// that could end that quoting or start an expansion is absent from the list —
+// no quotes, no backtick, no `$`, no `;` `&` `|` `<` `>` `(` `)` `{` `}` and no
+// newline. What is left is a command, its flags and a path, which is what these
+// buttons are for: `qwen`, `opencode --yolo`, `python3 -i`.
+// It may start with a path (`/usr/local/bin/agent-run`, `./script`) but not with
+// a dash: a command line beginning with a flag is a mistake, and refusing it here
+// costs nothing.
+var cmdOK = regexp.MustCompile(`^[A-Za-z0-9/.][A-Za-z0-9 _\-./=:,@+]*$`)
+
+// ValidCustom checks one button and returns it with the label trimmed.
+func ValidCustom(c Custom) (Custom, error) {
+	c.Label = strings.TrimSpace(c.Label)
+	c.Cmd = strings.TrimSpace(c.Cmd)
+	if c.Label == "" {
+		return c, fmt.Errorf("a button needs a label")
+	}
+	if len([]rune(c.Label)) > maxLabel {
+		return c, fmt.Errorf("a label is at most %d characters", maxLabel)
+	}
+	for _, r := range c.Label {
+		// A control character in a label would reach the page and the journal;
+		// everything else — Cyrillic, an emoji — is the owner's business.
+		if unicode.IsControl(r) {
+			return c, fmt.Errorf("a label cannot contain control characters")
+		}
+	}
+	if c.Cmd == "" {
+		return c, fmt.Errorf("a button needs a command")
+	}
+	if len(c.Cmd) > maxCmd {
+		return c, fmt.Errorf("a command is at most %d characters", maxCmd)
+	}
+	if !cmdOK.MatchString(c.Cmd) {
+		return c, fmt.Errorf("a command may use letters, digits, spaces and - _ . / = : , @ + " +
+			"— quotes, $ and ; & | are refused because it reaches a shell")
+	}
+	return c, nil
+}
+
+// Buttons is the stored list of custom buttons.
+//
+// Remembered on disk for the same reason the notification mode is: CI installs
+// this binary on every push to main, and a list held in memory would be gone
+// several times a working day. It is also the host's answer rather than the
+// page's — a second phone, or a reinstalled PWA, must find the same buttons.
+type Buttons struct {
+	mu   sync.Mutex
+	list []Custom
+	// path is where the list is kept; empty keeps it in memory, which is what a
+	// host with nowhere to write gets. The buttons still work, they just do not
+	// survive a restart.
+	path string
+}
+
+// LoadButtons reads the stored list. A file that cannot be read or parsed
+// leaves an empty list rather than refusing to start: the buttons are a
+// convenience, and a broken file must not cost the terminal.
+func LoadButtons(path string) *Buttons {
+	b := &Buttons{path: path}
+	if path == "" {
+		return b
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return b
+	}
+	var list []Custom
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return b
+	}
+	// Held to the same gate as anything arriving from the page: the file is
+	// hand-editable, and what it says ends up on a command line.
+	for _, c := range list {
+		v, err := ValidCustom(c)
+		if err != nil || v.ID == "" {
+			continue
+		}
+		b.list = append(b.list, v)
+	}
+	return b
+}
+
+// List returns the buttons in the order they are shown.
+func (b *Buttons) List() []Custom {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]Custom, len(b.list))
+	copy(out, b.list)
+	return out
+}
+
+// Find looks a button up by id.
+func (b *Buttons) Find(id string) (Custom, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, c := range b.list {
+		if c.ID == id {
+			return c, true
+		}
+	}
+	return Custom{}, false
+}
+
+// Set replaces the whole list.
+//
+// The whole list rather than add/remove endpoints: the page holds it, so a
+// replace cannot leave the two disagreeing about what exists — and there is
+// nothing to reconcile when the same list is edited from two phones, the last
+// save wins and says so by showing what the host now has.
+//
+// Ids are the host's to hand out. An entry that arrives without one is new and
+// gets the next number; an entry that keeps its id keeps it, so a rename does
+// not turn into a different button.
+func (b *Buttons) Set(list []Custom) ([]Custom, error) {
+	clean := make([]Custom, 0, len(list))
+	seen := map[string]bool{}
+	next := 0
+	for _, c := range list {
+		v, err := ValidCustom(c)
+		if err != nil {
+			return nil, err
+		}
+		if v.ID != "" {
+			if seen[v.ID] {
+				return nil, fmt.Errorf("two buttons cannot share an id")
+			}
+			seen[v.ID] = true
+			if n, err := strconv.Atoi(strings.TrimPrefix(v.ID, "b")); err == nil && n > next {
+				next = n
+			}
+		}
+		clean = append(clean, v)
+	}
+	for i := range clean {
+		if clean[i].ID == "" {
+			next++
+			clean[i].ID = "b" + strconv.Itoa(next)
+		}
+	}
+
+	b.mu.Lock()
+	b.list = clean
+	path := b.path
+	b.mu.Unlock()
+
+	out := make([]Custom, len(clean))
+	copy(out, clean)
+	if path == "" {
+		return out, nil
+	}
+	// Stored or not, the list is in force: a full disk is a reason to forget the
+	// buttons after a restart, not a reason to refuse them now. The caller logs
+	// the error and answers the page with what is set.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return out, fmt.Errorf("custom buttons: %w", err)
+	}
+	raw, err := json.MarshalIndent(clean, "", "  ")
+	if err != nil {
+		return out, fmt.Errorf("custom buttons: %w", err)
+	}
+	if err := os.WriteFile(path, append(raw, '\n'), 0o600); err != nil {
+		return out, fmt.Errorf("custom buttons: %w", err)
+	}
+	return out, nil
+}

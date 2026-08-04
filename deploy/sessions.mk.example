@@ -78,6 +78,23 @@ yolo: ## New agent session that does not ask for permissions
 continue: ## New agent session continuing the last conversation
 	@$(call spawn,'$(CLAUDE) -c')
 
+# The buttons the owner adds in the drawer's settings all come here, with their
+# command in CMD. One target rather than one per agent: adding `qwen` on a phone
+# must not mean editing this file, which on a real host is written by ansible.
+#
+# What may be in CMD is decided before it gets here — letters, digits, spaces and
+# - _ . / = : , @ + and nothing that could end the quoting below or start an
+# expansion (internal/session/custom.go). Keep the quotes: the command is one
+# argument to the launcher, not a line of shell.
+#
+# Sandboxing belongs to $(AGENT) for the same reason it belongs to $(CLAUDE):
+# point it at a wrapper and every button inherits it, unchanged.
+AGENT ?=
+
+custom: ## New session running CMD (the drawer's custom buttons)
+	@if [ -z "$(CMD)" ]; then echo "usage: make custom CMD='qwen'"; exit 2; fi
+	@$(call spawn,'$(AGENT) $(CMD)',custom)
+
 ls: ## List sessions, hiding the clients pockterm attaches with
 	@tmux ls 2>/dev/null | grep -v '^pockterm-client-' || echo "no sessions"
 

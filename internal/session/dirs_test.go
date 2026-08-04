@@ -106,14 +106,14 @@ func TestStartCarriesTheFolderAndTheName(t *testing.T) {
 	// The Makefile stays the one thing that knows how a session is launched —
 	// the sandbox wrapper, its own systemd scope, and a number free as both a
 	// session and a group name. What it is told is where and under what name.
-	argv := Start("/srv/work", "claude", "/srv/work/natal", "natal")
+	argv := Start("/srv/work", "claude", "/srv/work/natal", "natal", "")
 	want := "make -C /srv/work claude DIR=/srv/work/natal PREFIX=natal"
 	if strings.Join(argv, " ") != want {
 		t.Errorf("argv is %v, want %q", argv, want)
 	}
 	// No folder asked for: the call is what it always was, so a Makefile that
 	// knows nothing of either variable behaves exactly as before.
-	argv = Start("/srv/work", "claude", "", "")
+	argv = Start("/srv/work", "claude", "", "", "")
 	if got := strings.Join(argv, " "); got != "make -C /srv/work claude" {
 		t.Errorf("argv is %q, want the plain call", got)
 	}

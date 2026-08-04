@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/hitromudr/pockterm/internal/proto"
+	"github.com/hitromudr/pockterm/internal/session"
 	"github.com/hitromudr/pockterm/internal/term"
 	"github.com/hitromudr/pockterm/internal/tmuxcmd"
 )
@@ -70,6 +71,16 @@ type Options struct {
 	Folders     func() (root string, dirs []string, err error)
 	RenameSess  func(from, to string) error // rename a session; nil disables /api/sessions/rename
 	KillSession func(name string) error     // close a session; nil disables /api/sessions/kill
+	// Buttons and SetButtons are the custom presets the owner added in the
+	// drawer's settings — a label to tap and a command to run. nil leaves
+	// /api/presets absent, which is a host that only has the built-in four.
+	//
+	// The list is read and written whole: the page holds it while it is being
+	// edited, and a partial save would leave the two disagreeing about what
+	// exists. Validation belongs to the store, not here — SetButtons answers
+	// with the list as it now stands, or with the reason it refused.
+	Buttons    func() []session.Custom
+	SetButtons func([]session.Custom) ([]session.Custom, error)
 }
 
 // modePoll is how often a client's pane is checked for tmux copy-mode. The
@@ -86,6 +97,7 @@ func Handler(o Options) http.Handler {
 	mux.HandleFunc("/api/presence", func(w http.ResponseWriter, r *http.Request) { servePresence(o, w, r) })
 	mux.HandleFunc("/api/notify", func(w http.ResponseWriter, r *http.Request) { serveNotifyMode(o, w, r) })
 	mux.HandleFunc("/api/dirs", func(w http.ResponseWriter, r *http.Request) { serveDirs(o, w, r) })
+	mux.HandleFunc("/api/presets", func(w http.ResponseWriter, r *http.Request) { servePresets(o, w, r) })
 	mux.HandleFunc("/api/sessions/new", func(w http.ResponseWriter, r *http.Request) { serveNewSession(o, w, r) })
 	mux.HandleFunc("/api/sessions/rename", func(w http.ResponseWriter, r *http.Request) { serveRename(o, w, r) })
 	mux.HandleFunc("/api/sessions/kill", func(w http.ResponseWriter, r *http.Request) { serveKill(o, w, r) })
@@ -308,6 +320,55 @@ func serveNewSession(o Options, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// servePresets reads and replaces the owner's custom buttons.
+//
+// They live on the host rather than in the browser for the same reasons the
+// notification switch does: what they start is the host's business, a second
+// phone or a reinstalled PWA must find the same buttons, and CI restarts this
+// binary several times on a working day.
+func servePresets(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.Buttons == nil {
+		http.Error(w, "custom buttons are off on this host", http.StatusNotFound)
+		return
+	}
+	list := o.Buttons()
+	if r.Method == http.MethodPost {
+		if o.SetButtons == nil {
+			http.Error(w, "custom buttons are read-only on this host", http.StatusNotFound)
+			return
+		}
+		var req struct {
+			Buttons []session.Custom `json:"buttons"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<14)).Decode(&req); err != nil {
+			http.Error(w, "unreadable request", http.StatusBadRequest)
+			return
+		}
+		saved, err := o.SetButtons(req.Buttons)
+		if err != nil {
+			// The reason is shown to the owner: which button was refused and why
+			// is the only thing that makes the refusal actionable on a phone.
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		list = saved
+	} else if r.Method != http.MethodGet {
+		http.Error(w, "get or post the buttons", http.StatusMethodNotAllowed)
+		return
+	}
+	if list == nil {
+		list = []session.Custom{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Buttons []session.Custom `json:"buttons"`
+	}{list})
 }
 
 // serveDirs lists the folders a session can be started in.

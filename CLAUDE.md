@@ -234,6 +234,59 @@ saying why. Worse, ids count from 1 per process, so that name is one of the firs
 two a page takes for itself — and `new-session -A -s pockterm-2` would have
 attached the phone to the user's own session instead of making a client for it.
 
+## The settings are in the drawer, and the ⋯ menu is gone
+
+Text size, the notification switch, `〰 smooth`, the keyboard mode, the input log,
+the version line and Install used to sit behind `⋯` over the terminal. That is the
+surface you work on: levers touched once a month were taking permanent space from
+the one place where every tap matters, and the drawer — where you go to decide
+something rather than to do something — had room to spare. So they moved, **and
+they moved rather than being copied**: two places holding one lever is how the two
+drift, and the ⋯ button went with them.
+
+`#settings` is a panel at the bottom of the drawer with the toggle pinned under it,
+so opening the drawer never costs the settings a scroll and a long list of custom
+buttons cannot push the toggle off screen. `closeDrawer` collapses it for the same
+reason it closes the rename field: leaving it open would have it waiting behind a
+closed drawer.
+
+`▾ hide the bars` stayed in the key bar. It is a one-tap action on the working
+surface, not a setting, and its way back (`▴`) is the only thing on screen when
+everything is hidden.
+
+Anything in the tests that pulls a lever goes through `startStand`'s `openSettings`
+and `shutDrawer`, both by state — and `shutDrawer` waits on the panel's geometry,
+not its class: it slides out over 200ms, and a swipe aimed at the terminal in the
+meantime lands on the drawer still covering it.
+
+## A custom button carries a command, and the Makefile still launches it
+
+The four presets are make targets, and the rule they were built on holds: the page
+sends a name, and the Makefile is the only thing that knows what a session is —
+the sandbox wrapper, a free number, its own systemd scope. What the four could not
+answer is a fifth agent. `qwen` or `opencode` meant editing a Makefile that on the
+host this serves is an ansible template: a laptop, a deploy and a working day
+between wanting it on the phone and having it.
+
+So a custom button **parameterises one target instead of adding its own**:
+`session.CustomTarget` (`custom`) takes the command in `CMD=`, and the recipe wraps
+it in the same launcher as everything else. A Makefile without that target fails
+with make's own message, which the drawer shows as text — that is also what the
+host here will do until the `pockterm_app` role's template has it.
+
+`session.ValidCustom` is the gate, and it is a gate: the value reaches a make
+command line and make hands it to a shell inside the recipe, single-quoted. Letters,
+digits, spaces and `- _ . / = : , @ +`, starting with a letter, a digit or a path —
+nothing that can end that quoting or start an expansion. A refusal travels back as
+the reason it was refused, because on a phone there is no log to open.
+
+The list lives on the host (`POCKTERM_PRESETS_FILE`, next to the notification mode)
+for the same three reasons that switch does: what the buttons start happens on the
+host, a second phone or a reinstalled PWA must find the same ones, and CI restarts
+this binary several times on a working day. Ids are the host's to hand out, so a
+rename keeps the button rather than making a new one, and the page saves **the whole
+list** and draws what came back — never what was just typed.
+
 ## A session name can be a group in disguise
 
 tmux names a session group after the session it was created from and never

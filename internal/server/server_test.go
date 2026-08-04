@@ -15,6 +15,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/hitromudr/pockterm/internal/session"
 	"github.com/hitromudr/pockterm/internal/tmuxcmd"
 )
 
@@ -1152,6 +1153,91 @@ func TestSessionListCarriesWhatEachSessionIsDoing(t *testing.T) {
 	}
 	if len(got) != 1 || got[0]["state"] != "working" {
 		t.Fatalf("sessions = %v", got)
+	}
+}
+
+func TestCustomButtonsAreReadAndReplacedWhole(t *testing.T) {
+	// The page holds the list while it is being edited, so it saves the list —
+	// not an add and a remove that could leave the two disagreeing about what
+	// exists. The answer is what the host now has, which is what the drawer draws.
+	store := session.LoadButtons("")
+	o := testOptions("")
+	o.Buttons = store.List
+	o.SetButtons = store.Set
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/presets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Buttons []session.Custom `json:"buttons"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if len(got.Buttons) != 0 {
+		t.Fatalf("a fresh host has buttons: %+v", got.Buttons)
+	}
+
+	resp, err := http.Post(srv.URL+"/api/presets", "application/json",
+		strings.NewReader(`{"buttons":[{"label":"Qwen","cmd":"qwen"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if len(got.Buttons) != 1 || got.Buttons[0].Cmd != "qwen" || got.Buttons[0].ID == "" {
+		t.Fatalf("saved = %+v", got.Buttons)
+	}
+	if stored := store.List(); len(stored) != 1 || stored[0].ID != got.Buttons[0].ID {
+		t.Fatalf("the store and the answer disagree: %+v vs %+v", stored, got.Buttons)
+	}
+}
+
+func TestCustomButtonRefusalSaysWhy(t *testing.T) {
+	// On a phone a refusal that does not say which button and why is a dead end:
+	// there is no log to open and nothing to try next.
+	store := session.LoadButtons("")
+	o := testOptions("")
+	o.Buttons = store.List
+	o.SetButtons = store.Set
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/presets", "application/json",
+		strings.NewReader(`{"buttons":[{"label":"evil","cmd":"qwen; rm -rf /"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "quotes") {
+		t.Fatalf("the reason did not reach the page: %q", body)
+	}
+	if len(store.List()) != 0 {
+		t.Fatalf("the refused list was stored: %+v", store.List())
+	}
+}
+
+func TestCustomButtonsAbsentWithoutAStore(t *testing.T) {
+	// A host without them says so with a 404 rather than an empty list: the page
+	// then knows not to offer an editor that could never save anything.
+	srv := testServer(t, "")
+	res, err := http.Get(srv.URL + "/api/presets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d", res.StatusCode)
 	}
 }
 

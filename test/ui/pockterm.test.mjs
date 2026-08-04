@@ -208,6 +208,86 @@ describe('the session list is a drawer', () => {
   });
 });
 
+describe("the owner's own session buttons", () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['demo'] }); });
+  after(async () => { await stand.stop(); });
+
+  test('a button added in the settings starts a session with its command', async () => {
+    // The four presets are make targets, and a fifth agent used to mean editing a
+    // Makefile that on the host this serves is written by ansible. A custom button
+    // is the same launcher with the command passed to it.
+    await stand.open();
+    const { page } = stand;
+    await stand.openSettings();
+    await page.fill('#custom-label', 'Квен');
+    await page.fill('#custom-cmd', 'qwen --yolo');
+    await page.click('#custom-add');
+    await page.waitForSelector('#custom-list li:has-text("Квен")');
+    // The fields are cleared only on a save that went through, so a refusal
+    // leaves what was typed where it can be corrected.
+    assert.equal(await page.inputValue('#custom-cmd'), '');
+
+    // It joins the presets under +, in both menus, because they are one list.
+    await page.click('#settings-toggle');
+    const before = await page.locator('#session-list li').count();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset^="custom:"]');
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
+
+    // What arrived at the other end is the command the owner typed. The stand's
+    // `custom` target echoes it instead of running it — `qwen` is not installed
+    // on a runner, and what is being tested is the trip, not the agent.
+    const name = (await page.locator('#session-list li').last().locator('.name').textContent()).trim();
+    let pane = '';
+    for (let i = 0; i < 20 && !pane.includes('ran:'); i++) {
+      pane = stand.tmux(['capture-pane', '-p', '-t', name]);
+      if (!pane.includes('ran:')) await page.waitForTimeout(200);
+    }
+    assert.match(pane, /ran: qwen --yolo/, `the command did not reach the session: ${pane}`);
+  });
+
+  test('a command that could reach a shell is refused, and says why', async () => {
+    // The command becomes CMD= on a make command line and make hands it to a
+    // shell. On a phone there is no log to open, so the reason has to be on
+    // screen — and what was typed has to stay there to be fixed.
+    await stand.open();
+    const { page } = stand;
+    await stand.openSettings();
+    const before = await page.locator('#custom-list li').count();
+    await page.fill('#custom-label', 'Плохо');
+    await page.fill('#custom-cmd', 'qwen; rm -rf /');
+    await page.click('#custom-add');
+    await page.waitForSelector('#custom-note:not([hidden])');
+    assert.match(await page.textContent('#custom-note'), /quotes|;|&/);
+    assert.equal(await page.locator('#custom-list li').count(), before, 'the refused button was added');
+    assert.equal(await page.inputValue('#custom-cmd'), 'qwen; rm -rf /', 'what was typed was thrown away');
+  });
+
+  test('the buttons are the host\'s, so a reload finds them', async () => {
+    // Not localStorage: what they start happens on the host, a second phone must
+    // find the same buttons, and CI restarts the binary several times a day.
+    const { page } = stand;
+    await page.goto(stand.base);
+    await page.waitForFunction(() => {
+      const term = document.getElementById('screen-term');
+      const drawer = document.getElementById('screen-sessions');
+      return !term.hidden || drawer.classList.contains('open');
+    }, null, { timeout: 10000 });
+    await stand.openSettings();
+    await page.waitForSelector('#custom-list li:has-text("Квен")');
+    assert.equal(await page.locator('#new-menu button[data-preset^="custom:"]').count(), 1);
+
+    // And removing one takes it out of the menu as well, in one tap: this is a
+    // button, not a running agent.
+    await page.click('#custom-list li:has-text("Квен") button.close');
+    await page.waitForFunction(
+      () => document.querySelectorAll('#custom-list li').length === 0, null, { timeout: 5000 });
+    assert.equal(await page.locator('#new-menu button[data-preset^="custom:"]').count(), 0);
+  });
+});
+
 // Its own stand with one session, because that is the whole case: the modal
 // drawer is what is left when nothing is running, and with anything else alive
 // the page steps back to a tab instead.
@@ -987,9 +1067,21 @@ describe('a tab says what its session is doing', () => {
     // pane changes — which is exactly what the watcher reads.
     // Plain "demo", not "=demo": the exact-match prefix is for session targets
     // and send-keys wants a pane — tmux answers "can't find pane: =demo".
-    stand.tmux(['send-keys', '-t', 'demo', 'working now', 'Enter']);
-    await page.waitForFunction(
-      () => !!document.querySelector('#tabs button.working'), null, { timeout: 15000 });
+    //
+    // Printed until the strip agrees, not once: the watcher's first reading of a
+    // pane is deliberately not activity — it is whatever was already on screen —
+    // so a single line typed before it has looked is invisible, and nothing else
+    // moves a pane running `cat`. One line, one tick, and the race is decided by
+    // whichever went first; this settles it by outlasting the tick.
+    const typing = setInterval(() => {
+      try { stand.tmux(['send-keys', '-t', 'demo', 'working now', 'Enter']); } catch (_) {}
+    }, 700);
+    try {
+      await page.waitForFunction(
+        () => !!document.querySelector('#tabs button.working'), null, { timeout: 20000 });
+    } finally {
+      clearInterval(typing);
+    }
     // POCKTERM_IDLE is 2s in the stand, and the watcher reads the pane every 2s.
     await page.waitForFunction(
       () => !!document.querySelector('#tabs button.done'), null, { timeout: 20000 });

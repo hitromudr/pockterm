@@ -134,12 +134,12 @@ describe('the keyboard the page asks for', () => {
     // `?ime=` was meant to make the next attempt cost a reload instead of an
     // APK release — but inside the owner's Android client the URL is fixed
     // (POCKTERM_URL in MainActivity), so there was nowhere to type it. The
-    // button behind ⋯ is that missing address bar.
+    // button in the drawer's settings is that missing address bar.
     await openWithBar('keys', '/?ime=text');
     await stand.attach();
     const { page } = stand;
 
-    await page.click('#more');
+    await stand.openSettings();
     await page.click('#ime');
     assert.match(await page.textContent('#ime'), /raw$/);
     await page.waitForFunction(() => window.__imeCalls.at(-1) === 'raw');
@@ -161,7 +161,7 @@ describe('the keyboard the page asks for', () => {
     await stand.attach();
     const { page } = stand;
 
-    await page.click('#more');
+    await stand.openSettings();
     await page.click('#ime');
     assert.match(await page.textContent('#ime'), /raw$/);
     assert.equal(await lastAsked(), 'text');
@@ -172,7 +172,7 @@ describe('the keyboard the page asks for', () => {
     await stand.attach();
     const { page } = stand;
 
-    await page.click('#more');
+    await stand.openSettings();
     await page.click('#ime');
     assert.match(await page.textContent('#ime'), /raw$/);
 

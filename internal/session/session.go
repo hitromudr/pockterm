@@ -75,13 +75,20 @@ func Kill(name string) []string {
 // for a variable it never reads, so an older one starts the session where it
 // always did, under the name it always used: the folder reaches the tab only
 // once the Makefile is the one that understands PREFIX.
-func Start(makeDir, target, startIn, prefix string) []string {
+//
+// `cmd` is a custom button's command and travels the same way, as `CMD=` to the
+// `custom` target. A Makefile without that target fails with make's own message
+// — which the drawer shows — rather than starting the wrong thing.
+func Start(makeDir, target, startIn, prefix, cmd string) []string {
 	argv := []string{"make", "-C", makeDir, target}
 	if startIn != "" {
 		argv = append(argv, "DIR="+startIn)
 	}
 	if prefix != "" {
 		argv = append(argv, "PREFIX="+prefix)
+	}
+	if cmd != "" {
+		argv = append(argv, "CMD="+cmd)
 	}
 	return argv
 }

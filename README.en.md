@@ -139,6 +139,7 @@ URL.
 | `POCKTERM_TG_API` | `https://api.telegram.org` | Bot API root: a local bot server or a test double. |
 | `POCKTERM_IDLE` | `30s` | How much silence counts as "finished". |
 | `POCKTERM_NOTIFY_FILE` | a file in the user's config dir | Where the notification switch is remembered; `off` keeps it in memory (lost on restart). |
+| `POCKTERM_PRESETS_FILE` | a file in the user's config dir | Where the custom session buttons are remembered; `off` keeps them in memory. |
 | `POCKTERM_UPLOAD_DIR` | user cache dir | Where pasted images are saved; `off` disables uploads. |
 | `POCKTERM_SESSION_DIR` | the service's working dir | Where the session Makefile lives (the + button); `off` refuses to start any. |
 
@@ -183,6 +184,34 @@ name inside the root (`..`, `/`, a leading dot), because the value reaches a
 command line.
 
 The plain + lost nothing: it still starts a preset in the root.
+
+### Your own buttons, next to the four presets
+
+The bottom of the drawer holds a **Settings** panel, and in it the custom session
+buttons: a label and a command. A button joins the four presets under + (and in the
+menu over the terminal — it is one list), starts in the same folder and takes the
+same name from it. So `qwen`, `opencode` or anything else arrives from the phone
+instead of through an edit to a Makefile on the host.
+
+What launches it is still the Makefile: the command travels as `CMD=` to one target
+(`custom`) which wraps it in the same launcher as every other target. A Makefile
+without that target answers with its own "no rule to make target", and the text
+reaches the drawer as it came.
+
+The command is checked before it reaches a command line: letters, digits, spaces and
+`- _ . / = : , @ +`, starting with a letter, a digit or a path. Quotes, `$`, `;`,
+`&`, `|` are refused with a reason — the value reaches a shell inside the recipe, so
+this is a gate rather than advice.
+
+The list lives on the host (`POCKTERM_PRESETS_FILE`, next to the notification
+switch) rather than in the browser: what it starts happens on the host, a second
+phone must find the same buttons, and CI restarts the binary several times a day.
+
+Everything that used to sit behind `⋯` over the terminal moved into the same panel —
+text size, notifications, `〰 smooth`, the keyboard mode, the input log, the version
+and Install. Moved rather than copied: two places holding one lever drift apart. The
+`▾` that hides the bars stayed on the key bar, being an action on the working
+surface rather than a setting.
 
 ### The tab strip: the colour says what the session is doing
 

@@ -40,7 +40,8 @@ const usage = `pockterm — mobile web terminal for your tmux sessions
   pockterm tg-setup        find your chat id and write the notification config
 
 Environment: POCKTERM_LISTEN, POCKTERM_TOKEN, POCKTERM_PUBLIC_URL,
-POCKTERM_TG_*, POCKTERM_IDLE, POCKTERM_NOTIFY_FILE, POCKTERM_UPLOAD_DIR
+POCKTERM_TG_*, POCKTERM_IDLE, POCKTERM_NOTIFY_FILE, POCKTERM_PRESETS_FILE,
+POCKTERM_UPLOAD_DIR
 and POCKTERM_SESSION_DIR.
 See the README.
 `
@@ -219,6 +220,7 @@ func serve() {
 	}
 	notices := server.NewNotices()
 	pref := notifyPref(cfg)
+	buttons := customButtons(cfg)
 	h := server.Handler(server.Options{
 		Token:        cfg.Token,
 		ListSessions: listSessions,
@@ -250,10 +252,24 @@ func serve() {
 		// The browser has no console anyone can open on the phone this
 		// serves; its own words land here instead.
 		LogClient:    func(line string) { log.Printf("client: %s", line) },
-		StartSession: starter(cfg),
+		StartSession: starter(cfg, buttons),
 		Folders:      folders(cfg),
 		RenameSess:   renamer,
 		KillSession:  killer,
+		Buttons:      buttons.List,
+		SetButtons: func(list []session.Custom) ([]session.Custom, error) {
+			saved, err := buttons.Set(list)
+			if err != nil && saved == nil {
+				return nil, err // refused: nothing was changed
+			}
+			if err != nil {
+				// In force but not written down: the page is told what is set,
+				// the journal what was lost.
+				log.Printf("custom buttons: %v", err)
+			}
+			log.Printf("custom buttons: %d", len(saved))
+			return saved, nil
+		},
 	})
 	log.Printf("pockterm listening on %s", cfg.Listen)
 	log.Fatal(http.ListenAndServe(cfg.Listen, h))
@@ -288,7 +304,7 @@ func uploader(cfg config.Config) func(io.Reader) (string, error) {
 // number, and its own systemd scope so the tmux server never lands in this
 // service's cgroup. Two launchers would drift apart, and the day they do,
 // somebody loses their sessions.
-func starter(cfg config.Config) func(preset, folder string) error {
+func starter(cfg config.Config, buttons *session.Buttons) func(preset, folder string) error {
 	dir, on, err := cfg.SessionDir()
 	if err != nil {
 		log.Printf("%v, starting sessions is off", err)
@@ -304,9 +320,21 @@ func starter(cfg config.Config) func(preset, folder string) error {
 	}
 	log.Printf("starting sessions on, via make -C %s", dir)
 	return func(preset, folder string) error {
-		target, err := session.Target(preset)
-		if err != nil {
-			return err
+		// A custom button is the owner's own command against one target; a
+		// built-in preset is a target of its own. Either way the Makefile is
+		// what launches anything, which is the rule this indirection keeps.
+		target, cmd := "", ""
+		if id := session.CustomID(preset); id != "" {
+			c, ok := buttons.Find(id)
+			if !ok {
+				return fmt.Errorf("no such button")
+			}
+			target, cmd = session.CustomTarget, c.Cmd
+		} else {
+			var err error
+			if target, err = session.Target(preset); err != nil {
+				return err
+			}
 		}
 		// The projects root is the Makefile's own directory: one setting, and
 		// the same value in every deployment this was written for.
@@ -314,7 +342,7 @@ func starter(cfg config.Config) func(preset, folder string) error {
 		if err != nil {
 			return err
 		}
-		argv := session.Start(dir, target, startIn, session.Prefix(dir, folder))
+		argv := session.Start(dir, target, startIn, session.Prefix(dir, folder), cmd)
 		out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
 		if err != nil {
 			log.Printf("start %s in %s: %v: %s", preset, startIn, err, out)
@@ -451,6 +479,30 @@ func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref) serv
 // The file is under the user's config directory rather than the cache: a cache
 // is scratch, and this is the answer to "do not notify me". Nowhere to write is
 // not fatal — the switch then works until the next restart, and says so.
+// customButtons is where the owner's own session buttons are kept — next to the
+// notification mode, and for the same reasons: CI restarts this binary several
+// times on a working day, and a list held in memory would be gone with it.
+func customButtons(cfg config.Config) *session.Buttons {
+	path := cfg.PresetsFile
+	switch path {
+	case "off":
+		log.Printf("custom buttons are not remembered: POCKTERM_PRESETS_FILE=off")
+		return session.LoadButtons("")
+	case "":
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			log.Printf("no config directory, custom buttons will not survive a restart: %v", err)
+			return session.LoadButtons("")
+		}
+		path = filepath.Join(dir, "pockterm", "buttons.json")
+	}
+	b := session.LoadButtons(path)
+	if n := len(b.List()); n > 0 {
+		log.Printf("custom buttons: %d, from %s", n, path)
+	}
+	return b
+}
+
 func notifyPref(cfg config.Config) *watch.Pref {
 	path := cfg.NotifyFile
 	switch path {

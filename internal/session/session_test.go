@@ -67,10 +67,26 @@ func TestKillMatchesExactly(t *testing.T) {
 }
 
 func TestStartGoesThroughTheMakefile(t *testing.T) {
-	argv := Start("/srv/work", "claude", "", "")
+	argv := Start("/srv/work", "claude", "", "", "")
 	want := "make -C /srv/work claude"
 	if strings.Join(argv, " ") != want {
 		t.Errorf("argv is %v, want %q", argv, want)
+	}
+}
+
+func TestStartCarriesACustomCommand(t *testing.T) {
+	// A custom button parameterises one target instead of adding its own: the
+	// Makefile still decides how a session is launched, which is the whole rule
+	// this package exists to keep.
+	argv := Start("/srv/work", CustomTarget, "/srv/work/natal", "natal", "qwen --yolo")
+	want := "make -C /srv/work custom DIR=/srv/work/natal PREFIX=natal CMD=qwen --yolo"
+	if strings.Join(argv, " ") != want {
+		t.Errorf("argv is %v, want %q", argv, want)
+	}
+	// One argument, not two: the command reaches make as a single value, and
+	// nothing here splits it on a space.
+	if argv[len(argv)-1] != "CMD=qwen --yolo" {
+		t.Errorf("the command was split: %q", argv[len(argv)-1])
 	}
 }
 
@@ -90,5 +106,10 @@ func TestExampleMakefileCoversEveryPreset(t *testing.T) {
 		if !regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(target) + `:`).Match(src) {
 			t.Errorf("the example Makefile has no %q target", target)
 		}
+	}
+	// The custom buttons run one target of their own, and a Makefile without it
+	// turns every button the owner added into make's "no rule to make target".
+	if !regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(CustomTarget) + `:`).Match(src) {
+		t.Errorf("the example Makefile has no %q target", CustomTarget)
 	}
 }
