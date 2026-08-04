@@ -138,6 +138,7 @@ URL.
 | `POCKTERM_TG_PREVIEW` | on | `off` sends only the event and the session name, no screen text. |
 | `POCKTERM_TG_API` | `https://api.telegram.org` | Bot API root: a local bot server or a test double. |
 | `POCKTERM_IDLE` | `30s` | How much silence counts as "finished". |
+| `POCKTERM_NOTIFY_FILE` | a file in the user's config dir | Where the notification switch is remembered; `off` keeps it in memory (lost on restart). |
 | `POCKTERM_UPLOAD_DIR` | user cache dir | Where pasted images are saved; `off` disables uploads. |
 | `POCKTERM_SESSION_DIR` | the service's working dir | Where the session Makefile lives (the + button); `off` refuses to start any. |
 
@@ -181,6 +182,16 @@ a clock, so the countdown to "finished" rarely ran out; the timer checking
 it is throttled to about once a minute once Android backgrounds the
 WebView. What arrived, and when, was unexplainable. The server reads the
 pane directly — no status line in it, and nothing throttles it.
+
+**One switch, three states** — the 🔔 button in the ⋯ menu: `PWA` (notify the
+open page only), `PWA+TG` (and Telegram when nothing is open) and `Off`
+(neither). The state lives on the server rather than in the browser: half of
+what it controls is sent from the host to a phone that has the page closed, and
+a second phone must not quietly disagree with what the host is doing. It is
+remembered across restarts — CI installs this binary on every push to `main`,
+and a mode held in memory would return to its default several times a working
+day. With no bot configured the middle state drops out of the ring: promising
+Telegram where there is no token would be a lie.
 
 While the session is open in pockterm and the tab is on screen, its
 notifications stay quiet — you can already see it. A backgrounded PWA

@@ -5,7 +5,7 @@
 // left on this side is the shaping of a frame that has already been decided.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { noticeFrom, deliver } from '../web/js/notify.js';
+import { noticeFrom, deliver, nextMode, modeLabel } from '../web/js/notify.js';
 
 const done = { type: 'notify', kind: 'done', session: 'claude-1', title: '✅ claude-1 закончил', body: 'ok  github.com/x/y' };
 
@@ -124,4 +124,44 @@ test('a registration that refuses is reported rather than swallowed', async () =
 test('nothing to show, nothing to raise', () => {
   assert.equal(deliver(null, { registration: fakeReg() }), 'none');
   assert.equal(deliver(notice, {}), 'none', 'no registration and no constructor is a browser that cannot');
+});
+
+// --- the switch has three states ------------------------------------------
+//
+// One switch for both channels: the page while it is open, and Telegram when
+// nothing is. Two separate controls would let the owner silence half of what
+// arrives and wonder about the other half — and the page has no business
+// deciding about Telegram at all, which is why the state itself lives on the
+// server and this only orders the states.
+
+test('the cycle is pwa, then pwa+tg, then off', () => {
+  assert.equal(nextMode('pwa', true), 'pwa+tg');
+  assert.equal(nextMode('pwa+tg', true), 'off');
+  assert.equal(nextMode('off', true), 'pwa');
+});
+
+test('with no bot configured the middle state is skipped, not offered dead', () => {
+  // A state that looks like more delivery and produces none is worse than a
+  // shorter cycle: the owner would read the label as a promise.
+  assert.equal(nextMode('pwa', false), 'off');
+  assert.equal(nextMode('off', false), 'pwa');
+  // A mode stored while a token was configured must still lead somewhere.
+  assert.equal(nextMode('pwa+tg', false), 'off');
+});
+
+test('an unknown mode leads to a known one', () => {
+  // The mode arrives from the server, and a page can be older than it.
+  assert.equal(nextMode('', true), 'pwa');
+  assert.equal(nextMode('everything', true), 'pwa');
+});
+
+test('the label says which channels are live', () => {
+  assert.equal(modeLabel('off').on, false);
+  assert.equal(modeLabel('pwa').on, true);
+  assert.equal(modeLabel('pwa+tg').on, true);
+  // The three are distinguishable at a glance on a phone — the same bell with
+  // the same word would make two of them look like one.
+  const seen = new Set(['off', 'pwa', 'pwa+tg'].map((m) => modeLabel(m).text));
+  assert.equal(seen.size, 3);
+  assert.match(modeLabel('pwa+tg').text, /TG/i);
 });

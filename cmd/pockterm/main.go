@@ -40,7 +40,8 @@ const usage = `pockterm — mobile web terminal for your tmux sessions
   pockterm tg-setup        find your chat id and write the notification config
 
 Environment: POCKTERM_LISTEN, POCKTERM_TOKEN, POCKTERM_PUBLIC_URL,
-POCKTERM_TG_*, POCKTERM_IDLE, POCKTERM_UPLOAD_DIR and POCKTERM_SESSION_DIR.
+POCKTERM_TG_*, POCKTERM_IDLE, POCKTERM_NOTIFY_FILE, POCKTERM_UPLOAD_DIR
+and POCKTERM_SESSION_DIR.
 See the README.
 `
 
@@ -217,15 +218,30 @@ func serve() {
 		log.Fatal(err)
 	}
 	notices := server.NewNotices()
+	pref := notifyPref(cfg)
 	h := server.Handler(server.Options{
 		Token:        cfg.Token,
 		ListSessions: listSessions,
 		Attach: func(id int64, target string) []string {
 			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 		},
-		InMode:      inMode,
-		Presence:    notifier(cfg, notices),
-		Notices:     notices,
+		InMode:     inMode,
+		Presence:   notifier(cfg, notices, pref),
+		Notices:    notices,
+		NotifyMode: func() (string, bool) { return string(pref.Mode()), cfg.Notify() },
+		SetNotifyMode: func(m string) error {
+			mode, ok := watch.ParseMode(m)
+			if !ok {
+				return fmt.Errorf("unknown notification mode %q", m)
+			}
+			if err := pref.Set(mode); err != nil {
+				// Stored or not, the mode is in force — the page is told the
+				// truth about what is set, and the journal about what was lost.
+				log.Printf("notifications: %v", err)
+			}
+			log.Printf("notifications: %s", mode)
+			return nil
+		},
 		PageVersion: pockterm.PageVersion(),
 		WheelLines:  wheelLines,
 		StatusRows:  statusRows,
@@ -360,7 +376,7 @@ func firstLine(s string) string {
 // the background. Telegram is optional; the watcher is not, because the page
 // no longer works out on its own when a run ended — it renders what it is
 // told, and there has to be someone to tell it.
-func notifier(cfg config.Config, notices *server.Notices) server.Presence {
+func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref) server.Presence {
 	var bot *telegram.Client
 	if cfg.Notify() {
 		bot = &telegram.Client{Token: cfg.TGToken, Chat: cfg.TGChat, API: cfg.TGAPI}
@@ -369,15 +385,21 @@ func notifier(cfg config.Config, notices *server.Notices) server.Presence {
 	w := watch.New(watch.Options{
 		Capture: capturePane,
 		Notify: func(e watch.Event) {
-			title, body := watch.Notice(e)
-			notices.Send(e.Session, server.Notice{
-				Type:    "notify",
-				Kind:    string(e.Kind),
-				Session: e.Session,
-				Title:   title,
-				Body:    body,
-			})
-			if bot == nil {
+			// The switch is read at the event and not at the attach: it is
+			// changed from a page that may not be the one attached, and the
+			// answer has to be the one in force now.
+			page, tg := watch.Deliver(pref.Mode(), bot != nil)
+			if page {
+				title, body := watch.Notice(e)
+				notices.Send(e.Session, server.Notice{
+					Type:    "notify",
+					Kind:    string(e.Kind),
+					Session: e.Session,
+					Title:   title,
+					Body:    body,
+				})
+			}
+			if !tg {
 				return
 			}
 			if err := bot.Send(watch.Format(e, cfg.TGLink, cfg.TGPreview)); err != nil {
@@ -389,11 +411,35 @@ func notifier(cfg config.Config, notices *server.Notices) server.Presence {
 	})
 	go w.Run(context.Background())
 	if bot != nil {
-		log.Printf("notifications on (page + telegram), idle threshold %s", cfg.Idle)
+		log.Printf("notifications %s (page + telegram available), idle threshold %s", pref.Mode(), cfg.Idle)
 	} else {
-		log.Printf("notifications on (page only, telegram not configured), idle threshold %s", cfg.Idle)
+		log.Printf("notifications %s (page only, telegram not configured), idle threshold %s", pref.Mode(), cfg.Idle)
 	}
 	return watch.Presence{Watcher: w, Viewers: viewers}
+}
+
+// notifyPref loads the switch both channels obey. It defaults to everything the
+// host can deliver, because that is what this binary did before the switch
+// existed: an install must not silence a phone that was being notified.
+//
+// The file is under the user's config directory rather than the cache: a cache
+// is scratch, and this is the answer to "do not notify me". Nowhere to write is
+// not fatal — the switch then works until the next restart, and says so.
+func notifyPref(cfg config.Config) *watch.Pref {
+	path := cfg.NotifyFile
+	switch path {
+	case "off":
+		log.Printf("notification mode is not remembered: POCKTERM_NOTIFY_FILE=off")
+		return watch.LoadPref("", watch.ModeBoth)
+	case "":
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			log.Printf("no config directory, the notification mode will not survive a restart: %v", err)
+			return watch.LoadPref("", watch.ModeBoth)
+		}
+		path = filepath.Join(dir, "pockterm", "notify")
+	}
+	return watch.LoadPref(path, watch.ModeBoth)
 }
 
 // wheelLines asks tmux how many lines its copy-mode wheel binding scrolls.

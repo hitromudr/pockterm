@@ -40,6 +40,61 @@ export function noticeFrom(frame) {
   return { title, body, tag, session: String(frame.session == null ? '' : frame.session) };
 }
 
+// The switch, in the order the button walks it.
+//
+// Two channels cover two different absences: a frame down the socket reaches a
+// page that is open but in the background, and Telegram reaches a phone with
+// nothing open at all. So the states are cumulative — the page alone, the page
+// and Telegram, neither — and there is one control rather than two, because a
+// control that silences half of what arrives is a control nobody trusts.
+//
+// The state itself lives on the server: half of what it decides is sent from
+// there, to a phone that has this page closed. What is here is only the order
+// and the wording.
+export const MODES = ['pwa', 'pwa+tg', 'off'];
+
+// nextMode is where a tap leads. An unknown mode leads to the first state
+// rather than nowhere: the mode comes from the server, and an installed PWA can
+// be older than the binary serving it.
+//
+// Without a bot configured the middle state is skipped instead of offered dead
+// — a label promising Telegram where there is no token reads as a promise.
+export function nextMode(cur, telegram) {
+  const ring = telegram ? MODES : MODES.filter((m) => m !== 'pwa+tg');
+  // A mode stored while a token was configured is not unknown, it is only
+  // unreachable: without a bot, pwa+tg delivers exactly what pwa does, so the
+  // tap carries on from there instead of starting the ring over.
+  const from = ring.includes(cur) ? cur : (cur === 'pwa+tg' ? 'pwa' : null);
+  if (from === null) return ring[0];
+  return ring[(ring.indexOf(from) + 1) % ring.length];
+}
+
+// modeLabel is what the button says, and whether it reads as on.
+//
+// Three states need three labels: on a phone the same bell with the same word
+// would make two of them look like one, and the difference between them is
+// exactly what happens while the screen is off. The title names where the next
+// tap leads, so `telegram` belongs here too — with no bot the ring is shorter
+// and promising one would be a lie.
+export function modeLabel(mode, telegram) {
+  switch (mode) {
+    case 'pwa':
+      return {
+        text: '🔔 PWA',
+        on: true,
+        title: telegram ? 'Notifying this page. Tap to add Telegram' : 'Notifying this page. Tap to silence',
+      };
+    case 'pwa+tg':
+      return {
+        text: '🔔 PWA+TG',
+        on: true,
+        title: 'Notifying this page, and Telegram when nothing is open. Tap to silence',
+      };
+    default:
+      return { text: '🔕 Off', on: false, title: 'Nothing is notified. Tap to notify this page' };
+  }
+}
+
 // deliver raises a notice through the strongest path the browser actually
 // allows, and returns which one that was: 'sw', 'window' or 'none'.
 //

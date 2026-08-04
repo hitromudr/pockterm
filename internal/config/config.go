@@ -28,6 +28,11 @@ type Config struct {
 	TGPreview bool          // POCKTERM_TG_PREVIEW=off sends no screen text
 	TGAPI     string        // POCKTERM_TG_API, Bot API root (a local bot server, or a test double)
 	Idle      time.Duration // POCKTERM_IDLE, silence that counts as "finished"
+
+	// Where the notification switch is remembered. Empty means a file under
+	// the user's config directory; "off" keeps the mode in memory, which loses
+	// it on the next restart — and CI restarts this binary on every push.
+	NotifyFile string // POCKTERM_NOTIFY_FILE
 }
 
 func FromEnv(getenv func(string) string) (Config, error) {
@@ -46,6 +51,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		TGPreview:      getenv("POCKTERM_TG_PREVIEW") != "off",
 		TGAPI:          getenv("POCKTERM_TG_API"),
 		Idle:           idle,
+		NotifyFile:     getenv("POCKTERM_NOTIFY_FILE"),
 	}
 	if err := c.validate(); err != nil {
 		return Config{}, err

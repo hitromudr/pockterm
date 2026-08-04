@@ -135,7 +135,11 @@
     <div id="overflow" hidden>
       <button id="font-dec" title="Smaller text">A&minus;</button>
       <button id="font-inc" title="Bigger text">A+</button>
-      <button id="bell" title="Notify when the agent asks or finishes">&#128276; Notify</button>
+      <!-- Three states, walked by tapping: this page, this page plus Telegram,
+           neither. The label and the title are written by renderBell — what is
+           here is only what the first paint shows before the socket says what
+           the host is actually set to. -->
+      <button id="bell" title="Nothing is notified. Tap to notify this page">&#128276; Notify</button>
       <!-- Records what the keyboard does to the input field, into the server's
            journal. Off by default: one line per keystroke, and the second tap
            records the typed text itself. -->

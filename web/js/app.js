@@ -1,6 +1,6 @@
 import { keyBytes } from './keys.js';
 import { detectQuestion } from './detect.js';
-import { noticeFrom, deliver } from './notify.js';
+import { noticeFrom, deliver, nextMode, modeLabel } from './notify.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
 import { snapshotText } from './select.js';
 import { initDiag, environment, report } from './diag.js';
@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v90';
+const APP_VERSION = 'v91';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -459,6 +459,11 @@ function onControl(raw) {
   if (c && c.type === 'config' && c.wheelLines > 0) { wheelLines = c.wheelLines; setScrollStep(); }
   // How much of the bottom belongs to tmux's own status line.
   if (c && c.type === 'config' && typeof c.statusRows === 'number') statusRows = c.statusRows;
+  // What the notification switch is set to, and whether this host has a bot at
+  // all. It comes down the socket rather than being asked for over HTTP so the
+  // button is right the moment it is drawn — and it comes on every connect,
+  // because the state is the host's and another page may have changed it.
+  if (c && c.type === 'config' && typeof c.notify === 'string') applyMode(c.notify, !!c.telegram);
   // And which page the server serves. CI installs a build as soon as it
   // arrives, so this frame is also how a reconnect after that restart is told
   // apart from any other reconnect.
@@ -1460,6 +1465,12 @@ function visibleLines() {
 // only the switch and the permission; deciding when to raise a notice is not
 // its business any more, and why it stopped being it is in js/notify.js.
 const bellBtn = document.getElementById('bell');
+// Three states, one switch: this page while it is open, plus Telegram when
+// nothing is, or neither. The host owns the value — see js/notify.js — and
+// `notifyTG` is not part of it: it says whether the middle state exists here at
+// all, which depends on a bot token this page never sees.
+let notifyMode = 'off';
+let notifyTG = false;
 let notifyOn = false;
 // The service worker's registration, once it is ready: the only path that can
 // show a notification in Android Chrome, and the one that carries a tap. Null
@@ -1497,25 +1508,47 @@ inputDiagBtn.addEventListener('click', () => {
     : inputDiag === 'on' ? 'input log on (no text)' : 'input log on — WITH TEXT');
 });
 applyInputDiag();
-try { notifyOn = localStorage.getItem('pt-notify') === 'on'; } catch (_) {}
+// The state the button shows before the socket says what the host has. Kept
+// only as a cache — the server owns the switch, because half of it is Telegram
+// — so a stale value costs one frame of a wrong label and nothing else.
+try { notifyMode = localStorage.getItem('pt-notify-mode') || 'off'; } catch (_) {}
+notifyOn = notifyMode !== 'off';
 
 function renderBell() {
-  bellBtn.classList.toggle('on', notifyOn);
-  bellBtn.title = notifyOn ? 'Notifications on' : 'Notify when the agent asks or finishes';
+  const label = modeLabel(notifyMode, notifyTG);
+  bellBtn.classList.toggle('on', label.on);
+  bellBtn.textContent = label.text;
+  bellBtn.title = label.title;
+}
+
+// Tell the host what the owner chose. The answer is the state after the change,
+// so a tap that did not land shows as the label going back rather than as a
+// button that lies until the next reload.
+async function sendMode(mode) {
+  const res = await fetch(`/api/notify${tokenQS ? `?${tokenQS}` : ''}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) throw new Error(`${res.status}`);
+  const body = await res.json();
+  return body && body.mode ? body.mode : mode;
+}
+
+function applyMode(mode, telegram) {
+  notifyMode = mode;
+  notifyOn = mode !== 'off';
+  if (typeof telegram === 'boolean') notifyTG = telegram;
+  try { localStorage.setItem('pt-notify-mode', mode); } catch (_) {}
+  renderBell();
 }
 
 bellBtn.addEventListener('click', async () => {
-  if (notifyOn) {
-    notifyOn = false;
-  } else {
-    if (nativeNotifier()) {
-      // The app notifies for us; it asked Android for the permission itself.
-      notifyOn = true;
-      try { localStorage.setItem('pt-notify', 'on'); } catch (_) {}
-      renderBell();
-      toast('notifications on (app)');
-      return;
-    }
+  const want = nextMode(notifyMode, notifyTG);
+  // Permission is asked for on the way in, and only there: leaving a notifying
+  // state never needs it, and asking again on the way out would be a prompt
+  // for turning something off.
+  if (want !== 'off' && !notifyOn && !nativeNotifier()) {
     if (!('Notification' in window)) { toast('this browser has no notifications'); return; }
     let perm = Notification.permission;
     if (perm === 'default') perm = await Notification.requestPermission();
@@ -1524,11 +1557,20 @@ bellBtn.addEventListener('click', async () => {
       toast(perm === 'denied' ? 'notifications blocked in browser settings' : 'not allowed');
       return;
     }
-    notifyOn = true;
   }
-  try { localStorage.setItem('pt-notify', notifyOn ? 'on' : 'off'); } catch (_) {}
-  renderBell();
-  toast(notifyOn ? 'notifications on' : 'notifications off');
+  const before = notifyMode;
+  try {
+    applyMode(await sendMode(want));
+    report('notify-mode', { mode: notifyMode, tg: notifyTG });
+    toast(notifyMode === 'off' ? 'notifications off'
+      : notifyMode === 'pwa+tg' ? 'notifications: this page + telegram' : 'notifications: this page');
+  } catch (e) {
+    // The host is the one that decides; a page that kept the new label would
+    // claim a silence it cannot deliver.
+    applyMode(before);
+    toast('the host did not take that');
+    report('notify-mode', { mode: before, error: (e && e.message) || 'error' });
+  }
 });
 renderBell();
 

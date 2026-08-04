@@ -41,15 +41,22 @@ type Options struct {
 	InMode       func(id int64) (bool, int, error)      // client pane in tmux copy-mode, and how far back it is scrolled; nil disables the poll
 	Presence     Presence                               // notification bookkeeping; nil disables it
 	Notices      *Notices                               // route notifications to attached pages; nil disables it
-	PageVersion  string                                 // version of the page this binary serves; "" says nothing
-	WheelLines   func() int                             // lines tmux scrolls per wheel notch; nil leaves the page on its default
-	StatusRows   func() int                             // rows tmux's status line takes at the bottom; nil says nothing
-	Static       http.Handler                           // the embedded PWA
-	SaveUpload   func(io.Reader) (string, error)        // store a pasted image, return its path; nil disables /api/upload
-	LogClient    func(string)                           // record a line the browser sent; nil disables /api/log
-	StartSession func(preset string) error              // create a session from a fixed preset; nil disables /api/sessions/new
-	RenameSess   func(from, to string) error            // rename a session; nil disables /api/sessions/rename
-	KillSession  func(name string) error                // close a session; nil disables /api/sessions/kill
+	// NotifyMode reports what the owner wants delivered ("off", "pwa",
+	// "pwa+tg") and whether Telegram is configured at all; nil leaves
+	// /api/notify absent and says nothing in the config frame.
+	NotifyMode func() (mode string, telegram bool)
+	// SetNotifyMode stores a new mode. Refusing an unknown one is its job, not
+	// the handler's — the vocabulary belongs to whoever owns the state.
+	SetNotifyMode func(mode string) error
+	PageVersion   string                          // version of the page this binary serves; "" says nothing
+	WheelLines    func() int                      // lines tmux scrolls per wheel notch; nil leaves the page on its default
+	StatusRows    func() int                      // rows tmux's status line takes at the bottom; nil says nothing
+	Static        http.Handler                    // the embedded PWA
+	SaveUpload    func(io.Reader) (string, error) // store a pasted image, return its path; nil disables /api/upload
+	LogClient     func(string)                    // record a line the browser sent; nil disables /api/log
+	StartSession  func(preset string) error       // create a session from a fixed preset; nil disables /api/sessions/new
+	RenameSess    func(from, to string) error     // rename a session; nil disables /api/sessions/rename
+	KillSession   func(name string) error         // close a session; nil disables /api/sessions/kill
 }
 
 // modePoll is how often a client's pane is checked for tmux copy-mode. The
@@ -64,6 +71,7 @@ func Handler(o Options) http.Handler {
 	mux.HandleFunc("/api/upload", func(w http.ResponseWriter, r *http.Request) { serveUpload(o, w, r) })
 	mux.HandleFunc("/api/log", func(w http.ResponseWriter, r *http.Request) { serveLog(o, w, r) })
 	mux.HandleFunc("/api/presence", func(w http.ResponseWriter, r *http.Request) { servePresence(o, w, r) })
+	mux.HandleFunc("/api/notify", func(w http.ResponseWriter, r *http.Request) { serveNotifyMode(o, w, r) })
 	mux.HandleFunc("/api/sessions/new", func(w http.ResponseWriter, r *http.Request) { serveNewSession(o, w, r) })
 	mux.HandleFunc("/api/sessions/rename", func(w http.ResponseWriter, r *http.Request) { serveRename(o, w, r) })
 	mux.HandleFunc("/api/sessions/kill", func(w http.ResponseWriter, r *http.Request) { serveKill(o, w, r) })
@@ -130,6 +138,55 @@ func servePresence(o Options, w http.ResponseWriter, r *http.Request) {
 		Clients int `json:"clients"`
 		Visible int `json:"visible"`
 	}{clients, visible})
+}
+
+// serveNotifyMode reads and sets the one switch both notification channels
+// obey: "off", "pwa" (the page while it is open) or "pwa+tg" (and Telegram when
+// nothing is).
+//
+// It lives on the server because half of what it controls is not the page's to
+// control — Telegram is sent from here, to a phone that has nothing open — and
+// because the answer has to survive the page. Keeping the switch in the
+// browser's storage would mean a second phone, or a reinstalled PWA, quietly
+// disagreeing with what the host is actually doing.
+//
+// `telegram` in the answer is not the switch, it is whether the third state
+// exists at all: with no bot token configured, "pwa+tg" would be a state that
+// looks like more delivery and produces none.
+func serveNotifyMode(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.NotifyMode == nil {
+		http.Error(w, "notifications are not tracked", http.StatusNotFound)
+		return
+	}
+	if r.Method == http.MethodPost {
+		if o.SetNotifyMode == nil {
+			http.Error(w, "the mode is fixed on this host", http.StatusNotFound)
+			return
+		}
+		var body struct {
+			Mode string `json:"mode"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil {
+			http.Error(w, "expected {\"mode\": …}", http.StatusBadRequest)
+			return
+		}
+		if err := o.SetNotifyMode(body.Mode); err != nil {
+			// The page sends a mode it got from here, so a refusal means the two
+			// disagree about the vocabulary — worth the client's while to hear.
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	mode, telegram := o.NotifyMode()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Mode     string `json:"mode"`
+		Telegram bool   `json:"telegram"`
+	}{mode, telegram})
 }
 
 // serveUpload takes an image pasted in the browser and answers with the path
@@ -366,6 +423,13 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 			WheelLines int    `json:"wheelLines,omitempty"`
 			StatusRows int    `json:"statusRows,omitempty"`
 			Version    string `json:"version,omitempty"`
+			// What the notification switch is set to, and whether its third
+			// state exists here. In the same frame as everything else the page
+			// cannot know on its own: the button has to be right the moment it
+			// is drawn, and a second request for it would show the wrong state
+			// for as long as that request took.
+			Notify   string `json:"notify,omitempty"`
+			Telegram bool   `json:"telegram,omitempty"`
 		}{Type: "config", Version: o.PageVersion}
 		if o.WheelLines != nil {
 			if n := o.WheelLines(); n > 0 {
@@ -377,7 +441,10 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 		if o.StatusRows != nil {
 			cfg.StatusRows = o.StatusRows()
 		}
-		if cfg.WheelLines > 0 || cfg.Version != "" || cfg.StatusRows > 0 {
+		if o.NotifyMode != nil {
+			cfg.Notify, cfg.Telegram = o.NotifyMode()
+		}
+		if cfg.WheelLines > 0 || cfg.Version != "" || cfg.StatusRows > 0 || cfg.Notify != "" {
 			writeMu.Lock()
 			conn.WriteJSON(cfg)
 			writeMu.Unlock()

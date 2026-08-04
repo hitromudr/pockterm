@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -817,6 +818,156 @@ func TestConfigFrameSaysHowMuchOfTheBottomIsTmux(t *testing.T) {
 		}
 		if f.StatusRows != 2 {
 			t.Fatalf("config = %+v, want statusRows 2", f)
+		}
+		return
+	}
+}
+
+// --- the notification switch ----------------------------------------------
+
+func notifyOptions(mode string, telegram bool) (Options, *string) {
+	stored := mode
+	o := testOptions("")
+	o.NotifyMode = func() (string, bool) { return stored, telegram }
+	o.SetNotifyMode = func(m string) error {
+		switch m {
+		case "off", "pwa", "pwa+tg":
+			stored = m
+			return nil
+		}
+		return fmt.Errorf("unknown notification mode %q", m)
+	}
+	return o, &stored
+}
+
+func TestNotifyModeIsReadAndSet(t *testing.T) {
+	// One switch for both channels, and it lives here: half of what it controls
+	// is Telegram, which is sent from this host to a phone with nothing open.
+	opts, stored := notifyOptions("pwa+tg", true)
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/notify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var got struct {
+		Mode     string `json:"mode"`
+		Telegram bool   `json:"telegram"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != "pwa+tg" || !got.Telegram {
+		t.Fatalf("GET = %+v", got)
+	}
+
+	post, err := http.Post(srv.URL+"/api/notify", "application/json", strings.NewReader(`{"mode":"off"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer post.Body.Close()
+	if post.StatusCode != http.StatusOK {
+		t.Fatalf("POST status %d", post.StatusCode)
+	}
+	// The answer is the state after the change, so the button never has to
+	// assume its tap landed.
+	var after struct {
+		Mode string `json:"mode"`
+	}
+	if err := json.NewDecoder(post.Body).Decode(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after.Mode != "off" || *stored != "off" {
+		t.Fatalf("after POST: answered %q, stored %q", after.Mode, *stored)
+	}
+}
+
+func TestNotifyModeRefusesWhatItDoesNotKnow(t *testing.T) {
+	opts, stored := notifyOptions("pwa", true)
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	for _, body := range []string{`{"mode":"everything"}`, `not json`, `{}`} {
+		res, err := http.Post(srv.URL+"/api/notify", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("POST %s: status %d, want 400", body, res.StatusCode)
+		}
+	}
+	if *stored != "pwa" {
+		t.Fatalf("a refused mode changed the state to %q", *stored)
+	}
+}
+
+func TestNotifyModeNeedsTheToken(t *testing.T) {
+	opts, _ := notifyOptions("pwa", true)
+	opts.Token = "secret"
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/notify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d, want 401", res.StatusCode)
+	}
+}
+
+func TestNotifyModeAbsentWhenNotTracked(t *testing.T) {
+	// A deployment that does not carry the switch answers 404 rather than a
+	// default: the page then leaves its own button alone instead of showing a
+	// state nothing obeys.
+	srv := testServer(t, "")
+	res, err := http.Get(srv.URL + "/api/notify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", res.StatusCode)
+	}
+}
+
+func TestConfigFrameCarriesTheNotificationMode(t *testing.T) {
+	// The button has to be right the moment it is drawn. Asking over HTTP after
+	// the socket is up would show the wrong state for as long as that took, and
+	// on a phone over a tunnel that is visible.
+	opts, _ := notifyOptions("off", true)
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("waiting for the config frame: %v", err)
+		}
+		if mt != websocket.TextMessage {
+			continue
+		}
+		var f struct {
+			Type     string `json:"type"`
+			Notify   string `json:"notify"`
+			Telegram bool   `json:"telegram"`
+		}
+		if err := json.Unmarshal(data, &f); err != nil || f.Type != "config" {
+			continue
+		}
+		if f.Notify != "off" || !f.Telegram {
+			t.Fatalf("config = %+v, want notify off and telegram true", f)
 		}
 		return
 	}

@@ -187,6 +187,38 @@ Body text comes from `watch.Tail`, not from the last non-blank line: agent TUIs
 draw an input box and a shortcut hint under their output, so the last line on
 screen is usually `? for shortcuts` or a row of `─`.
 
+**What is wanted is one switch, and it is the server's.** `watch.Pref` holds
+`off`, `pwa` or `pwa+tg`, `watch.Deliver` turns it into the two booleans the
+notifier obeys, and the page reads and writes it over `/api/notify` — plus
+`notify` in the config frame, so the button is right the moment it is drawn
+rather than one request later. Three reasons it is not a browser preference, and
+each of them was the design: half of what it controls is sent from the host to a
+phone that has this page closed, so the page cannot be the one holding it; a
+second phone or a reinstalled PWA would otherwise disagree with what the host
+actually does; and `off` has to mean silence in Telegram too, which the old bell
+could not do at all. It is remembered on disk (`POCKTERM_NOTIFY_FILE`, under the
+user's config directory by default) because CI restarts this binary on every
+push to `main` — a mode in memory would come back as the default several times a
+working day, and `off` is the state whose loss is loud. Default is `pwa+tg`: an
+install must not silence a phone that was being notified before it.
+
+The middle state exists only where a bot token does. `NotifyMode` answers
+`telegram` alongside the mode for that reason, and `nextMode` in `js/notify.js`
+drops `pwa+tg` from the ring without it — a label promising delivery that cannot
+happen is worse than a shorter cycle.
+
+**Two paths raise a notice in a browser, and the weaker one looked like the only
+one.** `new Notification(...)` is illegal in Android Chrome: the API is present,
+the permission is granted, and the constructor throws. The owner's phone runs
+this as an installed PWA, so no notification was shown there at all until
+2026-08-04 — and the throw escaped `show()`, taking the rest of the frame handler
+with it. `deliver()` prefers the service worker's registration, which is also the
+only path that can carry a tap to a page that is gone: a worker's notification
+delivers its click to the worker, so `notificationclick` in `sw.js` focuses an
+open window and posts it the session, or opens one at `?session=`. Which path ran
+goes to the journal (`notify via: …`) — the silence is what hid the defect for as
+long as it lasted.
+
 ## The wheel step is a tmux setting, and it is the floor for everything here
 
 A wheel notch is the smallest movement tmux can draw, so it bounds every
