@@ -82,6 +82,30 @@ func TestLive(t *testing.T) {
 			"  ctx 30% | dms@ai:~/work/pockterm (main)*22?4 $ | Opus 5 (1M context)",
 			"  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents",
 		}, true},
+		// The pair that broke it: a turn that is thinking rather than spending, so
+		// the brackets carry a duration and no tokens at all. Both arrived from the
+		// phone — one as the body of a "finished" notice raised mid-thought.
+		{"thinking, with no tokens in the brackets", []string{
+			"✢ Crunching… (4m 23s · still thinking)",
+		}, true},
+		{"thinking, said the short way", []string{
+			"* Deciphering… (4m 59s · thinking)",
+		}, true},
+		{"a young turn with nothing to report yet", []string{
+			"✻ Scampering… (29s · thinking more)",
+		}, true},
+		// A turn too young to have a duration: the star and the ellipsis are all
+		// there is, and they are enough.
+		{"named but not yet counting", []string{"✻ Pondering…"}, true},
+		{"a star with no ellipsis is the line the turn left behind", []string{
+			"✻ Cooked for 19s",
+		}, false},
+		// The mark on the agent's own sentences is not a spinner. Reading it as one
+		// would make every session with anything on screen look busy for good.
+		{"the agent's own words are not a counter", []string{
+			"● Готово: правки в трёх файлах…",
+			"● Жду прогон.",
+		}, false},
 		{"nothing on screen", nil, false},
 	}
 	for _, c := range cases {

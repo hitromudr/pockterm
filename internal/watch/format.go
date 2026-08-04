@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	"github.com/hitromudr/pockterm/internal/detect"
 )
 
 // Screen text goes to an outside service, so what leaves is bounded: a few
@@ -154,6 +156,12 @@ func isChrome(s string) bool {
 		return true
 	}
 	if statusLine.MatchString(l) || turnSummary.MatchString(s) {
+		return true
+	}
+	// The live counter. It should never be the body of a notice at all — a session
+	// that is counting has not finished — but it arrived as one, and the belt is
+	// cheap: this line is the interface either way.
+	if detect.Live([]string{s}) {
 		return true
 	}
 	for _, c := range chrome {

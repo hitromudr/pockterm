@@ -656,3 +656,18 @@ func TestBackgroundFollowsTheFooter(t *testing.T) {
 		t.Fatalf("a monitor outliving the agent's last word: %+v", got)
 	}
 }
+
+func TestTailNeverReturnsTheLiveCounter(t *testing.T) {
+	// It arrived on the phone as the body of "pockterm закончил": ✢ Crunching…
+	// (4m 23s · still thinking). The counter should stop the notice being raised at
+	// all — that is the other half of this fix — and it is chrome here regardless.
+	for _, l := range []string{
+		"✢ Crunching… (4m 23s · still thinking)",
+		"* Deciphering… (4m 59s · thinking)",
+		"✶ Doing… (1m 13s · ↓ 3.9k tokens)",
+	} {
+		if got := Tail([]string{"● последняя фраза агента", l}); got != "● последняя фраза агента" {
+			t.Errorf("Tail returned the counter: %q", got)
+		}
+	}
+}

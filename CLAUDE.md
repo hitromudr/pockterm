@@ -140,14 +140,33 @@ began, and a tab then paints itself neutral instead of inventing a fact.
 **The end of a turn is read off the agent, not waited out.** `detect.Live` looks
 for the counter an agent keeps on screen while a turn runs — `✶ Doing… (1m 13s ·
 ↓ 3.9k tokens)` — and its going away is the event: `watch` reports "done" in the
-poll that sees it leave, instead of thirty seconds after the last change. What
-identifies it is the *shape*, brackets around a duration and the word tokens,
-because the verbs turn over between releases ("Pondering", "Crunched", "Doing")
-and the line left behind when the turn ends is the same words in the past tense
-with no brackets at all: `✻ Crunched for 4m 3s · 1 monitor still running`. The
+poll that sees it leave, instead of thirty seconds after the last change. The
 silence rule is still there and still needed — a shell running a build has no
 counter to read — but it is no longer the only one, and it was costing thirty
 seconds of a tab painted as working after the answer was already on it.
+
+Three readings say a turn is running, and the first of them had to be widened
+after it sent a "finished" notice mid-thought:
+
+- **Brackets opening with a duration** — and nothing else in them is required.
+  The first version also demanded the word `tokens`, which is there while the
+  agent spends them and gone while it only thinks: `✢ Crunching… (4m 23s · still
+  thinking)` read as a turn that had ended. That is what put a live counter in
+  the body of "pockterm закончил", and what made a working tab go green for a few
+  seconds at a time. A 40-second sample of a real session missed it entirely,
+  because tokens happened to be flowing throughout.
+- **`esc to interrupt`**, which older releases show instead of a counter.
+- **One of a small set of stars, followed by a word ending in an ellipsis** —
+  `✻ Pondering…`, `✢ Crunching…` — from the owner's observation that the line
+  always opens with one and that those characters turn up in prose about never.
+  The ellipsis is what makes it safe: a turn in flight is named with one, and the
+  line left behind when it ends is not. `●` is deliberately not in the set — that
+  is the mark on the agent's own sentences, the thing a notification is *for*.
+
+What is never matched is the verb. Pondering, Crunching, Deciphering, Scampering,
+Cooked, Sautéed — they turn over between releases, and the line left behind when
+a turn ends is the same words in the past tense: `✻ Crunched for 4m 3s · 1 monitor
+still running`. Shapes, not vocabulary.
 
 The counter also outranks the threshold while it is *there*: a turn that thinks
 for a minute can redraw to the same bytes, and silence alone called that
