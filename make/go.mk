@@ -3,6 +3,15 @@
 GO      ?= go
 BIN_DIR := bin
 
+# Same source, same bytes. The host installs what CI drops only when the bytes
+# differ from what is running, which is what keeps a docs-only push from
+# dropping someone's terminal — and that guard is dead unless the build is
+# reproducible. Both flags were measured, not guessed: `-buildvcs=false` because
+# the commit hash is stamped in otherwise (so every push looked like a new
+# binary), `-trimpath` because the build directory is stamped in too (two
+# checkouts of one commit differed without it).
+BUILD_FLAGS := -trimpath -buildvcs=false
+
 # Deploy target host, override: make deploy DEST=user@host
 DEST    ?=
 
@@ -16,12 +25,12 @@ build: ## Build for the current platform into bin/
 
 build-arm64: ## Cross-compile linux/arm64 into bin/$(PROJECT)-linux-arm64
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build \
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(BUILD_FLAGS) \
 		-o $(BIN_DIR)/$(PROJECT)-linux-arm64 ./cmd/$(PROJECT)
 
 build-amd64: ## Cross-compile linux/amd64 into bin/$(PROJECT)-linux-amd64
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build \
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(BUILD_FLAGS) \
 		-o $(BIN_DIR)/$(PROJECT)-linux-amd64 ./cmd/$(PROJECT)
 
 # What a release publishes: both binaries and the sums install.sh verifies

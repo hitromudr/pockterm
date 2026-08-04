@@ -311,6 +311,17 @@ signature and takes it from there. Identical bytes are a no-op, so a docs-only
 push does not drop anyone's terminal; a binary that fails to start is rolled
 back to the previous one.
 
+**That no-op needs the build to be reproducible, and for a day it was not.**
+`go build` stamps the commit hash into the binary and the build directory along
+with it, so every push produced new bytes and every push restarted the unit —
+found on 2026-08-04 by a commit that touched only this file and dropped the
+terminal anyway. `BUILD_FLAGS` in `make/go.mk` is `-trimpath -buildvcs=false`
+for that reason, and `make test-repro` builds the tree twice under different
+paths to prove it: same source, same bytes. It is two real cross-compiles, so it
+is not part of `make check` — run it when the build line changes. The cost of
+the flags is that the binary no longer says which commit it is; the page's
+`APP_VERSION` is what identity there is.
+
 It used to wait for nobody to be looking, on the grounds that a restart drops
 the terminal its author is sitting in. That cost a parked build, a retry timer,
 a `waiting` flag on `/api/presence` and a line in the ⋯ menu explaining why the
