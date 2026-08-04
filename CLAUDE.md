@@ -556,6 +556,18 @@ the path. Now the bell asks whenever the mode it moves to notifies, an unpermitt
 `🔔` wears a dashed outline saying one tap is the fix, the permission is in the
 `hello` line of the journal, and a dropped notice says why it was dropped.
 
+**Every notice names its own icon.** Left unset, Chrome draws a generic bell — and
+unpredictably: two notices from this page sat in the owner's shade one above the
+other, one bell and one app mark, because whether the manifest icon resolves
+depends on whether the page was still there when the worker raised the notice.
+`icons/icon-192-notify.png` is the app's own drawing — the prompt and its
+underscore — in **white on nothing at all**, and it is passed as both `icon` and
+`badge`. No plate behind it: the shade draws its own circle and background, so an
+icon carrying one arrives as a square inside a circle. The mark is scaled to fill
+its box rather than keeping the installed icon's margin, which left it a smudge at
+24px. It is generated from `icon-192.png` (luminance to alpha), so the two cannot
+drift into different drawings.
+
 `show()` also no longer consults the page's own copy of the switch. The frame's
 existence *is* the decision — the server read the mode at the moment of the event —
 and the page's copy is the stale second owner of one fact, changed from whichever

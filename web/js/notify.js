@@ -16,6 +16,28 @@
 
 const KINDS = { question: 'pockterm-question', done: 'pockterm-done' };
 
+// The picture in the notification, on every notice without exception.
+//
+// Left unset, Chrome draws its own generic bell — and it does so unpredictably:
+// on the owner's phone two notices from this same page sat in the shade one above
+// the other, one with a bell and one with the app's own mark. Which one arrives
+// depends on whether the manifest icon could be resolved at the moment the notice
+// was raised, and a notice raised by the service worker for a page that is gone
+// is exactly when it cannot. Naming the file removes the question.
+//
+// It is the app's own drawing — the prompt and its underscore — in white on
+// nothing at all. Not the installed icon: that one is a pale mark on a near-black
+// plate, and a plate is the wrong shape here. The shade puts every icon in a
+// circle of its own and draws its own background behind it, so an icon carrying
+// one arrives as a square inside a circle; without it the mark sits on the
+// shade's own dark. White for the same reason: one colour, and it is the colour
+// every other icon in an Android shade is.
+//
+// The mark is scaled to fill its box rather than keeping the installed icon's
+// generous margin — inside the circle the whole image is drawn, and that margin
+// left the glyph small enough to be a smudge at 24px.
+const ICON = '/icons/icon-192-notify.png';
+
 // Two lines are shown collapsed, the rest on expand — but a whole pane pasted
 // into a notification helps nobody.
 const MAX_BODY = 400;
@@ -127,6 +149,11 @@ export function deliver(notice, env = {}) {
       const shown = reg.showNotification(notice.title, {
         body: notice.body,
         tag: notice.tag,
+        icon: ICON,
+        // The tiny monochrome mark in the status bar. The same file answers for
+        // both: white on nothing is exactly what that slot wants, and one file
+        // cannot drift from the other.
+        badge: ICON,
         data: { session: notice.session || '' },
       });
       // A registration can still refuse (permission revoked between the tap and
@@ -144,7 +171,9 @@ export function deliver(notice, env = {}) {
   const Notifier = env.Notifier;
   if (typeof Notifier !== 'function') return 'none';
   try {
-    const n = new Notifier(notice.title, { body: notice.body, tag: notice.tag });
+    const n = new Notifier(notice.title, {
+      body: notice.body, tag: notice.tag, icon: ICON, badge: ICON,
+    });
     if (env.onClick) n.onclick = () => env.onClick(notice, n);
     return 'window';
   } catch (e) {

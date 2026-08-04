@@ -1,6 +1,6 @@
 // Version-stamped static cache. Bump VERSION on any static change:
 // the old cache is dropped on activate.
-const VERSION = 'v99';
+const VERSION = 'v100';
 const PRECACHE = [
   '/',
   '/css/app.css',
@@ -21,6 +21,7 @@ const PRECACHE = [
   '/vendor/addon-fit.js',
   '/manifest.json',
   '/icons/icon-192.png',
+  '/icons/icon-192-notify.png',
   '/icons/icon-512.png',
   '/icons/icon-192-maskable.png',
   '/icons/icon-512-maskable.png',

@@ -165,3 +165,19 @@ test('the label says which channels are live', () => {
   assert.equal(seen.size, 3);
   assert.match(modeLabel('pwa+tg').text, /TG/i);
 });
+
+test('every notice names its own icon, on both paths', () => {
+  // Unset, Chrome draws a generic bell — and did so on the owner's phone for one
+  // notice while the one under it carried the app's mark, from this same page.
+  // Which of the two you get is not ours to predict, so it is not left to chance.
+  const reg = fakeReg();
+  deliver(notice, { registration: reg });
+  const opts = reg.calls[0].opts;
+  assert.match(opts.icon, /icon-192-notify\.png$/);
+  assert.equal(opts.badge, opts.icon, 'one file for both slots, so they cannot drift');
+
+  const made = [];
+  deliver(notice, { Notifier: function (title, o) { made.push(o); } });
+  assert.equal(made[0].icon, opts.icon, 'the fallback path draws the same icon');
+  assert.equal(made[0].badge, opts.icon);
+});
