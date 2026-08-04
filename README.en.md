@@ -184,6 +184,29 @@ command line.
 
 The plain + lost nothing: it still starts a preset in the root.
 
+### The tab strip: the colour says what the session is doing
+
+A tab answers three different questions and says them three different ways:
+which sessions exist (the row), which one you are in (**a frame**), and what each
+is doing (**the fill**):
+
+| Look | Meaning |
+|---|---|
+| plain | the watcher has nothing to claim: quiet since it started looking |
+| moving purple | output is arriving right now |
+| green | gone quiet after doing something — the same event the "finished" notification is raised from |
+
+The state is not worked out by the page but by the same pane watcher that decides
+about notifications, so the colour and the notification cannot disagree. It rides
+along as `state` in the session list and refreshes every three seconds while the
+terminal is on screen and the page is in front: a phone in a pocket keeps its
+socket for hours, and polling tmux for a strip nobody can see is work done for
+nobody.
+
+A frame rather than a fill for the attached tab, because the fill is spoken for:
+it used to say "you are here", which left the session you are sitting in as the
+one tab that could not tell you whether its agent was still running.
+
 ## Notifications
 
 A session comes under watch once you attach to it through pockterm, and

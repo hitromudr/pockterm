@@ -32,6 +32,10 @@ type Presence interface {
 	// Counts answers /api/presence: attached clients, and how many of them
 	// have the page on screen.
 	Counts() (clients, visible int)
+	// Activity says what a session is doing — "working", "done", or "" when
+	// there is nothing to claim. It travels with the session list so a tab can
+	// be coloured by it.
+	Activity(session string) string
 }
 
 type Options struct {
@@ -117,6 +121,15 @@ func serveSessions(o Options, w http.ResponseWriter, r *http.Request) {
 	}
 	if sessions == nil {
 		sessions = []tmuxcmd.Session{}
+	}
+	// What each session is doing, from the watcher that reads the panes. The
+	// page paints a tab with it — and it rides along with the list rather than
+	// having its own endpoint, because a name and its state fetched separately
+	// can disagree, and the disagreement would show as the wrong tab lit up.
+	if o.Presence != nil {
+		for i := range sessions {
+			sessions[i].State = o.Presence.Activity(sessions[i].Name)
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sessions)

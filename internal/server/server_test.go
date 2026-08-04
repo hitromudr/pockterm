@@ -275,6 +275,15 @@ type fakePresence struct {
 	left    []int64
 	clients int // what Counts reports, set by the test
 	viewing int
+	// What Activity reports per session, set by the test. A tab is coloured by
+	// it, so the list has to carry it.
+	activity map[string]string
+}
+
+func (p *fakePresence) Activity(s string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.activity[s]
 }
 
 func (p *fakePresence) Watch(s string) {
@@ -1110,5 +1119,50 @@ func TestNewSessionRefusalAboutAFolderReachesThePage(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "gone") {
 		t.Fatalf("the reason did not reach the page: %q", body)
+	}
+}
+
+func TestSessionListCarriesWhatEachSessionIsDoing(t *testing.T) {
+	// The tab strip paints itself from this: purple while a session works, green
+	// once it has finished. Two facts about one session must arrive together —
+	// fetched separately, a name and its state can disagree, and the
+	// disagreement shows as the wrong tab lit up.
+	opts := testOptions("")
+	opts.Presence = &fakePresence{activity: map[string]string{"demo": "working"}}
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var got []map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0]["state"] != "working" {
+		t.Fatalf("sessions = %v", got)
+	}
+}
+
+func TestSessionListSaysNothingWhenThereIsNoWatcher(t *testing.T) {
+	// A deployment without the watcher leaves the field out rather than sending
+	// a state it made up; the page then paints every tab neutral.
+	srv := testServer(t, "")
+	res, err := http.Get(srv.URL + "/api/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var got []map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("sessions = %v", got)
+	}
+	if _, ok := got[0]["state"]; ok {
+		t.Fatalf("a state appeared without a watcher: %v", got[0])
 	}
 }

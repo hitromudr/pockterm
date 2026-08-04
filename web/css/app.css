@@ -105,16 +105,47 @@ html, body {
   gap: 4px;
   overflow-x: auto;
 }
+/* A tab carries three answers, and they are three different questions: which
+   sessions exist, which one you are in, and what each is doing. So the frame is
+   "you are here" and the fill is the state — the fill used to be "you are here",
+   which left the session you were sitting in as the one tab that could not tell
+   you whether its agent was still running.
+
+   The border is always there and only changes colour: a frame that appears would
+   move every other tab by two pixels on each switch. */
 #tabs button {
   padding: 6px 12px;
   font-size: 13px;
   white-space: nowrap;
   color: var(--fg);
   background: #232a38;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 6px;
 }
-#tabs button.active { background: var(--accent); color: #0b0e14; font-weight: 600; }
+#tabs button.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+/* Gone quiet after doing something — the watcher's "done", the same state the
+   finished notification is raised from. */
+#tabs button.done { background: #1d3a2b; color: #7fdca4; }
+#tabs button.done.active { border-color: #7fdca4; color: #a8ecc4; }
+/* Output is arriving. The movement is the point: a still purple says "this one
+   is different", a moving one says "it is going right now", and that is the
+   question you hold a phone up to answer. */
+#tabs button.working {
+  color: #e6dcff;
+  background: linear-gradient(100deg, #2f2350 0%, #2f2350 35%, #7d5cff 50%, #2f2350 65%, #2f2350 100%);
+  background-size: 300% 100%;
+  animation: tab-working 1.4s linear infinite;
+}
+#tabs button.working.active { border-color: #b9a4ff; }
+@keyframes tab-working {
+  from { background-position: 150% 0; }
+  to { background-position: -150% 0; }
+}
+/* Someone who has asked not to be moved gets the colour and not the movement —
+   the state is information, the animation is only how it is told. */
+@media (prefers-reduced-motion: reduce) {
+  #tabs button.working { animation: none; background: #4a3a7d; }
+}
 .bar button {
   color: var(--fg);
   background: #232a38;

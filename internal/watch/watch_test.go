@@ -315,3 +315,70 @@ func TestNoticeSaysWhichSessionAndWhat(t *testing.T) {
 		t.Fatalf("done notice is empty: %q / %q", title, body)
 	}
 }
+
+func TestActivityFollowsThePane(t *testing.T) {
+	// What the tab strip colours itself by. The watcher already knew this — it
+	// is the same state the "finished" notification is decided from — and the
+	// page had no way to ask: a tab could not tell a session chewing through a
+	// build from one that had been sitting quiet since yesterday.
+	now := time.Unix(1700000000, 0)
+	screen := "prompt$ "
+	w := New(Options{
+		Capture:   func(string) (string, error) { return screen, nil },
+		Notify:    func(Event) {},
+		IdleAfter: 30 * time.Second,
+		Now:       func() time.Time { return now },
+	})
+
+	// Not watched at all: the page may list a session the watcher has never
+	// been asked about, and "" is the honest answer, not "idle".
+	if got := w.Activity("build"); got != ActivityUnknown {
+		t.Fatalf("before watching: %q", got)
+	}
+
+	w.Watch("build")
+	w.Tick()
+	// The first reading is not activity — it is whatever was already on screen.
+	if got := w.Activity("build"); got != ActivityUnknown {
+		t.Fatalf("after the first look: %q, want nothing seen yet", got)
+	}
+
+	screen = "prompt$ make\ncompiling"
+	w.Tick()
+	if got := w.Activity("build"); got != ActivityWorking {
+		t.Fatalf("while the screen changes: %q, want %q", got, ActivityWorking)
+	}
+
+	// Quiet, but not long enough to count as finished.
+	now = now.Add(20 * time.Second)
+	w.Tick()
+	if got := w.Activity("build"); got != ActivityWorking {
+		t.Fatalf("20s quiet of a 30s threshold: %q, want %q", got, ActivityWorking)
+	}
+
+	now = now.Add(11 * time.Second)
+	w.Tick()
+	if got := w.Activity("build"); got != ActivityDone {
+		t.Fatalf("past the threshold: %q, want %q", got, ActivityDone)
+	}
+
+	// And back: a session that speaks again is working again, which is the whole
+	// reason this is read per poll rather than remembered by the page.
+	screen = "prompt$ make\ncompiling\nlinking"
+	w.Tick()
+	if got := w.Activity("build"); got != ActivityWorking {
+		t.Fatalf("after it spoke again: %q, want %q", got, ActivityWorking)
+	}
+
+	// A session tmux has lost stops being watched, and stops having a state.
+	w2 := New(Options{
+		Capture: func(string) (string, error) { return "", errors.New("no such session") },
+		Notify:  func(Event) {},
+		Now:     func() time.Time { return now },
+	})
+	w2.Watch("gone")
+	w2.Tick()
+	if got := w2.Activity("gone"); got != ActivityUnknown {
+		t.Fatalf("a session tmux lost: %q", got)
+	}
+}

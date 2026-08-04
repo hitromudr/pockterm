@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v92';
+const APP_VERSION = 'v93';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -454,6 +454,7 @@ function showSessions() {
   // one back on screen the moment the terminal is shown again.
   tabsEl.innerHTML = '';
   tabsSignature = null;
+  pollTabs(false);
   openDrawer();
 }
 
@@ -482,6 +483,8 @@ function attach(name) {
   lastAnswersSig = null;
   scrolledBack = false; // the new socket reports the pane's state on connect
   renderTabs();
+  // The strip is on screen now, so its colours have to keep up with the panes.
+  pollTabs(true);
   requestAnimationFrame(() => {
     // Size first, then the socket: tmux redraws immediately on attach.
     fitNow();
@@ -500,6 +503,16 @@ function attach(name) {
 }
 
 // Session tabs in the terminal header: tap one to switch to that session.
+//
+// A tab answers three different questions at once, so it says them three
+// different ways: which sessions exist (the row), which one you are in (a frame
+// around it), and what each is doing (the fill — neutral when the watcher has
+// nothing to claim, a moving purple while output is arriving, green once it has
+// gone quiet after doing something).
+//
+// The frame is why: "attached" used to be the fill, which left the state nowhere
+// to go — the tab you were sitting in would have been the only one that could
+// not tell you whether its agent was still running.
 async function renderTabs() {
   const { sessions } = await fetchSessions();
   const names = sessions.map((s) => s.name).join('\u0000');
@@ -521,10 +534,35 @@ async function renderTabs() {
       tabsEl.appendChild(b);
     }
   }
+  // State is a class, never a rebuild: a session that goes from working to done
+  // and back several times a minute would otherwise take the row — and with it
+  // the keyboard — along every time.
+  const state = new Map(sessions.map((s) => [s.name, s.state || '']));
   for (const b of tabsEl.querySelectorAll('button')) {
+    const st = state.get(b.dataset.session) || '';
     b.classList.toggle('active', b.dataset.session === current);
+    b.classList.toggle('working', st === 'working');
+    b.classList.toggle('done', st === 'done');
   }
 }
+
+// The state is read rather than pushed, and this is what reads it — only while
+// the terminal is on screen and the page is in front. A phone in a pocket keeps
+// its socket for hours, and polling tmux for a strip nobody can see is work done
+// for nobody. One `list-sessions` per poll; the copy-mode poll behind the same
+// header runs every 400ms, so this is the cheap one.
+const TAB_POLL_MS = 3000;
+let tabPoll = null;
+function pollTabs(on) {
+  const want = on && !screenTerm.hidden && document.visibilityState === 'visible';
+  if (want === !!tabPoll) return;
+  if (!want) { clearInterval(tabPoll); tabPoll = null; return; }
+  tabPoll = setInterval(() => { if (!screenTerm.hidden) renderTabs(); }, TAB_POLL_MS);
+  renderTabs();
+}
+// Coming back to the page is when the answer is most out of date: the session was
+// working when the phone went into the pocket and has probably finished since.
+document.addEventListener('visibilitychange', () => pollTabs(true));
 
 // --- websocket to the attached session ---
 function connect() {

@@ -121,6 +121,35 @@ by whether there is history above. Nothing here asks tmux to leave copy-mode:
 the pane is shared, and a page that sent `q` on its own would take the laptop's
 client out of a mode it chose to be in.
 
+## A tab carries three answers, and none of them is the others
+
+Which sessions exist is the row, which one you are in is a **frame**, and what
+each is doing is the **fill**: nothing for a session the watcher has no claim
+about, a moving purple while output arrives, green once it has gone quiet after
+doing something. The frame is not decoration — "attached" used to be the fill,
+which left the session you were sitting in as the only tab that could not tell
+you whether its agent was still running. The border is always present and only
+changes colour, or every switch would move the rest of the row by two pixels.
+
+The state is `watch.Activity`, read off the same per-session bookkeeping the
+"finished" notification is decided from — so the colour and the notification
+cannot disagree about what a session is doing. `ActivityUnknown` is deliberately
+not called idle: the honest claim is that nothing has been seen since watching
+began, and a tab then paints itself neutral instead of inventing a fact.
+
+It rides in the session list (`state` on each entry, filled by the server from
+`Presence.Activity`) rather than having an endpoint of its own: a name and its
+state fetched separately can disagree, and the disagreement would show as the
+wrong tab lit up. tmux never fills that field.
+
+The page polls it every 3s, and only while the terminal is on screen and the page
+is in front — a pocketed phone holds its socket for hours, and polling tmux for a
+strip nobody can see is work for nobody. A `visibilitychange` refresh goes with
+it, because coming back is exactly when the answer is most out of date. **The
+state is applied as a class, never by rebuilding the row**: a rebuild takes the
+focused button with it and a WebView answers that by raising the keyboard, so a
+session flipping between working and done would flip the keyboard with it.
+
 ## A session is started in a folder, and named after it
 
 The drawer has two lists and shows one at a time: the sessions, and the folders

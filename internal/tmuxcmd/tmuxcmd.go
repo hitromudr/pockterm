@@ -40,6 +40,11 @@ type Session struct {
 	// this is frequently a name no session carries any more — and a name that
 	// must not be handed to another session. See NameConflict.
 	Group string `json:"-"`
+	// What the session is doing — "working", "done", or empty when nothing is
+	// claimed. tmux knows nothing about this and never fills it: it is the
+	// watcher's answer, put here by the server so the page reads one list
+	// instead of joining two that can disagree.
+	State string `json:"state,omitempty"`
 }
 
 // listFormat keeps the field order ParseSessions expects.

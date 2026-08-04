@@ -95,6 +95,10 @@ export async function startStand({
     // the owner's phone does, and the run before it would decide what this one
     // starts with.
     POCKTERM_NOTIFY_FILE: join(dir, 'notify'),
+    // How much silence counts as "finished". Two seconds instead of thirty so a
+    // test can watch a tab go from working to done inside one run — the same
+    // threshold the notification uses, and the state the strip is coloured by.
+    POCKTERM_IDLE: '2s',
   };
   // Inside a tmux session these two point every child at that session's
   // server, whatever TMUX_TMPDIR says.

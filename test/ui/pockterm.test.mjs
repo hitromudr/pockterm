@@ -886,3 +886,46 @@ describe('the folders of the projects root', () => {
       'the + still claims a folder');
   });
 });
+
+describe('a tab says what its session is doing', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['demo'] }); });
+  after(async () => { await stand.stop(); });
+
+  test('the attached tab is framed, not filled', async () => {
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    const style = await page.evaluate(() => {
+      const b = document.querySelector('#tabs button.active');
+      const s = getComputedStyle(b);
+      return { border: s.borderTopColor, background: s.backgroundColor };
+    });
+    // The fill is spoken for — it says what the session is doing — so being here
+    // is a frame. A filled tab would have left the session you are in as the one
+    // that cannot tell you whether its agent is still running.
+    assert.notEqual(style.border, 'rgba(0, 0, 0, 0)', 'the attached tab has no frame');
+    // The accent is the frame's colour now, not the fill's.
+    assert.ok(!/^rgb\(122, 162, 247\)/.test(style.background),
+      `the attached tab is still filled with the accent: ${style.background}`);
+  });
+
+  test('purple while output arrives, green once it has gone quiet', async () => {
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    // The stand's session runs `cat`, so a keystroke comes back as output and the
+    // pane changes — which is exactly what the watcher reads.
+    // Plain "demo", not "=demo": the exact-match prefix is for session targets
+    // and send-keys wants a pane — tmux answers "can't find pane: =demo".
+    stand.tmux(['send-keys', '-t', 'demo', 'working now', 'Enter']);
+    await page.waitForFunction(
+      () => !!document.querySelector('#tabs button.working'), null, { timeout: 15000 });
+    // POCKTERM_IDLE is 2s in the stand, and the watcher reads the pane every 2s.
+    await page.waitForFunction(
+      () => !!document.querySelector('#tabs button.done'), null, { timeout: 20000 });
+    // Both states at once would be a tab claiming two things; the classes are
+    // exclusive because the state is one value, not two flags.
+    assert.equal(await page.locator('#tabs button.working.done').count(), 0);
+  });
+});

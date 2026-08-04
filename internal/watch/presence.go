@@ -20,3 +20,9 @@ func (p Presence) SetVisible(session string, id int64, visible bool) {
 func (p Presence) Leave(session string, id int64) { p.Viewers.Leave(session, id) }
 
 func (p Presence) Counts() (clients, visible int) { return p.Viewers.Counts() }
+
+// Activity is what the session list carries to the page so a tab can be
+// coloured by what the session is doing. A string rather than the Activity type:
+// the server must not have to import this package to describe its own wire
+// format, which is the same reason Presence exists at all.
+func (p Presence) Activity(session string) string { return string(p.Watcher.Activity(session)) }

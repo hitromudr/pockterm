@@ -24,6 +24,39 @@ const (
 	Done     Kind = "done"
 )
 
+// Activity is what the watcher has seen in a session lately. The page colours a
+// tab by it: a session chewing through a build and one that has been quiet since
+// yesterday looked exactly alike, and which is which is the first thing you want
+// to know from a strip of tabs on a phone.
+//
+// It is the same state the "finished" notification is decided from, read instead
+// of announced — so the two can never disagree about what a session is doing.
+type Activity string
+
+const (
+	// ActivityUnknown is a session the watcher has nothing to say about: not
+	// watched, or nothing has happened since it started looking. Deliberately
+	// not called "idle" — the honest claim is that nothing was seen, and a tab
+	// paints itself neutral rather than making one up.
+	ActivityUnknown Activity = ""
+	ActivityWorking Activity = "working"
+	ActivityDone    Activity = "done"
+)
+
+// Activity reports what session is doing, as far as the watcher can tell.
+func (w *Watcher) Activity(session string) Activity {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	st, ok := w.s[session]
+	if !ok || !st.active {
+		return ActivityUnknown
+	}
+	if st.doneSent {
+		return ActivityDone
+	}
+	return ActivityWorking
+}
+
 // Event is what happened in a session.
 type Event struct {
 	Kind    Kind
