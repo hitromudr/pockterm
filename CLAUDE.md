@@ -215,6 +215,23 @@ defect can take here — a wrong answer looks exactly like the right one until y
 read what it did. It also only became reachable when the fix below made those menus
 detectable at all.
 
+**The row is drawn over the terminal, never beside it.** It used to sit in the
+terminal screen's own flex column, so drawing it shrank the terminal — nine rows
+of thirty-five, measured on the stand. tmux redrew the pane that much shorter, the
+top of the menu scrolled out of the grid, nothing was detected any more, the row
+went away, the pane grew back, and round again: reported from the phone as the
+buttons blinking. A row whose own presence decides whether it should be there
+cannot be in the flow. It is `position: absolute` inside `#term` now, opaque, over
+the last rows — what it covers is the text it repeats. The same shrinking is why a
+*waiting* session read as finished on the strip: the watcher reads the very same
+pane, and while the menu was out of it there was no question to see. The test
+asserts the invariant rather than the symptom — showing the row must not change
+`#{pane_height}`.
+
+A swipe on the row scrolls the row: six options with their labels are taller than
+the room it is allowed, and `ownsGesture` gives it its own gesture for the same
+reason the composer and the tab strip have theirs.
+
 `detectQuestion` reports `navigate` (`digits` or `arrows`, read off that footer
 line) and `cursor` (which option carries the `❯`), and `answerKeys` turns the two
 into bytes. The count of arrow presses starts from where the pointer **is**, not

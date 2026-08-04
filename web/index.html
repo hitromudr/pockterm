@@ -159,9 +159,18 @@
       <!-- Selection mode lays a frozen copy of the screen over the live
            terminal; see #snapshot in css/app.css. -->
       <pre id="snapshot" hidden></pre>
+      <!-- Buttons for a detected interactive prompt (a Claude permission
+           prompt, a question with a description under each answer).
+
+           Inside the terminal and over it, never beside it. In the screen's own
+           column it took nine rows of a 35-row pane away from tmux, and the menu
+           it is detected from is what got shorter: the top of the menu scrolled
+           out of the grid, nothing was detected, the row went away, the pane grew
+           back — and round again, reported from the phone as the buttons
+           blinking. A row whose own presence decides whether it should be there
+           cannot be in the flow. -->
+      <div id="answers" hidden></div>
     </div>
-    <!-- Buttons for a detected interactive prompt (Claude permission etc.) -->
-    <div id="answers" hidden></div>
     <!-- Quick macros for prompt mode. No plain Enter here: the composer's ▶
          sends, and the key bar owns Esc and ^C — one key, one place. -->
     <div id="quickbar" hidden>

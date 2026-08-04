@@ -18,7 +18,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v103';
+const APP_VERSION = 'v104';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1316,10 +1316,13 @@ const gestureArea = document.getElementById('screen-term');
 
 // Where a swipe is not the page's business: the composer is a text field the
 // finger drags a caret through, the frozen copy is what a selection is made in,
-// and the tab strip scrolls sideways under its own gesture.
+// the tab strip scrolls sideways under its own gesture, and the answer buttons
+// scroll under their own — six options with their labels are taller than the
+// room the row is allowed, and a swipe there has to reach the last one rather
+// than scroll the terminal underneath.
 function ownsGesture(target) {
   return !(target instanceof Element) ||
-    !target.closest('#composer, #snapshot, header.bar');
+    !target.closest('#composer, #snapshot, header.bar, #answers');
 }
 
 gestureArea.addEventListener('touchstart', (e) => {

@@ -1296,3 +1296,44 @@ describe('a tab says what its session is doing', () => {
     assert.notEqual(seen[0].delay, seen[1].delay, 'every tab starts the sweep at the same instant');
   });
 });
+
+describe('the answer buttons and the pane they are read from', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['demo'] }); });
+  after(async () => { await stand.stop(); });
+
+  test('showing them takes no rows away from the pane', async () => {
+    // Reported from the phone as the buttons blinking. The row sat in the terminal
+    // screen's own column, so drawing it shrank the terminal: measured here, nine
+    // rows of thirty-five. tmux redrew the pane that much shorter and the top of
+    // the menu scrolled out of the grid — so the row removed the reason for its own
+    // existence, went away, let the pane grow back, and round again. A row whose
+    // presence decides whether it should be there cannot be in the flow.
+    //
+    // The same shrinking is why a waiting session read as finished on the strip:
+    // the watcher reads the very same pane.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    const height = () => Number(stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_height}']).trim());
+    const before = height();
+    assert.ok(before > 12, `the pane is ${before} rows, too short to tell anything`);
+
+    for (const l of ['Куда положить файл?', '❯ 1. в корень', '  2. в docs/']) {
+      stand.tmux(['send-keys', '-t', 'demo', l, 'Enter']);
+    }
+    await page.waitForFunction(
+      () => document.querySelectorAll('#answers button').length >= 2, null, { timeout: 15000 });
+
+    assert.equal(height(), before, 'the row took rows from the pane it is detected from');
+    // Over the terminal, not beside it — the geometry says which.
+    assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('answers')).position),
+      'absolute', 'the row is back in the flow');
+    // And it stays put across several scans, which is what blinking was.
+    for (let i = 0; i < 5; i++) {
+      await page.waitForTimeout(400);
+      assert.ok(await page.locator('#answers button').count() >= 2, `the row blinked out on scan ${i}`);
+      assert.equal(height(), before, `the pane changed height on scan ${i}`);
+    }
+  });
+});

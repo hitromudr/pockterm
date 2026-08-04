@@ -734,7 +734,19 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 
 /* Answer buttons for a detected prompt: one per row, above the input.
    Capped height with scroll so a long menu never eats the terminal. */
+/* Over the terminal's last rows rather than under them.
+   In the flex column it shrank the terminal, tmux redrew the pane nine rows
+   shorter, and the menu the row is detected from lost its top — so the row
+   removed the reason for its own existence and blinked. Absolute here, opaque,
+   and the pane keeps every row: what the buttons cover is the text they repeat.
+   The grid is untouched either way, so both detectors — this page's and the
+   watcher's, which reads the same pane — still see the whole menu. */
 #answers {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
   display: flex;
   flex-direction: column;
   gap: 6px;
