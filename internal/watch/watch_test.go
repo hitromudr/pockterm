@@ -383,6 +383,48 @@ func TestActivityFollowsThePane(t *testing.T) {
 	}
 }
 
+func TestActivityAsksBeforeAnythingElse(t *testing.T) {
+	// A menu on screen is the state that is about the person holding the phone:
+	// output arriving is the machine's business, a question is theirs. So it
+	// outranks working and done, and it does not wait for the screen to have
+	// changed once — a pane already showing a question is showing it now.
+	now := time.Unix(1700000000, 0)
+	screen := "prompt$ "
+	w := New(Options{
+		Capture:   func(string) (string, error) { return screen, nil },
+		Notify:    func(Event) {},
+		IdleAfter: 30 * time.Second,
+		Now:       func() time.Time { return now },
+	})
+	w.Watch("agent")
+	w.Tick()
+
+	screen = "Apply this change?\n❯ 1. Yes\n  2. No"
+	now = now.Add(time.Second)
+	w.Tick()
+	if got := w.Activity("agent"); got != ActivityAsking {
+		t.Fatalf("with a menu on screen: %q, want %q", got, ActivityAsking)
+	}
+
+	// Still asking after the silence that would otherwise read as "finished":
+	// nothing is going to happen until it is answered, and "done" would be a
+	// tab claiming the opposite.
+	now = now.Add(2 * time.Minute)
+	w.Tick()
+	if got := w.Activity("agent"); got != ActivityAsking {
+		t.Fatalf("a menu left standing: %q, want %q", got, ActivityAsking)
+	}
+
+	// Answered: the menu is gone from the screen and the state goes back to what
+	// the screen is doing.
+	screen = "Apply this change?\nyes\napplying"
+	now = now.Add(time.Second)
+	w.Tick()
+	if got := w.Activity("agent"); got != ActivityWorking {
+		t.Fatalf("after the menu went away: %q, want %q", got, ActivityWorking)
+	}
+}
+
 func TestBackgroundFollowsTheFooter(t *testing.T) {
 	// The other half of what a tab says. Activity goes quiet the moment the agent
 	// stops speaking; the shells and monitors it left running do not, and a tab

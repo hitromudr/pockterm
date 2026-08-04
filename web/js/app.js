@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v95';
+const APP_VERSION = 'v96';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -357,8 +357,10 @@ async function killSession(name) {
       return;
     }
     toast(`closed ${name}`);
-    if (current === name) showSessions();
-    else loadSessions();
+    if (current !== name) { loadSessions(); return; }
+    // Read the strip while the closed tab is still in it: it is the fallback for
+    // a session nothing was visited before, and a moment later it is gone.
+    await stepBackFrom(name, tabBeside(name));
   } catch (_) {
     toast('no connection to the server');
   }
@@ -491,6 +493,54 @@ function showSessions() {
   openDrawer();
 }
 
+// The order tabs were visited in, oldest first, without the one you are in.
+//
+// Closing the session you are attached to used to land on the modal drawer even
+// with others running: the tab under the finger was gone, and the place it had
+// been was no longer anything to tap — reported as the interface sticking. So the
+// page steps back to the tab it came from instead. The empty drawer is what is
+// left when nothing is running at all, which is the case it was built for.
+const visited = [];
+function forget(name) {
+  const at = visited.indexOf(name);
+  if (at >= 0) visited.splice(at, 1);
+}
+function rememberVisit(name) {
+  if (!name) return;
+  forget(name);
+  visited.push(name);
+}
+
+// Which tab stands next to this one in the strip, for when nothing was visited
+// before it: to the left if there is one, otherwise to the right.
+function tabBeside(name) {
+  const names = [...tabsEl.querySelectorAll('button')].map((b) => b.dataset.session);
+  const i = names.indexOf(name);
+  if (i < 0) return null;
+  return i > 0 ? names[i - 1] : names[i + 1] || null;
+}
+
+// Where closing the session you are in goes. The strip's order is read before the
+// list is refetched, because by then the closed tab is gone from both.
+async function stepBackFrom(closed, beside) {
+  forget(closed);
+  const { sessions } = await fetchSessions();
+  const alive = new Set((sessions || []).map((s) => s.name));
+  let back = null;
+  while (visited.length) {
+    const n = visited.pop();
+    if (alive.has(n)) { back = n; break; }
+  }
+  if (!back && beside && alive.has(beside)) back = beside;
+  if (!back && sessions && sessions.length) back = sessions[0].name;
+  // Nothing left to go back to: the drawer, and it is modal there on purpose.
+  if (!back) { showSessions(); return; }
+  // Cleared first so the session that has just been closed is not remembered as
+  // somewhere to return to.
+  current = null;
+  attach(back);
+}
+
 function attach(name) {
   // Nothing here touches focus, and that is the whole point.
   //
@@ -503,6 +553,8 @@ function attach(name) {
   // Close any current socket first (switching tabs) so its output stops
   // writing into the terminal we're about to reuse for another session.
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  rememberVisit(current);
+  forget(name); // it is where you are now, not somewhere to go back to
   current = name;
   try { sessionStorage.setItem('pt-session', name); } catch (_) {}
   screenTerm.hidden = false;
@@ -581,6 +633,9 @@ async function renderTabs() {
     b.classList.toggle('active', b.dataset.session === current);
     b.classList.toggle('working', st === 'working');
     b.classList.toggle('done', st === 'done');
+    // A question outranks the rest, and it cannot collide with them: the state is
+    // one value, so the classes are exclusive by construction.
+    b.classList.toggle('asking', st === 'asking');
     const n = bg.get(b.dataset.session) || 0;
     // One plate for both kinds, carrying how many. Shells and monitors are not
     // told apart on it: on a tab the question is whether anything is still

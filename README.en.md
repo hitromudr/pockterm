@@ -195,6 +195,15 @@ is doing (**the fill**):
 | plain | the watcher has nothing to claim: quiet since it started looking |
 | moving purple | output is arriving right now |
 | green | gone quiet after doing something — the same event the "finished" notification is raised from |
+| moving blue with a yellow `!` over its top edge | the agent is waiting for an answer: a menu is on screen and nothing happens until it gets one |
+
+Blue outranks the rest and waits for no history: a menu on screen is the one state
+that is about the person holding the phone rather than about the machine, so it
+beats both "working" and "gone quiet" — which would otherwise have a tab claim an
+agent had finished while it stood there asking. The mark deliberately breaks the
+tab's outline. It is the same detection the answer buttons come from; those exist
+only for the session on screen, and the question you want to know about is usually
+in the one that is not.
 
 The state is not worked out by the page but by the same pane watcher that decides
 about notifications, so the colour and the notification cannot disagree. It rides

@@ -41,6 +41,11 @@ const (
 	ActivityUnknown Activity = ""
 	ActivityWorking Activity = "working"
 	ActivityDone    Activity = "done"
+	// ActivityAsking is a menu on screen right now — the agent is waiting for an
+	// answer and nothing will happen until it gets one. It outranks the other two
+	// because it is the only state that is about the person holding the phone:
+	// output arriving is the machine's business, a question is theirs.
+	ActivityAsking Activity = "asking"
 )
 
 // Activity reports what session is doing, as far as the watcher can tell.
@@ -48,7 +53,16 @@ func (w *Watcher) Activity(session string) Activity {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	st, ok := w.s[session]
-	if !ok || !st.active {
+	if !ok {
+		return ActivityUnknown
+	}
+	// A menu on screen is the one claim worth making before anything else, and
+	// the one that does not need a history: the pane is showing a question right
+	// now, whether or not this watcher has seen the screen change yet.
+	if st.menuSig != "" {
+		return ActivityAsking
+	}
+	if !st.active {
 		return ActivityUnknown
 	}
 	if st.doneSent {

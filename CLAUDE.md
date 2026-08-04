@@ -137,6 +137,23 @@ cannot disagree about what a session is doing. `ActivityUnknown` is deliberately
 not called idle: the honest claim is that nothing has been seen since watching
 began, and a tab then paints itself neutral instead of inventing a fact.
 
+**`ActivityAsking` outranks both and waits for nothing.** A menu on screen is the
+only state that is about the person holding the phone — output arriving is the
+machine's business, a question is theirs — so it beats working and done, and it
+does not require the screen to have changed once: a pane already showing a
+question is showing it now. It also survives the idle threshold, where "done"
+would be a tab claiming the opposite of what is true. The tab goes blue with a
+yellow `!` centred on its top edge, half of it above the tab: the mark is allowed
+to break the row's outline because the question is the one thing here that needs a
+person. The sweep is the same keyframes as working, so the speed and the per-tab
+phase cannot drift apart from it. This is the same detection the answer buttons are
+drawn from (`detect.Question`) — and those exist only for the session on screen,
+while the question you want to know about is usually in the one that is not.
+
+The mark's upper half lives in `#tabs`' own `padding-top`, given back to the layout
+by an equal negative margin: the strip scrolls sideways, so it clips both axes, and
+a taller strip would move `☰` down — the drawer's `❮` is measured against it.
+
 It rides in the session list (`state` on each entry, filled by the server from
 `Presence.Activity`) rather than having an endpoint of its own: a name and its
 state fetched separately can disagree, and the disagreement would show as the
@@ -258,6 +275,14 @@ the same thing. It closes once the drag is unmistakably horizontal and past 45px
 nothing follows the finger, because the transition already covers the distance. Two
 drags must not trigger it and both were the reason for the guard: the list scrolls
 vertically under the same finger, and the rename field drags a caret sideways.
+
+**Closing the tab you are in steps back to the one you came from.** It used to land
+on the modal drawer whatever else was running, which was reported as the interface
+sticking: the tab under the finger was gone and the place it had been was no longer
+anything to tap. `visited` is the order tabs were attached in, and `stepBackFrom`
+walks it, skipping names tmux no longer has; the tab beside the closed one is the
+fallback for a session nothing was visited before, and the drawer is what is left
+when nothing is running at all — which is the case it was built for.
 
 **With nothing attached the drawer is modal.** The terminal screen is hidden then
 and `☰` lives in its header, so a drawer that could still be dismissed left a

@@ -104,6 +104,15 @@ html, body {
   min-width: 0;
   gap: 4px;
   overflow-x: auto;
+  /* Room above the tabs for the "waiting for an answer" mark, which straddles a
+     tab's top edge. The strip scrolls sideways, and a scroll container clips both
+     axes — so the mark has to overhang into padding of its own rather than out of
+     the box, or its upper half would be cut off.
+     The negative margin gives that padding back to the layout: it takes the room
+     from the bar's own padding instead of making the bar taller, which would move
+     ☰ down and with it the header the drawer's ❮ is measured against. */
+  padding-top: 8px;
+  margin-top: -8px;
 }
 /* A tab carries three answers, and they are three different questions: which
    sessions exist, which one you are in, and what each is doing. So the frame is
@@ -147,6 +156,35 @@ html, body {
 @keyframes tab-working {
   from { background-position: 150% 0; }
   to { background-position: -150% 0; }
+}
+/* The agent is waiting for an answer, and nothing moves until it gets one. Blue
+   rather than purple, and the same sweep — same duration, same per-tab phase, the
+   same keyframes — because it is the same kind of statement about the same row;
+   what differs is the colour and the mark.
+
+   The mark sits centred on the tab's top edge with half of it above the tab: a
+   question is about the person holding the phone rather than about the machine, so
+   it is allowed to break the row's outline to say so. */
+#tabs button.asking {
+  color: #dbe7ff;
+  background: linear-gradient(100deg, #16233f 0%, #16233f 35%, #3b7dff 50%, #16233f 65%, #16233f 100%);
+  background-size: 300% 100%;
+  animation: tab-working 4.2s linear infinite alternate;
+}
+#tabs button.asking.active { border-color: #9dc0ff; }
+#tabs button.asking::before {
+  content: '!';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translate(-50%, -50%);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffd23f;
+  /* It hangs over two backgrounds at once — the tab below the edge and the bar
+     above it — so it carries its own outline instead of trusting either. */
+  text-shadow: 0 0 3px #0b0e14, 0 0 2px #0b0e14;
 }
 /* Something is still running in there while the agent says nothing: a shell, a
    monitor, or several. A green plate in the bottom-right corner of the tab,
@@ -192,6 +230,7 @@ html, body {
    the state is information, the animation is only how it is told. */
 @media (prefers-reduced-motion: reduce) {
   #tabs button.working { animation: none; background: #4a3a7d; }
+  #tabs button.asking { animation: none; background: #24427e; }
 }
 .bar button {
   color: var(--fg);

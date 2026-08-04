@@ -172,6 +172,50 @@ describe('the session list is a drawer', () => {
       null, { timeout: 3000 });
   });
 
+  test('closing the tab you are in steps back to the one you came from', async () => {
+    // Reported as the interface sticking: closing the session you were in landed
+    // on the drawer with other sessions running, and the spot where its tab had
+    // been was no longer anything to tap. The page remembers the order tabs were
+    // visited in and goes back one.
+    await stand.open();
+    const { page } = stand;
+    await stand.attach('demo');
+    await stand.attach('other');
+
+    await page.click('#back');
+    await page.waitForFunction(
+      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      null, { timeout: 3000 });
+    const row = page.locator('#session-list li:has-text("other")');
+    await row.locator('button.close').click();
+    await row.locator('button.close').click();
+
+    await page.waitForFunction(() => {
+      const active = document.querySelector('#tabs button.active');
+      return active && active.textContent === 'demo';
+    }, null, { timeout: 8000 });
+    assert.equal(await page.evaluate(() => document.getElementById('screen-term').hidden), false,
+      'the terminal was put away though a session was left to show');
+  });
+
+  test('with nothing attached the drawer is where the page starts', async () => {
+    const { page } = stand;
+    await page.evaluate(() => sessionStorage.removeItem('pt-session'));
+    await page.goto(stand.base);
+    await page.waitForFunction(() => document.getElementById('screen-sessions').classList.contains('open'));
+    const d = await drawer();
+    assert.equal(d.termHidden, true, 'an empty terminal is sitting under the drawer');
+  });
+});
+
+// Its own stand with one session, because that is the whole case: the modal
+// drawer is what is left when nothing is running, and with anything else alive
+// the page steps back to a tab instead.
+describe('closing the last session there is', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['only'] }); });
+  after(async () => { await stand.stop(); });
+
   test('closing the session you are in does not leave a black page', async () => {
     // Reported as the window hanging empty after closing the very session being
     // used. With nothing attached the terminal screen is hidden and ☰ lives in
@@ -179,24 +223,16 @@ describe('the session list is a drawer', () => {
     // with nothing to tap and no way back but a reload.
     await stand.open();
     const { page } = stand;
-    const before = await page.locator('#session-list li').count();
-    await page.click('#new');
-    await page.click('#new-menu button[data-preset="shell"]');
-    await page.waitForFunction(
-      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
-    const name = (await page.locator('#session-list li').last().locator('.name').textContent()).trim();
-
-    await page.click(`button.session:has-text("${name}")`);
-    await page.waitForSelector('#screen-term:not([hidden])');
+    await stand.attach('only');
     await page.click('#back');
     await page.waitForFunction(
       () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
       null, { timeout: 3000 });
 
-    const row = page.locator(`#session-list li:has-text("${name}")`);
+    const row = page.locator('#session-list li:has-text("only")');
     await row.locator('button.close').click();
     await row.locator('button.close').click();
-    await page.waitForFunction(() => document.getElementById('screen-term').hidden, null, { timeout: 5000 });
+    await page.waitForFunction(() => document.getElementById('screen-term').hidden, null, { timeout: 8000 });
 
     // Nothing behind it, so nothing offers a way out: no chevron, no scrim.
     assert.equal(await page.locator('#drawer-close').isVisible(), false, 'a way out of an empty page');
@@ -211,8 +247,13 @@ describe('the session list is a drawer', () => {
     // The strip went with the session rather than keeping its tab.
     assert.equal(await page.locator('#tabs button').count(), 0);
 
-    // Attaching brings the way out back.
-    await page.click('button.session:has-text("demo")');
+    // Starting one brings the way out back.
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset="shell"]');
+    await page.waitForFunction(
+      () => document.querySelectorAll('#session-list li').length > 0, null, { timeout: 8000 });
+    const name = (await page.locator('#session-list li').last().locator('.name').textContent()).trim();
+    await page.click(`button.session:has-text("${name}")`);
     await page.waitForSelector('#screen-term:not([hidden])');
     await page.click('#back');
     await page.waitForFunction(
@@ -221,15 +262,6 @@ describe('the session list is a drawer', () => {
     assert.equal(await page.locator('#drawer-close').isVisible(), true, 'no way back with a session behind it');
     await page.click('#drawer-close');
     await page.waitForFunction(() => !document.getElementById('screen-sessions').classList.contains('open'));
-  });
-
-  test('with nothing attached the drawer is where the page starts', async () => {
-    const { page } = stand;
-    await page.evaluate(() => sessionStorage.removeItem('pt-session'));
-    await page.goto(stand.base);
-    await page.waitForFunction(() => document.getElementById('screen-sessions').classList.contains('open'));
-    const d = await drawer();
-    assert.equal(d.termHidden, true, 'an empty terminal is sitting under the drawer');
   });
 });
 
@@ -964,6 +996,56 @@ describe('a tab says what its session is doing', () => {
     // Both states at once would be a tab claiming two things; the classes are
     // exclusive because the state is one value, not two flags.
     assert.equal(await page.locator('#tabs button.working.done').count(), 0);
+  });
+
+  test('a waiting agent turns its tab blue, with the mark over its top edge', async () => {
+    // The state the answer buttons are drawn from, said on the strip as well: the
+    // buttons only exist for the session you are looking at, and the question you
+    // want to know about is usually in the one you are not.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    // A menu, through the pane rather than into the page: this is the watcher's
+    // reading of a real screen, which is where the state comes from.
+    stand.tmux(['send-keys', '-t', 'demo', 'Apply this change?', 'Enter']);
+    stand.tmux(['send-keys', '-t', 'demo', '❯ 1. Yes', 'Enter']);
+    stand.tmux(['send-keys', '-t', 'demo', '  2. No', 'Enter']);
+    await page.waitForFunction(
+      () => !!document.querySelector('#tabs button[data-session="demo"].asking'),
+      null, { timeout: 20000 });
+
+    const mark = await page.evaluate(() => {
+      const b = document.querySelector('#tabs button.asking');
+      const s = getComputedStyle(b, '::before');
+      const t = getComputedStyle(b);
+      return {
+        content: s.content,
+        colour: s.color,
+        position: s.position,
+        duration: t.animationDuration,
+        direction: t.animationDirection,
+        blue: t.backgroundImage.includes('59, 125, 255'),
+      };
+    });
+    assert.ok(/!/.test(mark.content), `no mark on the tab: ${mark.content}`);
+    assert.equal(mark.colour, 'rgb(255, 210, 63)', `the mark is ${mark.colour}`);
+    assert.equal(mark.position, 'absolute', 'the mark is in the text flow, not over the edge');
+    assert.ok(mark.blue, 'the tab is not blue while an answer is wanted');
+    // The same sweep as working: same speed, same phase mechanism.
+    assert.equal(mark.duration, '4.2s');
+    assert.equal(mark.direction, 'alternate');
+
+    // The strip clips both axes because it scrolls sideways, so the mark's upper
+    // half lives in padding of the strip's own — without it the mark is cut off.
+    const room = await page.evaluate(() => {
+      const strip = document.getElementById('tabs');
+      const b = strip.querySelector('button');
+      return {
+        pad: parseFloat(getComputedStyle(strip).paddingTop),
+        gap: b.getBoundingClientRect().top - strip.getBoundingClientRect().top,
+      };
+    });
+    assert.ok(room.pad >= 6 && room.gap >= 6, `no room over the tabs: ${JSON.stringify(room)}`);
   });
 
   test('a badge says what is still running while the session is quiet', async () => {
