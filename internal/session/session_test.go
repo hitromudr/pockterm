@@ -67,7 +67,7 @@ func TestKillMatchesExactly(t *testing.T) {
 }
 
 func TestStartGoesThroughTheMakefile(t *testing.T) {
-	argv := Start("/srv/work", "claude")
+	argv := Start("/srv/work", "claude", "", "")
 	want := "make -C /srv/work claude"
 	if strings.Join(argv, " ") != want {
 		t.Errorf("argv is %v, want %q", argv, want)

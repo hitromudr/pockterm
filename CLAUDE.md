@@ -121,6 +121,47 @@ by whether there is history above. Nothing here asks tmux to leave copy-mode:
 the pane is shared, and a page that sent `q` on its own would take the laptop's
 client out of a mode it chose to be in.
 
+## A session is started in a folder, and named after it
+
+The drawer has two lists and shows one at a time: the sessions, and the folders
+of the projects root (`/api/dirs`, one level deep, no dotted directories). The
+root is the first row and by its own name — a session in `~/work` is ordinary,
+and a label like "the root" hides which directory that is. Tapping a folder does
+not start anything; it points the four presets at that folder, which is the only
+menu there is, because two would drift.
+
+`POCKTERM_SESSION_DIR` is both the Makefile's directory and the projects root.
+One setting rather than two: the second would have to be kept in step with the
+first, and in every deployment this was written for the answer is the same path.
+
+**The name is still the Makefile's to choose.** The server passes `DIR=` and
+`PREFIX=` and nothing else; which number is free as *both* a session and a group
+name stays in the one place that knows — see the trap below for what happens when
+that is got wrong. `session.Prefix` only decides what to number: the folder,
+sanitised to what tmux and a phone tab can carry (no `.` or `:`, 24 characters),
+and the root's own basename for the root. An empty result — a folder whose name
+survives none of that — passes no `PREFIX` at all, leaving the Makefile's own
+default rather than inventing a session called `-`.
+
+A Makefile that knows neither variable still works: make takes an override for a
+variable it never reads, so the session opens where it always did under the name
+it always used. That matters here because the host's Makefile is not this
+repository's file — it is a template in the `pockterm_app` ansible role — so the
+folder reaches the tab only once that role has been applied.
+
+`session.ResolveDir` is a gate, not a formality: the value becomes make's `DIR=`,
+and the page may only name one plain folder inside the root. `..`, a separator, a
+leading dot and an absolute path are all refused, and the reason travels back as
+text the drawer shows.
+
+**`pockterm-` was too wide a namespace to reserve.** Client sessions are
+`pockterm-client-<id>` since 2026-08-04, because sessions are named after folders
+now and `~/work/pockterm` is a folder: its second session is `pockterm-2`, which
+the old prefix hid from the list and made unattachable, with nothing anywhere
+saying why. Worse, ids count from 1 per process, so that name is one of the first
+two a page takes for itself — and `new-session -A -s pockterm-2` would have
+attached the phone to the user's own session instead of making a client for it.
+
 ## A session name can be a group in disguise
 
 tmux names a session group after the session it was created from and never

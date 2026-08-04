@@ -525,7 +525,7 @@ func TestUploadRejectsGet(t *testing.T) {
 func TestNewSessionRefusesAnUnknownPreset(t *testing.T) {
 	asked := ""
 	o := testOptions("")
-	o.StartSession = func(preset string) (err error) {
+	o.StartSession = func(preset, dir string) (err error) {
 		asked = preset
 		if preset != "claude" {
 			return errors.New("unknown preset")
@@ -554,7 +554,7 @@ func TestNewSessionRefusesAnUnknownPreset(t *testing.T) {
 func TestNewSessionStarts(t *testing.T) {
 	started := ""
 	o := testOptions("")
-	o.StartSession = func(preset string) error { started = preset; return nil }
+	o.StartSession = func(preset, dir string) error { started = preset; return nil }
 	srv := httptest.NewServer(Handler(o))
 	defer srv.Close()
 
@@ -574,7 +574,7 @@ func TestNewSessionStarts(t *testing.T) {
 func TestNewSessionNeedsTheToken(t *testing.T) {
 	called := false
 	o := testOptions("secret")
-	o.StartSession = func(string) error { called = true; return nil }
+	o.StartSession = func(string, string) error { called = true; return nil }
 	srv := httptest.NewServer(Handler(o))
 	defer srv.Close()
 
@@ -970,5 +970,145 @@ func TestConfigFrameCarriesTheNotificationMode(t *testing.T) {
 			t.Fatalf("config = %+v, want notify off and telegram true", f)
 		}
 		return
+	}
+}
+
+// --- folders under the projects root -------------------------------------
+
+func TestDirsListsTheProjectsRoot(t *testing.T) {
+	// The drawer shows these as rows to tap. The root travels with them because
+	// it is one of the choices: a session in ~/work itself is as ordinary as one
+	// in a project, and its tab is named after that folder too.
+	o := testOptions("")
+	o.Folders = func() (string, []string, error) { return "work", []string{"natal", "pockterm"}, nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/dirs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var got struct {
+		Root string   `json:"root"`
+		Dirs []string `json:"dirs"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Root != "work" || strings.Join(got.Dirs, ",") != "natal,pockterm" {
+		t.Fatalf("dirs = %+v", got)
+	}
+}
+
+func TestDirsReportsWhyItCannotList(t *testing.T) {
+	// An unreadable root has to show as a message: an empty list would read as
+	// "no projects", which is a different fact and a wrong one.
+	o := testOptions("")
+	o.Folders = func() (string, []string, error) { return "", nil, errors.New("cannot read the projects root") }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/dirs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status %d, want 500", res.StatusCode)
+	}
+	if body, _ := io.ReadAll(res.Body); !strings.Contains(string(body), "projects root") {
+		t.Fatalf("the reason did not reach the page: %q", body)
+	}
+}
+
+func TestDirsAbsentWhenNotListed(t *testing.T) {
+	srv := testServer(t, "")
+	res, err := http.Get(srv.URL + "/api/dirs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", res.StatusCode)
+	}
+}
+
+func TestDirsNeedsTheToken(t *testing.T) {
+	o := testOptions("secret")
+	o.Folders = func() (string, []string, error) { return "work", []string{"natal"}, nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/dirs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d, want 401", res.StatusCode)
+	}
+}
+
+func TestNewSessionCarriesTheFolder(t *testing.T) {
+	var gotPreset, gotDir string
+	o := testOptions("")
+	o.StartSession = func(preset, dir string) error { gotPreset, gotDir = preset, dir; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/new", "application/json",
+		strings.NewReader(`{"preset":"claude","dir":"natal"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if gotPreset != "claude" || gotDir != "natal" {
+		t.Fatalf("starter saw preset %q dir %q", gotPreset, gotDir)
+	}
+}
+
+func TestNewSessionWithoutAFolderIsWhatItAlwaysWas(t *testing.T) {
+	// The + that was there before folders existed sends no dir, and that has to
+	// keep meaning the root — a page cached from an older version still taps it.
+	seen := "unset"
+	o := testOptions("")
+	o.StartSession = func(preset, dir string) error { seen = dir; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/new", "application/json", strings.NewReader(`{"preset":"shell"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent || seen != "" {
+		t.Fatalf("status %d, dir %q", resp.StatusCode, seen)
+	}
+}
+
+func TestNewSessionRefusalAboutAFolderReachesThePage(t *testing.T) {
+	o := testOptions("")
+	o.StartSession = func(preset, dir string) error {
+		return errors.New(`no folder "gone" in the projects root`)
+	}
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/new", "application/json",
+		strings.NewReader(`{"preset":"claude","dir":"gone"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "gone") {
+		t.Fatalf("the reason did not reach the page: %q", body)
 	}
 }

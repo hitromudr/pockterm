@@ -11,7 +11,16 @@ import (
 // clientPrefix names the grouped sessions pockterm creates for its own
 // clients. They are hidden from the session list and cannot be attached
 // to by name, so users only ever see their own sessions.
-const clientPrefix = "pockterm-"
+//
+// It says "client" out loud because the namespace has to be one a user's own
+// session cannot wander into. `pockterm-` alone was not: sessions are named
+// after the folder they were started in, ~/work/pockterm is a folder, and its
+// second session is `pockterm-2` — hidden from the list and unattachable, with
+// nothing anywhere saying why. Worse, that name can equal a client's: the ids
+// count from 1 per process, so `pockterm-2` is one of the first two a page ever
+// takes, and `new-session -A -s pockterm-2` would then have attached the phone
+// to the user's own session instead of making a client for it.
+const clientPrefix = "pockterm-client-"
 
 // ClientName is the session name for a pockterm client with the given id.
 func ClientName(id int64) string { return fmt.Sprintf("%s%d", clientPrefix, id) }

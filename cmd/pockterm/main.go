@@ -251,6 +251,7 @@ func serve() {
 		// serves; its own words land here instead.
 		LogClient:    func(line string) { log.Printf("client: %s", line) },
 		StartSession: starter(cfg),
+		Folders:      folders(cfg),
 		RenameSess:   renamer,
 		KillSession:  killer,
 	})
@@ -287,7 +288,7 @@ func uploader(cfg config.Config) func(io.Reader) (string, error) {
 // number, and its own systemd scope so the tmux server never lands in this
 // service's cgroup. Two launchers would drift apart, and the day they do,
 // somebody loses their sessions.
-func starter(cfg config.Config) func(string) error {
+func starter(cfg config.Config) func(preset, folder string) error {
 	dir, on, err := cfg.SessionDir()
 	if err != nil {
 		log.Printf("%v, starting sessions is off", err)
@@ -302,19 +303,44 @@ func starter(cfg config.Config) func(string) error {
 		return nil
 	}
 	log.Printf("starting sessions on, via make -C %s", dir)
-	return func(preset string) error {
+	return func(preset, folder string) error {
 		target, err := session.Target(preset)
 		if err != nil {
 			return err
 		}
-		argv := session.Start(dir, target)
+		// The projects root is the Makefile's own directory: one setting, and
+		// the same value in every deployment this was written for.
+		startIn, err := session.ResolveDir(dir, folder)
+		if err != nil {
+			return err
+		}
+		argv := session.Start(dir, target, startIn, session.Prefix(dir, folder))
 		out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
 		if err != nil {
-			log.Printf("start %s: %v: %s", preset, err, out)
+			log.Printf("start %s in %s: %v: %s", preset, startIn, err, out)
 			return fmt.Errorf("could not start: %s", firstLine(string(out)))
 		}
-		log.Printf("started %s: %s", preset, firstLine(string(out)))
+		log.Printf("started %s in %s: %s", preset, startIn, firstLine(string(out)))
 		return nil
+	}
+}
+
+// folders lists what the drawer offers to start a session in, or returns nil to
+// leave /api/dirs absent. The root is the same directory the presets run in —
+// `POCKTERM_SESSION_DIR`, ~/work here — read on every request rather than once:
+// projects are cloned and removed while the service runs for weeks.
+func folders(cfg config.Config) func() (string, []string, error) {
+	dir, on, err := cfg.SessionDir()
+	if err != nil || !on {
+		return nil
+	}
+	root := filepath.Base(filepath.Clean(dir))
+	return func() (string, []string, error) {
+		dirs, err := session.Folders(dir)
+		if err != nil {
+			return "", nil, err
+		}
+		return root, dirs, nil
 	}
 }
 

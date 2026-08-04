@@ -39,13 +39,18 @@ func TestParseSessions(t *testing.T) {
 }
 
 func TestClientSessionNaming(t *testing.T) {
-	if got := ClientName(7); got != "pockterm-7" {
+	if got := ClientName(7); got != "pockterm-client-7" {
 		t.Fatalf("ClientName = %q", got)
 	}
-	if !IsClientSession("pockterm-7") {
-		t.Fatal("pockterm-7 should be a client session")
+	if !IsClientSession("pockterm-client-7") {
+		t.Fatal("pockterm-client-7 should be a client session")
 	}
-	for _, user := range []string{"claude", "train", "web", "work"} {
+	// The namespace has to be one a user's own session cannot wander into.
+	// `pockterm-` alone was not: sessions are named after the folder they were
+	// started in now, and ~/work/pockterm is a folder — its second session is
+	// pockterm-2, which used to be hidden from the list and unattachable, with
+	// nothing anywhere saying why.
+	for _, user := range []string{"claude", "train", "web", "work", "pockterm", "pockterm-2", "pockterm-app"} {
 		if IsClientSession(user) {
 			t.Fatalf("%q wrongly flagged as a client session", user)
 		}

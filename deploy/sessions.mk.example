@@ -22,6 +22,13 @@ CLAUDE ?= claude
 # Where a new session starts. Override per call: make claude DIR=~/proj
 DIR ?= $(CURDIR)
 
+# What the session is named after. The page passes the folder it was started
+# from (`make claude DIR=~/work/natal PREFIX=natal`), so a tab says where the
+# session is rather than which command made it — claude-1, claude-2, claude-3
+# is not a list anyone can navigate on a phone. Empty falls back to the
+# per-target default below.
+PREFIX ?=
+
 .PHONY: help shell claude yolo continue ls kill
 
 # spawn,<command>[,<prefix>] — start a fresh <prefix>-N session detached.
@@ -38,16 +45,21 @@ DIR ?= $(CURDIR)
 # cgroup, and `systemctl restart pockterm` — which any deploy does — takes
 # every session down with it. The fallback keeps this working where there is
 # no user manager to ask.
+# The bare name is used when it is free, and only then numbered: a folder with
+# one session in it is the common case, and "natal" reads better in a tab than
+# "natal-1". The suffix starts at 2 for the second one, so the numbers never
+# claim to be a first.
 define spawn
-p="$(or $(2),claude)"; \
-n=1; while tmux ls 2>/dev/null | grep -qE "^$$p-$$n:|\(group $$p-$$n\)"; do n=$$((n+1)); done; \
+p="$(or $(PREFIX),$(or $(2),claude))"; \
+free() { ! tmux ls 2>/dev/null | grep -qE "^$$1:|\(group $$1\)"; }; \
+if free "$$p"; then s="$$p"; else n=2; while ! free "$$p-$$n"; do n=$$((n+1)); done; s="$$p-$$n"; fi; \
 export XDG_RUNTIME_DIR="$${XDG_RUNTIME_DIR:-/run/user/$$(id -u)}"; \
 launch=""; \
 if systemd-run --user --scope --quiet --collect true >/dev/null 2>&1; then \
 	launch="systemd-run --user --scope --quiet --collect"; \
 fi; \
-$$launch tmux new-session -d -s "$$p-$$n" -c "$(DIR)" $(1); \
-echo "started $$p-$$n in $(DIR)$${launch:+ (own slice)}"
+$$launch tmux new-session -d -s "$$s" -c "$(DIR)" $(1); \
+echo "started $$s in $(DIR)$${launch:+ (own slice)}"
 endef
 
 help: ## Show this help
@@ -67,7 +79,7 @@ continue: ## New agent session continuing the last conversation
 	@$(call spawn,'$(CLAUDE) -c')
 
 ls: ## List sessions, hiding the clients pockterm attaches with
-	@tmux ls 2>/dev/null | grep -v '^pockterm-' || echo "no sessions"
+	@tmux ls 2>/dev/null | grep -v '^pockterm-client-' || echo "no sessions"
 
 kill: ## Kill one session: make kill NAME=claude-2
 	@if [ -z "$(NAME)" ]; then echo "usage: make kill NAME=<session>  (see: make ls)"; \

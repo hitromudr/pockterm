@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v91';
+const APP_VERSION = 'v92';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -50,6 +50,7 @@ function appVersion() {
 const screenSessions = document.getElementById('screen-sessions');
 const screenTerm = document.getElementById('screen-term');
 const sessionList = document.getElementById('session-list');
+const folderList = document.getElementById('folder-list');
 const emptyMsg = document.getElementById('empty');
 const tabsEl = document.getElementById('tabs');
 const statusEl = document.getElementById('status');
@@ -109,8 +110,11 @@ async function loadSessions() {
   // redrawn when a terminal is closed.
   if (!screenTerm.hidden) renderTabs();
   const { sessions, error } = await fetchSessions();
+  // The message about the sessions belongs to the sessions: while the folder
+  // list is up it would sit under a list it says nothing about — and "no
+  // sessions" over a list of folders reads as the folders being the problem.
   if (error) {
-    emptyMsg.hidden = false;
+    emptyMsg.hidden = foldersShown;
     emptyMsg.innerHTML = error === 'unauthorized'
       ? '<p>Доступ не разрешён.</p><p>Ссылка открыта без токена, ' +
         'а сервер его требует — открой её из закладки с <code>?token=…</code>.</p>'
@@ -118,9 +122,11 @@ async function loadSessions() {
     return;
   }
   if (sessions.length === 0) {
-    emptyMsg.hidden = false;
+    emptyMsg.hidden = foldersShown;
+    // Nothing running is exactly when the folders are the way out, so the
+    // message points at them instead of at a server the phone cannot reach.
     emptyMsg.innerHTML = '<p>Нет активных tmux-сессий.</p>' +
-      '<p>Запусти сессию на сервере и нажми обновить.</p>';
+      '<p>Открой 📁 и выбери папку — сессия начнётся в ней и возьмёт её имя.</p>';
     return;
   }
   for (const s of sessions) {
@@ -170,6 +176,88 @@ async function loadSessions() {
   }
 }
 
+// --- the folders of the projects root ---
+// The other half of "start a session": which one, and where. A session is
+// almost always about a project, and on a phone there is no cd worth typing —
+// so the drawer offers the folders of the projects root, and the session it
+// starts is named after the folder rather than after the command. The root
+// itself is one of them: work is where the sessions that are about nothing in
+// particular belong, and it is a folder like any other.
+const foldersBtn = document.getElementById('folders');
+const newWhereEl = document.getElementById('new-where');
+// Which folder the next preset tap starts in: null is the plain +, which means
+// the root and has meant it since before folders were listed.
+let pendingDir = null;
+let foldersShown = false;
+let projectsRoot = '';
+
+// showFolders swaps the drawer between its two lists. One at a time, because
+// two scrolling lists on a phone leave neither of them room for a thumb.
+function showFolders(on) {
+  foldersShown = on && !!folderList;
+  folderList.hidden = !foldersShown;
+  sessionList.hidden = foldersShown;
+  if (foldersShown) emptyMsg.hidden = true;
+  foldersBtn.classList.toggle('on', foldersShown);
+  if (foldersShown) loadFolders();
+  else setPendingDir(null);
+}
+
+// setPendingDir says, above the presets, where they will start a session.
+// Unsaid it would be a menu that starts one somewhere the owner did not mean.
+function setPendingDir(dir) {
+  pendingDir = dir;
+  if (!newWhereEl) return;
+  newWhereEl.hidden = !dir;
+  if (dir) newWhereEl.textContent = `в ${dir === '.' ? projectsRoot || 'корне' : dir}`;
+}
+
+async function loadFolders() {
+  try {
+    const res = await fetch(`/api/dirs?${tokenQS}`);
+    if (!res.ok) {
+      // 404 is a host that does not list folders (no session Makefile), which
+      // is not a fault — the button just has nothing to show.
+      folderList.innerHTML = `<li class="note">${res.status === 404
+        ? 'Этот хост не отдаёт список папок.'
+        : escapeHtml((await res.text().catch(() => '')).trim() || `не вышло: ${res.status}`)}</li>`;
+      return;
+    }
+    const { root, dirs } = await res.json();
+    projectsRoot = root || '';
+    folderList.innerHTML = '';
+    // The root first and by its own name: a session in ~/work is ordinary, and
+    // "корень" as a label would hide which directory that is.
+    renderFolder('.', projectsRoot || 'корень', 'корень проектов');
+    for (const d of dirs) renderFolder(d, d, '');
+    if (!dirs.length) {
+      folderList.insertAdjacentHTML('beforeend',
+        '<li class="note">Внутри корня папок нет.</li>');
+    }
+  } catch (_) {
+    folderList.innerHTML = '<li class="note">Нет связи с сервером.</li>';
+  }
+}
+
+function renderFolder(dir, label, meta) {
+  const li = document.createElement('li');
+  const b = document.createElement('button');
+  b.className = 'folder';
+  b.dataset.dir = dir;
+  b.innerHTML = `<span class="name">${escapeHtml(label)}</span>` +
+    (meta ? `<span class="meta">${escapeHtml(meta)}</span>` : '');
+  // Tapping a folder does not start anything by itself: which preset still has
+  // to be answered, and the presets are one menu shared by every way in here.
+  b.addEventListener('click', () => {
+    setPendingDir(dir);
+    newMenu.hidden = false;
+    renameBox.hidden = true;
+    screenSessions.scrollTop = 0;
+  });
+  li.appendChild(b);
+  folderList.appendChild(li);
+}
+
 // --- starting and renaming sessions ---
 // pockterm still does not invent commands: the page asks for one of the
 // presets the Makefile defines, and the server runs that target. What this
@@ -191,7 +279,11 @@ const newTermBtn = document.getElementById('new-term');
 newBtn.addEventListener('click', () => {
   newMenu.hidden = !newMenu.hidden;
   renameBox.hidden = true;
+  // The plain + is the root, whatever folder was tapped before it.
+  setPendingDir(null);
 });
+
+foldersBtn.addEventListener('click', () => showFolders(!foldersShown));
 
 // Opening the presets over the terminal, and — the part that was missing —
 // closing them again. One tap anywhere outside does it, through an invisible
@@ -199,6 +291,9 @@ newBtn.addEventListener('click', () => {
 const menuScrim = document.getElementById('menu-scrim');
 function setTermMenu(open) {
   if (!newMenuTerm) return;
+  // The + over the terminal is the root: the folder list lives in the drawer,
+  // and a folder tapped there must not follow the owner onto another screen.
+  if (open) setPendingDir(null);
   newMenuTerm.hidden = !open;
   menuScrim.hidden = !open;
   newTermBtn.classList.toggle('on', open);
@@ -215,22 +310,32 @@ for (const b of document.querySelectorAll('button[data-preset]')) {
   keepsTerminalFocus(b);
   b.addEventListener('click', async () => {
     const preset = b.dataset.preset;
+    // Read before the menu closes: closing clears it, and a tap that started a
+    // session in the root while the caption said otherwise would be worse than
+    // an error.
+    const dir = pendingDir;
     newMenu.hidden = true;
     setTermMenu(false);
-    toast(`starting ${preset}…`);
+    setPendingDir(null);
+    toast(dir && dir !== '.' ? `starting ${preset} in ${dir}…` : `starting ${preset}…`);
     try {
       const res = await fetch(`/api/sessions/new?${tokenQS}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preset }),
+        // No dir at all when none was asked for: an older server ignores the
+        // field, and this way the plain + sends exactly what it always did.
+        body: JSON.stringify(dir ? { preset, dir } : { preset }),
       });
       if (!res.ok) {
         const why = (await res.text().catch(() => '')).trim();
         toast(why || `could not start: ${res.status}`);
-        report('start-session', { preset, ok: false, status: res.status });
+        report('start-session', { preset, dir: dir || '', ok: false, status: res.status });
         return;
       }
-      report('start-session', { preset, ok: true });
+      report('start-session', { preset, dir: dir || '', ok: true });
+      // Back to the sessions: what was asked for is a session, and the folder
+      // list has nothing to show about it.
+      if (foldersShown) showFolders(false);
       // tmux needs a moment before the session shows up in the listing.
       setTimeout(loadSessions, 400);
     } catch (_) {
@@ -324,9 +429,11 @@ function closeDrawer() {
   screenSessions.classList.remove('open');
   drawerScrim.hidden = true;
   // The rename field and the presets belong to the list; leaving them open would
-  // have them waiting behind a closed drawer.
+  // have them waiting behind a closed drawer. The folder view goes with them:
+  // reopening the drawer to see what is running should show what is running.
   renameBox.hidden = true;
   newMenu.hidden = true;
+  showFolders(false);
 }
 function toggleDrawer() {
   if (screenSessions.classList.contains('open')) closeDrawer();

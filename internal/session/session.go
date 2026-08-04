@@ -63,7 +63,25 @@ func Kill(name string) []string {
 	return []string{"tmux", "kill-session", "-t", "=" + name}
 }
 
-// Start is the argv that creates a session through the Makefile in dir.
-func Start(dir, target string) []string {
-	return []string{"make", "-C", dir, target}
+// Start is the argv that creates a session through the Makefile in makeDir.
+//
+// `startIn` is the directory the session opens in and `prefix` the name it is
+// numbered under; both are passed as make variables, and both are omitted when
+// empty. Omitted rather than defaulted here: the Makefile already has answers
+// for both, and a second set of defaults would be a second owner of the one
+// thing this package refuses to own — how a session is launched.
+//
+// A Makefile that knows neither variable still works. make accepts an override
+// for a variable it never reads, so an older one starts the session where it
+// always did, under the name it always used: the folder reaches the tab only
+// once the Makefile is the one that understands PREFIX.
+func Start(makeDir, target, startIn, prefix string) []string {
+	argv := []string{"make", "-C", makeDir, target}
+	if startIn != "" {
+		argv = append(argv, "DIR="+startIn)
+	}
+	if prefix != "" {
+		argv = append(argv, "PREFIX="+prefix)
+	}
+	return argv
 }

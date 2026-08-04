@@ -71,7 +71,15 @@ function assertPrivateTmux(socket, dir, env) {
 // escape sequences and control characters shown as ^[ and ^? — so a test can
 // assert what was sent rather than what it looks like. Duplicates and
 // swallowed keys become arithmetic instead of guesswork.
-export async function startStand({ sessions = ['demo'], raw = false, desktop = false } = {}) {
+export async function startStand({
+  sessions = ['demo'],
+  raw = false,
+  desktop = false,
+  // Folders under the projects root, which here is the same temporary directory
+  // the session Makefile lives in — the drawer offers these to start a session
+  // in, and names the session after the one that was tapped.
+  projects = ['alpha', 'beta'],
+} = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'pockterm-ui-'));
   const port = await freePort();
   const uploads = join(dir, 'uploads');
@@ -82,6 +90,11 @@ export async function startStand({ sessions = ['demo'], raw = false, desktop = f
     POCKTERM_UPLOAD_DIR: uploads,
     POCKTERM_TG_TOKEN: '',
     POCKTERM_TG_CHAT: '',
+    // The notification switch is remembered on disk, and without this the stand
+    // would read — and write — the host's own file: a test run would change what
+    // the owner's phone does, and the run before it would decide what this one
+    // starts with.
+    POCKTERM_NOTIFY_FILE: join(dir, 'notify'),
   };
   // Inside a tmux session these two point every child at that session's
   // server, whatever TMUX_TMPDIR says.
@@ -107,14 +120,33 @@ export async function startStand({ sessions = ['demo'], raw = false, desktop = f
   }
   assertPrivateTmux(socket, dir, env);
 
+  // Folders to start a session in, plus the noise a real projects root has:
+  // a dotted directory and a plain file, neither of which belongs in the list.
+  for (const p of projects) {
+    mkdirSync(join(dir, p), { recursive: true });
+  }
+  mkdirSync(join(dir, '.git'), { recursive: true });
+
   // A Makefile the presets can reach. The real one launches agents through
   // the sandbox wrapper; here the targets only have to produce a session on
   // the private server, which is what the page and the endpoint are about.
+  //
+  // It does honour DIR and PREFIX, because those are the whole point of the
+  // folder list: the session opens in the folder and is named after it. The
+  // bare name is taken when free and numbered otherwise, which is what the real
+  // Makefile does — a stand that always numbered would pass a test the phone
+  // would fail.
+  const spawnLine = (fallback, cmd) => [
+    `\t@n="$(or $(PREFIX),${fallback})"; `
+    + `if tmux -S ${socket} ls 2>/dev/null | grep -qE "^$$n:|\\(group $$n\\)"; then n="$$n-$$$$"; fi; \\`,
+    `\t tmux -S ${socket} new-session -d -s "$$n" -c "$(or $(DIR),$(CURDIR))" sh -c ${cmd}; \\`,
+    '\t echo "started $$n in $(or $(DIR),$(CURDIR))"',
+  ];
   writeFileSync(join(dir, 'Makefile'), [
     'shell:',
-    `\ttmux -S ${socket} new-session -d -s shell-$$$$ sh -c cat`,
+    ...spawnLine('shell', 'cat'),
     'claude:',
-    `\ttmux -S ${socket} new-session -d -s claude-$$$$ sh -c cat`,
+    ...spawnLine('claude', 'cat'),
     '',
   ].join('\n'));
   env.POCKTERM_SESSION_DIR = dir;

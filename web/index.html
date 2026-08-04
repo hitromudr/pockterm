@@ -24,12 +24,22 @@
            itself. -->
       <button id="drawer-close" title="Slide the list back">&#10094;</button>
       <span class="title">pockterm</span>
+      <!-- The folders of the projects root, as somewhere to start a session.
+           A second view of the drawer rather than a section under the list:
+           two scrolling lists on a phone leave neither of them a full thumb's
+           worth of room, and the list you came for is the sessions. -->
+      <button id="folders" title="Projects">&#128193;</button>
       <!-- With no session left there is nowhere to type the command that
            would make one: this is the way back in. -->
       <button id="new" title="New session">&plus;</button>
       <button id="refresh" title="Refresh">&#8635;</button>
     </header>
     <div id="new-menu" hidden>
+      <!-- Which folder the preset will start in. Written by the page: the same
+           four buttons serve the plain + (the projects root) and a folder that
+           was just tapped, and a menu that did not say which would start a
+           session somewhere the owner did not mean. -->
+      <span id="new-where" hidden></span>
       <button data-preset="shell">&#9656; Shell</button>
       <button data-preset="claude">&#10022; Claude</button>
       <button data-preset="yolo">&#9889; Claude (yolo)</button>
@@ -41,6 +51,10 @@
       <button id="rename-cancel">&#10005;</button>
     </div>
     <ul id="session-list"></ul>
+    <!-- The other view of the drawer: the folders of the projects root, the
+         root itself first. Tapping one opens the presets above for it, and the
+         session it starts is named after the folder. -->
+    <ul id="folder-list" hidden></ul>
     <div id="empty" hidden>
       <p>No active tmux sessions.</p>
       <p>Start one on the server, then tap refresh.</p>

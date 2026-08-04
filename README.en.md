@@ -162,6 +162,28 @@ for a unit, whatever `WorkingDirectory=` says (the example unit and the one the
 installer writes both use the user's home). No Makefile, no + button; the log
 says so at startup.
 
+### The projects root, as somewhere to start
+
+The 📁 button in the session drawer shows the drawer's other list: the folders
+of the projects root (the same `POCKTERM_SESSION_DIR`), with the root itself
+first. Tapping one opens the same four presets, and the session starts **in that
+folder** and takes **its name**: `natal`, then `natal-2`. The name is still the
+Makefile's decision — it is handed `DIR=` and `PREFIX=`, and the number that is
+free as both a session and a group name remains its business.
+
+Why this is not "the + with a path attached": a session is almost always about a
+project, and on a phone there is no `cd` worth typing. And claude-1, claude-2,
+claude-3 is not a list anyone can navigate — a folder in the name answers "what
+is this" where the command does not. Renaming stays: the folder is where the name
+starts, not a rule about it.
+
+One level deep, no hidden directories. The page sends a folder name and nothing
+else; the server joins the path itself and refuses anything that is not one plain
+name inside the root (`..`, `/`, a leading dot), because the value reaches a
+command line.
+
+The plain + lost nothing: it still starts a preset in the root.
+
 ## Notifications
 
 A session comes under watch once you attach to it through pockterm, and

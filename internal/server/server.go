@@ -54,9 +54,15 @@ type Options struct {
 	Static        http.Handler                    // the embedded PWA
 	SaveUpload    func(io.Reader) (string, error) // store a pasted image, return its path; nil disables /api/upload
 	LogClient     func(string)                    // record a line the browser sent; nil disables /api/log
-	StartSession  func(preset string) error       // create a session from a fixed preset; nil disables /api/sessions/new
-	RenameSess    func(from, to string) error     // rename a session; nil disables /api/sessions/rename
-	KillSession   func(name string) error         // close a session; nil disables /api/sessions/kill
+	// StartSession creates a session from a fixed preset, in one of the folders
+	// under the projects root ("" or "." meaning the root itself); nil disables
+	// /api/sessions/new.
+	StartSession func(preset, dir string) error
+	// Folders lists the projects root's own name and the folders under it a
+	// session can be started in; nil leaves /api/dirs absent.
+	Folders     func() (root string, dirs []string, err error)
+	RenameSess  func(from, to string) error // rename a session; nil disables /api/sessions/rename
+	KillSession func(name string) error     // close a session; nil disables /api/sessions/kill
 }
 
 // modePoll is how often a client's pane is checked for tmux copy-mode. The
@@ -72,6 +78,7 @@ func Handler(o Options) http.Handler {
 	mux.HandleFunc("/api/log", func(w http.ResponseWriter, r *http.Request) { serveLog(o, w, r) })
 	mux.HandleFunc("/api/presence", func(w http.ResponseWriter, r *http.Request) { servePresence(o, w, r) })
 	mux.HandleFunc("/api/notify", func(w http.ResponseWriter, r *http.Request) { serveNotifyMode(o, w, r) })
+	mux.HandleFunc("/api/dirs", func(w http.ResponseWriter, r *http.Request) { serveDirs(o, w, r) })
 	mux.HandleFunc("/api/sessions/new", func(w http.ResponseWriter, r *http.Request) { serveNewSession(o, w, r) })
 	mux.HandleFunc("/api/sessions/rename", func(w http.ResponseWriter, r *http.Request) { serveRename(o, w, r) })
 	mux.HandleFunc("/api/sessions/kill", func(w http.ResponseWriter, r *http.Request) { serveKill(o, w, r) })
@@ -271,16 +278,53 @@ func serveNewSession(o Options, w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Preset string `json:"preset"`
+		// Which folder under the projects root to start in. Absent or "." is
+		// the root itself — what the plain + did before folders existed.
+		Dir string `json:"dir"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&req); err != nil {
 		http.Error(w, "unreadable request", http.StatusBadRequest)
 		return
 	}
-	if err := o.StartSession(req.Preset); err != nil {
+	if err := o.StartSession(req.Preset, req.Dir); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// serveDirs lists the folders a session can be started in.
+//
+// It is the projects root's immediate children and nothing else: the page shows
+// them as rows to tap, and what a phone needs is the list it actually works in,
+// not a file browser. `root` travels with them because the root is one of the
+// choices — a session in ~/work itself is as ordinary as one in a project, and
+// naming it after the folder means the page has to know what that folder is
+// called.
+func serveDirs(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.Folders == nil {
+		http.Error(w, "folders are not listed on this host", http.StatusNotFound)
+		return
+	}
+	root, dirs, err := o.Folders()
+	if err != nil {
+		// The reason reaches the page: an unreadable root shows as a message
+		// rather than as an empty list, which would read as "no projects".
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if dirs == nil {
+		dirs = []string{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Root string   `json:"root"`
+		Dirs []string `json:"dirs"`
+	}{root, dirs})
 }
 
 // serveRename renames a session. claude-1, claude-2, claude-3 is not a list

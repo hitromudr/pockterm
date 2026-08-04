@@ -100,8 +100,12 @@ describe('the session list is a drawer', () => {
 
     const hamburger = await box('back');
     await page.click('#back');
+    // Exactly 0, not "within a pixel". This assertion compares rounded boxes, and
+    // the drawer slides in on a transform: caught mid-animation at x = -0.6 the
+    // chevron measures 9.4 and rounds to 9 against the hamburger's 10 — the test
+    // failing about one run in three, with a one-pixel diff and nothing wrong.
     await page.waitForFunction(
-      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      () => document.getElementById('screen-sessions').getBoundingClientRect().x === 0,
       null, { timeout: 3000 });
     const chevron = await box('drawer-close');
     assert.deepEqual(chevron, hamburger, 'the way out is not where the way in was');
@@ -807,5 +811,78 @@ describe('a new version on the server', () => {
     await page.waitForSelector('#update-bar', { state: 'hidden' });
 
     assert.deepEqual(stand.pageErrors, []);
+  });
+});
+
+describe('the folders of the projects root', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['demo'], projects: ['alpha', 'beta'] }); });
+  after(async () => { await stand.stop(); });
+
+  test('the drawer lists the folders, and nothing that is not one', async () => {
+    await stand.open();
+    const { page } = stand;
+    await page.click('#folders');
+    await page.waitForSelector('#folder-list:not([hidden]) button.folder');
+    const names = await page.locator('#folder-list button.folder .name').allTextContents();
+    // The root comes first and by its own name: a session in the projects root
+    // is ordinary, and "the root" as a label hides which directory that is.
+    assert.match(names[0], /^pockterm-ui-/, `first row is ${JSON.stringify(names[0])}`);
+    assert.ok(names.includes('alpha') && names.includes('beta'), names.join(','));
+    // A dotted directory is not a project, and the list is one to tap.
+    assert.ok(!names.includes('.git'), 'a dotted directory is offered as a project');
+    // One list at a time: two scrolling lists leave neither room for a thumb.
+    assert.equal(await page.locator('#session-list').isHidden(), true);
+  });
+
+  test('a folder starts a session there, named after it', async () => {
+    await stand.open();
+    const { page } = stand;
+    await page.click('#folders');
+    await page.click('#folder-list button.folder:has-text("alpha")');
+    // Tapping a folder does not start anything by itself — which preset is still
+    // an open question, and the answer is the menu that was always there.
+    await page.waitForSelector('#new-menu:not([hidden])');
+    assert.match(await page.locator('#new-where').textContent(), /alpha/,
+      'the presets do not say where they will start');
+    await page.click('#new-menu button[data-preset="shell"]');
+
+    // The list is what was asked for, so the drawer goes back to it.
+    await page.waitForFunction(
+      () => Array.from(document.querySelectorAll('#session-list .name')).some((e) => e.textContent === 'alpha'),
+      null, { timeout: 8000 });
+    // And tmux agrees about where it opened: the page can show a name without
+    // the session being anywhere near that directory.
+    // list-panes rather than display-message: with no client attached the
+    // latter has no target to render a format against and answers with nothing,
+    // which would read here as "the session is in the wrong place".
+    const where = stand.tmux(['list-panes', '-t', '=alpha', '-F', '#{pane_current_path}']).trim();
+    assert.match(where, /\/alpha$/, `the session opened in ${where}`);
+  });
+
+  test('the second session in a folder is numbered, not refused', async () => {
+    await stand.open();
+    const { page } = stand;
+    for (const _ of [1, 2]) {
+      await page.click('#folders');
+      await page.click('#folder-list button.folder:has-text("beta")');
+      await page.click('#new-menu button[data-preset="shell"]');
+      await page.waitForTimeout(1200);
+    }
+    const names = await page.locator('#session-list .name').allTextContents();
+    assert.ok(names.includes('beta'), names.join(','));
+    assert.ok(names.some((n) => /^beta-\d+$/.test(n)), `no numbered second session in ${names.join(',')}`);
+  });
+
+  test('the plain + still means the root', async () => {
+    await stand.open();
+    const { page } = stand;
+    // Opening the folder view and leaving it must not leave the + pointing at a
+    // folder: the caption is the only thing that would have said so.
+    await page.click('#folders');
+    await page.click('#folder-list button.folder:has-text("alpha")');
+    await page.click('#new');
+    assert.equal(await page.locator('#new-where').isHidden(), true,
+      'the + still claims a folder');
   });
 });
