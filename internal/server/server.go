@@ -574,15 +574,17 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The watcher's events reach this page the same way everything else does.
-	// It fires only for a session nobody has visible, so a frame arriving
-	// here means: open, in the background, and worth a notification.
+	// It fires only for a session nobody has visible, so a frame arriving here is
+	// about something the person holding the phone cannot see — which is usually
+	// one of the other sessions, not this one. That is why the socket is
+	// registered by its id and not under the session it is attached to.
 	if o.Notices != nil {
-		o.Notices.add(target, id, func(n Notice) {
+		o.Notices.add(id, func(n Notice) {
 			writeMu.Lock()
 			defer writeMu.Unlock()
 			conn.WriteJSON(n)
 		})
-		defer o.Notices.remove(target, id)
+		defer o.Notices.remove(id)
 	}
 
 	t, err := term.Start(o.Attach(id, target), 80, 24)

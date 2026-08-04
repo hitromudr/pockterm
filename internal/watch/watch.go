@@ -62,6 +62,11 @@ func (w *Watcher) Activity(session string) Activity {
 	if st.menuSig != "" {
 		return ActivityAsking
 	}
+	// The agent's own counter, which needs no history either: a turn that is
+	// counting is a turn in flight, whatever the screen did before.
+	if st.live {
+		return ActivityWorking
+	}
 	if !st.active {
 		return ActivityUnknown
 	}
@@ -116,6 +121,12 @@ type state struct {
 	doneSent bool
 	menuSig  string
 	bg       detect.Background // shells and monitors the footer says are running
+	// live is the agent's counter on screen at the last poll, and wasLive that
+	// it has been seen at all since the last "done". Together they are the end
+	// of a turn observed rather than waited out: the counter going away is the
+	// event, and it can only be read by someone who saw it there.
+	live    bool
+	wasLive bool
 }
 
 type Watcher struct {
@@ -215,9 +226,19 @@ func (w *Watcher) poll(session string) {
 	}
 
 	lines := strings.Split(text, "\n")
-	// Read off the same pane, on the same poll: the tab's colour and its badge
-	// come from one reading, so they cannot describe two different moments.
+	// Read off the same pane, on the same poll: the tab's colour, its badge and
+	// whether the turn is still running come from one reading, so they cannot
+	// describe two different moments.
 	st.bg = detect.ReadBackground(lines)
+	st.live = detect.Live(lines)
+	if st.live {
+		// A counter on screen is activity by itself. The screen's hash used to be
+		// the only evidence there was, and it is the weaker one: an agent thinking
+		// for a minute can redraw to the same bytes.
+		st.active = true
+		st.wasLive = true
+		st.doneSent = false
+	}
 	var events []Event
 	menu := detect.Question(lines)
 	if sig := menuSig(menu); sig != st.menuSig {
@@ -231,7 +252,27 @@ func (w *Watcher) poll(session string) {
 			})
 		}
 	}
-	if st.active && !st.doneSent && now.Sub(st.changed) >= w.o.IdleAfter {
+	// Whether the turn is over, and there are two ways to know.
+	//
+	// The counter is the direct one: it was on screen and now it is not, so the
+	// agent has stopped — said at once, in the poll that sees it go. Silence is
+	// the other, and it is what answers for a pane with no counter to read: a
+	// shell running a build, an agent whose footer this cannot parse. It costs
+	// the idle threshold, which is why it is no longer the only rule — thirty
+	// seconds of a tab painted as working after the answer was already on it,
+	// and thirty seconds before the phone was told.
+	//
+	// Neither fires while a menu is on screen. "Finished" for a session that is
+	// waiting for an answer is the opposite of what is true, and a question is
+	// already being announced in its own right.
+	switch {
+	case menu != nil || st.live || st.doneSent:
+		// A question, a turn still counting, or a turn already reported.
+	case st.wasLive:
+		st.doneSent = true
+		st.wasLive = false
+		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines)})
+	case st.active && now.Sub(st.changed) >= w.o.IdleAfter:
 		st.doneSent = true
 		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines)})
 	}

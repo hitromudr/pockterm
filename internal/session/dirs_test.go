@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hitromudr/pockterm/internal/tmuxcmd"
 )
 
 // root builds a projects root that looks like a real one: projects, a dotted
@@ -106,14 +108,14 @@ func TestStartCarriesTheFolderAndTheName(t *testing.T) {
 	// The Makefile stays the one thing that knows how a session is launched —
 	// the sandbox wrapper, its own systemd scope, and a number free as both a
 	// session and a group name. What it is told is where and under what name.
-	argv := Start("/srv/work", "claude", "/srv/work/natal", "natal", "")
-	want := "make -C /srv/work claude DIR=/srv/work/natal PREFIX=natal"
+	argv := Start("/srv/work", "claude", "/srv/work/natal", "natal", "", "claude")
+	want := "make -C /srv/work claude DIR=/srv/work/natal PREFIX=natal KIND=claude"
 	if strings.Join(argv, " ") != want {
 		t.Errorf("argv is %v, want %q", argv, want)
 	}
 	// No folder asked for: the call is what it always was, so a Makefile that
 	// knows nothing of either variable behaves exactly as before.
-	argv = Start("/srv/work", "claude", "", "", "")
+	argv = Start("/srv/work", "claude", "", "", "", "")
 	if got := strings.Join(argv, " "); got != "make -C /srv/work claude" {
 		t.Errorf("argv is %q, want the plain call", got)
 	}
@@ -130,5 +132,27 @@ func TestExampleMakefileUsesThePrefix(t *testing.T) {
 	}
 	if !strings.Contains(string(src), "PREFIX") {
 		t.Error("the example Makefile ignores PREFIX")
+	}
+}
+
+func TestExampleMakefileStampsTheKind(t *testing.T) {
+	// The two halves of one fact: the Makefile writes the option and the server
+	// reads it back with the session list. Named differently, they would not
+	// disagree — the page would simply never show a type, with nothing anywhere
+	// saying why.
+	src, err := os.ReadFile(filepath.Join("..", "..", "deploy", "sessions.mk.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), tmuxcmd.KindOption) {
+		t.Errorf("the example Makefile does not stamp %s", tmuxcmd.KindOption)
+	}
+	if !strings.Contains(string(src), "KIND") {
+		t.Error("the example Makefile ignores KIND, so the page's button never reaches the session")
+	}
+	// The trap that cost the first attempt: set-option reads its -t as a pane,
+	// so the exact-match prefix the other commands take makes it fail outright.
+	if strings.Contains(string(src), `set-option -t "=`) {
+		t.Error(`set-option -t "=<name>" answers "no such session" — the stamp never lands`)
 	}
 }

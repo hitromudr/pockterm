@@ -106,6 +106,89 @@ func TestDoneAfterSilence(t *testing.T) {
 	}
 }
 
+// The agent's own counter, and what it costs not to read it: thirty seconds of
+// a tab painted as working after the answer was already on it, and thirty
+// seconds before the phone was told.
+const (
+	turnRunning = "● reading detect.go\n✶ Doing… (1m 13s · ↓ 3.9k tokens)\n❯ \n  ctx 62% | ~/work $ | Opus 5\n"
+	turnOver    = "● reading detect.go\n✻ Cooked for 19s\nвсё, детектор поправлен\n❯ \n  ctx 62% | ~/work $ | Opus 5\n"
+)
+
+func TestDoneWhenTheCounterGoes(t *testing.T) {
+	h := newHarness(30 * time.Second)
+	h.screen = turnRunning
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("a counting turn: %q, want %q", got, ActivityWorking)
+	}
+	// Not a second of the threshold has passed, and none needs to.
+	h.screen = turnOver
+	h.w.Tick()
+	if got := h.kinds(); len(got) != 1 || got[0] != Done {
+		t.Fatalf("events = %+v, want one done at once", h.events)
+	}
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("after the counter went: %q, want %q", got, ActivityDone)
+	}
+	h.w.Tick() // the same finished screen says nothing more
+	if len(h.events) != 1 {
+		t.Fatalf("events = %+v, want just the one", h.events)
+	}
+	// And a new turn re-arms it, so the next end is reported too.
+	h.screen = turnRunning
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("the next turn: %q, want %q", got, ActivityWorking)
+	}
+	h.screen = turnOver
+	h.w.Tick()
+	if got := h.kinds(); len(got) != 2 || got[1] != Done {
+		t.Fatalf("events = %+v, want a second done", h.events)
+	}
+}
+
+func TestCounterOutlastsTheThreshold(t *testing.T) {
+	// A turn thinking for longer than the idle threshold: the screen can redraw
+	// to the same bytes, and silence would call that finished while it runs.
+	h := newHarness(30 * time.Second)
+	h.screen = turnRunning
+	h.w.Tick()
+	h.advance(5 * time.Minute)
+	h.w.Tick()
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want none while it is still counting", h.events)
+	}
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("still counting: %q, want %q", got, ActivityWorking)
+	}
+}
+
+func TestQuestionIsNotFinished(t *testing.T) {
+	// A pane waiting for an answer must not report the turn over, whichever rule
+	// would otherwise fire — the counter going away, or the silence after it.
+	h := newHarness(30 * time.Second)
+	h.screen = turnRunning
+	h.w.Tick()
+	h.screen = menu
+	h.w.Tick()
+	h.advance(5 * time.Minute)
+	h.w.Tick()
+	if got := h.kinds(); len(got) != 1 || got[0] != Question {
+		t.Fatalf("events = %+v, want the question and nothing else", h.events)
+	}
+	if got := h.w.Activity("claude"); got != ActivityAsking {
+		t.Fatalf("with a menu on screen: %q, want %q", got, ActivityAsking)
+	}
+	// Answered, the turn resumes and then ends: that end is reported.
+	h.screen = turnRunning
+	h.w.Tick()
+	h.screen = turnOver
+	h.w.Tick()
+	if got := h.kinds(); len(got) != 2 || got[1] != Done {
+		t.Fatalf("events = %+v, want a done after the answer", h.events)
+	}
+}
+
 func TestDoneRearmsAfterNewActivity(t *testing.T) {
 	h := newHarness(30 * time.Second)
 	h.screen = "one\n"

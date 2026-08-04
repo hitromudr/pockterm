@@ -29,14 +29,48 @@ function boxGlyphs(s) {
   return s.replace(/[│╭╮╰╯─]/g, '').trim();
 }
 
+// Where a line's own text starts, past the chrome drawn down the left edge —
+// the box's border and the pointer at the highlighted option. In columns, not
+// in code units: it is compared across lines written in any language.
+function indentOf(line) {
+  let col = 0;
+  for (const ch of line) {
+    if (ch === ' ' || ch === '\t' || ch === '│' || ch === '>' || ch === '❯' || ch === '›') col++;
+    else return col;
+  }
+  return col;
+}
+
+// Whether every line between two options belongs to the first one — a
+// description wrapped under it, a blank, or a rule drawn across the menu.
+//
+// Indentation is what tells a description from a paragraph, and it is the whole
+// defence against reading prose as a menu: an option's continuation is set past
+// the column its number sits in, while a numbered list in prose has its text
+// back at the margin.
+function continues(between, indent) {
+  for (const line of between) {
+    // A rule or an empty box row is chrome, not content.
+    if (!boxGlyphs(line)) continue;
+    if (OPTION.test(line)) return false;
+    if (indentOf(line) <= indent) return false;
+  }
+  return true;
+}
+
 // detectQuestion(lines) → { prompt, options: [{key,label}] } | null.
-// A menu is a run of adjacent lines numbered 1,2,3,… (no gaps, nothing in
-// between) that carries TUI chrome. The lowest such run on screen wins:
-// when a real prompt follows earlier output, the prompt is the live one.
+// A menu is a run of lines numbered 1,2,3,… in order that carries TUI chrome,
+// with nothing between them but each option's own continuation. The lowest such
+// run on screen wins: when a real prompt follows earlier output, the prompt is
+// the live one.
+//
+// The options used to have to be adjacent, which found nothing at all in a
+// question with a description under each answer — the menu the buttons matter
+// most for. See internal/detect/detect.go for what that cost.
 export function detectQuestion(lines) {
   const plain = lines.map(stripAnsi);
   let best = null;
-  let run = null; // { start, opts, chrome }
+  let run = null; // { start, last, indent, opts, chrome }
 
   const close = () => {
     if (run && run.opts.length >= 2 && run.chrome) best = run;
@@ -44,17 +78,24 @@ export function detectQuestion(lines) {
   };
   for (let i = 0; i < plain.length; i++) {
     const m = OPTION.exec(plain[i]);
-    const chrome = m ? CHROME.test(m[1]) || RIGHT_BORDER.test(plain[i]) : false;
-    // Continues the run only if this line sits right below the previous
-    // option and carries the next number.
-    if (m && run && i === run.start + run.opts.length && m[2] === String(run.opts.length + 1)) {
+    // Not a numbered line: it may still belong to the option above, so the run
+    // is left open and the next number is what decides.
+    if (!m) continue;
+    const chrome = CHROME.test(m[1]) || RIGHT_BORDER.test(plain[i]);
+    // Continues the run if this line carries the next number and everything
+    // between it and the previous option belongs to that option.
+    if (run && m[2] === String(run.opts.length + 1)
+        && continues(plain.slice(run.last + 1, i), run.indent)) {
       run.opts.push({ key: m[2], label: label(m[3]) });
       run.chrome = run.chrome || chrome;
+      run.last = i;
       continue;
     }
-    // Anything else ends the current run; a "1." line starts a new one.
+    // A number out of turn ends the current run; a "1." starts a new one.
     close();
-    if (m && m[2] === '1') run = { start: i, opts: [{ key: '1', label: label(m[3]) }], chrome };
+    if (m[2] === '1') {
+      run = { start: i, last: i, indent: indentOf(plain[i]), opts: [{ key: '1', label: label(m[3]) }], chrome };
+    }
   }
   close();
   if (!best) return null;

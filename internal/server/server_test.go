@@ -667,11 +667,7 @@ func TestNoticeReachesTheAttachedPage(t *testing.T) {
 	defer c.Close()
 	readBinaryUntil(t, c, "ready")
 
-	// Sent for a session with nobody attached: nothing to deliver, and
-	// nothing to panic over either.
-	notices.Send("nobody", Notice{Type: "notify", Kind: "done", Session: "nobody", Title: "x"})
-
-	notices.Send("demo", Notice{
+	notices.Send(Notice{
 		Type: "notify", Kind: "done", Session: "demo",
 		Title: "✅ demo закончил", Body: "тесты зелёные",
 	})
@@ -715,7 +711,7 @@ func TestNoticesForgetAClosedPage(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		notices.mu.Lock()
-		n := len(notices.m["demo"])
+		n := len(notices.m)
 		notices.mu.Unlock()
 		if n == 0 {
 			break
@@ -725,7 +721,57 @@ func TestNoticesForgetAClosedPage(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	notices.Send("demo", Notice{Type: "notify", Kind: "done", Session: "demo", Title: "x"})
+	notices.Send(Notice{Type: "notify", Kind: "done", Session: "demo", Title: "x"})
+}
+
+func TestNoticeReachesAPageLookingAtAnotherSession(t *testing.T) {
+	// The notification anyone actually waits for is about the session they are not
+	// looking at, and that is the one that used to reach nobody: the frame went
+	// only to pages attached to the session it was about, a phone has one socket,
+	// and the watcher is silent about the session that socket has visible. With
+	// Telegram off, "notify this page" delivered nothing at all — reported that
+	// way, and this is the case that proves it fixed.
+	opts := testOptions("")
+	notices := NewNotices()
+	opts.Notices = notices
+	opts.ListSessions = func() ([]tmuxcmd.Session, error) {
+		return []tmuxcmd.Session{{Name: "demo", Windows: 1}, {Name: "natal", Windows: 1}}, nil
+	}
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	readBinaryUntil(t, c, "ready")
+
+	notices.Send(Notice{
+		Type: "notify", Kind: "question", Session: "natal",
+		Title: "❓ natal просит ответ", Body: "Apply this change?",
+	})
+
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("waiting for a notice about the other session: %v", err)
+		}
+		if mt != websocket.TextMessage {
+			continue
+		}
+		var f Notice
+		if err := json.Unmarshal(data, &f); err != nil || f.Type != "notify" {
+			continue
+		}
+		// It names the session it is about, which is what a tap on it needs: the
+		// page is showing another one, and the notice is the way to this one.
+		if f.Session != "natal" || f.Kind != "question" {
+			t.Fatalf("frame arrived mangled: %+v", f)
+		}
+		return
+	}
 }
 
 func TestConfigFrameNamesThePageItServes(t *testing.T) {
@@ -1153,6 +1199,44 @@ func TestSessionListCarriesWhatEachSessionIsDoing(t *testing.T) {
 	}
 	if len(got) != 1 || got[0]["state"] != "working" {
 		t.Fatalf("sessions = %v", got)
+	}
+}
+
+func TestSessionListCarriesWhichButtonStartedIt(t *testing.T) {
+	// The drawer names the button in the row and the tab draws its glyph, and both
+	// read this one list — the same reason the activity rides in it. tmux is where
+	// the fact is kept, so the server passes it on rather than holding a register
+	// of its own that a rename or a restart could put out of step.
+	opts := testOptions("")
+	opts.ListSessions = func() ([]tmuxcmd.Session, error) {
+		return []tmuxcmd.Session{
+			{Name: "natal", Windows: 1, Kind: "yolo"},
+			{Name: "qwen", Windows: 1, Kind: "custom:b2"},
+			// Nobody stamped this one, and the page says nothing about it rather
+			// than guessing — the same rule as an unknown activity.
+			{Name: "old", Windows: 1},
+		}, nil
+	}
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var got []map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("sessions = %v", got)
+	}
+	if got[0]["kind"] != "yolo" || got[1]["kind"] != "custom:b2" {
+		t.Fatalf("the kind did not travel: %v", got)
+	}
+	if _, ok := got[2]["kind"]; ok {
+		t.Fatalf("an untyped session claimed a kind: %v", got[2])
 	}
 }
 

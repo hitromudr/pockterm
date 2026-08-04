@@ -8,6 +8,7 @@ import { watch as watchInput } from './inputdiag.js';
 import { Scroller, movedWholeScreen } from './scroll.js';
 import { staleNotice } from './update.js';
 import { endingKeys } from './ender.js';
+import { kindMark, kindName, customMark, labelBody } from './kinds.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -17,7 +18,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v97';
+const APP_VERSION = 'v98';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -100,7 +101,14 @@ let retry = 1000;
 const enc = new TextEncoder();
 
 // --- session list screen ---
+// Which render of the list is the current one. It clears the rows, then waits for
+// the server, then fills them — so two runs that overlap both clear and both fill,
+// and the drawer ends up with every session twice. That is not hypothetical: the
+// custom buttons landing while the drawer is opening is exactly two runs at once.
+let listGen = 0;
+
 async function loadSessions() {
+  const gen = ++listGen;
   sessionList.innerHTML = '';
   emptyMsg.hidden = true;
   // The tab strip is the same list, so it is refreshed by the same call. It used
@@ -110,6 +118,9 @@ async function loadSessions() {
   // redrawn when a terminal is closed.
   if (!screenTerm.hidden) renderTabs();
   const { sessions, error } = await fetchSessions();
+  // A later call took over while this one was waiting: it has already cleared the
+  // list and will fill it, and anything written from here would be written twice.
+  if (gen !== listGen) return;
   // The message about the sessions belongs to the sessions: while the folder
   // list is up it would sit under a list it says nothing about — and "no
   // sessions" over a list of folders reads as the folders being the problem.
@@ -134,8 +145,13 @@ async function loadSessions() {
     const b = document.createElement('button');
     b.className = 'session';
     const win = `${s.windows} window${s.windows === 1 ? '' : 's'}`;
+    // Which button started it, first in the meta line. The name is the folder
+    // now, so it cannot say this — and it is the thing you scan the list for:
+    // "which of these is the yolo one".
+    const what = kindName(s.kind, customButtons);
     b.innerHTML = `<span class="name">${escapeHtml(s.name)}</span>` +
-      `<span class="meta">${win}${s.attached ? ' · attached' : ''}</span>`;
+      `<span class="meta">${what ? escapeHtml(what) + ' · ' : ''}` +
+      `${win}${s.attached ? ' · attached' : ''}</span>`;
     b.addEventListener('click', () => attach(s.name));
     li.appendChild(b);
 
@@ -459,11 +475,19 @@ function renderCustom() {
       b.className = 'custom';
       b.dataset.preset = `custom:${c.id}`;
       b.dataset.name = c.label;
-      b.textContent = `★ ${c.label}`;
+      // A label that leads with a symbol carries its own mark, and then that is
+      // the mark shown here and on the tab the session opens in. Drawing ★ in
+      // front of it as well would leave two marks and no way to tell which of
+      // them is the one on the tabs.
+      b.textContent = `${customMark(c.label)} ${labelBody(c.label)}`;
       wirePreset(b);
       menu.appendChild(b);
     }
   }
+  // Tabs and drawer rows are marked from this list, and the first load of it
+  // answers after they are already on screen.
+  if (!screenTerm.hidden) renderTabs();
+  if (screenSessions.classList.contains('open')) loadSessions();
 }
 
 async function loadCustom() {
@@ -736,11 +760,22 @@ async function renderTabs() {
     tabsEl.innerHTML = '';
     for (const s of sessions) {
       const b = document.createElement('button');
-      b.textContent = s.name;
+      // The mark lives in a span of its own so it can be rewritten without
+      // touching the button: the kind arrives on a later poll than the name (the
+      // list is fetched before the buttons are), and rebuilding the row under a
+      // finger is what raises the keyboard.
+      const mark = document.createElement('span');
+      mark.className = 'kind';
+      b.appendChild(mark);
+      b.appendChild(document.createTextNode(s.name));
       b.dataset.session = s.name;
       b.style.animationDelay = workingPhase(s.name);
       keepsTerminalFocus(b);
-      b.addEventListener('click', () => { if (s.name !== current) attach(s.name); });
+      b.addEventListener('click', () => {
+        // A long press asks what the mark means; it must not also switch session.
+        if (helpHeld) { helpHeld = false; return; }
+        if (s.name !== current) attach(s.name);
+      });
       tabsEl.appendChild(b);
     }
   }
@@ -752,8 +787,20 @@ async function renderTabs() {
   // list as the colour, and it is drawn as an attribute for the same reason the
   // colour is drawn as a class: the label must not be rewritten.
   const bg = new Map(sessions.map((s) => [s.name, (s.shells || 0) + (s.monitors || 0)]));
+  // What each one is, as opposed to what it is doing. Written into the mark's own
+  // span for the same reason the state is written as a class — the label must not
+  // be rebuilt — and it is the "+" menu's own glyph, so the strip needs no legend.
+  kinds.clear();
+  for (const s of sessions) kinds.set(s.name, s.kind || '');
   for (const b of tabsEl.querySelectorAll('button')) {
     const st = state.get(b.dataset.session) || '';
+    const k = kindOf(b.dataset.session);
+    const mark = b.querySelector('.kind');
+    if (mark) mark.textContent = kindMark(k, customButtons);
+    // For a pointer, which has a hover; the long press is what a phone has.
+    const what = kindName(k, customButtons);
+    if (what) b.title = `${b.dataset.session} · ${what}`;
+    else b.removeAttribute('title');
     b.classList.toggle('active', b.dataset.session === current);
     b.classList.toggle('working', st === 'working');
     b.classList.toggle('done', st === 'done');
@@ -768,6 +815,93 @@ async function renderTabs() {
     else delete b.dataset.bg;
   }
 }
+
+// --- what the mark on a tab means ---
+// A glyph is only obvious to whoever chose it, and this one is read on a phone
+// that has no hover to explain it: the same press that would switch session holds
+// instead, and the tab says what it is.
+//
+// Held rather than tapped because the tab already has a job, and a mark small
+// enough not to crowd the name is too small to be a second target. `helpHeld`
+// swallows the click the press ends in — without it, asking what a tab is would
+// switch to it.
+const kindHelpEl = document.getElementById('kind-help');
+const HELP_HOLD_MS = 400;
+const HELP_SHOWN_MS = 2600;
+let helpTimer = null;
+let helpHide = null;
+let helpHeld = false;
+let helpStart = null;
+
+function hideKindHelp() {
+  if (helpTimer) { clearTimeout(helpTimer); helpTimer = null; }
+  if (helpHide) { clearTimeout(helpHide); helpHide = null; }
+  helpStart = null;
+  if (kindHelpEl) kindHelpEl.hidden = true;
+}
+
+// showKindHelp puts the plate under the tab it is about, clamped to the screen:
+// the strip scrolls sideways, so a tab can sit at either edge of it.
+function showKindHelp(btn) {
+  if (!kindHelpEl) return;
+  const name = btn.dataset.session;
+  const what = kindName(kindOf(name), customButtons);
+  const mark = kindMark(kindOf(name), customButtons);
+  // Nothing to explain: a session nobody stamped, or a button since removed.
+  // A plate saying only the name would be a lever that answers nothing.
+  if (!what) return;
+  kindHelpEl.textContent = mark ? `${mark} ${what}` : what;
+  kindHelpEl.hidden = false;
+  const r = btn.getBoundingClientRect();
+  const w = kindHelpEl.offsetWidth;
+  const left = Math.max(4, Math.min(r.left, window.innerWidth - w - 4));
+  kindHelpEl.style.left = `${left}px`;
+  kindHelpEl.style.top = `${r.bottom + 4}px`;
+  helpHeld = true;
+  helpHide = setTimeout(hideKindHelp, HELP_SHOWN_MS);
+}
+
+// The kind of a session as the last poll reported it. Read from the strip rather
+// than refetched: the plate is about the tab under the finger, and a fetch would
+// answer after the finger is gone.
+const kinds = new Map();
+function kindOf(name) { return kinds.get(name) || ''; }
+
+// The press is watched on the strip, not on each tab: the row is rebuilt whenever
+// the set of sessions changes, and listeners on it would go with it.
+if (tabsEl) {
+  tabsEl.addEventListener('touchstart', (e) => {
+    const btn = e.target.closest('button[data-session]');
+    hideKindHelp();
+    // A new gesture: whatever the last one suppressed, it has had its click by
+    // now. Left standing, a press that ended off the tab would eat the next tap.
+    helpHeld = false;
+    if (!btn || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    helpStart = { x: t.clientX, y: t.clientY };
+    helpTimer = setTimeout(() => { helpTimer = null; showKindHelp(btn); }, HELP_HOLD_MS);
+  }, { passive: true });
+  // A finger that travels is scrolling the strip, which is what a strip of tabs
+  // wider than the screen is for. That gesture must not end in a plate.
+  tabsEl.addEventListener('touchmove', (e) => {
+    if (!helpTimer || !helpStart) return;
+    const t = e.touches[0];
+    if (Math.abs(t.clientX - helpStart.x) > 10 || Math.abs(t.clientY - helpStart.y) > 10) {
+      clearTimeout(helpTimer);
+      helpTimer = null;
+    }
+  }, { passive: true });
+  for (const end of ['touchend', 'touchcancel']) {
+    tabsEl.addEventListener(end, () => {
+      if (helpTimer) { clearTimeout(helpTimer); helpTimer = null; }
+      helpStart = null;
+    }, { passive: true });
+  }
+}
+// Anywhere else, and the plate goes. It is an answer, not a state.
+document.addEventListener('touchstart', (e) => {
+  if (kindHelpEl && !kindHelpEl.hidden && !e.target.closest('#tabs')) hideKindHelp();
+}, { passive: true });
 
 // Where in the working animation a tab starts.
 //
@@ -1892,6 +2026,17 @@ function renderBell() {
   bellBtn.classList.toggle('on', label.on);
   bellBtn.textContent = label.text;
   bellBtn.title = label.title;
+  // A mode that notifies, and a browser that was never asked whether it may.
+  //
+  // The default is pwa+tg, which means a fresh install starts in a notifying
+  // state — and the permission used to be asked for only on the way *into* one.
+  // Nobody taps a switch that already says what they want, so the page sat
+  // labelled 🔔 and showed nothing, on the laptop PWA and on the phone alike.
+  // The label says so now, and the tap that fixes it is the one on this button.
+  const need = label.on && !nativeNotifier()
+    && 'Notification' in window && Notification.permission === 'default';
+  bellBtn.classList.toggle('unpermitted', need);
+  if (need) bellBtn.title = 'Браузер не спрошен про уведомления — нажми, чтобы разрешить';
 }
 
 // Tell the host what the owner chose. The answer is the state after the change,
@@ -1918,16 +2063,23 @@ function applyMode(mode, telegram) {
 
 bellBtn.addEventListener('click', async () => {
   const want = nextMode(notifyMode, notifyTG);
-  // Permission is asked for on the way in, and only there: leaving a notifying
-  // state never needs it, and asking again on the way out would be a prompt
-  // for turning something off.
-  if (want !== 'off' && !notifyOn && !nativeNotifier()) {
+  // Permission is asked for whenever the mode being moved to notifies, and it is
+  // not conditioned on the mode being off first. It used to be — "on the way in"
+  // — and the way in is not the only way to arrive: the server's default is
+  // pwa+tg, so a page can load already notifying and never be asked at all. That
+  // left the switch labelled 🔔 with nothing coming out of it.
+  //
+  // A granted permission costs nothing here: the browser answers from what it
+  // already knows without prompting.
+  if (want !== 'off' && !nativeNotifier()) {
     if (!('Notification' in window)) { toast('this browser has no notifications'); return; }
     let perm = Notification.permission;
     if (perm === 'default') perm = await Notification.requestPermission();
+    renderBell();
     if (perm !== 'granted') {
       // Denied is sticky: the browser will not ask again from here.
       toast(perm === 'denied' ? 'notifications blocked in browser settings' : 'not allowed');
+      report('notify-permission', { permission: perm });
       return;
     }
   }
@@ -1952,8 +2104,12 @@ function nativeNotifier() {
   return !!(window.PockNative && typeof window.PockNative.notify === 'function');
 }
 
+// A frame arrived, so a notice is wanted: the server decided that, reading the
+// switch at the moment of the event. The page's own copy of the switch is not
+// consulted — it is a second owner of one fact, and the stale one, since the mode
+// is changed from whichever page happens to be in hand.
 function show(notice) {
-  if (!notice || !notifyOn) return;
+  if (!notice) return;
   if (nativeNotifier()) {
     try {
       // Three arguments, so a tap opens the session the notice is about
@@ -1971,7 +2127,18 @@ function show(notice) {
       report('notify', { via: 'native', error: (e && e.name) || 'error' });
     }
   }
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  // No permission, no notice — and said out loud. This used to be the one silent
+  // return on the path: a phone or a laptop PWA that was never asked, or was
+  // asked and refused, showed nothing and left nothing behind to explain it,
+  // which is indistinguishable from a switch that does not work.
+  if (!('Notification' in window)) {
+    report('notify', { via: 'none', ok: false, reason: 'no Notification API', tag: notice.tag });
+    return;
+  }
+  if (Notification.permission !== 'granted') {
+    report('notify', { via: 'none', ok: false, reason: `permission ${Notification.permission}`, tag: notice.tag });
+    return;
+  }
   // The tag replaces a previous notice of the same kind instead of stacking:
   // five "asks for an answer" in a row is noise, not information. Which of the
   // two browser paths raised it is decided in js/notify.js and said out loud

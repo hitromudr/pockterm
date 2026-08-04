@@ -13,9 +13,18 @@
       "expect": {
         "prompt": "Do you want to make this edit to app.js?",
         "options": [
-          { "key": "1", "label": "Yes" },
-          { "key": "2", "label": "Yes, allow all edits this session" },
-          { "key": "3", "label": "No, and tell Claude what to do (esc)" }
+          {
+            "key": "1",
+            "label": "Yes"
+          },
+          {
+            "key": "2",
+            "label": "Yes, allow all edits this session"
+          },
+          {
+            "key": "3",
+            "label": "No, and tell Claude what to do (esc)"
+          }
         ]
       }
     },
@@ -29,8 +38,14 @@
       "expect": {
         "prompt": "Quick safety check: trust this folder?",
         "options": [
-          { "key": "1", "label": "Yes, I trust this folder" },
-          { "key": "2", "label": "No, exit" }
+          {
+            "key": "1",
+            "label": "Yes, I trust this folder"
+          },
+          {
+            "key": "2",
+            "label": "No, exit"
+          }
         ]
       }
     },
@@ -47,8 +62,14 @@
       "expect": {
         "prompt": "Do you want to create config.json?",
         "options": [
-          { "key": "1", "label": "Yes" },
-          { "key": "2", "label": "No, and tell Claude what to do (esc)" }
+          {
+            "key": "1",
+            "label": "Yes"
+          },
+          {
+            "key": "2",
+            "label": "No, and tell Claude what to do (esc)"
+          }
         ]
       }
     },
@@ -66,24 +87,115 @@
       "expect": {
         "prompt": "Apply this change?",
         "options": [
-          { "key": "1", "label": "Yes" },
-          { "key": "2", "label": "No" }
+          {
+            "key": "1",
+            "label": "Yes"
+          },
+          {
+            "key": "2",
+            "label": "No"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AskUserQuestion: a description under every option, a rule before the last",
+      "lines": [
+        "────────────────────────────────────────────────────────────",
+        " ☐ devops",
+        "",
+        "Шаблон Makefile в devops (роль pockterm_app) — без него табы на этом хосте останутся нетипизированными. Что с ним делать?",
+        "",
+        "❯ 1. Правлю и коммичу в devops тоже (рекомендую)",
+        "     Добавлю KIND= и set-option в шаблон роли, коммит и push в hitromudr/devops. Прогон роли остаётся тебе (make deploy-pockterm) — я его не трогаю без отдельного",
+        "     разрешения.",
+        "  2. Правлю и выкатываю сразу",
+        "     То же плюс make deploy-pockterm отсюда. Роль перепишет ~/work/Makefile на этой машине; бинарь не трогается (pockterm_manage_binary=false).",
+        "  3. Только pockterm, devops сам",
+        "     Ограничусь репозиторием pockterm и deploy/sessions.mk.example, а две строки для шаблона дам текстом в конце.",
+        "  4. Type something.",
+        "────────────────────────────────────────────────────────────",
+        "  5. Chat about this",
+        "",
+        "Enter to select · ↑/↓ to navigate · Esc to cancel"
+      ],
+      "expect": {
+        "prompt": "Шаблон Makefile в devops (роль pockterm_app) — без него табы на этом хосте останутся нетипизированными. Что с ним делать?",
+        "options": [
+          {
+            "key": "1",
+            "label": "Правлю и коммичу в devops тоже (рекомендую)"
+          },
+          {
+            "key": "2",
+            "label": "Правлю и выкатываю сразу"
+          },
+          {
+            "key": "3",
+            "label": "Только pockterm, devops сам"
+          },
+          {
+            "key": "4",
+            "label": "Type something."
+          },
+          {
+            "key": "5",
+            "label": "Chat about this"
+          }
+        ]
+      }
+    },
+    {
+      "name": "boxed menu with a description under each option (indent in columns, not bytes)",
+      "lines": [
+        "╭──────────────────────────────────────────────╮",
+        "│ Чем открыть файл?                            │",
+        "│                                              │",
+        "│ ❯ 1. Редактором                              │",
+        "│    он спросит про кодировку                  │",
+        "│   2. Просмотром                              │",
+        "│    только чтение                             │",
+        "╰──────────────────────────────────────────────╯"
+      ],
+      "expect": {
+        "prompt": "Чем открыть файл?",
+        "options": [
+          {
+            "key": "1",
+            "label": "Редактором"
+          },
+          {
+            "key": "2",
+            "label": "Просмотром"
+          }
         ]
       }
     },
     {
       "name": "ordinary output",
-      "lines": ["building...", "done in 2.3s", "$ "],
+      "lines": [
+        "building...",
+        "done in 2.3s",
+        "$ "
+      ],
       "expect": null
     },
     {
       "name": "single numbered line",
-      "lines": ["Results:", "1. only one item", ""],
+      "lines": [
+        "Results:",
+        "1. only one item",
+        ""
+      ],
       "expect": null
     },
     {
       "name": "numbered list not starting at 1",
-      "lines": ["see items", "3. three", "4. four"],
+      "lines": [
+        "see items",
+        "3. three",
+        "4. four"
+      ],
       "expect": null
     },
     {
@@ -112,12 +224,30 @@
     },
     {
       "name": "broken sequence 1, 5, 2",
-      "lines": ["❯ Notes:", "1. alpha", "5. echo", "2. bravo"],
+      "lines": [
+        "❯ Notes:",
+        "1. alpha",
+        "5. echo",
+        "2. bravo"
+      ],
       "expect": null
     },
     {
       "name": "version numbers are not a menu",
-      "lines": ["deps:", "1.2.3 foo", "2.0.0 bar"],
+      "lines": [
+        "deps:",
+        "1.2.3 foo",
+        "2.0.0 bar"
+      ],
+      "expect": null
+    },
+    {
+      "name": "a paragraph at the margin is not a description, even under a pointer",
+      "lines": [
+        "❯ 1. первый пункт плана",
+        "объяснение, начатое у левого поля",
+        "  2. второй пункт плана"
+      ],
       "expect": null
     }
   ]

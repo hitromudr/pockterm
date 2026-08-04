@@ -144,10 +144,17 @@ export async function startStand({
   // bare name is taken when free and numbered otherwise, which is what the real
   // Makefile does — a stand that always numbered would pass a test the phone
   // would fail.
-  const spawnLine = (fallback, cmd) => [
+  // It also stamps KIND on the session, which is how a tab knows which button
+  // made it — the page reads the option back with the session list. Each target
+  // has its own default, like the real Makefile, so a session started by hand is
+  // typed too. No "=" before the name: set-option reads its -t as a pane and
+  // answers "no such session" for the exact-match form.
+  const spawnLine = (fallback, cmd, kind) => [
     `\t@n="$(or $(PREFIX),${fallback})"; `
     + `if tmux -S ${socket} ls 2>/dev/null | grep -qE "^$$n:|\\(group $$n\\)"; then n="$$n-$$$$"; fi; \\`,
     `\t tmux -S ${socket} new-session -d -s "$$n" -c "$(or $(DIR),$(CURDIR))" sh -c ${cmd}; \\`,
+    `\t k="$(or $(KIND),${kind})"; `
+    + `if [ -n "$$k" ]; then tmux -S ${socket} set-option -t "$$n" @pockterm-kind "$$k"; fi; \\`,
     '\t echo "started $$n in $(or $(DIR),$(CURDIR))"',
   ];
   // `custom` is what the drawer's own buttons run, with their command in CMD.
@@ -156,12 +163,12 @@ export async function startStand({
   // not installed on a CI runner.
   writeFileSync(join(dir, 'Makefile'), [
     'shell:',
-    ...spawnLine('shell', 'cat'),
+    ...spawnLine('shell', 'cat', 'shell'),
     'claude:',
-    ...spawnLine('claude', 'cat'),
+    ...spawnLine('claude', 'cat', 'claude'),
     'custom:',
     `\t@test -n "$(CMD)" || { echo "usage: make custom CMD='qwen'"; exit 2; }`,
-    ...spawnLine('custom', `'echo ran: $(CMD); exec cat'`),
+    ...spawnLine('custom', `'echo ran: $(CMD); exec cat'`, 'custom'),
     '',
   ].join('\n'));
   env.POCKTERM_SESSION_DIR = dir;

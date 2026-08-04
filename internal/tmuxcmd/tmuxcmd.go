@@ -4,6 +4,7 @@ package tmuxcmd
 
 import (
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 )
@@ -51,10 +52,30 @@ type Session struct {
 	// same answer, and the second one is why a tab is worth looking at.
 	Shells   int `json:"shells,omitempty"`
 	Monitors int `json:"monitors,omitempty"`
+	// Which button started this session — a preset's name, or "custom:<id>" for
+	// one of the owner's own. tmux carries it as a session option the Makefile
+	// stamps at creation (see KindOption), so it survives a rename and this
+	// binary's restarts, and a session nobody stamped simply has none.
+	//
+	// The page needs it because the name cannot say it any more: sessions are
+	// named after the folder they were started in, so "natal" and "natal-2" are
+	// the same project by two different buttons.
+	Kind string `json:"kind,omitempty"`
 }
 
+// KindOption is the tmux session option the Makefile stamps the button on, and
+// the only place this fact lives. A user option (the "@" prefix) because tmux
+// keeps those per session, unread and untouched by anything else, and reports
+// them in a format like any other field.
+const KindOption = "@pockterm-kind"
+
 // listFormat keeps the field order ParseSessions expects.
-const listFormat = "#{session_name}\t#{session_windows}\t#{session_created}\t#{session_attached}\t#{session_group}"
+//
+// pane_start_command is the last field on purpose: it is the only one that can
+// carry a tab, and a stray one there costs a field nobody parses rather than
+// shifting every field after it.
+const listFormat = "#{session_name}\t#{session_windows}\t#{session_created}\t#{session_attached}" +
+	"\t#{session_group}\t#{" + KindOption + "}\t#{pane_start_command}"
 
 // ListSessions returns the argv listing sessions one per line in the
 // tab-separated order ParseSessions parses.
@@ -83,15 +104,63 @@ func ParseSessions(out string) []Session {
 		if len(f) > 4 {
 			group = f[4]
 		}
+		kind := ""
+		if len(f) > 5 {
+			kind = f[5]
+		}
+		// Nobody stamped this one — started before the Makefile knew how, or by
+		// hand. The command the pane was created with still answers the coarse
+		// half of the question, and only that half: see KindFromStart.
+		if kind == "" && len(f) > 6 {
+			kind = KindFromStart(f[6])
+		}
 		sessions = append(sessions, Session{
 			Name:     f[0],
 			Windows:  windows,
 			Created:  created,
 			Attached: f[3] == "1",
 			Group:    group,
+			Kind:     kind,
 		})
 	}
 	return sessions
+}
+
+// Shells a session can have been started as. Names, not paths: tmux reports
+// whatever was on the command line, and that is /bin/sh here, /usr/bin/zsh
+// there, $SHELL wherever the Makefile passed it through.
+var shells = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "fish": true,
+	"dash": true, "ksh": true, "csh": true, "tcsh": true,
+}
+
+// KindFromStart reads what it can out of the command a pane was created with:
+// "shell", or nothing.
+//
+// Deliberately only that much. The command is the honest answer to a different
+// question than the button — "agent-run --dangerously-skip-permissions" is what
+// the yolo button runs, and knowing that it is *called* yolo means knowing the
+// Makefile, which is the one thing this program refuses to know. So the stamped
+// option is the answer about buttons, and this is the answer about shells: a
+// session that was started as a plain shell, whoever started it and whenever.
+//
+// A pane created with no command at all runs the login shell, which is the same
+// answer.
+func KindFromStart(start string) string {
+	start = strings.TrimSpace(strings.Trim(strings.TrimSpace(start), `"`))
+	if start == "" {
+		return "shell"
+	}
+	// One word and nothing after it. `bash -lc "npm run dev"` is a shell only in
+	// the sense that everything is: what it was started to run is the argument,
+	// and this has no business guessing at it.
+	if strings.ContainsAny(start, " \t") {
+		return ""
+	}
+	if shells[path.Base(start)] {
+		return "shell"
+	}
+	return ""
 }
 
 // NameConflict reports why name cannot be given to a session, or nil.

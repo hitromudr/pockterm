@@ -155,6 +155,71 @@ func TestParseSessionsReadsTheGroup(t *testing.T) {
 	}
 }
 
+func TestParseSessionsReadsTheKind(t *testing.T) {
+	// Lines as tmux prints them for the format this asks for: the stamped option,
+	// then the command the pane was created with — quoted by tmux when it has a
+	// space in it.
+	out := "natal\t1\t1754226692\t0\tnatal\tyolo\t\"agent-run --dangerously-skip-permissions\"\n" +
+		"qwen\t1\t1754226700\t0\t\tcustom:b2\t\"AGENT_COMMAND=qwen agent-run\"\n" +
+		"build\t1\t1754226800\t0\t\t\t/usr/bin/zsh\n" +
+		"deploy\t1\t1754226900\t0\t\t\t\"bash -lc \\\"make deploy\\\"\"\n" +
+		"old\t1\t1754227000\t0\t\n"
+	got := ParseSessions(out)
+	if len(got) != 5 {
+		t.Fatalf("parsed %d sessions", len(got))
+	}
+	for i, want := range []string{"yolo", "custom:b2", "shell", "", ""} {
+		if got[i].Kind != want {
+			t.Errorf("%s: kind = %q, want %q", got[i].Name, got[i].Kind, want)
+		}
+	}
+	// The stamp is the answer whenever there is one, and the start command never
+	// overrules it: an agent launched through a shell wrapper would otherwise be
+	// reported as a shell.
+	if got[0].Group != "natal" {
+		t.Errorf("the group moved: %q", got[0].Group)
+	}
+}
+
+func TestKindFromStart(t *testing.T) {
+	// Only the coarse half of the question. Which button ran the command is the
+	// Makefile's knowledge, and this package does not have it — so this answers
+	// "started as a plain shell" or nothing at all.
+	for _, c := range []struct{ start, want string }{
+		{"/bin/zsh", "shell"},
+		{"bash", "shell"},
+		{`"/usr/bin/fish"`, "shell"},
+		// A pane created with no command runs the login shell.
+		{"", "shell"},
+		{"   ", "shell"},
+		// A command run through a shell is not a shell session: what it was
+		// started for is the argument, and guessing at it is not this function's
+		// business.
+		{`"bash -lc \"npm run dev\""`, ""},
+		{`"agent-run --dangerously-skip-permissions"`, ""},
+		{`"AGENT_COMMAND=qwen agent-run"`, ""},
+		{"/usr/local/bin/agent-run", ""},
+		{"sleep", ""},
+	} {
+		if got := KindFromStart(c.start); got != c.want {
+			t.Errorf("KindFromStart(%q) = %q, want %q", c.start, got, c.want)
+		}
+	}
+}
+
+func TestListFormatAsksForTheKind(t *testing.T) {
+	// The option the Makefile stamps has to be the option this asks for; the
+	// example Makefile is checked against the same constant.
+	if !strings.Contains(listFormat, KindOption) {
+		t.Errorf("the session list never asks for %s", KindOption)
+	}
+	// Last, because it is the one field that can carry a tab: a stray one there
+	// costs a field nobody reads instead of shifting every field after it.
+	if !strings.HasSuffix(listFormat, "#{pane_start_command}") {
+		t.Error("pane_start_command has to be the last field")
+	}
+}
+
 func TestNameConflict(t *testing.T) {
 	// The state that produced the bug: a session renamed away from claude-1
 	// left a group still called claude-1 behind it.

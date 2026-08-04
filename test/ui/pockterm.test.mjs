@@ -248,6 +248,70 @@ describe("the owner's own session buttons", () => {
     assert.match(pane, /ran: qwen --yolo/, `the command did not reach the session: ${pane}`);
   });
 
+  test('a tab carries the mark of the button that started it', async () => {
+    // The whole trip, because every link in it is somewhere else: the page sends a
+    // preset, the server passes KIND= to make, make stamps a tmux option on the
+    // session it names, and the page reads it back with the session list. A break
+    // anywhere shows on the phone as a tab with no mark and nothing saying why.
+    await stand.open();
+    const { page } = stand;
+    await stand.openDrawer();
+    const before = await page.locator('#session-list li').count();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset="claude"]');
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
+
+    // tmux is where the fact is kept — not a register of the server's that a
+    // rename or a restart could put out of step.
+    const row = page.locator('#session-list li').last();
+    const name = (await row.locator('.name').textContent()).trim();
+    assert.equal(
+      stand.tmux(['show-options', '-v', '-t', name, '@pockterm-kind']).trim(),
+      'claude',
+      'the button never reached the session',
+    );
+    // The drawer names it in the meta line, where the name cannot: the session is
+    // named after its folder, so two buttons in one project read alike.
+    assert.match(await row.locator('.meta').textContent(), /Claude/);
+
+    // Attach to the other session, so the strip has two tabs and the one under
+    // test is not the one being looked at.
+    await page.click('#session-list li:has-text("demo") button.session');
+    await page.waitForSelector('#screen-term:not([hidden])');
+
+    // The tab carries the "+" menu's own glyph, so the strip needs no legend. The
+    // mark lives in a span of its own, never in the label — rewriting the label
+    // rebuilds the button, and a WebView answers that by raising the keyboard.
+    await page.waitForFunction((n) => {
+      const b = [...document.querySelectorAll('#tabs button')].find((x) => x.dataset.session === n);
+      return b && b.querySelector('.kind') && b.querySelector('.kind').textContent === '✦';
+    }, name, { timeout: 8000 });
+
+    // A long press asks what the mark means. Through the browser's own touch
+    // input, not a synthetic event: what has to be proved is that the press does
+    // not switch session as well, and only a real one produces the click that
+    // would.
+    const tab = page.locator(`#tabs button[data-session="${name}"]`);
+    // The strip scrolls sideways and these names are long, so the tab under test
+    // can be off the right edge — a touch at its layout position would land on
+    // whatever is there instead, and on nothing at all past the viewport.
+    await tab.scrollIntoViewIfNeeded();
+    const box = await tab.boundingBox();
+    const at = [{ x: box.x + box.width / 2, y: box.y + box.height / 2, radiusX: 8, radiusY: 8, force: 1, id: 1 }];
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at });
+    await page.waitForSelector('#kind-help:not([hidden])', { timeout: 3000 });
+    assert.match(await page.textContent('#kind-help'), /✦ Claude/);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(300);
+    assert.equal(
+      await page.evaluate(() => document.querySelector('#tabs button.active')?.dataset.session),
+      'demo',
+      'asking what a tab is switched to it',
+    );
+  });
+
   test('a command that could reach a shell is refused, and says why', async () => {
     // The command becomes CMD= on a make command line and make hands it to a
     // shell. On a phone there is no log to open, so the reason has to be on

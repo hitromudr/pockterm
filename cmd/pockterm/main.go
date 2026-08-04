@@ -342,7 +342,11 @@ func starter(cfg config.Config, buttons *session.Buttons) func(preset, folder st
 		if err != nil {
 			return err
 		}
-		argv := session.Start(dir, target, startIn, session.Prefix(dir, folder), cmd)
+		// Which button asked goes along, for the Makefile to stamp on the session
+		// it names: a tab can then say what it is, which its name no longer can
+		// — sessions are named after their folder, so two buttons in the same
+		// project read alike.
+		argv := session.Start(dir, target, startIn, session.Prefix(dir, folder), cmd, session.Kind(preset))
 		out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
 		if err != nil {
 			log.Printf("start %s in %s: %v: %s", preset, startIn, err, out)
@@ -445,7 +449,11 @@ func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref) serv
 			page, tg := watch.Deliver(pref.Mode(), bot != nil)
 			if page {
 				title, body := watch.Notice(e)
-				notices.Send(e.Session, server.Notice{
+				// To every page that is open, not only to one attached to this
+				// session: the watcher is already silent about a session somebody
+				// has visible, so what is left is news from somewhere else — and
+				// the page it is news to is the one showing a different session.
+				notices.Send(server.Notice{
 					Type:    "notify",
 					Kind:    string(e.Kind),
 					Session: e.Session,

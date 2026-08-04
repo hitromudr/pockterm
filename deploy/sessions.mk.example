@@ -29,6 +29,17 @@ DIR ?= $(CURDIR)
 # per-target default below.
 PREFIX ?=
 
+# Which button asked for the session. Named after the folder, a tab can no
+# longer say what it is — "natal" and "natal-2" are the same project started two
+# different ways — so the page reads this back off the session and draws the
+# button's own glyph on the tab.
+#
+# It is stamped here rather than recorded by the server because only this file
+# knows the name: it is the one that picked the free number. Each target has its
+# own default, so a session started by hand (`make yolo`) is typed as well as one
+# started from a phone.
+KIND ?=
+
 .PHONY: help shell claude yolo continue ls kill
 
 # spawn,<command>[,<prefix>] — start a fresh <prefix>-N session detached.
@@ -49,6 +60,16 @@ PREFIX ?=
 # one session in it is the common case, and "natal" reads better in a tab than
 # "natal-1". The suffix starts at 2 for the second one, so the numbers never
 # claim to be a first.
+# spawn's third argument is the kind to stamp when KIND was not passed, so a
+# session started from a shell here is typed like one started from the page.
+# The stamp is a tmux user option on the session: it survives a rename, it is
+# read back with the session list in one call, and nothing else touches it.
+#
+# No "=" before the name in set-option, unlike kill-session below. That prefix
+# means "exact match" to the commands that take a session, and set-option reads
+# its -t as a pane instead — it answers "no such session: =claude" and the stamp
+# silently never lands. The plain name is safe here anyway: the session was just
+# created under it, and tmux resolves an exact name before a prefix.
 define spawn
 p="$(or $(PREFIX),$(or $(2),claude))"; \
 free() { ! tmux ls 2>/dev/null | grep -qE "^$$1:|\(group $$1\)"; }; \
@@ -59,6 +80,8 @@ if systemd-run --user --scope --quiet --collect true >/dev/null 2>&1; then \
 	launch="systemd-run --user --scope --quiet --collect"; \
 fi; \
 $$launch tmux new-session -d -s "$$s" -c "$(DIR)" $(1); \
+k="$(or $(KIND),$(3))"; \
+if [ -n "$$k" ]; then tmux set-option -t "$$s" @pockterm-kind "$$k"; fi; \
 echo "started $$s in $(DIR)$${launch:+ (own slice)}"
 endef
 
@@ -67,16 +90,16 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*## "}; {printf "  make %-9s %s\n", $$1, $$2}'
 
 shell: ## New plain shell session (its own numbering line)
-	@$(call spawn,$${SHELL:-/bin/sh},shell)
+	@$(call spawn,$${SHELL:-/bin/sh},shell,shell)
 
 claude: ## New agent session
-	@$(call spawn,$(CLAUDE))
+	@$(call spawn,$(CLAUDE),,claude)
 
 yolo: ## New agent session that does not ask for permissions
-	@$(call spawn,'$(CLAUDE) --dangerously-skip-permissions')
+	@$(call spawn,'$(CLAUDE) --dangerously-skip-permissions',,yolo)
 
 continue: ## New agent session continuing the last conversation
-	@$(call spawn,'$(CLAUDE) -c')
+	@$(call spawn,'$(CLAUDE) -c',,continue)
 
 # The buttons the owner adds in the drawer's settings all come here, with their
 # command in CMD. One target rather than one per agent: adding `qwen` on a phone
@@ -99,7 +122,7 @@ AGENT ?=
 
 custom: ## New session running CMD (the drawer's custom buttons)
 	@if [ -z "$(CMD)" ]; then echo "usage: make custom CMD='qwen'"; exit 2; fi
-	@$(call spawn,'$(AGENT) $(CMD)',custom)
+	@$(call spawn,'$(AGENT) $(CMD)',custom,custom)
 
 ls: ## List sessions, hiding the clients pockterm attaches with
 	@tmux ls 2>/dev/null | grep -v '^pockterm-client-' || echo "no sessions"

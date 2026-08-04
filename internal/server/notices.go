@@ -2,7 +2,7 @@ package server
 
 import "sync"
 
-// Notices carries a notification to the pages attached to a session.
+// Notices carries a notification to the pages that are open.
 //
 // The decision itself is not made here and not in the browser: the watcher
 // reads the pane with capture-pane and knows, for every session, whether it
@@ -23,45 +23,50 @@ type Notice struct {
 	Body    string `json:"body"`
 }
 
+// Notices holds one send per open socket, by client id.
+//
+// By id and not by session, and that is the whole point of this type. It used
+// to route a notice only to the pages attached to the session it was about,
+// which is a channel that cannot deliver the notice anyone actually waits for:
+// a phone has one socket, on the session being looked at, and the watcher stays
+// silent about that one on purpose. So a question in the session next to it
+// reached nobody — with Telegram off, "notify this page" delivered nothing at
+// all, and it was reported exactly that way.
+//
+// The notice names its session and a tap on it switches there (see
+// notificationclick in web/sw.js), so a page has always been able to show one
+// about a session it is not attached to. Only the routing was narrow.
 type Notices struct {
 	mu sync.Mutex
-	m  map[string]map[int64]func(Notice)
+	m  map[int64]func(Notice)
 }
 
 func NewNotices() *Notices {
-	return &Notices{m: make(map[string]map[int64]func(Notice))}
+	return &Notices{m: make(map[int64]func(Notice))}
 }
 
-func (n *Notices) add(session string, id int64, send func(Notice)) {
+func (n *Notices) add(id int64, send func(Notice)) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if n.m[session] == nil {
-		n.m[session] = make(map[int64]func(Notice))
-	}
-	n.m[session][id] = send
+	n.m[id] = send
 }
 
-func (n *Notices) remove(session string, id int64) {
+func (n *Notices) remove(id int64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	c, ok := n.m[session]
-	if !ok {
-		return
-	}
-	delete(c, id)
-	if len(c) == 0 {
-		delete(n.m, session)
-	}
+	delete(n.m, id)
 }
 
-// Send delivers to every page attached to the session. Whether it *should*
-// be sent was decided upstream — the watcher stays silent for a session
-// somebody is looking at, so anything arriving here is for a page that is
-// open but in the background.
-func (n *Notices) Send(session string, notice Notice) {
+// Send delivers to every page with a socket open.
+//
+// Whether it should be sent at all was decided upstream, and the rule there is
+// about the session rather than the page: the watcher stays silent for a session
+// somebody has visible. What is left for here is everyone who might want to
+// know, which is anyone looking at this host at all.
+func (n *Notices) Send(notice Notice) {
 	n.mu.Lock()
-	sends := make([]func(Notice), 0, len(n.m[session]))
-	for _, s := range n.m[session] {
+	sends := make([]func(Notice), 0, len(n.m))
+	for _, s := range n.m {
 		sends = append(sends, s)
 	}
 	n.mu.Unlock()

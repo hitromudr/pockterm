@@ -83,7 +83,15 @@ func TestEndToEndAgainstRealTmux(t *testing.T) {
 		}
 	}
 
-	// Then it goes quiet for longer than the threshold.
+	// The question is answered and off the screen. It has to leave before the
+	// clock moves on: a pane still showing a menu is a pane waiting for someone,
+	// and "finished" about it would be the opposite of what is true.
+	send(`clear; printf 'built\n'`)
+	w.Tick()
+
+	// Then it goes quiet for longer than the threshold. This pane has no agent
+	// counter in it, so silence is what answers here — the rule that covers a
+	// shell running a build.
 	now = now.Add(31 * time.Second)
 	w.Tick()
 

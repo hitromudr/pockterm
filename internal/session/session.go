@@ -36,6 +36,41 @@ func Target(preset string) (string, error) {
 	return t, nil
 }
 
+// What a kind may look like: a preset's own name, or a custom button's id
+// behind the "custom:" prefix.
+//
+// A gate rather than advice. The value reaches a make command line and, inside
+// the recipe, a tmux command that stamps it on the session — so nothing here may
+// end a quote or start an expansion. It is derived from a preset the server has
+// already resolved, which is why this is a second lock rather than the first.
+var kindOK = regexp.MustCompile(`^[a-z][a-z0-9-]{0,23}(:[a-z][a-z0-9]{0,15})?$`)
+
+// Kind is what to call the session a preset starts, for the Makefile to stamp on
+// it (`KIND=`) and the page to read back off it.
+//
+// It is the preset's own name — the four built-ins by their target, a custom
+// button by its id — because that is what the page already holds. A button is
+// named by its id and not by its label for the same reason the buttons endpoint
+// hands ids out: a label is renamed, and a session started by that button is
+// still that button's. An id the store no longer has is a button since removed,
+// which the page says nothing about rather than guessing at.
+//
+// Empty for anything unrecognised, which leaves KIND out of the call entirely:
+// a session with no claim about it is what every session was until now, and the
+// page paints that neutral instead of inventing a type.
+func Kind(preset string) string {
+	if !kindOK.MatchString(preset) {
+		return ""
+	}
+	if id := CustomID(preset); id != "" {
+		return preset
+	}
+	if _, ok := Presets[preset]; !ok {
+		return ""
+	}
+	return preset
+}
+
 // tmux session names cannot contain a colon or a dot (it addresses windows
 // and panes with them), and everything else is limited here to what stays
 // readable in a tab on a phone.
@@ -79,7 +114,14 @@ func Kill(name string) []string {
 // `cmd` is a custom button's command and travels the same way, as `CMD=` to the
 // `custom` target. A Makefile without that target fails with make's own message
 // — which the drawer shows — rather than starting the wrong thing.
-func Start(makeDir, target, startIn, prefix, cmd string) []string {
+//
+// `kind` is which button asked, as `KIND=`, and the Makefile stamps it on the
+// session it creates. It travels this way rather than being recorded here
+// because the name is the Makefile's to choose: only it knows which number came
+// out free, so only it can say what to stamp. The same graceful degradation
+// applies as to PREFIX — a Makefile that never reads KIND still starts the
+// session, it just leaves it untyped.
+func Start(makeDir, target, startIn, prefix, cmd, kind string) []string {
 	argv := []string{"make", "-C", makeDir, target}
 	if startIn != "" {
 		argv = append(argv, "DIR="+startIn)
@@ -89,6 +131,9 @@ func Start(makeDir, target, startIn, prefix, cmd string) []string {
 	}
 	if cmd != "" {
 		argv = append(argv, "CMD="+cmd)
+	}
+	if kind != "" {
+		argv = append(argv, "KIND="+kind)
 	}
 	return argv
 }

@@ -137,6 +137,24 @@ cannot disagree about what a session is doing. `ActivityUnknown` is deliberately
 not called idle: the honest claim is that nothing has been seen since watching
 began, and a tab then paints itself neutral instead of inventing a fact.
 
+**The end of a turn is read off the agent, not waited out.** `detect.Live` looks
+for the counter an agent keeps on screen while a turn runs — `✶ Doing… (1m 13s ·
+↓ 3.9k tokens)` — and its going away is the event: `watch` reports "done" in the
+poll that sees it leave, instead of thirty seconds after the last change. What
+identifies it is the *shape*, brackets around a duration and the word tokens,
+because the verbs turn over between releases ("Pondering", "Crunched", "Doing")
+and the line left behind when the turn ends is the same words in the past tense
+with no brackets at all: `✻ Crunched for 4m 3s · 1 monitor still running`. The
+silence rule is still there and still needed — a shell running a build has no
+counter to read — but it is no longer the only one, and it was costing thirty
+seconds of a tab painted as working after the answer was already on it.
+
+The counter also outranks the threshold while it is *there*: a turn that thinks
+for a minute can redraw to the same bytes, and silence alone called that
+finished. And the search window is the last 20 non-blank lines rather than the
+footer's four, because what the agent draws under the counter — its input box,
+its own status line, a task list, a tip — is as tall as it feels like.
+
 **`ActivityAsking` outranks both and waits for nothing.** A menu on screen is the
 only state that is about the person holding the phone — output arriving is the
 machine's business, a question is theirs — so it beats working and done, and it
@@ -149,6 +167,21 @@ person. The sweep is the same keyframes as working, so the speed and the per-tab
 phase cannot drift apart from it. This is the same detection the answer buttons are
 drawn from (`detect.Question`) — and those exist only for the session on screen,
 while the question you want to know about is usually in the one that is not.
+
+**A menu's options do not have to be adjacent, and requiring it found nothing.**
+The rule was a run of lines numbered 1,2,3 with nothing in between, which is a
+permission prompt exactly and an `AskUserQuestion` not at all: that one draws a
+description under every answer, and a rule across the menu before "chat about
+this". So the run broke at the first option, no menu was found, and the tab stayed
+neutral in front of a screen full of question — reported from a phone looking at
+one. A numbered line now continues the run when everything between it and the
+previous option belongs to that option: blank, box glyphs only, or **indented past
+the column the numbers sit in**. That indentation is what tells a description from
+a paragraph, and it is measured in columns rather than bytes — the descriptions
+this exists to read are in whatever language the prompt is, and one Cyrillic letter
+is two bytes against a box glyph's three. `test/fixtures/menus.json` carries the
+real screen, captured off the pane rather than typed from memory, and both
+implementations run against it.
 
 The mark's upper half lives in `#tabs`' own `padding-top`, given back to the layout
 by an equal negative margin: the strip scrolls sideways, so it clips both axes, and
@@ -192,6 +225,74 @@ words appear in the line an agent prints when a turn ends ("Cogitated for 2m 23s
 1 shell, 1 monitor still running"), which was true when printed and says nothing
 about now — that one is skipped by its wording, and output scrolled above the last
 few lines is out of range by position.
+
+## A tab also says what it is, and that is a different question
+
+Colour says what a session is doing; **form says what it is**. A tab carries the
+glyph of the button that started it, before the name — `▸` shell, `✦` claude,
+`⚡` yolo, `↻` continue, `★` for one the owner added — and the drawer names that
+button in the row's meta line, before the window count. The glyphs are the `+`
+menu's own, so there is nothing to learn: a tab marked `⚡` carries the mark of the
+button that was tapped to make it. Two vocabularies would drift, so there is one
+(`web/js/kinds.js`), shared by the menu, the strip and the drawer.
+
+The question exists because **the name stopped being able to answer it**. Sessions
+are named after the folder they were started in, so `natal` and `natal-2` are one
+project opened two different ways, and which of them is the yolo one was nowhere
+on screen.
+
+**tmux keeps the fact, and the Makefile is what writes it there.** The server
+passes `KIND=` beside `DIR=` and `PREFIX=`, the Makefile stamps it on the session
+as a user option (`@pockterm-kind`), and the server reads it back in the same
+`list-sessions` that fetches the row — so a name and its type cannot be fetched
+separately and disagree. Through the Makefile for the same reason `PREFIX` goes
+that way: only it knows which number came out free, so only it can say what to
+stamp. That also means a session started by hand from a shell is typed, because
+each target carries its own default.
+
+Three things follow from where it is kept rather than from what it is. It survives
+a rename, because the option belongs to the session and not to its name. It
+survives this binary's restarts, which CI does several times a working day. And
+there is no register of the server's own to drift out of step with tmux — the
+mistake that would show up as a tab labelled after a button that started something
+else.
+
+`session.Kind` is the gate: the value reaches a make command line and then a tmux
+command inside the recipe, and what may pass is a known preset's name or
+`custom:<id>` of a button that exists. A button by **id and not by label**, so
+renaming it keeps the sessions it started; an id the store no longer has draws the
+shared `★` and no name at all, rather than guessing.
+
+**No `=` before the name in `set-option`.** That prefix means "exact match" to the
+commands that take a session (`rename-session`, `kill-session` both use it here),
+and `set-option` reads its `-t` as a pane instead: it answers `no such session:
+=claude` and the stamp silently never lands. Found by a real run, which is also
+what proved the rest of the chain; `TestExampleMakefileStampsTheKind` now refuses
+the form outright.
+
+A session nobody stamped says nothing, and the page draws nothing — the same rule
+as `ActivityUnknown`. The one exception is coarse on purpose:
+`tmuxcmd.KindFromStart` reads `#{pane_start_command}` and answers **"shell" or
+nothing**. Which button ran `agent-run --dangerously-skip-permissions` is the
+Makefile's knowledge and this program refuses to hold it, so the stamp is the
+answer about buttons and this is the answer about shells — for a session started
+before the Makefile knew how, or by hand with `tmux new`. It never overrules a
+stamp.
+
+**The mark lives in a span of its own, never in the label.** Same reason the state
+is a class and the badge an attribute: the kind arrives on a later poll than the
+name — the session list is fetched before `/api/presets` answers — and rebuilding
+a button under a finger is what raises the keyboard. Rewriting a child's text does
+not.
+
+**A long press asks what a glyph means.** There is no hover on a phone and the mark
+is far too small to be a target of its own, so the press that would switch session
+holds instead and a plate appears under the tab with the mark and the button's name.
+Under it, because the strip *is* the top edge of the screen. It cancels if the finger
+travels — that gesture is the strip's own sideways scroll — and it swallows the click
+it ends in, or asking what a tab is would switch to it. The UI test drives it through
+the browser's own touch input (CDP `Input.dispatchTouchEvent`), because only a real
+press produces the click that has to be swallowed.
 
 ## A session is started in a folder, and named after it
 
@@ -401,6 +502,31 @@ delivers its click to the worker, so `notificationclick` in `sw.js` focuses an
 open window and posts it the session, or opens one at `?session=`. Which path ran
 goes to the journal (`notify via: …`) — the silence is what hid the defect for as
 long as it lasted.
+
+**A notice goes to every open page, not to the pages attached to its session.**
+That routing was the whole of "PWA notifications do not arrive", reported on
+2026-08-04 with Telegram switched off. The two rules were each sensible and
+together they cancelled out: the watcher stays silent about a session somebody has
+**visible**, and `Notices` delivered only to sockets attached to *that* session. A
+phone has one socket, on the session being looked at — so the only session the
+frame could reach was the one it was never sent for, and a question in the session
+next to it reached nobody at all. `Notices` is keyed by client id now and `Send`
+takes just the notice. Nothing else had to change: the notice already names its
+session, and a tap on it already switches there.
+
+**A page that was never asked cannot notify, and that looked identical to a broken
+switch.** The default mode is `pwa+tg`, so a fresh install starts in a notifying
+state — and permission used to be requested only on the way *into* one, which
+nobody walks when the switch already says what they want. `show()` then returned
+silently on `Notification.permission !== 'granted'`, the one silent return left on
+the path. Now the bell asks whenever the mode it moves to notifies, an unpermitted
+`🔔` wears a dashed outline saying one tap is the fix, the permission is in the
+`hello` line of the journal, and a dropped notice says why it was dropped.
+
+`show()` also no longer consults the page's own copy of the switch. The frame's
+existence *is* the decision — the server read the mode at the moment of the event —
+and the page's copy is the stale second owner of one fact, changed from whichever
+page happened to be in hand.
 
 ## The wheel step is a tmux setting, and it is the floor for everything here
 

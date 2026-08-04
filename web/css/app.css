@@ -226,6 +226,44 @@ html, body {
   background: #7fdca4;
   clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
 }
+/* Which button started the session, in that button's own glyph — ▸ shell,
+   ✦ claude, ⚡ yolo, ↻ continue, ★ or its own lead for one the owner added.
+
+   The name cannot say this any more: a session is named after the folder it was
+   started in, so "natal" and "natal-2" are one project opened two ways.
+
+   Colour says what a session is doing and form says what it is, so the mark takes
+   no colour of its own — it inherits the tab's and steps back, which keeps it
+   legible on all four backgrounds without competing with any of them. Empty for a
+   session nobody stamped, and an empty span takes no room: an untyped tab looks
+   exactly as it did before. */
+#tabs button .kind { opacity: 0.7; font-size: 12px; }
+/* The gap belongs to the mark, so only a tab that has one pays for it: a margin
+   on the empty span would indent every untyped name by a space standing for
+   nothing. */
+#tabs button .kind:not(:empty) { margin-right: 4px; }
+/* Nothing here is a selection target: a long press asks what the mark means, and
+   a WebView answering it with "select text" instead would take the gesture. */
+#tabs button { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+
+/* The answer to that press. A plate under the tab, because the strip is the top
+   edge of the screen and there is nothing above it to hang one on. Fixed, so the
+   sideways scroll of the strip cannot carry it off, and pointer-events off so it
+   is never in the way of the tab it is about. */
+#kind-help {
+  position: fixed;
+  z-index: 30;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--fg);
+  background: #232a38;
+  border: 1px solid #3a4559;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px #0008;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 /* Someone who has asked not to be moved gets the colour and not the movement —
    the state is information, the animation is only how it is told. */
 @media (prefers-reduced-motion: reduce) {
@@ -626,6 +664,10 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 .xterm-viewport::-webkit-scrollbar { display: none; }
 /* Bar hidden: give the terminal the whole screen. */
 #mode.on, #hide.on, #select.on, #bell.on { background: var(--accent); color: #0b0e14; }
+/* On, but the browser has never been asked whether it may — so the switch says
+   what it delivers rather than what it is set to. A dashed outline, because the
+   state is "not finished" rather than "wrong": one tap on it is the whole fix. */
+#bell.unpermitted { outline: 2px dashed #ffd23f; outline-offset: -2px; }
 /* Hiding means hiding everything — one tap, not a trip through a menu. What
    stays is a small handle to bring it all back; without it the only way out
    would be a reload. */
