@@ -75,19 +75,50 @@ func Notice(e Event) (title, body string) {
 	return title, "Вывод остановился"
 }
 
-// Tail picks the last line of a pane worth showing a human.
+// The mark an agent puts on its own lines, and the shape of the ones that name a
+// tool rather than say anything:
 //
-// "The last non-blank line" is not it: the agents this serves draw a framed
-// input box at the bottom, so the honest last line is a row of box-drawing
-// characters, and the one above it is a hint about keyboard shortcuts. The
-// first notification that reached the owner's phone said
-// `[pockterm-<agent>] ✳ … 09:15 03-Aug-26` — the tmux status line, which is
-// what the *browser* saw; capture-pane does not include it, but the box does
-// come from the pane and had to be dealt with here.
+//	● Конфиг валиден. Предупреждение doctor про websocket — следствие песочницы.
+//	● Bash(cd /home/dms/work && for d in bricks devops; do …)
+//
+// The marker itself is stripped: it is the TUI's, not part of the sentence.
+var (
+	agentSaid = regexp.MustCompile(`^\s*●\s*(.*)$`)
+	toolCall  = regexp.MustCompile(`^\p{Lu}[\p{L}\d_]*\(`)
+)
+
+// Tail picks the line of a pane worth showing a human.
+//
+// **The agent's own last sentence, wherever on screen it is.** Its lines are
+// marked, and what sits under the last of them is the output of whatever it ran —
+// which is how "pockterm закончил" reached the phone with `{"name":"devops",` as
+// its entire body: a fragment of a curl the agent had just made, honestly the last
+// line on screen and worth nothing to read. A named tool call is skipped for the
+// same reason: `● Bash(…)` is the agent pointing at a command, not speaking.
+//
+// Reading up from the bottom is the fallback, for a pane with no such marker in
+// it at all — a shell, or an agent this does not recognise. "The last non-blank
+// line" is not it either: the agents this serves draw a framed input box at the
+// bottom, so the honest last line is a row of box-drawing characters and the one
+// above it is a hint about keyboard shortcuts. The first notification that ever
+// reached the owner's phone said `[pockterm-<agent>] ✳ … 09:15 03-Aug-26` — the
+// tmux status line, which is what the *browser* saw.
 //
 // Heuristic on purpose: this is decoration, and a wrong guess costs a less
 // informative notification, not a wrong one.
 func Tail(lines []string) string {
+	for i := len(lines) - 1; i >= 0; i-- {
+		m := agentSaid.FindStringSubmatch(ansi.ReplaceAllString(lines[i], ""))
+		if m == nil {
+			continue
+		}
+		s := strings.TrimSpace(m[1])
+		// `● Bash(…)` is the agent naming a command, not saying anything.
+		if s == "" || !hasWord(s) || toolCall.MatchString(s) || isChrome(s) {
+			continue
+		}
+		return s
+	}
 	for i := len(lines) - 1; i >= 0; i-- {
 		s := strings.TrimSpace(strings.Trim(strings.TrimSpace(lines[i]), boxRunes))
 		if s == "" || !hasWord(s) || isChrome(s) {
@@ -97,6 +128,10 @@ func Tail(lines []string) string {
 	}
 	return ""
 }
+
+// ANSI escapes reach here when a pane is captured with them; the marker is at the
+// start of the line and a colour sequence in front of it would hide it.
+var ansi = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]")
 
 // The frame characters the TUI boxes are drawn with, plus the bullets used
 // as list markers on an otherwise empty line.
@@ -162,6 +197,12 @@ func isChrome(s string) bool {
 	// that is counting has not finished — but it arrived as one, and the belt is
 	// cheap: this line is the interface either way.
 	if detect.Live([]string{s}) {
+		return true
+	}
+	// A named tool call, so that the fallback path refuses it as well as the first
+	// one: with nothing but `● Read(…)` on screen the honest body is none, which
+	// Notice turns into "Вывод остановился" rather than a filename.
+	if m := agentSaid.FindStringSubmatch(s); m != nil && toolCall.MatchString(strings.TrimSpace(m[1])) {
 		return true
 	}
 	for _, c := range chrome {

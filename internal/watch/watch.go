@@ -72,15 +72,36 @@ func (w *Watcher) Activity(session string) Activity {
 	// typing their next message, and a tab that called that "working" was
 	// reporting the person as the machine.
 	if st.sawLive {
-		return ActivityDone
+		return w.fresh(st, ActivityDone)
 	}
 	if !st.active {
 		return ActivityUnknown
 	}
 	if st.doneSent {
-		return ActivityDone
+		return w.fresh(st, ActivityDone)
 	}
 	return ActivityWorking
+}
+
+// How long "it has just finished" stays worth saying.
+//
+// Green means gone quiet after doing something, which is news for as long as it is
+// recent and nothing at all once it is old. That distinction used to come for free:
+// a session was watched only from the moment a page attached to it, so there was
+// never much history to be stale. Now everything tmux has is read from the start,
+// and without an expiry every session that had ever run was green for good —
+// reported as "only now everything is green", which is a strip that has stopped
+// saying anything.
+const doneFresh = 10 * time.Minute
+
+// fresh gives a finished session its colour while the finish is recent, and
+// nothing afterwards. Nothing rather than some third colour: "quiet for hours" is
+// exactly what the neutral tab means, and ActivityUnknown already says it.
+func (w *Watcher) fresh(st *state, a Activity) Activity {
+	if st.quiet.IsZero() || w.o.Now().Sub(st.quiet) < doneFresh {
+		return a
+	}
+	return ActivityUnknown
 }
 
 // Background reports what the agent still has running in that session — the
@@ -152,6 +173,10 @@ type state struct {
 	// the agent — see Rebase. A page attaching resizes the pane, and that is not
 	// somebody's work.
 	ours time.Time
+	// quiet is when this session was last seen to stop working — the moment the
+	// counter went, or the moment silence ran past the threshold. It is what makes
+	// "just finished" expire: see doneFresh.
+	quiet time.Time
 	// notify is whether anything about this session is worth sending anywhere: set
 	// when a page attaches to it, never by the roster sweep. Everything else here
 	// is read either way, because the colour on the strip is for every session and
@@ -336,6 +361,7 @@ func (w *Watcher) poll(session string) {
 		st.active = true
 		st.sawLive = true
 		st.doneSent = false
+		st.quiet = time.Time{}
 	}
 	var events []Event
 	menu := detect.Question(lines)
@@ -368,9 +394,11 @@ func (w *Watcher) poll(session string) {
 		// A question, a turn still counting, or a turn already reported.
 	case st.sawLive:
 		st.doneSent = true
+		st.quiet = now
 		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines)})
 	case st.active && now.Sub(st.changed) >= w.o.IdleAfter:
 		st.doneSent = true
+		st.quiet = now
 		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines)})
 	}
 	notify := st.notify

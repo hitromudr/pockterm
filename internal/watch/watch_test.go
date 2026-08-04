@@ -452,7 +452,8 @@ func TestTailSkipsTheStatusLineAndTheTurnSummary(t *testing.T) {
 		"  ctx 61% | dms@ai:~/work/exante (main) $ | Opus 5 (1M context)",
 		"  ⏵⏵ bypass permissions on · 1 shell, 1 monitor · ← for agents",
 	}
-	if got := Tail(pane); got != "● Жду прогон." {
+	// The agent's own last sentence, without the marker the TUI puts on it.
+	if got := Tail(pane); got != "Жду прогон." {
 		t.Fatalf("Tail = %q, want the agent's own last line", got)
 	}
 	// The summary is skipped by its shape — one word and a duration — because the
@@ -463,13 +464,13 @@ func TestTailSkipsTheStatusLineAndTheTurnSummary(t *testing.T) {
 		"✻ Crunched for 4m 3s · 1 monitor still running",
 		"✻ Cogitated for 2m 23s · 1 shell, 1 monitor still running",
 	} {
-		if got := Tail([]string{"● сказанное агентом", l}); got != "● сказанное агентом" {
+		if got := Tail([]string{"● сказанное агентом", l}); got != "сказанное агентом" {
 			t.Errorf("Tail returned the summary %q", got)
 		}
 	}
 	// And a sentence that merely reads like one is still a sentence: the shape has
 	// to start the line, or every "ждал 5s" in prose would vanish from a notice.
-	if got := Tail([]string{"● собрал за 4s и ушёл"}); got != "● собрал за 4s и ушёл" {
+	if got := Tail([]string{"● собрал за 4s и ушёл"}); got != "собрал за 4s и ушёл" {
 		t.Errorf("Tail dropped a real line: %q", got)
 	}
 	// A status line is all there is: nothing to say beats saying that.
@@ -666,7 +667,7 @@ func TestTailNeverReturnsTheLiveCounter(t *testing.T) {
 		"* Deciphering… (4m 59s · thinking)",
 		"✶ Doing… (1m 13s · ↓ 3.9k tokens)",
 	} {
-		if got := Tail([]string{"● последняя фраза агента", l}); got != "● последняя фраза агента" {
+		if got := Tail([]string{"● последняя фраза агента", l}); got != "последняя фраза агента" {
 			t.Errorf("Tail returned the counter: %q", got)
 		}
 	}
@@ -804,5 +805,80 @@ func TestASessionTmuxNoLongerHasIsDropped(t *testing.T) {
 	w.Tick()
 	if n := w.Len(); n != 0 {
 		t.Fatalf("watching %d sessions, want none", n)
+	}
+}
+
+func TestTailPrefersWhatTheAgentSaidOverWhatItRan(t *testing.T) {
+	// The screen that produced "✅ pockterm закончил / {"name":"devops"," on the
+	// phone: the agent's sentence, then a command it ran, then that command's
+	// output — which is honestly the last line and says nothing to anybody.
+	pane := []string{
+		"● Конфиг валиден. Предупреждение doctor про websocket — следствие песочницы.",
+		"",
+		"● Bash(curl -s localhost:8130/api/sessions | head -c 400)",
+		`  ⎿  [{"name":"devops","windows":1,"created":1785857292,"attached":false,`,
+		`     "kind":"yolo","dir":"devops"}]`,
+		"",
+		"✻ Cooked for 19s",
+		"────────────────────────────────",
+		"❯ ",
+		"  ctx 10% | dms@ai:~/work/devops (develop) $ | Opus 5",
+	}
+	if got := Tail(pane); got != "Конфиг валиден. Предупреждение doctor про websocket — следствие песочницы." {
+		t.Fatalf("Tail = %q, want the sentence rather than the output", got)
+	}
+	// A tool call is the agent pointing at a command, not speaking.
+	if got := Tail([]string{"● Read(internal/watch/watch.go)"}); got != "" {
+		t.Errorf("Tail = %q, want nothing worth saying", got)
+	}
+	// A pane with no marker at all still answers the old way: a shell, or an agent
+	// this does not recognise.
+	if got := Tail([]string{"$ make check", "ok  internal/watch"}); got != "ok  internal/watch" {
+		t.Errorf("Tail = %q on a plain shell", got)
+	}
+}
+
+func TestGreenFadesWhenItStopsBeingNews(t *testing.T) {
+	// "Only now everything is green." Every session tmux has is read from the start
+	// now, so without an expiry anything that had ever run stayed green for good —
+	// a strip that has stopped saying anything. Green is "gone quiet after doing
+	// something", which is news while it is recent and nothing once it is old.
+	h := newHarness(30 * time.Second)
+	h.screen = turnRunning
+	h.w.Tick()
+	h.screen = turnOver
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("just finished: %q, want %q", got, ActivityDone)
+	}
+	h.advance(doneFresh - time.Second)
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("a second before it goes stale: %q, want %q", got, ActivityDone)
+	}
+	h.advance(2 * time.Second)
+	if got := h.w.Activity("claude"); got != ActivityUnknown {
+		t.Fatalf("hours later: %q, want %q — the neutral tab already means this", got, ActivityUnknown)
+	}
+	// A new turn is news again.
+	h.screen = turnRunning
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("working again: %q", got)
+	}
+	h.screen = turnOver
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("finished again: %q, want %q", got, ActivityDone)
+	}
+	// The badge is not news and does not fade: what is still running is a fact
+	// about now, however long ago the agent stopped speaking.
+	h.screen = turnOver + "\n  ⏵⏵ bypass permissions on · 2 monitors · ← for agents\n"
+	h.w.Tick()
+	h.advance(2 * doneFresh)
+	if got := h.w.Background("claude"); got.Monitors != 2 {
+		t.Fatalf("background = %+v, want the monitors it still has", got)
+	}
+	if got := h.w.Activity("claude"); got != ActivityUnknown {
+		t.Fatalf("stale with monitors alive: %q, want %q", got, ActivityUnknown)
 	}
 }

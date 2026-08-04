@@ -292,6 +292,17 @@ it was asked to be told about, attaching once being the asking. Sessions still
 leave the same way: a `capture-pane` that fails removes one, which is what keeps
 the sweep from re-adding a closed session for ever.
 
+**Green expires after ten minutes** (`doneFresh`), and that is the other half of
+watching everything. Green means gone quiet *after doing something*, which is news
+while it is recent and nothing at all once it is old — and the distinction used to
+come for free, because a session was watched only from the moment a page attached
+to it and had no history to go stale. Reading everything from the start turned every
+session that had ever run green for good: reported as "only now everything is
+green", which is a strip that has stopped saying anything. Stale goes back to
+neutral rather than to a fourth colour, because "quiet for hours" is exactly what
+the neutral tab already means. The badge does not fade with it: what is still
+running is a fact about now, however long ago the agent stopped speaking.
+
 The page polls it every 3s, and only while the terminal is on screen and the page
 is in front — a pocketed phone holds its socket for hours, and polling tmux for a
 strip nobody can see is work for nobody. A `visibilitychange` refresh goes with
@@ -583,6 +594,15 @@ first.
 Body text comes from `watch.Tail`, not from the last non-blank line: agent TUIs
 draw an input box and a shortcut hint under their output, so the last line on
 screen is usually `? for shortcuts` or a row of `─`.
+
+**What the agent said comes before what it ran.** Its own lines are marked with
+`●`, and what sits under the last of them is the output of whatever it did last —
+which is how "pockterm закончил" reached the phone with `{"name":"devops",` as its
+whole body, a fragment of a `curl` that was honestly the last line on screen. `Tail`
+looks for the lowest `●` line that is a sentence and strips the marker; `● Bash(…)`
+is skipped by its shape, because that is the agent pointing at a command rather
+than speaking. Reading up from the bottom is the fallback, for a pane with no
+marker in it — a shell, or an agent this does not recognise.
 
 Two more lines had to be named there, and both are the interface at its most
 convincing — full of words, none of them about the work. The **status line**
