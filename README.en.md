@@ -212,8 +212,10 @@ sweep (the phase comes from the session name, so a rebuild of the row does not
 reset it): a row pulsing in step read as one decoration for the whole strip rather
 than as several sessions each doing their own thing.
 
-Besides the colour a tab carries a **`◉` badge** — how many shells and monitors the
-agent still has running, with the number next to it when there is more than one.
+Besides the colour a tab carries a **green heraldic shield in its bottom-right
+corner** (flat top, pointed bottom) — how
+many shells and monitors the agent still has running. In the corner rather than
+after the name: the row scrolls sideways and the names are what is read along it.
 It is a second answer rather than a shade of the first: the colour goes out the
 moment the agent stops speaking, while what it left running does not stop with it,
 and "gone quiet" is not "gone quiet with two monitors watching". The count is read

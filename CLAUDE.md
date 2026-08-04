@@ -158,8 +158,12 @@ the offset so a tab keeps its phase when the row is rebuilt instead of jumping.
 **The fill answers what the agent is saying, and a fourth question is what it left
 running.** `watch.Background` reads the shells and monitors off the agent's own
 footer (`detect.ReadBackground`, on the same poll as the colour, so the two cannot
-describe different moments) and the tab carries them as a `◉` badge — with the
-count only when there is more than one, because `◉1` on every quiet tab is noise.
+describe different moments) and the tab carries how many on a **green heraldic
+shield in its bottom-right corner** (a `clip-path` polygon: flat top, pointed
+bottom, the digit in the upper half) — in the corner rather than after the name
+because the row
+scrolls sideways and the names are the only thing worth reading along it, and green
+because what it counts is what is still running after the tab went quiet.
 A session at "done" with two monitors alive is not a session with nothing left,
 and the colour cannot say so: it goes green the moment the agent stops speaking.
 The badge is drawn from `data-bg` through a `::after`, for the same reason the

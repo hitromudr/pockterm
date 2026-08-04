@@ -976,8 +976,28 @@ describe('a tab says what its session is doing', () => {
     const { page } = stand;
     stand.tmux(['send-keys', '-t', 'demo', 'bypass permissions on · 1 shell, 2 monitors ·', 'Enter']);
     await page.waitForFunction(
-      () => document.querySelector('#tabs button[data-session="demo"]')?.dataset.bg === '◉3',
+      () => document.querySelector('#tabs button[data-session="demo"]')?.dataset.bg === '3',
       null, { timeout: 20000 });
+
+    // A plate in the tab's own corner, not a count spliced into the name: the row
+    // scrolls sideways and the names are what is read along it.
+    const plate = await page.evaluate(() => {
+      const b = document.querySelector('#tabs button[data-session="demo"]');
+      const s = getComputedStyle(b, '::after');
+      return {
+        position: s.position,
+        right: s.right,
+        bottom: s.bottom,
+        background: s.backgroundColor,
+        clip: s.clipPath,
+      };
+    });
+    assert.equal(plate.position, 'absolute', 'the badge is in the text flow');
+    assert.equal(plate.background, 'rgb(127, 220, 164)', `the badge is ${plate.background}`);
+    assert.ok(parseFloat(plate.right) < 6 && parseFloat(plate.bottom) < 6,
+      `the badge is not in the bottom-right corner: ${JSON.stringify(plate)}`);
+    // A shield, and the point at the bottom is what makes it one.
+    assert.ok(/^polygon\(/.test(plate.clip), `the badge is not a shield: ${plate.clip}`);
 
     // And it goes away when the bottom of the pane stops claiming it: a badge
     // that only ever appeared would say "something is running" about every

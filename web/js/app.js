@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v94';
+const APP_VERSION = 'v95';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -582,9 +582,10 @@ async function renderTabs() {
     b.classList.toggle('working', st === 'working');
     b.classList.toggle('done', st === 'done');
     const n = bg.get(b.dataset.session) || 0;
-    // One badge for both kinds, with the count only when there is more than one
-    // thing to count: "◉1" on every quiet tab is noise, "◉" is a fact.
-    if (n > 0) b.dataset.bg = n > 1 ? `◉${n}` : '◉';
+    // One plate for both kinds, carrying how many. Shells and monitors are not
+    // told apart on it: on a tab the question is whether anything is still
+    // running, and two glyphs in a corner this size are a smudge.
+    if (n > 0) b.dataset.bg = String(n);
     else delete b.dataset.bg;
   }
 }

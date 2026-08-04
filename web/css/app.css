@@ -114,6 +114,7 @@ html, body {
    The border is always there and only changes colour: a frame that appears would
    move every other tab by two pixels on each switch. */
 #tabs button {
+  position: relative; /* the badge sits in a corner of it */
   padding: 6px 12px;
   font-size: 13px;
   white-space: nowrap;
@@ -148,13 +149,44 @@ html, body {
   to { background-position: -150% 0; }
 }
 /* Something is still running in there while the agent says nothing: a shell, a
-   monitor, or several. Drawn from an attribute rather than written into the
-   label — the label is the session's name, and rewriting it would rebuild the
-   button the finger is on. */
+   monitor, or several. A green plate in the bottom-right corner of the tab,
+   carrying how many.
+
+   In the corner rather than after the name: the row scrolls sideways and the
+   names are the only thing worth reading along it, so a count spliced into the
+   line made every tab a little longer and the row a little harder to read. The
+   corner is the tab's own space and the plate is the same green as "gone quiet",
+   because what it counts is what is still running after that.
+
+   A heraldic shield, not a rounded pill: flat across the top, straight down the
+   sides, a point at the bottom. The digit sits in the upper part, which is what
+   the padding under it is for — the point is where the shape narrows to nothing
+   and a glyph centred in the box would sit half inside it.
+
+   Drawn from an attribute rather than written into the label — the label is the
+   session's name, and rewriting it rebuilds the button the finger is on. */
+/* Room for it, and only on the tabs that have one. The shield stands in the
+   corner over the padding, and the tab's usual 12px is narrower than the shield —
+   so without this the name ran under it and lost its last letter. The tab grows
+   when work starts in it rather than every tab carrying the reserve for good: the
+   strip already scrolls sideways on a phone, and empty space on every tab is paid
+   for constantly, while the shift is paid when something actually changed. */
+#tabs button[data-bg] { padding-right: 21px; }
 #tabs button[data-bg]::after {
-  content: ' ' attr(data-bg);
-  font-size: 11px;
-  opacity: 0.8;
+  content: attr(data-bg);
+  position: absolute;
+  right: 3px;
+  bottom: 0;
+  box-sizing: border-box;
+  min-width: 14px;
+  padding: 1px 2px 4px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 10px;
+  text-align: center;
+  color: #0f1b14;
+  background: #7fdca4;
+  clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
 }
 /* Someone who has asked not to be moved gets the colour and not the movement —
    the state is information, the animation is only how it is told. */
