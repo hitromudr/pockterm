@@ -1,6 +1,6 @@
 import { keyBytes } from './keys.js';
 import { detectQuestion } from './detect.js';
-import { noticeFrom } from './notify.js';
+import { noticeFrom, deliver } from './notify.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
 import { snapshotText } from './select.js';
 import { initDiag, environment, report } from './diag.js';
@@ -17,7 +17,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v89';
+const APP_VERSION = 'v90';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1461,6 +1461,11 @@ function visibleLines() {
 // its business any more, and why it stopped being it is in js/notify.js.
 const bellBtn = document.getElementById('bell');
 let notifyOn = false;
+// The service worker's registration, once it is ready: the only path that can
+// show a notification in Android Chrome, and the one that carries a tap. Null
+// until then, and a notice arriving in that window falls back to the
+// constructor — see deliver() in js/notify.js.
+let swReg = null;
 
 // --- input log ------------------------------------------------------------
 // Records what the keyboard does to the terminal's field, into the server's
@@ -1552,14 +1557,21 @@ function show(notice) {
     }
   }
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  // tag replaces a previous notice of the same kind instead of stacking:
-  // five "asks for an answer" in a row is noise, not information.
-  const n = new Notification(notice.title, { body: notice.body, tag: notice.tag });
-  n.onclick = () => {
-    window.focus();
-    if (notice.session && notice.session !== current) attach(notice.session);
-    n.close();
-  };
+  // The tag replaces a previous notice of the same kind instead of stacking:
+  // five "asks for an answer" in a row is noise, not information. Which of the
+  // two browser paths raised it is decided in js/notify.js and said out loud
+  // here — this used to be one line that threw on the only phone that matters.
+  const via = deliver(notice, {
+    registration: swReg,
+    Notifier: window.Notification,
+    onClick: (n, handle) => {
+      window.focus();
+      if (n.session && n.session !== current) attach(n.session);
+      handle.close();
+    },
+    onError: (e) => report('notify', { via: 'browser', ok: false, error: (e && e.name) || 'error' }),
+  });
+  report('notify', { via, ok: via !== 'none', tag: notice.tag });
 }
 
 // A new page on the server: say so, and let the owner take it.
@@ -1739,7 +1751,23 @@ if (window.visualViewport) {
 }
 window.addEventListener('resize', measureKeyboard);
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+  // The registration is what shows a notification on the phone, so it is kept:
+  // `ready` rather than the register() promise, because a worker installed by a
+  // previous load is already there and register() would hand back one that has
+  // not taken control yet.
+  navigator.serviceWorker.ready.then((r) => { swReg = r; }).catch(() => {});
+  // A tap on a notice raised by the worker arrives here when this page is still
+  // open. The worker knows which session the notice was about and this page
+  // knows what it is showing, so the switch happens on this side.
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    const msg = e.data || {};
+    if (msg.type !== 'notification-click') return;
+    report('notify-tap', { session: msg.session || '', open: current || '' });
+    if (msg.session && msg.session !== current) attach(msg.session);
+  });
+}
 
 // Which session to open on load.
 //

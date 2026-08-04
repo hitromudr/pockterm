@@ -1,6 +1,6 @@
 // Version-stamped static cache. Bump VERSION on any static change:
 // the old cache is dropped on activate.
-const VERSION = 'v89';
+const VERSION = 'v90';
 const PRECACHE = [
   '/',
   '/css/app.css',
@@ -36,6 +36,37 @@ self.addEventListener('activate', (e) => {
       Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
+});
+
+// A notice raised from here is tapped here too.
+//
+// Android Chrome refuses `new Notification`, so the page raises its notices
+// through this worker's registration (see deliver() in js/notify.js) — and a
+// notification shown by a worker delivers its click to the worker, never to the
+// page. Without this listener the tap did nothing at all.
+//
+// An open window is focused and told which session to attach: the page is
+// probably showing another one, and "the session you had open" is the wrong
+// answer about as often as not when several are running. With no window open
+// the session travels in the address instead — the same `?session=` the Android
+// client uses, dropped from the URL by the page once it has been read.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const session = (e.notification.data && e.notification.data.session) || '';
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const w of wins) {
+      if (new URL(w.url).origin !== location.origin) continue;
+      // focus() is allowed to refuse; the notice is already closed, so falling
+      // through to a new window is better than ending here.
+      try {
+        await w.focus();
+        w.postMessage({ type: 'notification-click', session });
+        return;
+      } catch (_) { /* try the next window, then open one */ }
+    }
+    await self.clients.openWindow(session ? `/?session=${encodeURIComponent(session)}` : '/');
+  })());
 });
 
 self.addEventListener('fetch', (e) => {

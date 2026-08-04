@@ -39,3 +39,61 @@ export function noticeFrom(frame) {
   if (body.length > MAX_BODY) body = body.slice(0, MAX_BODY) + '…';
   return { title, body, tag, session: String(frame.session == null ? '' : frame.session) };
 }
+
+// deliver raises a notice through the strongest path the browser actually
+// allows, and returns which one that was: 'sw', 'window' or 'none'.
+//
+// There are two paths and the weaker one looked like the only one. `new
+// Notification(...)` is illegal in Android Chrome — the API is present, the
+// permission is granted, and the constructor throws `Illegal constructor. Use
+// ServiceWorkerRegistration.showNotification() instead.` The page this serves
+// runs there as an installed PWA, so for as long as the owner worked from the
+// browser rather than from the Android client no notification was shown at
+// all: the throw escaped and took the rest of the frame handler with it. Found
+// in the journal on 2026-08-04, three uncaught TypeErrors in twenty minutes,
+// and not by the switch being reported as broken — nobody was watching for a
+// notice that had never worked.
+//
+// So the registration goes first wherever there is one: it is the path the
+// phone accepts, it survives the page being backgrounded, and it is the only
+// one that can carry a tap to a page that is gone. The constructor stays as
+// the fallback for a browser with no worker — with its click wired here,
+// because that path keeps working on a desktop.
+//
+// Which path ran is reported by the caller, not guessed at: the whole class of
+// bug above was invisible precisely because the journal said nothing either way.
+export function deliver(notice, env = {}) {
+  if (!notice) return 'none';
+  const reg = env.registration;
+  if (reg && typeof reg.showNotification === 'function') {
+    try {
+      // `data` is how the session reaches the worker's notificationclick — the
+      // tag is already spoken for, and the worker cannot see this page's state.
+      const shown = reg.showNotification(notice.title, {
+        body: notice.body,
+        tag: notice.tag,
+        data: { session: notice.session || '' },
+      });
+      // A registration can still refuse (permission revoked between the tap and
+      // the notice). That is a lost notification, so it is said out loud rather
+      // than dropped: the answer comes a tick after the call, which is why this
+      // returns the path taken and not the outcome.
+      if (shown && typeof shown.catch === 'function') {
+        shown.catch((e) => { if (env.onError) env.onError(e); });
+      }
+      return 'sw';
+    } catch (e) {
+      if (env.onError) env.onError(e);
+    }
+  }
+  const Notifier = env.Notifier;
+  if (typeof Notifier !== 'function') return 'none';
+  try {
+    const n = new Notifier(notice.title, { body: notice.body, tag: notice.tag });
+    if (env.onClick) n.onclick = () => env.onClick(notice, n);
+    return 'window';
+  } catch (e) {
+    if (env.onError) env.onError(e);
+    return 'none';
+  }
+}
