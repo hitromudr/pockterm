@@ -140,6 +140,10 @@ type state struct {
 	// reporting the human's typing as the machine's work.
 	live    bool
 	sawLive bool
+	// ours is how long a change to the screen still belongs to us rather than to
+	// the agent — see Rebase. A page attaching resizes the pane, and that is not
+	// somebody's work.
+	ours time.Time
 }
 
 type Watcher struct {
@@ -172,6 +176,36 @@ func (w *Watcher) Watch(session string) {
 	if _, ok := w.s[session]; !ok {
 		w.s[session] = &state{changed: w.o.Now()}
 	}
+}
+
+// Rebase says that the next change to this session's screen is ours, not the
+// agent's, and must not be read as work.
+//
+// A page attaching or leaving is a change to the pane: tmux gives the new client
+// its own size and the pane is redrawn to it, so the screen differs from the one
+// before through nobody's effort. For a session whose agent reports its turns
+// that costs nothing — the counter answers — but for one that has never counted,
+// a changed screen is the only evidence of work there is, and the tab went purple
+// for the whole idle threshold at every tap. Worse on the way out: the pane
+// resizes back when the page leaves, nobody is looking any more, and thirty
+// seconds later the session was announced as finished, having done nothing.
+//
+// The immunity is a short window rather than a single poll: tmux redraws, and then
+// the agent redraws its own box a moment later, so the change arrives in more than
+// one reading.
+func (w *Watcher) Rebase(session string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	st, ok := w.s[session]
+	if !ok {
+		return
+	}
+	now := w.o.Now()
+	// Forgetting the hash is what makes the next reading a baseline rather than a
+	// change — the same rule the very first reading of a session goes by.
+	st.hash = ""
+	st.changed = now
+	st.ours = now.Add(2 * w.o.Poll)
 }
 
 // Len reports how many sessions are being watched.
@@ -229,8 +263,9 @@ func (w *Watcher) poll(session string) {
 	now := w.o.Now()
 	if h := hash(text); h != st.hash {
 		// The very first reading is not activity — it is just what was
-		// already on screen when watching started.
-		if st.hash != "" {
+		// already on screen when watching started. Nor is a redraw we caused
+		// ourselves by attaching or leaving: same rule, said by Rebase.
+		if st.hash != "" && !now.Before(st.ours) {
 			st.active = true
 			// A pane whose agent reports its own turns says when work resumes, and
 			// a change to the screen is not that: the commonest change of all is a

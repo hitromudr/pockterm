@@ -11,13 +11,23 @@ type Presence struct {
 
 func (p Presence) Watch(session string) { p.Watcher.Watch(session) }
 
-func (p Presence) Join(session string, id int64) { p.Viewers.Join(session, id) }
+// Join and Leave both rebase the watcher's idea of the screen: a client arriving
+// or going resizes the pane, and the redraw that follows is nobody's work. See
+// Watcher.Rebase for what it cost — a tab purple for the idle threshold at every
+// tap, and a session announced as finished for having been left.
+func (p Presence) Join(session string, id int64) {
+	p.Viewers.Join(session, id)
+	p.Watcher.Rebase(session)
+}
 
 func (p Presence) SetVisible(session string, id int64, visible bool) {
 	p.Viewers.SetVisible(session, id, visible)
 }
 
-func (p Presence) Leave(session string, id int64) { p.Viewers.Leave(session, id) }
+func (p Presence) Leave(session string, id int64) {
+	p.Viewers.Leave(session, id)
+	p.Watcher.Rebase(session)
+}
 
 func (p Presence) Counts() (clients, visible int) { return p.Viewers.Counts() }
 

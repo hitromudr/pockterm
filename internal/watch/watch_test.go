@@ -671,3 +671,67 @@ func TestTailNeverReturnsTheLiveCounter(t *testing.T) {
 		}
 	}
 }
+
+func TestAttachingIsNotWork(t *testing.T) {
+	// Reported from the phone: tapping a green tab turned it purple for thirty
+	// seconds. Attaching is a change to the pane — tmux gives the new client its
+	// own size and the pane is redrawn to it — and for a session that has never
+	// shown a counter, a changed screen is the only evidence of work there is.
+	h := newHarness(30 * time.Second)
+	h.screen = "$ make check\n"
+	h.w.Tick()
+	h.screen = "$ make check\nok  internal/watch\n"
+	h.w.Tick()
+	h.advance(31 * time.Second)
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("before the tap: %q, want %q", got, ActivityDone)
+	}
+	h.events = nil
+
+	// The tap: the page attaches, and the pane comes back reflowed to its width.
+	h.w.Rebase("claude")
+	h.screen = "$ make check\nok  internal/watch (reflowed to a\nnarrower pane)\n"
+	h.advance(2 * time.Second)
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("after attaching: %q, want %q — a resize is not work", got, ActivityDone)
+	}
+	// The agent redraws its own box a moment after tmux does, so the change
+	// arrives in more than one reading.
+	h.screen += "and again, a moment later\n"
+	h.advance(1 * time.Second)
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("the second redraw: %q, want %q", got, ActivityDone)
+	}
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want none for a session that only got looked at", h.events)
+	}
+
+	// Past the window, output is output again: this session has no counter, so
+	// nothing else can say when it is working.
+	h.advance(10 * time.Second)
+	h.screen += "ok  internal/detect\n"
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("real output after the tap: %q, want %q", got, ActivityWorking)
+	}
+}
+
+func TestLeavingDoesNotAnnounceAFinishedSession(t *testing.T) {
+	// The way out costs more than the way in: the pane resizes back when the page
+	// goes, nobody is looking any more, and the idle threshold then announced the
+	// session as finished for having been left.
+	h := newHarness(30 * time.Second)
+	h.screen = "$ ready\n"
+	h.w.Tick()
+	h.w.Tick() // quiet and never active: nothing to report
+	h.w.Rebase("claude")
+	h.screen = "$ ready (reflowed)\n"
+	h.advance(31 * time.Second)
+	h.w.Tick()
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want none: the session was left, not finished", h.events)
+	}
+}

@@ -190,6 +190,18 @@ counting now. Silence keeps its job where there is nothing else: a shell running
 build has no counter, and for it a change on screen is still the only evidence of
 work there is.
 
+**And attaching is not work either.** Tapping a green tab turned it purple for the
+whole idle threshold: a page attaching makes tmux give the new client its own size
+and the pane is redrawn to it, so the screen differs from the one before through
+nobody's effort — which for a session that has never counted is the only evidence
+of work there is. Leaving costs more: the pane resizes back, nobody is looking any
+more, and thirty seconds later the session was announced as *finished* for having
+been left. `Watcher.Rebase` marks the next screen as ours rather than the agent's,
+and `Presence.Join`/`Leave` call it. It is a short window rather than a single poll
+because tmux redraws and then the agent redraws its own box a moment later — the
+test proves that too: with the window removed the first redraw is still forgiven
+and the second one is not.
+
 **`ActivityAsking` outranks both and waits for nothing.** A menu on screen is the
 only state that is about the person holding the phone — output arriving is the
 machine's business, a question is theirs — so it beats working and done, and it
