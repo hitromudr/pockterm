@@ -20,6 +20,51 @@ import (
 // session started anywhere on the box.
 var dirNameOK = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
+// ShortDir is a pane's directory as a phone can read it.
+//
+// The path itself is no use in a drawer row: /home/dms/work/self spends most of
+// its length saying what every session on this host has in common. Under the
+// projects root it becomes the folder's own name — the same word the folder list
+// and the session name use — and the root itself becomes its basename, so a
+// session sitting in ~/work reads as "work" rather than as nothing. Anything
+// outside the root keeps enough to be recognised, with the home directory as "~".
+//
+// It exists because the name answers a different question. A session is named
+// after the folder it was *opened* in, and the pane moves: one named after ~/work
+// spent an afternoon in ~/work/self, and nothing on the phone said so.
+//
+// Empty in, empty out: a tmux too old for the format says nothing, and this
+// invents nothing.
+func ShortDir(root, home, dir string) string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return ""
+	}
+	dir = strings.TrimRight(filepath.Clean(dir), "/")
+	if dir == "" || dir == "." {
+		return ""
+	}
+	if root != "" {
+		root = strings.TrimRight(filepath.Clean(root), "/")
+		if dir == root {
+			return filepath.Base(root)
+		}
+		if rel := strings.TrimPrefix(dir, root+"/"); rel != dir {
+			return rel
+		}
+	}
+	if home != "" {
+		home = strings.TrimRight(filepath.Clean(home), "/")
+		if dir == home {
+			return "~"
+		}
+		if rel := strings.TrimPrefix(dir, home+"/"); rel != dir {
+			return "~/" + rel
+		}
+	}
+	return dir
+}
+
 // Folders lists the directories a session can be started in: the immediate
 // children of root, by name, sorted.
 //

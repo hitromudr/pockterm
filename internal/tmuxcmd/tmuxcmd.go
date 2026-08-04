@@ -61,6 +61,10 @@ type Session struct {
 	// named after the folder they were started in, so "natal" and "natal-2" are
 	// the same project by two different buttons.
 	Kind string `json:"kind,omitempty"`
+	// Where the session's current pane actually is. The name answers where it was
+	// *opened*, which is a different fact and drifts: a session named after ~/work
+	// spent an afternoon in ~/work/self, and nothing on the phone said so.
+	Dir string `json:"dir,omitempty"`
 }
 
 // KindOption is the tmux session option the Makefile stamps the button on, and
@@ -75,7 +79,7 @@ const KindOption = "@pockterm-kind"
 // carry a tab, and a stray one there costs a field nobody parses rather than
 // shifting every field after it.
 const listFormat = "#{session_name}\t#{session_windows}\t#{session_created}\t#{session_attached}" +
-	"\t#{session_group}\t#{" + KindOption + "}\t#{pane_start_command}"
+	"\t#{session_group}\t#{" + KindOption + "}\t#{pane_current_path}\t#{pane_start_command}"
 
 // ListSessions returns the argv listing sessions one per line in the
 // tab-separated order ParseSessions parses.
@@ -108,11 +112,15 @@ func ParseSessions(out string) []Session {
 		if len(f) > 5 {
 			kind = f[5]
 		}
+		dir := ""
+		if len(f) > 6 {
+			dir = f[6]
+		}
 		// Nobody stamped this one — started before the Makefile knew how, or by
 		// hand. The command the pane was created with still answers the coarse
 		// half of the question, and only that half: see KindFromStart.
-		if kind == "" && len(f) > 6 {
-			kind = KindFromStart(f[6])
+		if kind == "" && len(f) > 7 {
+			kind = KindFromStart(f[7])
 		}
 		sessions = append(sessions, Session{
 			Name:     f[0],
@@ -121,6 +129,7 @@ func ParseSessions(out string) []Session {
 			Attached: f[3] == "1",
 			Group:    group,
 			Kind:     kind,
+			Dir:      dir,
 		})
 	}
 	return sessions

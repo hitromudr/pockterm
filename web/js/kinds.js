@@ -66,6 +66,30 @@ export function kindMark(kind, buttons) {
   return BUILTIN[kind] ? BUILTIN[kind].mark : '';
 }
 
+// How long a session has been up, for the drawer's row.
+//
+// It replaced the window count, which was a constant: the Makefile creates one
+// window and the page has no way to make or reach a second, so "1 window" was a
+// field that never said anything. This one varies, and it answers the question
+// the row is actually read for — which of these has been sitting there since
+// yesterday.
+//
+// Coarse on purpose, one unit and no decimals: the row is one line on a phone,
+// and "3ч" is the whole of what is wanted from it. `nowMs` is passed in so the
+// clock is the caller's — there is no such thing as a test that waits an hour.
+export function shortAge(createdSeconds, nowMs) {
+  const created = Number(createdSeconds) || 0;
+  if (created <= 0) return '';
+  const mins = Math.floor((nowMs / 1000 - created) / 60);
+  // A clock that disagrees with the host's, or a session created this second:
+  // "0м" is honest and a negative number is not.
+  if (mins < 1) return 'только что';
+  if (mins < 60) return `${mins}м`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}ч`;
+  return `${Math.floor(hours / 24)}д`;
+}
+
 // kindName(kind, buttons) → what to call it in words: the drawer's row and the
 // tab's popup help. '' when there is nothing to say, which the callers leave out
 // rather than writing "unknown".

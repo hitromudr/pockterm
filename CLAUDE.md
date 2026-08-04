@@ -168,6 +168,26 @@ phase cannot drift apart from it. This is the same detection the answer buttons 
 drawn from (`detect.Question`) — and those exist only for the session on screen,
 while the question you want to know about is usually in the one that is not.
 
+**The answer buttons press what the menu says it takes, not a digit.** "Type the
+digit and press Enter" was the rule from the beginning, and it was an assumption
+about every menu that looks like one. It holds for a permission prompt. It is
+false for the question with a description under each answer, which lists its keys
+directly underneath — `Enter to select · ↑/↓ to navigate · Esc to cancel`, and
+digits are not among them: the digit fell on the floor and the Enter took whatever
+was highlighted, so **every button answered option 1**. Reported from the laptop as
+a click on the third one coming back as the first, and that is the worst shape a
+defect can take here — a wrong answer looks exactly like the right one until you
+read what it did. It also only became reachable when the fix below made those menus
+detectable at all.
+
+`detectQuestion` reports `navigate` (`digits` or `arrows`, read off that footer
+line) and `cursor` (which option carries the `❯`), and `answerKeys` turns the two
+into bytes. The count of arrow presses starts from where the pointer **is**, not
+from the top: a menu already navigated on screen sits somewhere else. No pointer
+means no honest count, and then no button — one that guesses gives an answer
+indistinguishable from the one the owner meant. `internal/detect` parses neither
+field: it renders notifications, and a notification presses nothing.
+
 **A menu's options do not have to be adjacent, and requiring it found nothing.**
 The rule was a run of lines numbered 1,2,3 with nothing in between, which is a
 permission prompt exactly and an `AskUserQuestion` not at all: that one draws a
@@ -240,6 +260,19 @@ The question exists because **the name stopped being able to answer it**. Sessio
 are named after the folder they were started in, so `natal` and `natal-2` are one
 project opened two different ways, and which of them is the yolo one was nowhere
 on screen.
+
+The drawer's row carries two more facts for the same reason, and both replaced
+`1 window`. That count was a constant: the Makefile creates a session with one
+window, and the page can neither make a second nor reach one — it attaches with
+`new-session -t`, sharing the session's windows, and has no window switcher. So it
+said the same thing on every row for as long as it existed. What is there now
+varies: **where the pane actually is** (`pane_current_path` through
+`session.ShortDir` — the name says where the session was *opened*, and one opened
+in `~/work` spent an afternoon in `~/work/self` with nothing saying so) and **how
+long it has been up** (`shortAge`, one coarse unit — which of these is from
+yesterday). The path is shortened on the server because the two paths it is
+measured against are the host's: `/api/dirs` tells the page what the root is
+*called*, never where it is.
 
 **tmux keeps the fact, and the Makefile is what writes it there.** The server
 passes `KIND=` beside `DIR=` and `PREFIX=`, the Makefile stamps it on the session

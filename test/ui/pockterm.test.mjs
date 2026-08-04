@@ -272,8 +272,17 @@ describe("the owner's own session buttons", () => {
       'the button never reached the session',
     );
     // The drawer names it in the meta line, where the name cannot: the session is
-    // named after its folder, so two buttons in one project read alike.
-    assert.match(await row.locator('.meta').textContent(), /Claude/);
+    // named after its folder, so two buttons in one project read alike. Beside it,
+    // where the pane actually is and how long it has been up — the line used to
+    // carry "1 window", which is what the Makefile always makes and the page can
+    // never reach a second of.
+    const meta = await row.locator('.meta').textContent();
+    assert.match(meta, /Claude/, `the button is missing from the row: ${meta}`);
+    assert.doesNotMatch(meta, /window/, `the window count is back: ${meta}`);
+    assert.match(meta, /только что|\d+[мчд]/, `no age in the row: ${meta}`);
+    // The stand's projects root is the temp dir the presets run in, so a session
+    // started there reads as that folder's own name.
+    assert.ok(meta.split(' · ').length >= 3, `the row lost a field: ${meta}`);
 
     // Attach to the other session, so the strip has two tabs and the one under
     // test is not the one being looked at.

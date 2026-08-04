@@ -156,3 +156,42 @@ func TestExampleMakefileStampsTheKind(t *testing.T) {
 		t.Error(`set-option -t "=<name>" answers "no such session" — the stamp never lands`)
 	}
 }
+
+func TestShortDirIsWhatAPhoneCanRead(t *testing.T) {
+	// The row has one line, and most of an absolute path is what every session on
+	// the host has in common. What is left has to be the word the folder list and
+	// the session name already use.
+	const root, home = "/home/dms/work", "/home/dms"
+	for _, c := range []struct{ dir, want string }{
+		// Under the root: the folder's own name, the same one the tab carries.
+		{"/home/dms/work/self", "self"},
+		{"/home/dms/work/pockterm/internal/detect", "pockterm/internal/detect"},
+		// The root itself is a folder like any other and says which one it is.
+		{"/home/dms/work", "work"},
+		{"/home/dms/work/", "work"},
+		// Outside it, enough to be recognised.
+		{"/home/dms", "~"},
+		{"/home/dms/.config/pockterm", "~/.config/pockterm"},
+		{"/var/lib/pockterm", "/var/lib/pockterm"},
+		// A tmux too old for the format says nothing, and this invents nothing.
+		{"", ""},
+		{"   ", ""},
+	} {
+		if got := ShortDir(root, home, c.dir); got != c.want {
+			t.Errorf("ShortDir(%q) = %q, want %q", c.dir, got, c.want)
+		}
+	}
+	// A host with no projects root still shortens against the home directory: the
+	// row is just as narrow there.
+	if got := ShortDir("", home, "/home/dms/work/natal"); got != "~/work/natal" {
+		t.Errorf("with no root: %q", got)
+	}
+	// And with neither, the path is all there is to show.
+	if got := ShortDir("", "", "/home/dms/work"); got != "/home/dms/work" {
+		t.Errorf("with nothing to measure against: %q", got)
+	}
+	// A path that merely starts with the same letters is not inside it.
+	if got := ShortDir(root, home, "/home/dms/workbench"); got != "~/workbench" {
+		t.Errorf("a prefix that is not a parent: %q", got)
+	}
+}

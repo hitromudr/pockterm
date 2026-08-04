@@ -1,5 +1,5 @@
 import { keyBytes } from './keys.js';
-import { detectQuestion } from './detect.js';
+import { detectQuestion, answerKeys } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel } from './notify.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
 import { snapshotText } from './select.js';
@@ -8,7 +8,7 @@ import { watch as watchInput } from './inputdiag.js';
 import { Scroller, movedWholeScreen } from './scroll.js';
 import { staleNotice } from './update.js';
 import { endingKeys } from './ender.js';
-import { kindMark, kindName, customMark, labelBody } from './kinds.js';
+import { kindMark, kindName, customMark, labelBody, shortAge } from './kinds.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -18,7 +18,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v98';
+const APP_VERSION = 'v99';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -144,14 +144,22 @@ async function loadSessions() {
     const li = document.createElement('li');
     const b = document.createElement('button');
     b.className = 'session';
-    const win = `${s.windows} window${s.windows === 1 ? '' : 's'}`;
-    // Which button started it, first in the meta line. The name is the folder
-    // now, so it cannot say this — and it is the thing you scan the list for:
-    // "which of these is the yolo one".
-    const what = kindName(s.kind, customButtons);
+    // Three facts and each of them varies. Which button started it — the name is
+    // the folder now, so it cannot say that, and it is what the list is scanned
+    // for. Where the pane actually is — the name says where it was *opened*, and
+    // a session opened in ~/work spent an afternoon in ~/work/self with nothing
+    // saying so. How long it has been up — which of these is from yesterday.
+    //
+    // What used to be here was "1 window", and it was always 1: the Makefile
+    // creates one, and the page can neither make nor reach a second.
+    const meta = [
+      kindName(s.kind, customButtons),
+      s.dir || '',
+      shortAge(s.created, Date.now()),
+      s.attached ? 'attached' : '',
+    ].filter(Boolean);
     b.innerHTML = `<span class="name">${escapeHtml(s.name)}</span>` +
-      `<span class="meta">${what ? escapeHtml(what) + ' · ' : ''}` +
-      `${win}${s.attached ? ' · attached' : ''}</span>`;
+      `<span class="meta">${escapeHtml(meta.join(' · '))}</span>`;
     b.addEventListener('click', () => attach(s.name));
     li.appendChild(b);
 
@@ -2235,17 +2243,33 @@ function renderAnswers() {
   const q = scrolledBack ? null : detectQuestion(lines);
   // Only rebuild when the detected prompt actually changed; otherwise the
   // buttons flicker (and detach mid-tap) on every terminal update.
-  const sig = q ? JSON.stringify(q.options) : null;
+  //
+  // The cursor is in the signature: on an arrow-driven menu it is what the number
+  // of presses is counted from, so a row built against an older position would
+  // answer the wrong option.
+  const sig = q ? JSON.stringify([q.options, q.cursor, q.navigate]) : null;
   if (sig === lastAnswersSig) return;
   lastAnswersSig = sig;
   answersEl.innerHTML = '';
   if (!q) { answersEl.hidden = true; return; }
-  for (const o of q.options) {
+  for (let i = 0; i < q.options.length; i++) {
+    const o = q.options[i];
+    const keys = answerKeys(q, i);
+    // No way to answer that can be trusted: no button. One that sends a guess is
+    // worse than none, because the answer it gives is indistinguishable from one
+    // the owner meant.
+    if (keys === null) continue;
     const b = document.createElement('button');
     b.textContent = `${o.key} · ${o.label}`;
-    // digit + Enter picks the menu item in one tap.
-    b.addEventListener('click', () => { send(o.key + '\r'); term.focus(); });
+    b.addEventListener('click', () => { send(keys); term.focus(); });
     answersEl.appendChild(b);
+  }
+  if (!answersEl.children.length) {
+    // Says so, since there is no console on the phone and the row simply not
+    // being there is the same thing on screen as no question at all.
+    report('answers', { drawn: 0, navigate: q.navigate, cursor: q.cursor, options: q.options.length });
+    answersEl.hidden = true;
+    return;
   }
   const esc = document.createElement('button');
   esc.className = 'esc';

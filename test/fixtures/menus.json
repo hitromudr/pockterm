@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared cases for the menu detector. Both implementations run against this file — web/js/detect.js (answer buttons) and internal/detect (Telegram notifications) — so the two cannot drift apart unnoticed.",
+  "_comment": "Shared cases for the menu detector. Both implementations run against this file — web/js/detect.js (answer buttons) and internal/detect (Telegram notifications) — so the two cannot drift apart unnoticed. `navigate` and `cursor` are read by web/js/detect.js only: they say how a menu takes an answer and where its pointer is, which is what the answer buttons press. internal/detect renders notifications and presses nothing, so its decoder ignores both.",
   "cases": [
     {
       "name": "claude permission prompt",
@@ -25,7 +25,9 @@
             "key": "3",
             "label": "No, and tell Claude what to do (esc)"
           }
-        ]
+        ],
+        "cursor": 0,
+        "navigate": "digits"
       }
     },
     {
@@ -46,7 +48,9 @@
             "key": "2",
             "label": "No, exit"
           }
-        ]
+        ],
+        "cursor": 0,
+        "navigate": "digits"
       }
     },
     {
@@ -70,7 +74,9 @@
             "key": "2",
             "label": "No, and tell Claude what to do (esc)"
           }
-        ]
+        ],
+        "cursor": 0,
+        "navigate": "digits"
       }
     },
     {
@@ -95,7 +101,9 @@
             "key": "2",
             "label": "No"
           }
-        ]
+        ],
+        "cursor": 0,
+        "navigate": "digits"
       }
     },
     {
@@ -142,7 +150,9 @@
             "key": "5",
             "label": "Chat about this"
           }
-        ]
+        ],
+        "cursor": 0,
+        "navigate": "arrows"
       }
     },
     {
@@ -168,7 +178,9 @@
             "key": "2",
             "label": "Просмотром"
           }
-        ]
+        ],
+        "cursor": 0,
+        "navigate": "digits"
       }
     },
     {
@@ -249,6 +261,66 @@
         "  2. второй пункт плана"
       ],
       "expect": null
+    },
+    {
+      "name": "a menu already navigated: the pointer is where the count starts from",
+      "lines": [
+        "Куда положить файл?",
+        "",
+        "  1. в корень",
+        "     рядом с остальными",
+        "  2. в docs/",
+        "     туда, где документация",
+        "❯ 3. никуда",
+        "     ничего не делать",
+        "",
+        "Enter to select · ↑/↓ to navigate · Esc to cancel"
+      ],
+      "expect": {
+        "prompt": "Куда положить файл?",
+        "cursor": 2,
+        "navigate": "arrows",
+        "options": [
+          {
+            "key": "1",
+            "label": "в корень"
+          },
+          {
+            "key": "2",
+            "label": "в docs/"
+          },
+          {
+            "key": "3",
+            "label": "никуда"
+          }
+        ]
+      }
+    },
+    {
+      "name": "arrow-driven with no pointer on screen: nothing to count from",
+      "lines": [
+        "╭────────────────────────────╮",
+        "│ Выбери способ:             │",
+        "│   1. первый                │",
+        "│   2. второй                │",
+        "╰────────────────────────────╯",
+        "Enter to select · ↑/↓ to navigate · Esc to cancel"
+      ],
+      "expect": {
+        "prompt": "Выбери способ:",
+        "cursor": -1,
+        "navigate": "arrows",
+        "options": [
+          {
+            "key": "1",
+            "label": "первый"
+          },
+          {
+            "key": "2",
+            "label": "второй"
+          }
+        ]
+      }
     }
   ]
 }

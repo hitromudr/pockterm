@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { kindMark, kindName, customMark, labelBody, customId, CUSTOM_MARK } from '../web/js/kinds.js';
+import { kindMark, kindName, customMark, labelBody, customId, shortAge, CUSTOM_MARK } from '../web/js/kinds.js';
 
 const buttons = [
   { id: 'b1', label: 'qwen', cmd: 'qwen' },
@@ -61,4 +61,26 @@ test('customId reads the button out of a kind', () => {
   assert.equal(customId('custom:b2'), 'b2');
   assert.equal(customId('yolo'), '');
   assert.equal(customId(''), '');
+});
+
+test('how long a session has been up, in one coarse unit', () => {
+  // It replaced "1 window", which never said anything: the Makefile makes one
+  // window and the page cannot reach a second. The clock is the caller's.
+  const now = 1_800_000_000_000;
+  const at = (secondsAgo) => shortAge(now / 1000 - secondsAgo, now);
+  assert.equal(at(0), 'только что');
+  assert.equal(at(59), 'только что');
+  assert.equal(at(60), '1м');
+  assert.equal(at(59 * 60), '59м');
+  assert.equal(at(60 * 60), '1ч');
+  assert.equal(at(17 * 3600), '17ч');
+  assert.equal(at(23 * 3600 + 3599), '23ч');
+  assert.equal(at(24 * 3600), '1д');
+  assert.equal(at(9 * 24 * 3600), '9д');
+  // A session created "in the future" is a clock disagreeing with the host's, and
+  // a negative age would be a row saying something impossible.
+  assert.equal(at(-500), 'только что');
+  // Nothing to go on: no claim.
+  assert.equal(shortAge(0, now), '');
+  assert.equal(shortAge(undefined, now), '');
 });

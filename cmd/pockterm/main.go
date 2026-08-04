@@ -223,7 +223,7 @@ func serve() {
 	buttons := customButtons(cfg)
 	h := server.Handler(server.Options{
 		Token:        cfg.Token,
-		ListSessions: listSessions,
+		ListSessions: sessionLister(cfg),
 		Attach: func(id int64, target string) []string {
 			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 		},
@@ -594,4 +594,33 @@ func listSessions() ([]tmuxcmd.Session, error) {
 		}
 	}
 	return visible, nil
+}
+
+// sessionLister is the list the page gets: the same sessions, with each pane's
+// directory shortened to what a drawer row can carry.
+//
+// Shortened here and not in the page because the two paths it is measured
+// against are the host's: the projects root and the home directory. /api/dirs
+// tells the page what the root is *called*, never where it is — and a page
+// guessing at that would print a path that is wrong in a way nobody could see.
+//
+// The raw listSessions stays for the callers that check a name against what
+// exists; none of them cares where a pane is.
+func sessionLister(cfg config.Config) func() ([]tmuxcmd.Session, error) {
+	root, on, err := cfg.SessionDir()
+	if err != nil || !on {
+		// No projects root on this host: a path still shortens against $HOME.
+		root = ""
+	}
+	home, _ := os.UserHomeDir()
+	return func() ([]tmuxcmd.Session, error) {
+		list, err := listSessions()
+		if err != nil {
+			return nil, err
+		}
+		for i := range list {
+			list[i].Dir = session.ShortDir(root, home, list[i].Dir)
+		}
+		return list, nil
+	}
 }

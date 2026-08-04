@@ -159,10 +159,10 @@ func TestParseSessionsReadsTheKind(t *testing.T) {
 	// Lines as tmux prints them for the format this asks for: the stamped option,
 	// then the command the pane was created with — quoted by tmux when it has a
 	// space in it.
-	out := "natal\t1\t1754226692\t0\tnatal\tyolo\t\"agent-run --dangerously-skip-permissions\"\n" +
-		"qwen\t1\t1754226700\t0\t\tcustom:b2\t\"AGENT_COMMAND=qwen agent-run\"\n" +
-		"build\t1\t1754226800\t0\t\t\t/usr/bin/zsh\n" +
-		"deploy\t1\t1754226900\t0\t\t\t\"bash -lc \\\"make deploy\\\"\"\n" +
+	out := "natal\t1\t1754226692\t0\tnatal\tyolo\t/home/dms/work/self\t\"agent-run --dangerously-skip-permissions\"\n" +
+		"qwen\t1\t1754226700\t0\t\tcustom:b2\t/home/dms/work\t\"AGENT_COMMAND=qwen agent-run\"\n" +
+		"build\t1\t1754226800\t0\t\t\t/home/dms/work\t/usr/bin/zsh\n" +
+		"deploy\t1\t1754226900\t0\t\t\t/home/dms\t\"bash -lc \\\"make deploy\\\"\"\n" +
 		"old\t1\t1754227000\t0\t\n"
 	got := ParseSessions(out)
 	if len(got) != 5 {
@@ -172,6 +172,16 @@ func TestParseSessionsReadsTheKind(t *testing.T) {
 		if got[i].Kind != want {
 			t.Errorf("%s: kind = %q, want %q", got[i].Name, got[i].Kind, want)
 		}
+	}
+	// Where the pane is now, which the name does not answer: this session was
+	// opened in ~/work and has been working in ~/work/self.
+	if got[0].Dir != "/home/dms/work/self" {
+		t.Errorf("dir = %q, want the pane's own path", got[0].Dir)
+	}
+	// A line from a tmux too old for the format asks for nothing and claims
+	// nothing, rather than reading one field as another.
+	if got[4].Dir != "" || got[4].Kind != "" {
+		t.Errorf("a short line invented fields: %+v", got[4])
 	}
 	// The stamp is the answer whenever there is one, and the start command never
 	// overrules it: an agent launched through a shell wrapper would otherwise be
