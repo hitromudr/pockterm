@@ -276,6 +276,22 @@ It rides in the session list (`state` on each entry, filled by the server from
 state fetched separately can disagree, and the disagreement would show as the
 wrong tab lit up. tmux never fills that field.
 
+**Every session is watched; only the ones a page has opened are announced.** Those
+were one thing, and being one thing meant a session was not watched at all until a
+page attached to it — so after a deploy every tab went neutral and stayed there.
+The watcher's state is per process and CI installs a new binary several times a
+working day: a session started in the morning and left running had no colour and
+raised no "finished" until it was opened again by hand. Found by reading
+`/api/sessions` on the host and seeing no `state` on a session that was visibly
+working.
+
+`Options.Sessions` is the roster, swept on every tick, and `observe` adds what it
+finds; `Watch` — the attach path — is the only thing that sets `notify`. So the
+strip is right about everything tmux has, and the phone is told about the sessions
+it was asked to be told about, attaching once being the asking. Sessions still
+leave the same way: a `capture-pane` that fails removes one, which is what keeps
+the sweep from re-adding a closed session for ever.
+
 The page polls it every 3s, and only while the terminal is on screen and the page
 is in front — a pocketed phone holds its socket for hours, and polling tmux for a
 strip nobody can see is work for nobody. A `visibilitychange` refresh goes with

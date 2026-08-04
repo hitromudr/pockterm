@@ -112,12 +112,20 @@ type Event struct {
 }
 
 type Options struct {
-	Capture   func(session string) (string, error) // visible pane text
-	Notify    func(Event)                          // called for every event worth sending
-	Viewing   func(session string) bool            // someone has it open right now
-	IdleAfter time.Duration                        // silence that counts as "done"
-	Poll      time.Duration                        // how often Run reads the panes
-	Now       func() time.Time                     // injected for tests
+	Capture func(session string) (string, error) // visible pane text
+	Notify  func(Event)                          // called for every event worth sending
+	Viewing func(session string) bool            // someone has it open right now
+	// Sessions lists what exists, so a tab can be coloured for a session no page
+	// has opened. nil watches only what has been attached to, which is what this
+	// did before — and what left every tab neutral after a restart: the state is
+	// per process, CI installs a new binary several times a working day, and a
+	// session started in the morning then said nothing until it was opened again.
+	//
+	// Being watched is not the same as being notified about: see Watch.
+	Sessions  func() []string
+	IdleAfter time.Duration    // silence that counts as "done"
+	Poll      time.Duration    // how often Run reads the panes
+	Now       func() time.Time // injected for tests
 }
 
 // state is what the watcher remembers between polls of one session.
@@ -144,6 +152,11 @@ type state struct {
 	// the agent — see Rebase. A page attaching resizes the pane, and that is not
 	// somebody's work.
 	ours time.Time
+	// notify is whether anything about this session is worth sending anywhere: set
+	// when a page attaches to it, never by the roster sweep. Everything else here
+	// is read either way, because the colour on the strip is for every session and
+	// a notification is only for the ones somebody asked for.
+	notify bool
 }
 
 type Watcher struct {
@@ -168,9 +181,29 @@ func New(o Options) *Watcher {
 	return &Watcher{o: o, s: make(map[string]*state)}
 }
 
-// Watch puts a session under observation. Idempotent: attaching twice does
-// not restart its history.
+// Watch puts a session under observation *and* makes it one worth notifying
+// about, for good. Idempotent: attaching twice does not restart its history.
+//
+// The two halves used to be one thing, and separating them is what lets a tab be
+// coloured for a session nobody has opened without the phone being told about it.
+// A page attaching is what asks to be told — that is the whole claim behind a
+// notification, and it is not something to assume about a session started on
+// another machine and never looked at from here.
 func (w *Watcher) Watch(session string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	st, ok := w.s[session]
+	if !ok {
+		st = &state{changed: w.o.Now()}
+		w.s[session] = st
+	}
+	st.notify = true
+}
+
+// observe starts reading a session without claiming anyone wants to hear about
+// it. What it buys is the colour on the strip; what it deliberately does not buy
+// is a notification.
+func (w *Watcher) observe(session string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if _, ok := w.s[session]; !ok {
@@ -232,6 +265,13 @@ func (w *Watcher) Run(ctx context.Context) {
 // Tick reads every watched pane once and emits whatever it finds. Tests
 // call it directly so they control the clock instead of sleeping.
 func (w *Watcher) Tick() {
+	// What exists, before reading what it is doing: a session that appeared since
+	// the last tick is one a tab may already be showing.
+	if w.o.Sessions != nil {
+		for _, name := range w.o.Sessions() {
+			w.observe(name)
+		}
+	}
 	w.mu.Lock()
 	sessions := make([]string, 0, len(w.s))
 	for name := range w.s {
@@ -333,11 +373,16 @@ func (w *Watcher) poll(session string) {
 		st.doneSent = true
 		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines)})
 	}
+	notify := st.notify
 	w.mu.Unlock()
 
 	// Someone looking at the session sees all this already. The state was
 	// updated regardless, so nothing is replayed once they look away.
-	if len(events) == 0 || w.o.Viewing(session) {
+	//
+	// And a session no page has ever attached to is read but not announced: it is
+	// on the strip in colour, and the phone is told about the sessions it was
+	// asked to be told about. Attaching once is the asking.
+	if len(events) == 0 || !notify || w.o.Viewing(session) {
 		return
 	}
 	for _, e := range events {

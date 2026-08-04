@@ -735,3 +735,74 @@ func TestLeavingDoesNotAnnounceAFinishedSession(t *testing.T) {
 		t.Fatalf("events = %+v, want none: the session was left, not finished", h.events)
 	}
 }
+
+func TestEverySessionIsWatchedAndOnlyTheOpenedOnesAnnounced(t *testing.T) {
+	// The colour on the strip is for every session; a notification is for the ones
+	// somebody asked to hear about, and attaching once is the asking.
+	//
+	// What this fixes: the watcher's state is per process, CI installs a new binary
+	// several times a working day, and a session was only watched once a page had
+	// attached to it. After a deploy every tab of a session started that morning
+	// went neutral and stayed there — no colour, no "finished" — until it was
+	// opened again by hand.
+	screens := map[string]string{"seen": turnRunning, "unseen": turnRunning}
+	now := time.Unix(1_700_000_000, 0)
+	var events []Event
+	w := New(Options{
+		Capture:   func(s string) (string, error) { return screens[s], nil },
+		Notify:    func(e Event) { events = append(events, e) },
+		Sessions:  func() []string { return []string{"seen", "unseen"} },
+		IdleAfter: 30 * time.Second,
+		Now:       func() time.Time { return now },
+	})
+	// Only one of them has ever been opened.
+	w.Watch("seen")
+	w.Tick()
+
+	// Both are read, so both have a colour: that is the whole point.
+	for _, s := range []string{"seen", "unseen"} {
+		if got := w.Activity(s); got != ActivityWorking {
+			t.Fatalf("%s: %q, want %q — a session nobody opened still needs its colour", s, got, ActivityWorking)
+		}
+	}
+
+	// Both finish; only the opened one is announced.
+	screens["seen"], screens["unseen"] = turnOver, turnOver
+	w.Tick()
+	for _, s := range []string{"seen", "unseen"} {
+		if got := w.Activity(s); got != ActivityDone {
+			t.Fatalf("%s after the turn: %q, want %q", s, got, ActivityDone)
+		}
+	}
+	if len(events) != 1 || events[0].Session != "seen" {
+		t.Fatalf("events = %+v, want one, for the session a page had opened", events)
+	}
+
+	// And opening the other one makes it worth announcing from then on.
+	w.Watch("unseen")
+	screens["unseen"] = turnRunning
+	w.Tick()
+	screens["unseen"] = turnOver
+	w.Tick()
+	if len(events) != 2 || events[1].Session != "unseen" {
+		t.Fatalf("events = %+v, want a second one for the session now opened", events)
+	}
+}
+
+func TestASessionTmuxNoLongerHasIsDropped(t *testing.T) {
+	// The roster sweep adds; a capture that fails is what removes. Without the
+	// second half a closed session would be re-added every tick for ever.
+	live := []string{"gone"}
+	w := New(Options{
+		Capture:  func(string) (string, error) { return "", errors.New("no such session") },
+		Notify:   func(Event) {},
+		Sessions: func() []string { return live },
+		Now:      func() time.Time { return time.Unix(1_700_000_000, 0) },
+	})
+	w.Tick()
+	live = nil
+	w.Tick()
+	if n := w.Len(); n != 0 {
+		t.Fatalf("watching %d sessions, want none", n)
+	}
+}

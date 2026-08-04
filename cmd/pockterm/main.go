@@ -442,6 +442,22 @@ func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref) serv
 	viewers := watch.NewViewers()
 	w := watch.New(watch.Options{
 		Capture: capturePane,
+		// Everything tmux has, so a tab is coloured for a session this phone has
+		// never opened — the watcher's state is per process and CI replaces the
+		// binary several times a day, which left every strip neutral after a
+		// deploy. Notifications stay with the sessions a page has attached to; see
+		// Watcher.Watch for why the two are not the same claim.
+		Sessions: func() []string {
+			list, err := listSessions()
+			if err != nil {
+				return nil
+			}
+			names := make([]string, 0, len(list))
+			for _, s := range list {
+				names = append(names, s.Name)
+			}
+			return names
+		},
 		Notify: func(e watch.Event) {
 			// The switch is read at the event and not at the attach: it is
 			// changed from a page that may not be the one attached, and the
