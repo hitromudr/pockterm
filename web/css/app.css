@@ -214,28 +214,52 @@ html, body {
 
    Drawn from an attribute rather than written into the label — the label is the
    session's name, and rewriting it rebuilds the button the finger is on. */
-/* Room for it, and only on the tabs that have one. The shield stands in the
-   corner over the padding, and the tab's usual 12px is narrower than the shield —
-   so without this the name ran under it and lost its last letter. The tab grows
-   when work starts in it rather than every tab carrying the reserve for good: the
-   strip already scrolls sideways on a phone, and empty space on every tab is paid
-   for constantly, while the shift is paid when something actually changed. */
-#tabs button[data-bg] { padding-right: 21px; }
-#tabs button[data-bg]::after {
-  content: attr(data-bg);
-  position: absolute;
-  right: 3px;
-  bottom: 0;
+/* One plate per kind, and it used to be one plate for both. The sum answered
+   "is anything still running" and nothing else, while the two kinds are
+   different news: a shell is something started and forgotten, a monitor is
+   something still watching. So they are told apart twice over — by the glyph
+   (▸ the shell, the same mark the strip uses for a shell session; ◉ the
+   monitor) and by the colour — because either alone is a guess at this size.
+
+   Green stays with the shells: it is the colour of "gone quiet", which is when
+   this is worth reading at all. The monitors take cyan, far enough from the
+   blue of a question that the two do not trade places at a glance.
+
+   Drawn as the plates' own pseudo-elements off a span of its own, rather than
+   the button's ::after: the button's ::before is the question's mark, and one
+   pseudo-element cannot carry two plates. Nothing here is text in the button —
+   the label is the session's name, and rewriting it rebuilds the button under
+   the finger. */
+.bg { position: absolute; display: flex; gap: 2px; pointer-events: none; }
+.bg::before, .bg::after {
   box-sizing: border-box;
-  min-width: 14px;
   padding: 1px 2px 4px;
-  font-size: 9px;
   font-weight: 700;
-  line-height: 10px;
   text-align: center;
   color: #0f1b14;
-  background: #7fdca4;
+  /* A heraldic shield, not a rounded pill: flat across the top, straight down
+     the sides, a point at the bottom. The digit sits in the upper part, which is
+     what the padding under it is for — the point is where the shape narrows to
+     nothing and a glyph centred in the box would sit half inside it. */
   clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+}
+.bg::before { content: '▸' attr(data-sh); background: #7fdca4; }
+.bg::after { content: '◉' attr(data-mon); background: #7fd8e8; }
+/* No plate for a kind with nothing in it: a zero is a claim too. */
+.bg:not([data-sh])::before, .bg:not([data-mon])::after { content: none; }
+/* Room for them, and only on the tabs that have one. The plates stand in the
+   corner over the padding, and the tab's usual 12px is narrower than one — so
+   without this the name ran under it and lost its last letter. The tab grows
+   when work starts in it rather than every tab carrying the reserve for good:
+   the strip already scrolls sideways on a phone, and empty space on every tab is
+   paid for constantly, while the shift is paid when something actually changed. */
+#tabs button[data-bg="1"] { padding-right: 22px; }
+#tabs button[data-bg="2"] { padding-right: 42px; }
+#tabs .bg { right: 3px; bottom: 0; }
+#tabs .bg::before, #tabs .bg::after {
+  min-width: 18px;
+  font-size: 9px;
+  line-height: 10px;
 }
 /* Which button started the session, in that button's own glyph — ▸ shell,
    ✦ claude, ⚡ yolo, ↻ continue, ★ or its own lead for one the owner added.
@@ -631,24 +655,22 @@ button.session.asking::before {
      it — so it carries its own outline rather than trusting either. */
   text-shadow: 0 0 3px #0b0e14, 0 0 2px #0b0e14;
 }
-/* What is still running while the agent says nothing: the same green shield,
-   carrying how many, in the corner of the row. */
-button.session[data-bg]::after {
-  content: attr(data-bg);
-  position: absolute;
-  right: 8px;
-  bottom: 6px;
-  box-sizing: border-box;
-  min-width: 16px;
+/* What is still running while the agent says nothing: the same plates in the
+   same two colours, in the corner of the row. The shape and the glyphs are the
+   strip's, one rule above — a row and a tab describing one session differently
+   is worse than either of them saying nothing — and only the size differs, the
+   row having more room than a tab. */
+button.session .bg { right: 8px; bottom: 6px; gap: 3px; }
+button.session .bg::before, button.session .bg::after {
+  min-width: 21px;
   padding: 1px 3px 5px;
   font-size: 10px;
-  font-weight: 700;
   line-height: 11px;
-  text-align: center;
-  color: #0f1b14;
-  background: #7fdca4;
-  clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
 }
+/* The meta line runs under the plates otherwise: it is the row's full width, and
+   the corner is where its tail lands. */
+button.session[data-bg="1"] .meta { padding-right: 26px; }
+button.session[data-bg="2"] .meta { padding-right: 52px; }
 /* The mark takes no colour of its own here either: form says what a session is
    and colour says what it is doing, so it inherits the name's colour and steps
    back. An empty span takes no room, and the gap belongs to the mark — a margin

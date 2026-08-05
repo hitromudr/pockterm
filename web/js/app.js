@@ -178,7 +178,8 @@ async function loadSessions() {
     // `⭐demo` that tmux has never heard of.
     b.innerHTML = '<span class="line"><span class="kind"></span>' +
       `<span class="name">${escapeHtml(s.name)}</span></span>` +
-      `<span class="meta">${escapeHtml(meta.join(' · '))}</span>`;
+      `<span class="meta">${escapeHtml(meta.join(' · '))}</span>` +
+      '<span class="bg"></span>';
     b.addEventListener('click', () => attach(s.name));
     li.appendChild(b);
 
@@ -204,6 +205,34 @@ async function loadSessions() {
   paintRows(sessions);
 }
 
+// What is still running while the agent says nothing, one plate per kind: a
+// shell in green, a monitor in cyan, each with how many of them there are.
+//
+// It was one plate carrying the sum, on the argument that a tab only has to say
+// whether anything is left running. That is one question and the strip is read
+// for two: a shell is something started and forgotten, a monitor is something
+// watching for an answer, and "3" said neither. The kinds have always been
+// counted apart — the footer says "1 shell, 2 monitors" and the session list has
+// carried both numbers since the badge existed — so what changed is only that
+// the page stopped adding them up.
+//
+// Drawn from attributes through pseudo-elements, so nothing here is text in the
+// button: the label is the session's name, and rewriting it rebuilds the button
+// under the finger. `data-bg` counts the plates rather than the processes; it is
+// the room the corner has to reserve.
+const BG_PLATES = [['sh', 'shells'], ['mon', 'monitors']];
+function paintBackground(b, s) {
+  const box = b.querySelector('.bg');
+  if (!box) return;
+  let plates = 0;
+  for (const [attr, field] of BG_PLATES) {
+    const n = s[field] || 0;
+    if (n > 0) { box.dataset[attr] = String(n); plates++; } else delete box.dataset[attr];
+  }
+  if (plates) b.dataset.bg = String(plates);
+  else delete b.dataset.bg;
+}
+
 // paintRows puts the state on the rows the drawer already has.
 //
 // Painted, never rebuilt — the same rule the strip follows and for the same two
@@ -225,9 +254,7 @@ function paintRows(sessions) {
     b.classList.toggle('done', st === 'done');
     b.classList.toggle('asking', st === 'asking');
     b.classList.toggle('current', s.name === current);
-    const running = (s.shells || 0) + (s.monitors || 0);
-    if (running > 0) b.dataset.bg = String(running);
-    else delete b.dataset.bg;
+    paintBackground(b, s);
     const mark = b.querySelector('.line .kind');
     if (mark) mark.textContent = kindMark(s.kind || '', customButtons);
   }
@@ -1136,6 +1163,12 @@ async function renderTabs() {
       mark.className = 'kind';
       b.appendChild(mark);
       b.appendChild(document.createTextNode(s.name));
+      // The corner where the plates go. An empty span draws nothing and takes no
+      // room, and it is here from the start for the same reason the mark is: it
+      // is painted on a later poll, and a tab must not be rebuilt to carry it.
+      const bgBox = document.createElement('span');
+      bgBox.className = 'bg';
+      b.appendChild(bgBox);
       b.dataset.session = s.name;
       b.style.animationDelay = workingPhase(s.name);
       keepsTerminalFocus(b);
@@ -1151,10 +1184,10 @@ async function renderTabs() {
   // and back several times a minute would otherwise take the row — and with it
   // the keyboard — along every time.
   const state = new Map(sessions.map((s) => [s.name, s.state || '']));
-  // What is still running while the agent says nothing. It rides in the same
-  // list as the colour, and it is drawn as an attribute for the same reason the
-  // colour is drawn as a class: the label must not be rewritten.
-  const bg = new Map(sessions.map((s) => [s.name, (s.shells || 0) + (s.monitors || 0)]));
+  // What is still running while the agent says nothing, by kind. It rides in the
+  // same list as the colour, and it is drawn from attributes for the same reason
+  // the colour is drawn as a class: the label must not be rewritten.
+  const bg = new Map(sessions.map((s) => [s.name, s]));
   // What each one is, as opposed to what it is doing. Written into the mark's own
   // span for the same reason the state is written as a class — the label must not
   // be rebuilt — and it is the "+" menu's own glyph, so the strip needs no legend.
@@ -1175,12 +1208,7 @@ async function renderTabs() {
     // A question outranks the rest, and it cannot collide with them: the state is
     // one value, so the classes are exclusive by construction.
     b.classList.toggle('asking', st === 'asking');
-    const n = bg.get(b.dataset.session) || 0;
-    // One plate for both kinds, carrying how many. Shells and monitors are not
-    // told apart on it: on a tab the question is whether anything is still
-    // running, and two glyphs in a corner this size are a smudge.
-    if (n > 0) b.dataset.bg = String(n);
-    else delete b.dataset.bg;
+    paintBackground(b, bg.get(b.dataset.session) || {});
   }
   // The drawer's rows say the same thing off the same answer: one fetch, so a row
   // and a tab cannot describe one session out of two different moments.

@@ -451,17 +451,31 @@ the offset so a tab keeps its phase when the row is rebuilt instead of jumping.
 **The fill answers what the agent is saying, and a fourth question is what it left
 running.** `watch.Background` reads the shells and monitors off the agent's own
 footer (`detect.ReadBackground`, on the same poll as the colour, so the two cannot
-describe different moments) and the tab carries how many on a **green heraldic
-shield in its bottom-right corner** (a `clip-path` polygon: flat top, pointed
-bottom, the digit in the upper half) — in the corner rather than after the name
-because the row
-scrolls sideways and the names are the only thing worth reading along it, and green
-because what it counts is what is still running after the tab went quiet.
+describe different moments) and the tab carries how many on **heraldic shields in
+its bottom-right corner** (a `clip-path` polygon: flat top, pointed bottom, the
+digit in the upper half) — in the corner rather than after the name because the row
+scrolls sideways and the names are the only thing worth reading along it.
 A session at "done" with two monitors alive is not a session with nothing left,
 and the colour cannot say so: it goes green the moment the agent stops speaking.
-The badge is drawn from `data-bg` through a `::after`, for the same reason the
+
+**One shield per kind, and for a while it was one shield for both.** The sum
+answered "is anything still running" and refused every follow-up: a shell is
+something started and forgotten, a monitor is something still watching for an
+answer, and `3` said neither. The argument for adding them up was that two glyphs
+in a corner that size are a smudge — the owner, who is the one reading the strip,
+says otherwise. So the kinds are told apart twice over, by glyph and by colour:
+`▸` in green for the shells, which is the same mark the strip gives a shell
+session, and `◉` in cyan for the monitors, far enough from the blue of a question
+that the two do not trade places at a glance. Nothing else moved: the footer has
+always counted them apart and the session list has carried both numbers since the
+badge existed, so what changed is only that the page stopped summing them.
+
+They are drawn as the pseudo-elements of a `.bg` span (`data-sh`, `data-mon`),
+because the button's own `::before` is the question's `!` and one pseudo-element
+cannot carry two plates. Still not text in the button, for the same reason the
 state is a class — the label is the session's name and rewriting it rebuilds the
-button under the finger.
+button under the finger — and `data-bg` on the button counts the plates rather than
+the processes, which is what the corner reserves room for.
 
 Only the footer counts, and only its lowest line with a number in it. The same
 words appear in the line an agent prints when a turn ends ("Cogitated for 2m 23s ·
@@ -476,7 +490,10 @@ about what it was doing. The same three states, the same keyframes at the same
 duration, the same per-session phase, because a row and a tab describing one session
 differently is worse than either of them saying nothing. What differs is only what a
 row has room for: the sweep runs its width, the `!` straddles its top edge at the
-left instead of centred, and the shield stands in its own bottom-right corner.
+left instead of centred, and the shields stand in its own bottom-right corner, one
+size larger. The plates are the very same rule — the CSS for the shape, the glyphs
+and the colours is shared and only the size differs — because a row and a tab
+disagreeing about a session is exactly what this section exists to prevent.
 
 Two things make it honest rather than decorative. **The rows are painted, never
 rebuilt** (`paintRows`) — the same rule the strip follows, and here it also protects

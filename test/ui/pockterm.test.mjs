@@ -1899,29 +1899,50 @@ describe('a tab says what its session is doing', () => {
     await stand.attach('demo');
     const { page } = stand;
     stand.tmux(['send-keys', '-t', 'demo', 'bypass permissions on · 1 shell, 2 monitors ·', 'Enter']);
+    // Two plates, and their counts are the footer's two numbers rather than the
+    // sum of them: "3" said that something was running and not what.
     await page.waitForFunction(
-      () => document.querySelector('#tabs button[data-session="demo"]')?.dataset.bg === '3',
+      () => {
+        const box = document.querySelector('#tabs button[data-session="demo"] .bg');
+        return box?.dataset.sh === '1' && box?.dataset.mon === '2';
+      },
       null, { timeout: 20000 });
 
-    // A plate in the tab's own corner, not a count spliced into the name: the row
-    // scrolls sideways and the names are what is read along it.
-    const plate = await page.evaluate(() => {
+    // In the tab's own corner, not spliced into the name: the row scrolls
+    // sideways and the names are what is read along it. And in two colours, so
+    // which kind is which survives a glance at 9px.
+    const plates = await page.evaluate(() => {
       const b = document.querySelector('#tabs button[data-session="demo"]');
-      const s = getComputedStyle(b, '::after');
+      const box = b.querySelector('.bg');
+      const of = (which) => {
+        const s = getComputedStyle(box, which);
+        return { content: s.content, background: s.backgroundColor, clip: s.clipPath };
+      };
+      const s = getComputedStyle(box);
       return {
         position: s.position,
         right: s.right,
         bottom: s.bottom,
-        background: s.backgroundColor,
-        clip: s.clipPath,
+        room: parseFloat(getComputedStyle(b).paddingRight),
+        shell: of('::before'),
+        monitor: of('::after'),
       };
     });
-    assert.equal(plate.position, 'absolute', 'the badge is in the text flow');
-    assert.equal(plate.background, 'rgb(127, 220, 164)', `the badge is ${plate.background}`);
-    assert.ok(parseFloat(plate.right) < 6 && parseFloat(plate.bottom) < 6,
-      `the badge is not in the bottom-right corner: ${JSON.stringify(plate)}`);
-    // A shield, and the point at the bottom is what makes it one.
-    assert.ok(/^polygon\(/.test(plate.clip), `the badge is not a shield: ${plate.clip}`);
+    assert.equal(plates.position, 'absolute', 'the badges are in the text flow');
+    assert.ok(parseFloat(plates.right) < 6 && parseFloat(plates.bottom) < 6,
+      `the badges are not in the bottom-right corner: ${JSON.stringify(plates)}`);
+    // Each says its own count, next to the glyph of its own kind.
+    assert.match(plates.shell.content, /▸.*1/, `the shell plate says ${plates.shell.content}`);
+    assert.match(plates.monitor.content, /◉.*2/, `the monitor plate says ${plates.monitor.content}`);
+    assert.equal(plates.shell.background, 'rgb(127, 220, 164)',
+      `the shell plate is ${plates.shell.background}`);
+    assert.notEqual(plates.monitor.background, plates.shell.background,
+      'both kinds are drawn in the same colour');
+    // Shields, and the point at the bottom is what makes them ones.
+    assert.ok(/^polygon\(/.test(plates.shell.clip), `not a shield: ${plates.shell.clip}`);
+    assert.ok(/^polygon\(/.test(plates.monitor.clip), `not a shield: ${plates.monitor.clip}`);
+    // Room for both, or the name runs under them and loses its last letters.
+    assert.ok(plates.room >= 40, `no room reserved for two plates: ${plates.room}`);
 
     // And it goes away when the bottom of the pane stops claiming it: a badge
     // that only ever appeared would say "something is running" about every
