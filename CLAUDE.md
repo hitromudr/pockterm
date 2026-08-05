@@ -951,6 +951,17 @@ checked was throttled once Android backgrounded the WebView. If you are tempted
 to raise a notice from the browser again, read the header of `web/js/notify.js`
 first.
 
+**A pane wraps a sentence, and the body used to be one line of it.** The notice
+that reached the phone said `API Error: 529 Overloaded. This is a` and stopped
+there. The same message from another session arrived whole, which is the tell: a
+pane is as wide as the narrowest client attached to it and this page attaches
+phones — that session was 51 columns, the other 175. So the marker `●` is on the
+first line only and the rest is a continuation indented under it. `wrapped` puts
+them back together, ending the paragraph where the pane does: a blank line, a line
+back at the margin, another `●`, a tool's `⎿`, or anything already known to be
+interface. `clip` still caps the result, so a long answer is cut at 200 characters
+with an ellipsis rather than mid-clause with nothing.
+
 Body text comes from `watch.Tail`, not from the last non-blank line: agent TUIs
 draw an input box and a shortcut hint under their output, so the last line on
 screen is usually `? for shortcuts` or a row of `─`.
