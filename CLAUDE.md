@@ -452,6 +452,19 @@ command inside the recipe, and what may pass is a known preset's name or
 renaming it keeps the sessions it started; an id the store no longer has draws the
 shared `★` and no name at all, rather than guessing.
 
+**And make's own variables do not travel into the session.** A variable given on a
+make command line is exported to the recipe *and* carried in `MAKEFLAGS`, so every
+session the page started held `PREFIX`, `DIR`, `KIND` and `CMD` in its environment
+— and a `make` typed by hand inside that session inherited them. Measured on the
+author's own host: `make custom CMD=qwen` in such a session came out named after the
+folder of the session it was run from and stamped with the button that had started
+*that* one, which is a session lying about what it is. `env -u` on the line that
+starts it is the fix, `MAKELEVEL` included or make reports itself as recursive.
+`TestExampleMakefileKeepsMakesVariablesOutOfTheSession` reads the `spawn` definition
+rather than the file, because a mention in a comment is not a variable being unset.
+The host's own Makefile is an ansible template (`pockterm_app`), so the same line
+has to go there separately.
+
 **No `=` before the name in `set-option`.** That prefix means "exact match" to the
 commands that take a session (`rename-session`, `kill-session` both use it here),
 and `set-option` reads its `-t` as a pane instead: it answers `no such session:

@@ -78,6 +78,14 @@ KIND ?=
 # its -t as a pane instead — it answers "no such session: =claude" and the stamp
 # silently never lands. The plain name is safe here anyway: the session was just
 # created under it, and tmux resolves an exact name before a prefix.
+#
+# `env -u` is what keeps the session out of make's own business. Variables given
+# on a make command line are exported to the recipe *and* travel in MAKEFLAGS, so
+# without this every session started from the page carries PREFIX, DIR, KIND and
+# CMD in its environment — and a `make` typed by hand inside that session inherits
+# them. `make claude` there was named after the folder of the session it was
+# started from and stamped with the button that made that one, which is a session
+# lying about what it is. MAKELEVEL goes too, or make reports itself as recursive.
 define spawn
 p="$(or $(PREFIX),$(or $(2),claude))"; \
 free() { ! tmux ls 2>/dev/null | grep -qE "^$$1:|\(group $$1\)"; }; \
@@ -87,7 +95,8 @@ launch=""; \
 if systemd-run --user --scope --quiet --collect true >/dev/null 2>&1; then \
 	launch="systemd-run --user --scope --quiet --collect"; \
 fi; \
-$$launch tmux new-session -d -s "$$s" -c "$(DIR)" $(1); \
+$$launch env -u PREFIX -u DIR -u KIND -u CMD -u MAKEFLAGS -u MAKELEVEL \
+	tmux new-session -d -s "$$s" -c "$(DIR)" $(1); \
 k="$(or $(KIND),$(3))"; \
 if [ -n "$$k" ]; then tmux set-option -t "$$s" @pockterm-kind "$$k"; fi; \
 echo "started $$s in $(DIR)$${launch:+ (own slice)}"

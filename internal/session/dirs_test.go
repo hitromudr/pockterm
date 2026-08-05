@@ -157,6 +157,42 @@ func TestExampleMakefileStampsTheKind(t *testing.T) {
 	}
 }
 
+func TestExampleMakefileKeepsMakesVariablesOutOfTheSession(t *testing.T) {
+	// Variables given on a make command line are exported to the recipe and travel
+	// in MAKEFLAGS, so without clearing them every session the page starts carries
+	// PREFIX, DIR, KIND and CMD — and a `make` typed by hand inside that session
+	// inherits them. Measured on the author's own host: `make custom CMD=qwen` in
+	// such a session named the new session after the folder of the old one and
+	// stamped it with the button that had started that one.
+	src, err := os.ReadFile(filepath.Join("..", "..", "deploy", "sessions.mk.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Inside the spawn definition, where the session is actually started: a mention
+	// in a comment is not a variable being unset.
+	if !strings.Contains(spawnBody(src), "tmux new-session -d -s") {
+		t.Fatal("the example Makefile does not start a session in spawn")
+	}
+	if !strings.Contains(spawnBody(src), "env -u PREFIX") {
+		t.Error("the example Makefile hands make's own variables to the session")
+	}
+	for _, v := range []string{"DIR", "KIND", "CMD", "MAKEFLAGS", "MAKELEVEL"} {
+		if !strings.Contains(spawnBody(src), "-u "+v) {
+			t.Errorf("%s is left in the session's environment", v)
+		}
+	}
+}
+
+// spawnBody is the spawn definition — the recipe that starts a session.
+func spawnBody(src []byte) string {
+	_, rest, ok := strings.Cut(string(src), "define spawn")
+	if !ok {
+		return ""
+	}
+	body, _, _ := strings.Cut(rest, "endef")
+	return body
+}
+
 func TestShortDirIsWhatAPhoneCanRead(t *testing.T) {
 	// The row has one line, and most of an absolute path is what every session on
 	// the host has in common. What is left has to be the word the folder list and

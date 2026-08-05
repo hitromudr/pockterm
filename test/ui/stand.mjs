@@ -152,7 +152,11 @@ export async function startStand({
   const spawnLine = (fallback, cmd, kind) => [
     `\t@n="$(or $(PREFIX),${fallback})"; `
     + `if tmux -S ${socket} ls 2>/dev/null | grep -qE "^$$n:|\\(group $$n\\)"; then n="$$n-$$$$"; fi; \\`,
-    `\t tmux -S ${socket} new-session -d -s "$$n" -c "$(or $(DIR),$(CURDIR))" sh -c ${cmd}; \\`,
+    // env -u for the same reason the real Makefile has it: make exports what it
+    // was given on the command line, so without this the session carries PREFIX,
+    // DIR, KIND and CMD, and a `make` run inside it inherits them.
+    `\t env -u PREFIX -u DIR -u KIND -u CMD -u MAKEFLAGS -u MAKELEVEL \\`,
+    `\t  tmux -S ${socket} new-session -d -s "$$n" -c "$(or $(DIR),$(CURDIR))" sh -c ${cmd}; \\`,
     `\t k="$(or $(KIND),${kind})"; `
     + `if [ -n "$$k" ]; then tmux -S ${socket} set-option -t "$$n" @pockterm-kind "$$k"; fi; \\`,
     '\t echo "started $$n in $(or $(DIR),$(CURDIR))"',
