@@ -19,7 +19,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v112';
+const APP_VERSION = 'v113';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1334,7 +1334,13 @@ function checkLink() {
   pingSent = 0;
   const dead = ws;
   ws = null;
+  // Both handlers, and onclose is the one that matters: closing a socket fires it,
+  // and it schedules a reconnect of its own on top of the one below. That left two
+  // sockets on the session, then four — every frame written into the same terminal
+  // by each of them, which is what "терминал затроил" was. Same shape as every
+  // other deliberate close on this page (showSessions, attach).
   dead.onmessage = null;
+  dead.onclose = null;
   try { dead.close(); } catch (_) { /* already gone */ }
   statusEl.textContent = 'reconnecting…';
   statusEl.hidden = false;

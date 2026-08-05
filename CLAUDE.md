@@ -126,6 +126,16 @@ tearing down a socket because Android slowed the clock is worse than the freeze 
 fixes. A pocketed phone keeps its socket, and `visibilitychange` asks the question the
 moment it comes back, which is also when the answer is most often "gone".
 
+**Discarding a socket means both its handlers, and onclose is the one that matters.**
+Closing a socket fires it, and `onclose` schedules a reconnect of its own — so the
+first version of this watchdog left the page with two sockets on the session, then
+four, each writing every frame into the same terminal and each carrying every
+keystroke. Reported from the phone within the hour: "терминал затроил", "по три
+сообщения начали отправляться", and a reload put it right, which is exactly what a
+page holding several sockets looks like. Every other deliberate close on this page had
+the pattern already (`showSessions`, `attach`); this one did not. The test asks
+`/api/presence` how many clients the server sees and requires one.
+
 The backoff is reset when the watchdog fires: this is a socket being thrown away, not
 a host that cannot be reached. And `socket-stalled` goes to the journal with how long
 the silence was — "иногда зависает" becomes a count with timestamps.

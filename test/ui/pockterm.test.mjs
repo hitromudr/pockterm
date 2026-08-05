@@ -117,24 +117,43 @@ describe('a socket that has stopped delivering', () => {
     });
     await stand.attach('demo');
 
-    // PING_AFTER + PONG_WAIT is 15s, and the watchdog ticks every 2.5s on top. The
-    // wait is far longer than that on purpose: `node --test test/ui/` runs the files
-    // in parallel, and a browser timer on a loaded four-core box is late by seconds.
-    await page.waitForFunction(
-      () => document.getElementById('status') && !document.getElementById('status').hidden,
-      null, { timeout: 60000 });
+    // The journal is the signal, not the status bar: a socket born deaf still fires
+    // onopen, so the bar hides again on a reconnect that cannot hear either. What
+    // says the watchdog fired is the page's own line — and it is what turns "иногда
+    // зависает" into a fact with a count.
+    //
+    // PING_AFTER + PONG_WAIT is 15s and the watchdog ticks every 2.5s on top; the
+    // wait is far longer because `node --test test/ui/` runs the files in parallel
+    // and a browser timer on a loaded four-core box is late by seconds.
+    for (let i = 0; i < 120 && !/socket-stalled/.test(stand.serverLog()); i++) {
+      await page.waitForTimeout(500);
+    }
     assert.match(stand.serverLog(), /socket-stalled/, 'the page never said the socket had stalled');
     assert.ok(await page.evaluate(() => window.__muted > 0), 'the page never asked anything of the socket');
 
-    // With the hole closed the reconnect lands, and tmux behind it was untouched.
+    // With the hole closed the next reconnect can hear, and tmux behind it was
+    // untouched — the proof being that typing arrives and comes back.
     await page.evaluate(() => window.__restore());
-    await page.waitForFunction(
-      () => document.getElementById('status').hidden, null, { timeout: 40000 });
     await page.click('#term');
+    for (let i = 0; i < 60; i++) {
+      await page.keyboard.type('.');
+      if (await page.evaluate(() => (document.querySelector('.xterm-rows')?.textContent || '').includes('.'))) break;
+      await page.waitForTimeout(500);
+    }
     await page.keyboard.type('alive again');
     await page.waitForFunction(
       () => document.querySelector('.xterm-rows')?.textContent?.includes('alive again'),
-      null, { timeout: 15000 });
+      null, { timeout: 20000 });
+
+    // One socket, not two. Discarding the stalled one fires its own onclose, which
+    // schedules a reconnect of its own — so the first version of this left the page
+    // with two sockets on the session and then four, each writing every frame into
+    // the same terminal. Reported from the phone as the terminal tripling.
+    const clients = await page.evaluate(async () => {
+      const res = await fetch('/api/presence');
+      return res.ok ? (await res.json()).clients : -1;
+    });
+    assert.equal(clients, 1, 'the page left more than one socket attached');
   });
 });
 
