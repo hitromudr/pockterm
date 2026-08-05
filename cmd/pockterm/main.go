@@ -251,12 +251,13 @@ func serve() {
 		SaveUpload:  uploader(cfg),
 		// The browser has no console anyone can open on the phone this
 		// serves; its own words land here instead.
-		LogClient:    func(line string) { log.Printf("client: %s", line) },
-		StartSession: starter(cfg, buttons),
-		Folders:      folders(cfg),
-		RenameSess:   renamer,
-		KillSession:  killer,
-		Buttons:      buttons.List,
+		LogClient:     func(line string) { log.Printf("client: %s", line) },
+		StartSession:  starter(cfg, buttons),
+		Folders:       folders(cfg),
+		RenameSess:    renamer,
+		KillSession:   killer,
+		OrderSessions: orderer,
+		Buttons:       buttons.List,
 		SetButtons: func(list []session.Custom) ([]session.Custom, error) {
 			saved, err := buttons.Set(list)
 			if err != nil && saved == nil {
@@ -389,6 +390,40 @@ func killer(name string) error {
 		return fmt.Errorf("could not close: %s", firstLine(string(out)))
 	}
 	log.Printf("closed session %s", name)
+	return nil
+}
+
+// orderer writes the order the owner dragged the tabs into onto the sessions
+// themselves, one option per session.
+//
+// Every name is checked against the list this server just produced, not trusted
+// from the page: the value reaches a tmux command line. An unknown name is skipped
+// rather than fatal — a session can be closed between the drag and the save, and
+// the strip is redrawn from tmux on the next poll regardless.
+func orderer(names []string) error {
+	sessions, err := listSessions()
+	if err != nil {
+		return fmt.Errorf("could not read the sessions")
+	}
+	known := map[string]bool{}
+	for _, s := range sessions {
+		known[s.Name] = true
+	}
+	placed := 0
+	for _, name := range names {
+		if !known[name] || tmuxcmd.IsClientSession(name) {
+			continue
+		}
+		if err := session.ValidName(name); err != nil {
+			continue
+		}
+		placed++
+		argv := tmuxcmd.SetOrder(name, placed)
+		if out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput(); err != nil {
+			return fmt.Errorf("could not order %s: %s", name, firstLine(string(out)))
+		}
+	}
+	log.Printf("tab order: %d sessions", placed)
 	return nil
 }
 

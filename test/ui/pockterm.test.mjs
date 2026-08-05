@@ -138,6 +138,82 @@ describe('a socket that has stopped delivering', () => {
   });
 });
 
+describe('the order of the tabs', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['alpha', 'beta', 'gamma'] }); });
+  after(async () => { await stand.stop(); });
+
+  const strip = () => stand.page.evaluate(
+    () => [...document.querySelectorAll('#tabs button[data-session]')].map((b) => b.dataset.session));
+
+  test('a held tab can be carried to another place, and stays there', async () => {
+    // tmux sorts its sessions by name, which is the one order nobody chose: the
+    // strip is read left to right dozens of times a day and the session you keep
+    // coming back to is not the one whose name sorts first.
+    //
+    // The gesture is the press that already existed for asking what a tab's mark
+    // means: a hold picks it up, travel then carries it, and a hold that does not
+    // travel is still just the question. Driven through the browser's own touch
+    // input, because a hold is a duration and synthetic events have no clock.
+    await stand.open();
+    await stand.attach('alpha');
+    const { page } = stand;
+    await page.waitForFunction(
+      () => document.querySelectorAll('#tabs button[data-session]').length === 3, null, { timeout: 8000 });
+    assert.deepEqual(await strip(), ['alpha', 'beta', 'gamma'], 'tmux orders by name to begin with');
+
+    const cdp = await page.context().newCDPSession(page);
+    const box = async (name) => page.locator(`#tabs button[data-session="${name}"]`).boundingBox();
+    const from = await box('gamma');
+    const to = await box('alpha');
+    let x = Math.round(from.x + from.width / 2);
+    const y = Math.round(from.y + from.height / 2);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    // The hold is 400ms (HELP_HOLD_MS); the wait is longer because a loaded box
+    // fires a timer late, and a tap that was not held is a different gesture.
+    await page.waitForTimeout(700);
+    const target = Math.round(to.x + 4);
+    while (x > target) {
+      x = Math.max(target, x - 20);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+      await page.waitForTimeout(30);
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+    await page.waitForFunction(
+      () => document.querySelector('#tabs button[data-session]').dataset.session === 'gamma',
+      null, { timeout: 5000 });
+    assert.deepEqual(await strip(), ['gamma', 'alpha', 'beta']);
+
+    // The carrying must not have switched session — that is what the click the
+    // press ends in would do.
+    assert.equal(await page.evaluate(
+      () => document.querySelector('#tabs button.active')?.dataset.session), 'alpha');
+
+    // The order is kept in tmux, on the sessions themselves, so it survives this
+    // binary's restarts (CI installs one several times a working day) and a second
+    // phone sees the same row.
+    assert.equal(stand.tmux(['show-options', '-v', '-t', 'gamma', '@pockterm-order']).trim(), '1');
+    await page.goto(stand.base);
+    await page.waitForFunction(
+      () => document.querySelectorAll('#tabs button[data-session]').length === 3, null, { timeout: 10000 });
+    assert.deepEqual(await strip(), ['gamma', 'alpha', 'beta'], 'the order did not survive a reload');
+  });
+
+  test('a session started later lands at the end, not in the middle', async () => {
+    // A placed row is somebody's arrangement; a new session has no place in it yet
+    // and must not be inserted into one by its name.
+    const { page } = stand;
+    await stand.openDrawer();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset="shell"]');
+    await page.waitForFunction(
+      () => document.querySelectorAll('#tabs button[data-session]').length === 4, null, { timeout: 8000 });
+    const names = await strip();
+    assert.deepEqual(names.slice(0, 3), ['gamma', 'alpha', 'beta'], 'the new session moved the placed ones');
+  });
+});
+
 describe('the session list is a drawer', () => {
   let stand;
   before(async () => { stand = await startStand({ sessions: ['demo', 'other'] }); });

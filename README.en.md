@@ -285,6 +285,24 @@ Whether the Settings panel is open is **remembered**: closing the drawer collaps
 it without answering for you, so it comes back the way it was left — on the next
 visit to the drawer and after a reload.
 
+### The order of the tabs: hold one and carry it
+
+tmux orders its sessions by name, which is the one order nobody chose. The strip is
+read left to right dozens of times a day, and the session you keep coming back to is
+not the one whose name sorts first.
+
+The gesture is the same press that makes a tab explain its mark: **hold** and the tab
+lifts (with that plate under it), **move** and the row rearranges, let go and the
+order is saved. A press that does not travel is still just the question about the
+mark. A plain drag is no good for this — that scrolls the strip, which is wider than
+the screen.
+
+The order is kept in tmux itself, as an option on the session (`@pockterm-order`,
+beside the button's stamp): it survives restarts of the binary (CI installs one
+several times a day), a second phone sees the same row, and a session that is closed
+takes its slot with it. A session started after the last drag lands at the end of the
+strip rather than in the middle of somebody's arrangement.
+
 ### The tab strip: the colour says what the session is doing
 
 A tab answers three different questions and says them three different ways:

@@ -5,6 +5,7 @@ package tmuxcmd
 import (
 	"fmt"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -65,6 +66,13 @@ type Session struct {
 	// *opened*, which is a different fact and drifts: a session named after ~/work
 	// spent an afternoon in ~/work/self, and nothing on the phone said so.
 	Dir string `json:"dir,omitempty"`
+	// Where the owner dragged this tab to, 1-based; 0 for a session nobody has
+	// placed. Kept in tmux beside the kind (see OrderOption) rather than in a file
+	// of this server's, for the same three reasons: CI restarts this binary several
+	// times a working day, a second phone must see the same strip, and a session
+	// that is closed takes its slot with it instead of leaving a hole in a list
+	// somewhere.
+	Order int `json:"-"`
 }
 
 // KindOption is the tmux session option the Makefile stamps the button on, and
@@ -73,13 +81,20 @@ type Session struct {
 // them in a format like any other field.
 const KindOption = "@pockterm-kind"
 
+// OrderOption is where a tab's place in the strip is kept: a user option on the
+// session, like the kind. tmux sorts its own list by name, which is the one order
+// nobody chose — the strip is read left to right dozens of times a day and the
+// session you keep coming back to is not the one whose name sorts first.
+const OrderOption = "@pockterm-order"
+
 // listFormat keeps the field order ParseSessions expects.
 //
 // pane_start_command is the last field on purpose: it is the only one that can
 // carry a tab, and a stray one there costs a field nobody parses rather than
 // shifting every field after it.
 const listFormat = "#{session_name}\t#{session_windows}\t#{session_created}\t#{session_attached}" +
-	"\t#{session_group}\t#{" + KindOption + "}\t#{pane_current_path}\t#{pane_start_command}"
+	"\t#{session_group}\t#{" + KindOption + "}\t#{pane_current_path}\t#{" + OrderOption + "}" +
+	"\t#{pane_start_command}"
 
 // ListSessions returns the argv listing sessions one per line in the
 // tab-separated order ParseSessions parses.
@@ -116,11 +131,15 @@ func ParseSessions(out string) []Session {
 		if len(f) > 6 {
 			dir = f[6]
 		}
+		order := 0
+		if len(f) > 7 {
+			order, _ = strconv.Atoi(f[7])
+		}
 		// Nobody stamped this one — started before the Makefile knew how, or by
 		// hand. The command the pane was created with still answers the coarse
 		// half of the question, and only that half: see KindFromStart.
-		if kind == "" && len(f) > 7 {
-			kind = KindFromStart(f[7])
+		if kind == "" && len(f) > 8 {
+			kind = KindFromStart(f[8])
 		}
 		sessions = append(sessions, Session{
 			Name:     f[0],
@@ -130,6 +149,7 @@ func ParseSessions(out string) []Session {
 			Group:    group,
 			Kind:     kind,
 			Dir:      dir,
+			Order:    order,
 		})
 	}
 	return sessions
@@ -170,6 +190,42 @@ func KindFromStart(start string) string {
 		return "shell"
 	}
 	return ""
+}
+
+// SetOrder is the argv that writes a tab's place onto the session.
+//
+// One session per call: tmux takes a single -t, and doing them one at a time
+// means a strip that is half-renumbered rather than one that failed as a whole —
+// the page sends the order it drew, so the next save fixes any gap.
+//
+// No "=" before the name, the same trap set-option sets for the kind: it reads
+// its -t as a pane and answers "no such session: =claude" for the exact-match
+// form, so the stamp silently never lands.
+func SetOrder(name string, order int) []string {
+	return []string{"tmux", "set-option", "-t", name, OrderOption, strconv.Itoa(order)}
+}
+
+// SortByOrder puts the sessions in the order the owner dragged them into, and
+// leaves everything else where tmux had it.
+//
+// Placed sessions come first, by their number; the unplaced follow in tmux's own
+// order, which is by name. That is what a session started after the last drag
+// gets: the end of the strip rather than a place among tabs somebody arranged,
+// and it stays there until the next drag numbers everything again.
+func SortByOrder(sessions []Session) []Session {
+	out := make([]Session, len(sessions))
+	copy(out, sessions)
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i].Order, out[j].Order
+		if (a > 0) != (b > 0) {
+			return a > 0
+		}
+		if a > 0 && a != b {
+			return a < b
+		}
+		return false // stable: tmux's own order decides the rest
+	})
+	return out
 }
 
 // NameConflict reports why name cannot be given to a session, or nil.

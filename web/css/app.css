@@ -133,6 +133,14 @@ html, body {
   border-radius: 6px;
 }
 #tabs button.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+/* Carried: the tab under the finger while the row is being rearranged. Lifted
+   rather than moved by hand — the row itself rearranges under it, so what this
+   has to say is only which tab the finger owns. */
+#tabs button.dragging {
+  opacity: 0.9;
+  transform: scale(1.06);
+  box-shadow: 0 2px 8px #0008;
+}
 /* Gone quiet after doing something — the watcher's "done", the same state the
    finished notification is raised from. */
 #tabs button.done { background: #1d3a2b; color: #7fdca4; }

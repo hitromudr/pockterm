@@ -1457,3 +1457,65 @@ func TestTheSizeTheClientAsksForIsTheSizeItAttachesAt(t *testing.T) {
 		}
 	}
 }
+
+func TestTheStripKeepsTheOrderItWasDraggedInto(t *testing.T) {
+	// tmux sorts its list by name, which is the one order nobody chose. The order
+	// the owner dragged the tabs into is a session option, so it is applied where
+	// the list is served — the drawer and the strip read the same list, and they
+	// must not disagree about it.
+	o := testOptions("")
+	o.ListSessions = func() ([]tmuxcmd.Session, error) {
+		return []tmuxcmd.Session{
+			{Name: "aaa"},
+			{Name: "work", Order: 2},
+			{Name: "devops", Order: 1},
+		}, nil
+	}
+	var got []string
+	o.OrderSessions = func(names []string) error { got = names; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var list []tmuxcmd.Session
+	if err := json.NewDecoder(res.Body).Decode(&list); err != nil {
+		t.Fatal(err)
+	}
+	names := []string{list[0].Name, list[1].Name, list[2].Name}
+	if names[0] != "devops" || names[1] != "work" || names[2] != "aaa" {
+		t.Fatalf("order = %v, want the placed ones first", names)
+	}
+
+	// And the page hands back the row it drew, by name.
+	resp, err := http.Post(srv.URL+"/api/sessions/order", "application/json",
+		strings.NewReader(`{"names":["work","devops"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if len(got) != 2 || got[0] != "work" {
+		t.Fatalf("the order did not reach the host: %v", got)
+	}
+}
+
+func TestOrderingIsAbsentWithoutIt(t *testing.T) {
+	// A host that cannot reorder says so, and the page then leaves the gesture off
+	// rather than pretending a drag was saved.
+	srv := testServer(t, "")
+	resp, err := http.Post(srv.URL+"/api/sessions/order", "application/json",
+		strings.NewReader(`{"names":["a"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+}

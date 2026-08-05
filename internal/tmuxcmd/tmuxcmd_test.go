@@ -159,10 +159,12 @@ func TestParseSessionsReadsTheKind(t *testing.T) {
 	// Lines as tmux prints them for the format this asks for: the stamped option,
 	// then the command the pane was created with — quoted by tmux when it has a
 	// space in it.
-	out := "natal\t1\t1754226692\t0\tnatal\tyolo\t/home/dms/work/self\t\"agent-run --dangerously-skip-permissions\"\n" +
-		"qwen\t1\t1754226700\t0\t\tcustom:b2\t/home/dms/work\t\"AGENT_COMMAND=qwen agent-run\"\n" +
-		"build\t1\t1754226800\t0\t\t\t/home/dms/work\t/usr/bin/zsh\n" +
-		"deploy\t1\t1754226900\t0\t\t\t/home/dms\t\"bash -lc \\\"make deploy\\\"\"\n" +
+	// The empty field before the command is the tab's place in the strip, which
+	// nobody dragged here: see OrderOption.
+	out := "natal\t1\t1754226692\t0\tnatal\tyolo\t/home/dms/work/self\t\t\"agent-run --dangerously-skip-permissions\"\n" +
+		"qwen\t1\t1754226700\t0\t\tcustom:b2\t/home/dms/work\t\t\"AGENT_COMMAND=qwen agent-run\"\n" +
+		"build\t1\t1754226800\t0\t\t\t/home/dms/work\t\t/usr/bin/zsh\n" +
+		"deploy\t1\t1754226900\t0\t\t\t/home/dms\t\t\"bash -lc \\\"make deploy\\\"\"\n" +
 		"old\t1\t1754227000\t0\t\n"
 	got := ParseSessions(out)
 	if len(got) != 5 {
@@ -283,5 +285,67 @@ func TestParseStatusLines(t *testing.T) {
 		if got := ParseStatusLines(out); got != want {
 			t.Fatalf("ParseStatusLines(%q) = %d, want %d", out, got, want)
 		}
+	}
+}
+
+func TestOrderTravelsWithTheSessionList(t *testing.T) {
+	// The strip's order is a fact about the session, kept in tmux beside the kind:
+	// this binary is restarted by CI several times a working day, and a second
+	// phone has to see the same row.
+	line := "work\t1\t1700000000\t0\tgroup\tclaude\t/home/dms/work\t3\tagent-run"
+	got := ParseSessions(line)
+	if len(got) != 1 {
+		t.Fatalf("parsed %d sessions", len(got))
+	}
+	if got[0].Order != 3 {
+		t.Errorf("order = %d, want 3", got[0].Order)
+	}
+	if got[0].Kind != "claude" || got[0].Dir != "/home/dms/work" {
+		t.Errorf("the new field shifted the others: %+v", got[0])
+	}
+	// A session nobody placed says nothing, the same as one nobody stamped.
+	none := ParseSessions("plain\t1\t1700000000\t0\t\t\t/tmp\t\tzsh")
+	if none[0].Order != 0 {
+		t.Errorf("an unplaced session came out as %d", none[0].Order)
+	}
+}
+
+func TestSortByOrderPutsThePlacedFirst(t *testing.T) {
+	// Placed sessions in their own order; everything else stays where tmux had it,
+	// after them. A session started since the last drag therefore lands at the end
+	// of the strip rather than in the middle of a row somebody arranged.
+	in := []Session{
+		{Name: "aaa"},
+		{Name: "third", Order: 3},
+		{Name: "bbb"},
+		{Name: "first", Order: 1},
+	}
+	var names []string
+	for _, s := range SortByOrder(in) {
+		names = append(names, s.Name)
+	}
+	want := []string{"first", "third", "aaa", "bbb"}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Fatalf("order = %v, want %v", names, want)
+		}
+	}
+	// The input is left alone: the caller may be holding it.
+	if in[0].Name != "aaa" {
+		t.Error("SortByOrder sorted its argument in place")
+	}
+}
+
+func TestSetOrderTakesThePlainName(t *testing.T) {
+	// The same trap as the kind: set-option reads its -t as a pane, so the
+	// exact-match "=" prefix the other session commands take makes it answer
+	// "no such session" and the stamp silently never lands.
+	argv := SetOrder("claude-2", 4)
+	joined := strings.Join(argv, " ")
+	if !strings.Contains(joined, "set-option -t claude-2 "+OrderOption+" 4") {
+		t.Fatalf("argv = %q", joined)
+	}
+	if strings.Contains(joined, "=claude-2") {
+		t.Error(`set-option -t "=<name>" never lands`)
 	}
 }

@@ -402,6 +402,42 @@ words appear in the line an agent prints when a turn ends ("Cogitated for 2m 23s
 about now — that one is skipped by its wording, and output scrolled above the last
 few lines is out of range by position.
 
+## The row is the owner's, and a held tab is carried
+
+tmux orders its sessions by name, which is the one order nobody chose: the strip is
+read left to right dozens of times a day, and the session you keep coming back to is
+not the one whose name sorts first.
+
+**The gesture is the press that already existed.** A hold picks the tab up — and
+puts the plate under it, which is what the hold used to be for on its own — travel
+then rearranges the row, and a press that does not travel is still just the question
+about the mark. Which of the two it was is decided by the finger rather than by a
+mode. Not a plain drag: that scrolls the strip, which a row wider than the screen
+needs, so the pickup costs a hold exactly like the plate. The one non-passive
+listener here is that `touchmove`, because while a tab is being carried the browser
+must not take the gesture as its own sideways scroll.
+
+**The order lives in tmux, on the sessions themselves** (`@pockterm-order`, beside
+`@pockterm-kind`), for the same three reasons the kind does: CI restarts this binary
+several times a working day, a second phone must see the same row, and a session
+that is closed takes its slot with it instead of leaving a hole in a list somewhere.
+`SortByOrder` puts the placed ones first, in their numbers, and leaves everything
+else where tmux had it — so a session started after the last drag lands at the end
+of the strip rather than in the middle of a row somebody arranged. The sort is
+applied where the list is served, not in the page, because the drawer's list and the
+strip must not disagree about it.
+
+The page sends **names, not indices** (`/api/sessions/order`), and the server stamps
+each one with its place: a session closed between the drag and the save is then
+simply not found, which costs nothing — the row is redrawn from tmux on the next
+poll anyway. Every name is checked against the list the server itself just produced,
+because the value reaches a tmux command line.
+
+`renderTabs` refuses to rebuild the row while a tab is being carried, and
+`saveTabOrder` writes the new signature itself: a rebuild takes the button out from
+under the finger, and on a WebView it hands focus back to the terminal, which raises
+the keyboard.
+
 ## A tab also says what it is, and that is a different question
 
 Colour says what a session is doing; **form says what it is**. A tab carries the

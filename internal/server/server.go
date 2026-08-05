@@ -72,6 +72,11 @@ type Options struct {
 	Folders     func() (root string, dirs []string, err error)
 	RenameSess  func(from, to string) error // rename a session; nil disables /api/sessions/rename
 	KillSession func(name string) error     // close a session; nil disables /api/sessions/kill
+	// OrderSessions writes the order the owner dragged the tabs into; nil leaves
+	// /api/sessions/order absent. The whole strip travels, not a move: the page
+	// holds the row it just drew, and two phones dragging at once then end with
+	// whichever saved last rather than with a list nobody arranged.
+	OrderSessions func(names []string) error
 	// Buttons and SetButtons are the session buttons under "+": the four the
 	// page starts with and whatever the owner added beside them. nil leaves
 	// /api/presets absent, which is a host where the four cannot be edited.
@@ -107,6 +112,7 @@ func Handler(o Options) http.Handler {
 	mux.HandleFunc("/api/sessions/new", func(w http.ResponseWriter, r *http.Request) { serveNewSession(o, w, r) })
 	mux.HandleFunc("/api/sessions/rename", func(w http.ResponseWriter, r *http.Request) { serveRename(o, w, r) })
 	mux.HandleFunc("/api/sessions/kill", func(w http.ResponseWriter, r *http.Request) { serveKill(o, w, r) })
+	mux.HandleFunc("/api/sessions/order", func(w http.ResponseWriter, r *http.Request) { serveOrder(o, w, r) })
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) { serveWS(o, w, r) })
 	return mux
 }
@@ -143,6 +149,11 @@ func serveSessions(o Options, w http.ResponseWriter, r *http.Request) {
 	if sessions == nil {
 		sessions = []tmuxcmd.Session{}
 	}
+	// In the order the owner dragged the tabs into, which is the only order anybody
+	// chose: tmux sorts its own list by name, and the session you keep coming back
+	// to is not the one whose name sorts first. Applied here rather than in the page
+	// so the drawer's list and the strip cannot disagree about it.
+	sessions = tmuxcmd.SortByOrder(sessions)
 	// What each session is doing, from the watcher that reads the panes. The
 	// page paints a tab with it — and it rides along with the list rather than
 	// having its own endpoint, because a name and its state fetched separately
@@ -322,6 +333,39 @@ func serveNewSession(o Options, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := o.StartSession(req.Preset, req.Dir); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// serveOrder takes the order the tabs were dragged into.
+//
+// Names and not indices: the page sends the strip it drew, and the server stamps
+// each session with its place. A session that has since been closed is simply not
+// found — the strip is redrawn from tmux on the next poll anyway, so a stale name
+// costs nothing and is not worth refusing the whole list for.
+func serveOrder(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.OrderSessions == nil {
+		http.Error(w, "the strip cannot be reordered on this host", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "post the order", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Names []string `json:"names"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<13)).Decode(&req); err != nil {
+		http.Error(w, "unreadable request", http.StatusBadRequest)
+		return
+	}
+	if err := o.OrderSessions(req.Names); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

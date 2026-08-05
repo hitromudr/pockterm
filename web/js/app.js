@@ -19,7 +19,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v111';
+const APP_VERSION = 'v112';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -975,6 +975,9 @@ function attach(name) {
 // to go — the tab you were sitting in would have been the only one that could
 // not tell you whether its agent was still running.
 async function renderTabs() {
+  // Not while a tab is being carried: the row is the thing being rearranged, and
+  // rebuilding it would take the button out from under the finger.
+  if (dragName) return;
   const { sessions } = await fetchSessions();
   const names = sessions.map((s) => s.name).join('\u0000');
 
@@ -1095,6 +1098,54 @@ function showKindHelp(btn) {
 const kinds = new Map();
 function kindOf(name) { return kinds.get(name) || ''; }
 
+// --- carrying a tab to another place in the row ---
+//
+// The order is the owner's, because tmux's own is by name — the one order nobody
+// chose, and the session you keep coming back to is not the one that sorts first.
+//
+// The gesture is the press that already existed. A hold picks the tab up (and puts
+// the plate under it, which is what the hold used to be for on its own); moving
+// then rearranges the row, and the plate goes because the question has been
+// answered by the tab starting to move. A press that does not travel is still just
+// the question. One gesture, and which of the two it was is decided by the finger
+// rather than by a mode.
+//
+// Not the plain drag: that scrolls the strip, which is what a row wider than the
+// screen needs. So the pickup costs a hold, exactly like the plate.
+let dragName = null;
+let dragMoved = false;
+
+function tabButton(name) {
+  for (const b of tabsEl.querySelectorAll('button[data-session]')) {
+    if (b.dataset.session === name) return b;
+  }
+  return null;
+}
+
+// The order the row is in now, which is what the host is told. Names and not
+// indices: a session closed between the drag and the save is then simply absent.
+async function saveTabOrder() {
+  const names = [...tabsEl.querySelectorAll('button[data-session]')].map((b) => b.dataset.session);
+  if (!names.length) return;
+  try {
+    const res = await fetch(`/api/sessions/order?${tokenQS}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ names }),
+    });
+    if (!res.ok) {
+      // A host that cannot reorder, or a name it did not like. The next poll
+      // redraws the row from tmux, so the drag simply does not stick.
+      report('tab-order', { ok: false, status: res.status });
+      return;
+    }
+    // The row already looks like this, so the next poll must not rebuild it and
+    // take the keyboard with it.
+    tabsSignature = names.join('\u0000');
+    report('tab-order', { ok: true, count: names.length });
+  } catch (_) { /* offline: the row snaps back on the next poll */ }
+}
+
 // The press is watched on the strip, not on each tab: the row is rebuilt whenever
 // the set of sessions changes, and listeners on it would go with it.
 if (tabsEl) {
@@ -1107,22 +1158,57 @@ if (tabsEl) {
     if (!btn || e.touches.length !== 1) return;
     const t = e.touches[0];
     helpStart = { x: t.clientX, y: t.clientY };
-    helpTimer = setTimeout(() => { helpTimer = null; showKindHelp(btn); }, HELP_HOLD_MS);
+    helpTimer = setTimeout(() => {
+      helpTimer = null;
+      showKindHelp(btn);
+      dragName = btn.dataset.session;
+      dragMoved = false;
+      btn.classList.add('dragging');
+    }, HELP_HOLD_MS);
   }, { passive: true });
-  // A finger that travels is scrolling the strip, which is what a strip of tabs
-  // wider than the screen is for. That gesture must not end in a plate.
+  // A finger that travels before the hold is up is scrolling the strip, which is
+  // what a strip of tabs wider than the screen is for. That gesture must not end
+  // in a plate. After the hold, the same travel carries the tab instead.
   tabsEl.addEventListener('touchmove', (e) => {
+    if (dragName) {
+      // The row is being rearranged, not scrolled. Not passive for this one line:
+      // the browser would take the gesture as its own sideways scroll.
+      e.preventDefault();
+      const t = e.touches[0];
+      if (!dragMoved) { dragMoved = true; if (kindHelpEl) kindHelpEl.hidden = true; }
+      const held = tabButton(dragName);
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      const over = el && el.closest('#tabs button[data-session]');
+      if (held && over && over !== held) {
+        // Past the middle of the tab under the finger means after it: the same
+        // rule in both directions, so a tab does not swap back and forth while
+        // the finger sits on a boundary.
+        const r = over.getBoundingClientRect();
+        const after = t.clientX > r.left + r.width / 2;
+        tabsEl.insertBefore(held, after ? over.nextSibling : over);
+      }
+      return;
+    }
     if (!helpTimer || !helpStart) return;
     const t = e.touches[0];
     if (Math.abs(t.clientX - helpStart.x) > 10 || Math.abs(t.clientY - helpStart.y) > 10) {
       clearTimeout(helpTimer);
       helpTimer = null;
     }
-  }, { passive: true });
+  }, { passive: false });
   for (const end of ['touchend', 'touchcancel']) {
     tabsEl.addEventListener(end, () => {
       if (helpTimer) { clearTimeout(helpTimer); helpTimer = null; }
       helpStart = null;
+      if (dragName) {
+        const held = tabButton(dragName);
+        if (held) held.classList.remove('dragging');
+        const moved = dragMoved;
+        dragName = null;
+        dragMoved = false;
+        // Nothing to save for a press that only asked what the tab is.
+        if (moved) saveTabOrder();
+      }
     }, { passive: true });
   }
 }
