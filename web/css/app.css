@@ -135,11 +135,13 @@ html, body {
 #tabs button.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 /* Carried: the tab under the finger while the row is being rearranged. Lifted
    rather than moved by hand — the row itself rearranges under it, so what this
-   has to say is only which tab the finger owns. */
+   has to say is only which tab the finger owns.
+
+   A ring rather than a shade: the hand holding it covers the tab, so the only
+   part of the lift anyone can see is what sticks out around the finger. */
 #tabs button.dragging {
-  opacity: 0.9;
-  transform: scale(1.06);
-  box-shadow: 0 2px 8px #0008;
+  transform: scale(1.08);
+  box-shadow: 0 0 0 2px var(--accent), 0 4px 12px #000a;
 }
 /* Gone quiet after doing something — the watcher's "done", the same state the
    finished notification is raised from. */
@@ -271,6 +273,11 @@ html, body {
   pointer-events: none;
   white-space: nowrap;
 }
+/* The same plate while a tab is carried, and a different claim: not what this
+   mark means but which session is in hand and where it has got to. Framed in the
+   accent so the two are not read as one thing, and dropped clear of the thumb by
+   js (CARRY_DROP) rather than sitting under the tab. */
+#kind-help.carrying { border-color: var(--accent); color: var(--accent); }
 
 /* Someone who has asked not to be moved gets the colour and not the movement —
    the state is information, the animation is only how it is told. */

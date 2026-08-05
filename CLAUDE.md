@@ -447,6 +447,29 @@ needs, so the pickup costs a hold exactly like the plate. The one non-passive
 listener here is that `touchmove`, because while a tab is being carried the browser
 must not take the gesture as its own sideways scroll.
 
+**Where the tab goes is the finger's x, and reading the y as well is what broke
+it.** The first version asked `elementFromPoint` what was under the finger and
+inserted the held tab beside whatever tab that was — which needs the finger to stay
+inside a strip 34 pixels tall at the very top edge of the screen. A thumb travelling
+sideways across it arcs out of it within a centimetre, the point then lands on the
+terminal, and the row stops rearranging while the gesture is plainly still going:
+reported from the phone as the carrying stopping when the finger is taken up or
+down. `dropIndex` in `web/js/carry.js` counts how many of the other tabs the finger
+is past the middle of, and there is no y to pass it — vertical travel during a carry
+means nothing, because there is one row and no second place to drop a tab.
+
+**And the hand holding the tab covers it.** Everything the carry had to say was said
+under the finger: the tab lifts, the row rearranges beneath it, and none of that is
+visible to whoever is doing it — "под пальцем не видно". Two answers, both about what
+sticks out around a thumb. The lift is a ring in the accent colour rather than a
+shade, since a shade is only readable on the part that is hidden. And the plate stays
+— the same `#kind-help` that answered what the mark means, now saying which session is
+in hand and following it along the row, dropped `CARRY_DROP` (44px) below the strip
+rather than the 4px the question's plate uses, which is under the pad of the finger.
+It is one element and two claims, so it carries `carrying` while it is making the
+second, and the question's own timer is cleared: a carry lasts as long as it lasts,
+where the answer about a mark expires.
+
 **The order lives in tmux, on the sessions themselves** (`@pockterm-order`, beside
 `@pockterm-kind`), for the same three reasons the kind does: CI restarts this binary
 several times a working day, a second phone must see the same row, and a session

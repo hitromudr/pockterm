@@ -10,6 +10,7 @@ import { Scroller, movedWholeScreen } from './scroll.js';
 import { staleNotice } from './update.js';
 import { endingKeys } from './ender.js';
 import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, MARKS, CUSTOM_MARK } from './kinds.js';
+import { dropIndex } from './carry.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -19,7 +20,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v115';
+const APP_VERSION = 'v116';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1143,7 +1144,19 @@ function hideKindHelp() {
   if (helpTimer) { clearTimeout(helpTimer); helpTimer = null; }
   if (helpHide) { clearTimeout(helpHide); helpHide = null; }
   helpStart = null;
-  if (kindHelpEl) kindHelpEl.hidden = true;
+  if (kindHelpEl) {
+    kindHelpEl.hidden = true;
+    kindHelpEl.classList.remove('carrying');
+  }
+}
+
+// placePlate puts the plate under the box it is about, clamped to the screen: the
+// strip scrolls sideways, so a tab can sit at either edge of it.
+function placePlate(r, drop, centred) {
+  const w = kindHelpEl.offsetWidth;
+  const want = centred ? r.left + r.width / 2 - w / 2 : r.left;
+  kindHelpEl.style.left = `${Math.max(4, Math.min(want, window.innerWidth - w - 4))}px`;
+  kindHelpEl.style.top = `${r.bottom + drop}px`;
 }
 
 // showKindHelp puts the plate under the tab it is about, clamped to the screen:
@@ -1158,13 +1171,34 @@ function showKindHelp(btn) {
   if (!what) return;
   kindHelpEl.textContent = mark ? `${mark} ${what}` : what;
   kindHelpEl.hidden = false;
-  const r = btn.getBoundingClientRect();
-  const w = kindHelpEl.offsetWidth;
-  const left = Math.max(4, Math.min(r.left, window.innerWidth - w - 4));
-  kindHelpEl.style.left = `${left}px`;
-  kindHelpEl.style.top = `${r.bottom + 4}px`;
+  kindHelpEl.classList.remove('carrying');
+  placePlate(btn.getBoundingClientRect(), 4, false);
   helpHeld = true;
   helpHide = setTimeout(hideKindHelp, HELP_SHOWN_MS);
+}
+
+// The plate while a tab is being carried, and the finger is why it exists: the
+// hand holding the tab covers it, so the row rearranges under something you
+// cannot see. It says which session is in hand and it follows the tab, so where
+// the tab has got to is readable without lifting the finger to look.
+//
+// Dropped clear of the thumb rather than sitting under the tab like the other
+// plate — a pad is about a centimetre and a half, and a plate four pixels below
+// the strip is under it.
+const CARRY_DROP = 44;
+
+function paintCarryPlate(btn) {
+  if (!kindHelpEl || !btn) return;
+  // The question's plate goes away by itself after a few seconds; this one stands
+  // for as long as the tab is in hand, however long that is.
+  if (helpHide) { clearTimeout(helpHide); helpHide = null; }
+  const name = btn.dataset.session;
+  const mark = kindMark(kindOf(name), customButtons);
+  kindHelpEl.textContent = mark ? `${mark} ${name}` : name;
+  kindHelpEl.hidden = false;
+  kindHelpEl.classList.add('carrying');
+  // Centred under the tab, since this one is about where the tab is.
+  placePlate(btn.getBoundingClientRect(), CARRY_DROP, true);
 }
 
 // The kind of a session as the last poll reported it. Read from the strip rather
@@ -1250,18 +1284,18 @@ if (tabsEl) {
       // the browser would take the gesture as its own sideways scroll.
       e.preventDefault();
       const t = e.touches[0];
-      if (!dragMoved) { dragMoved = true; if (kindHelpEl) kindHelpEl.hidden = true; }
+      dragMoved = true;
       const held = tabButton(dragName);
-      const el = document.elementFromPoint(t.clientX, t.clientY);
-      const over = el && el.closest('#tabs button[data-session]');
-      if (held && over && over !== held) {
-        // Past the middle of the tab under the finger means after it: the same
-        // rule in both directions, so a tab does not swap back and forth while
-        // the finger sits on a boundary.
-        const r = over.getBoundingClientRect();
-        const after = t.clientX > r.left + r.width / 2;
-        tabsEl.insertBefore(held, after ? over.nextSibling : over);
-      }
+      if (!held) return;
+      // Where it goes is the finger's x and nothing else — see js/carry.js for
+      // what reading the y as well cost. The tab keeps being carried after the
+      // finger has left the strip, because there is nowhere else for it to go.
+      const others = [...tabsEl.querySelectorAll('button[data-session]')].filter((b) => b !== held);
+      const before = others[dropIndex(others.map((b) => b.getBoundingClientRect()), t.clientX)] || null;
+      // Only when it actually changes: insertBefore of a node already there is a
+      // remove and an add, and the button is under a finger.
+      if (held.nextElementSibling !== before) tabsEl.insertBefore(held, before);
+      paintCarryPlate(held);
       return;
     }
     if (!helpTimer || !helpStart) return;
@@ -1281,8 +1315,10 @@ if (tabsEl) {
         const moved = dragMoved;
         dragName = null;
         dragMoved = false;
-        // Nothing to save for a press that only asked what the tab is.
-        if (moved) saveTabOrder();
+        // Nothing to save for a press that only asked what the tab is — and that
+        // one keeps its plate for the few seconds it is allowed, where a carry's
+        // goes with the finger that was holding the tab.
+        if (moved) { hideKindHelp(); saveTabOrder(); }
       }
     }, { passive: true });
   }

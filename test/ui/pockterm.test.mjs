@@ -192,12 +192,32 @@ describe('the order of the tabs', () => {
     // fires a timer late, and a tap that was not held is a different gesture.
     await page.waitForTimeout(700);
     const target = Math.round(to.x + 4);
+    // The finger leaves the strip on the way, which is what a thumb does: the row
+    // is 34px tall at the very top edge of the screen and a sideways travel arcs
+    // out of it within a centimetre. The carry reads the x and nothing else, so
+    // this must rearrange the row exactly as a travel along the strip does — it
+    // did not, and that is what was reported as the carrying stopping.
+    let below = y;
     while (x > target) {
       x = Math.max(target, x - 20);
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+      below = Math.min(below + 25, y + 200);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: below }] });
       await page.waitForTimeout(30);
     }
+    // And the finger covers the tab it is holding, so what is in hand is said on a
+    // plate below it — the row rearranging under a thumb is otherwise unreadable.
+    const plate = await page.evaluate(() => {
+      const el = document.getElementById('kind-help');
+      if (!el || el.hidden) return null;
+      return { text: el.textContent, carrying: el.classList.contains('carrying'), top: el.getBoundingClientRect().top };
+    });
+    assert.ok(plate, 'nothing says which tab is being carried');
+    assert.ok(plate.carrying && plate.text.includes('gamma'), `the plate says ${plate?.text}`);
+    assert.ok(plate.top > from.y + from.height + 20, 'the plate sits under the thumb holding the tab');
+
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    assert.equal(await page.evaluate(() => document.getElementById('kind-help').hidden), true,
+      'the plate outlived the finger that was carrying the tab');
 
     await page.waitForFunction(
       () => document.querySelector('#tabs button[data-session]').dataset.session === 'gamma',
