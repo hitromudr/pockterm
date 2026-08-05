@@ -523,6 +523,62 @@ func TestTailSkipsTheInterface(t *testing.T) {
 	}
 }
 
+func TestTailPutsBackWhatThePaneWrapped(t *testing.T) {
+	// Captured off `xnt` on the owner's host, a pane 51 columns wide because this
+	// page attaches phones and tmux gives a shared window the size of its newest
+	// client. The body that reached the phone was the first line and nothing else
+	// — "API Error: 529 Overloaded. This is a" — and the same message in a session
+	// last attached from a laptop (175 columns) arrived whole. That difference is
+	// the whole defect: the wrapping is the pane's, not the agent's.
+	pane := []string{
+		"● Bash(laptop-run --stdin -d",
+		"      /home/dms/work/lendrail-tests bash 2>&1",
+		"      <<'OUTER'…)",
+		"",
+		"● API Error: 529 Overloaded. This is a",
+		"  server-side issue, usually temporary —",
+		"  try again in a moment. If it persists,",
+		"  check https://status.claude.com.",
+		"",
+		"────────────────────────────────",
+		"❯ ",
+	}
+	want := "API Error: 529 Overloaded. This is a server-side issue, usually temporary — " +
+		"try again in a moment. If it persists, check https://status.claude.com."
+	if got := Tail(pane); got != want {
+		t.Fatalf("Tail = %q, want the sentence put back together", got)
+	}
+
+	// The paragraph ends where the pane says it does, and each of these ends it:
+	// nothing that follows belongs to the sentence.
+	for _, stop := range []struct {
+		what string
+		line string
+	}{
+		{"a blank line", ""},
+		{"what a tool answered", "  ⎿  Read 40 lines"},
+		{"a line back at the margin", "какой-то вывод у левого края"},
+		{"the input box", "╭────────────╮"},
+		{"the status line", "  ctx 61% | dms@ai:~/work (main) $ | Opus 5"},
+	} {
+		got := Tail([]string{"● Первая строка фразы,", "  её продолжение.", stop.line})
+		if got != "Первая строка фразы, её продолжение." {
+			t.Errorf("%s did not end the paragraph: Tail = %q", stop.what, got)
+		}
+	}
+
+	// Two things said, and the later one is the answer: an earlier sentence's
+	// continuation must not be glued to it.
+	if got := Tail([]string{"● Первая фраза,", "  её продолжение.", "● Вторая фраза."}); got != "Вторая фраза." {
+		t.Errorf("Tail = %q, want the later sentence alone", got)
+	}
+
+	// An unwrapped sentence is unchanged: the common case must not grow a space.
+	if got := Tail([]string{"● Готово.", "", "❯ "}); got != "Готово." {
+		t.Errorf("Tail = %q, want the line as it was", got)
+	}
+}
+
 func TestTailSkipsTheStatusLineAndTheTurnSummary(t *testing.T) {
 	// The pane of a finished session, captured off this machine. What arrived on
 	// the phone as the whole body of "exante закончил" was the status line: how

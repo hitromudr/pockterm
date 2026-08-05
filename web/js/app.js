@@ -1223,6 +1223,9 @@ function kindOf(name) { return kinds.get(name) || ''; }
 // screen needs. So the pickup costs a hold, exactly like the plate.
 let dragName = null;
 let dragMoved = false;
+// When the strip was last touched, for telling a mouse from the mouse events a
+// touch leaves behind it.
+let lastTouchAt = 0;
 
 function tabButton(name) {
   for (const b of tabsEl.querySelectorAll('button[data-session]')) {
@@ -1255,10 +1258,43 @@ async function saveTabOrder() {
   } catch (_) { /* offline: the row snaps back on the next poll */ }
 }
 
+// carryTo puts the held tab where the pointer's x says it belongs. Shared by the
+// finger and the mouse: the row is one row, and two copies of this would be two
+// answers to where a tab goes.
+function carryTo(x) {
+  dragMoved = true;
+  const held = tabButton(dragName);
+  if (!held) return;
+  // The x and nothing else — see js/carry.js for what reading the y as well cost.
+  // The tab keeps being carried after the pointer has left the strip, because
+  // there is nowhere else for it to go.
+  const others = [...tabsEl.querySelectorAll('button[data-session]')].filter((b) => b !== held);
+  const before = others[dropIndex(others.map((b) => b.getBoundingClientRect()), x)] || null;
+  // Only when it actually changes: insertBefore of a node already there is a
+  // remove and an add, and the button is under a finger.
+  if (held.nextElementSibling !== before) tabsEl.insertBefore(held, before);
+  paintCarryPlate(held);
+}
+
+// dropCarry ends one, saving the row only if the tab actually travelled.
+function dropCarry() {
+  const held = tabButton(dragName);
+  if (held) held.classList.remove('dragging');
+  const moved = dragMoved;
+  dragName = null;
+  dragMoved = false;
+  // Nothing to save for a press that only asked what the tab is — and that one
+  // keeps its plate for the few seconds it is allowed, where a carry's goes with
+  // the finger that was holding the tab.
+  if (moved) { hideKindHelp(); saveTabOrder(); }
+  return moved;
+}
+
 // The press is watched on the strip, not on each tab: the row is rebuilt whenever
 // the set of sessions changes, and listeners on it would go with it.
 if (tabsEl) {
   tabsEl.addEventListener('touchstart', (e) => {
+    lastTouchAt = Date.now();
     const btn = e.target.closest('button[data-session]');
     hideKindHelp();
     // A new gesture: whatever the last one suppressed, it has had its click by
@@ -1283,19 +1319,7 @@ if (tabsEl) {
       // The row is being rearranged, not scrolled. Not passive for this one line:
       // the browser would take the gesture as its own sideways scroll.
       e.preventDefault();
-      const t = e.touches[0];
-      dragMoved = true;
-      const held = tabButton(dragName);
-      if (!held) return;
-      // Where it goes is the finger's x and nothing else — see js/carry.js for
-      // what reading the y as well cost. The tab keeps being carried after the
-      // finger has left the strip, because there is nowhere else for it to go.
-      const others = [...tabsEl.querySelectorAll('button[data-session]')].filter((b) => b !== held);
-      const before = others[dropIndex(others.map((b) => b.getBoundingClientRect()), t.clientX)] || null;
-      // Only when it actually changes: insertBefore of a node already there is a
-      // remove and an add, and the button is under a finger.
-      if (held.nextElementSibling !== before) tabsEl.insertBefore(held, before);
-      paintCarryPlate(held);
+      carryTo(e.touches[0].clientX);
       return;
     }
     if (!helpTimer || !helpStart) return;
@@ -1307,21 +1331,73 @@ if (tabsEl) {
   }, { passive: false });
   for (const end of ['touchend', 'touchcancel']) {
     tabsEl.addEventListener(end, () => {
+      lastTouchAt = Date.now();
       if (helpTimer) { clearTimeout(helpTimer); helpTimer = null; }
       helpStart = null;
-      if (dragName) {
-        const held = tabButton(dragName);
-        if (held) held.classList.remove('dragging');
-        const moved = dragMoved;
-        dragName = null;
-        dragMoved = false;
-        // Nothing to save for a press that only asked what the tab is — and that
-        // one keeps its plate for the few seconds it is allowed, where a carry's
-        // goes with the finger that was holding the tab.
-        if (moved) { hideKindHelp(); saveTabOrder(); }
-      }
+      if (dragName) dropCarry();
     }, { passive: true });
   }
+
+  // --- the same carry with a mouse ---
+  //
+  // The page is opened on a laptop as well, and there the row could not be
+  // rearranged at all: everything above listens for touches. Reported as the tabs
+  // not moving in the web version.
+  //
+  // No hold here, and that is not an inconsistency: the hold on a phone buys the
+  // gesture back from the strip's own sideways scroll, and a mouse scrolls it with
+  // a wheel instead of by pushing it. So a plain drag is free — pick up after a
+  // few pixels of travel, which is what tells a drag from the click that switches
+  // session.
+  //
+  // A touch produces mouse events of its own after it ends, and those must not be
+  // read as a second gesture: they would clear the suppression the hold just set
+  // and turn "what is this tab" into a switch to it. Anything within
+  // `AFTER_TOUCH` of a touch is that echo, not a mouse.
+  const MOUSE_PICKUP = 5;
+  const AFTER_TOUCH = 700;
+  let mouseFrom = null;
+  const echoOfTouch = () => Date.now() - lastTouchAt < AFTER_TOUCH;
+
+  tabsEl.addEventListener('mousedown', (e) => {
+    // Left button only: the other two belong to the browser.
+    if (e.button !== 0 || echoOfTouch()) return;
+    const btn = e.target.closest('button[data-session]');
+    // A new gesture, and whatever the last one suppressed has had its click by
+    // now. A drag that ends off the tab never produces one, so this is where the
+    // suppression is cleared rather than in the click handler alone.
+    helpHeld = false;
+    if (!btn) return;
+    mouseFrom = { x: e.clientX, name: btn.dataset.session };
+  });
+
+  // On the document, not the strip: the pointer leaves the row while dragging —
+  // the same reason the finger's y is not read.
+  document.addEventListener('mousemove', (e) => {
+    if (echoOfTouch()) return;
+    if (dragName && mouseFrom) {
+      // Without this the browser drags a selection along with the tab.
+      e.preventDefault();
+      carryTo(e.clientX);
+      return;
+    }
+    if (!mouseFrom || Math.abs(e.clientX - mouseFrom.x) < MOUSE_PICKUP) return;
+    const btn = tabButton(mouseFrom.name);
+    if (!btn) { mouseFrom = null; return; }
+    dragName = mouseFrom.name;
+    dragMoved = false;
+    btn.classList.add('dragging');
+    carryTo(e.clientX);
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!mouseFrom) return;
+    mouseFrom = null;
+    // A drag ends in a click on whatever the release landed on, and that click
+    // would switch session. `helpHeld` is what swallows it, exactly as it does
+    // for the press that only asks what a mark means.
+    if (dragName && dropCarry()) helpHeld = true;
+  });
 }
 // Anywhere else, and the plate goes. It is an answer, not a state.
 document.addEventListener('touchstart', (e) => {

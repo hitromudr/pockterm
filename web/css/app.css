@@ -140,6 +140,7 @@ html, body {
    A ring rather than a shade: the hand holding it covers the tab, so the only
    part of the lift anyone can see is what sticks out around the finger. */
 #tabs button.dragging {
+  cursor: grabbing; /* the mouse carries a tab too, and by a plain drag */
   transform: scale(1.08);
   box-shadow: 0 0 0 2px var(--accent), 0 4px 12px #000a;
 }

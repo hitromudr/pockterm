@@ -251,6 +251,40 @@ describe('the order of the tabs', () => {
     const names = await strip();
     assert.deepEqual(names.slice(0, 3), ['gamma', 'alpha', 'beta'], 'the new session moved the placed ones');
   });
+
+  test('a mouse carries a tab by a plain drag, with no hold', async () => {
+    // The page is opened on a laptop as well, and there the row could not be
+    // rearranged at all: every listener was for touches. No hold with a mouse —
+    // the hold on a phone buys the gesture back from the strip's own sideways
+    // scroll, and a mouse scrolls it with a wheel instead of by pushing it.
+    const { page } = stand;
+    await stand.shutDrawer();
+    const before = await strip();
+    const last = before[before.length - 1];
+    const from = await page.locator(`#tabs button[data-session="${last}"]`).boundingBox();
+    const head = await page.locator(`#tabs button[data-session="${before[0]}"]`).boundingBox();
+    const y = Math.round(from.y + from.height / 2);
+    await page.mouse.move(Math.round(from.x + from.width / 2), y);
+    await page.mouse.down();
+    let x = Math.round(from.x + from.width / 2);
+    const target = Math.round(head.x + 4);
+    while (x > target) {
+      x = Math.max(target, x - 20);
+      await page.mouse.move(x, y);
+      await page.waitForTimeout(20);
+    }
+    await page.mouse.up();
+
+    await page.waitForFunction(
+      (name) => document.querySelector('#tabs button[data-session]').dataset.session === name,
+      last, { timeout: 5000 });
+    assert.deepEqual(await strip(), [last, ...before.slice(0, -1)]);
+    // The release ends in a click, and that click must not switch session.
+    assert.equal(await page.evaluate(
+      () => document.querySelector('#tabs button.active')?.dataset.session), 'alpha');
+    assert.equal(stand.tmux(['show-options', '-v', '-t', last, '@pockterm-order']).trim(), '1',
+      'the mouse-carried order did not reach tmux');
+  });
 });
 
 describe('the session list is a drawer', () => {

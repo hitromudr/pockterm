@@ -117,7 +117,7 @@ func Tail(lines []string) string {
 		if s == "" || !hasWord(s) || toolCall.MatchString(s) || isChrome(s) {
 			continue
 		}
-		return s
+		return s + wrapped(lines, i)
 	}
 	for i := len(lines) - 1; i >= 0; i-- {
 		s := strings.TrimSpace(strings.Trim(strings.TrimSpace(lines[i]), boxRunes))
@@ -127,6 +127,60 @@ func Tail(lines []string) string {
 		return s
 	}
 	return ""
+}
+
+// wrapped collects what the pane broke off the end of the sentence at line i.
+//
+// A pane is as wide as the narrowest client attached to it, and this page attaches
+// phones: the session the notice below was read from was 51 columns, so
+//
+//	● API Error: 529 Overloaded. This is a
+//	  server-side issue, usually temporary —
+//	  try again in a moment. If it persists,
+//	  check https://status.claude.com.
+//
+// reached the phone as its first line and nothing else — a body that stops
+// mid-clause, and reported as the notifications being cut off. The same message in
+// a session last attached from a laptop arrived whole, which is the tell: the
+// wrapping is the pane's, not the agent's, so the marker is on the first line only
+// and the rest is a continuation indented under it.
+//
+// It ends where the paragraph does: a blank line, a line no longer indented past
+// the marker, another `●`, a tool result (`⎿`), or anything the rest of this file
+// already knows to be interface. Long enough is enough, too — `clip` caps a body at
+// maxLineLen anyway, and a notification is not the place to read an essay.
+func wrapped(lines []string, i int) string {
+	var b strings.Builder
+	markerAt := indentOf(lines[i])
+	for j := i + 1; j < len(lines) && b.Len() < maxLineLen; j++ {
+		l := ansi.ReplaceAllString(lines[j], "")
+		s := strings.TrimSpace(l)
+		if s == "" || indentOf(l) <= markerAt || agentSaid.MatchString(l) {
+			break
+		}
+		// `⎿` opens what a tool answered, which is the agent pointing at output
+		// rather than speaking — the same rule as `● Bash(…)`, one line lower.
+		if strings.HasPrefix(s, "⎿") || isChrome(s) || !hasWord(s) {
+			break
+		}
+		b.WriteString(" ")
+		b.WriteString(s)
+	}
+	return b.String()
+}
+
+// How far a line is indented, in runes. The continuation of a marked line sits
+// under its text, so anything at or left of the marker is a different line
+// altogether.
+func indentOf(s string) int {
+	n := 0
+	for _, r := range s {
+		if r != ' ' && r != '\t' {
+			break
+		}
+		n++
+	}
+	return n
 }
 
 // ANSI escapes reach here when a pane is captured with them; the marker is at the

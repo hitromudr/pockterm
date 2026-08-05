@@ -470,6 +470,23 @@ It is one element and two claims, so it carries `carrying` while it is making th
 second, and the question's own timer is cleared: a carry lasts as long as it lasts,
 where the answer about a mark expires.
 
+**A mouse carries a tab by a plain drag, and needs no hold.** Every listener here
+was for touches, so on a laptop the row could not be rearranged at all — reported
+as the tabs not moving in the web version. The hold is not copied over, because the
+hold buys the gesture back from the strip's own sideways scroll and a mouse scrolls
+that with a wheel instead of by pushing it: five pixels of travel is what tells a
+drag from the click that switches session. `carryTo` and `dropCarry` are shared by
+both, since two implementations would be two answers to where a tab goes, and
+`mousemove`/`mouseup` are on the document for the same reason the y is not read —
+the pointer leaves the row. A release ends in a click on whatever is under it, so
+the drag sets `helpHeld`, which is the same thing that swallows the click at the end
+of a hold.
+
+**A touch leaves mouse events behind it, and those are not a mouse.** They arrive
+after `touchend`, and read as a gesture they would clear the suppression the hold
+had just set — turning "what is this tab" into a switch to it. Anything within 700ms
+of a touch on the strip is that echo and is ignored.
+
 **The order lives in tmux, on the sessions themselves** (`@pockterm-order`, beside
 `@pockterm-kind`), for the same three reasons the kind does: CI restarts this binary
 several times a working day, a second phone must see the same row, and a session
