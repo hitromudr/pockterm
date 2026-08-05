@@ -1,6 +1,7 @@
 import { keyBytes } from './keys.js';
 import { detectQuestion, answerKeys } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from './notify.js';
+import { linkAction } from './link.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
 import { snapshotText } from './select.js';
 import { initDiag, environment, report } from './diag.js';
@@ -18,7 +19,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v109';
+const APP_VERSION = 'v110';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1159,8 +1160,15 @@ function connect() {
   ].filter(Boolean).join('&');
   ws = new WebSocket(`${scheme}://${location.host}/ws?${qs}`);
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => { statusEl.hidden = true; retry = 1000; sendResize(); sendVisible(); };
+  ws.onopen = () => {
+    statusEl.hidden = true;
+    retry = 1000;
+    noteLink();
+    sendResize();
+    sendVisible();
+  };
   ws.onmessage = (e) => {
+    noteLink();
     if (typeof e.data === 'string') { onControl(e.data); return; }
     // One bad write must not take the socket handler with it: an exception
     // here leaves the terminal frozen with output still arriving.
@@ -1179,6 +1187,59 @@ function connect() {
     retry = Math.min(retry * 2, 15000);
   };
 }
+
+// --- is the socket still there? ---
+//
+// A black-holed connection looks exactly like a quiet one from in here, which is
+// why the freeze lasted a minute: nothing asked. See js/link.js for what the two
+// numbers are and why the question is only asked while the page is on screen.
+let lastRx = 0;
+let pingSent = 0;
+
+function noteLink() {
+  lastRx = Date.now();
+  pingSent = 0;
+}
+
+function checkLink() {
+  if (!ws) return;
+  const action = linkAction({
+    open: ws.readyState === WebSocket.OPEN,
+    visible: document.visibilityState === 'visible',
+    now: Date.now(),
+    lastRx,
+    pingSent,
+  });
+  if (action === 'ping') {
+    pingSent = Date.now();
+    try { ws.send(JSON.stringify({ type: 'ping' })); } catch (_) { /* the close will follow */ }
+    return;
+  }
+  if (action !== 'dead') return;
+  // Nothing answered. Closing it is what starts the reconnect — onclose already
+  // knows how — and the backoff starts over, because this is a socket being
+  // discarded rather than a host that cannot be reached.
+  report('socket-stalled', { silentMs: Date.now() - lastRx, session: current || '' });
+  retry = 1000;
+  pingSent = 0;
+  const dead = ws;
+  ws = null;
+  dead.onmessage = null;
+  try { dead.close(); } catch (_) { /* already gone */ }
+  statusEl.textContent = 'reconnecting…';
+  statusEl.hidden = false;
+  if (current) connect();
+}
+
+// One timer for the whole question, at a third of the shorter interval so a
+// decision is never more than a moment late.
+setInterval(checkLink, 2500);
+// Coming back to the page is when a socket is most likely to have died while
+// nobody was looking, and the throttled clock of a backgrounded page cannot have
+// noticed. Ask at once instead of waiting for the next tick.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkLink();
+});
 
 // Server control frames: pong, error, the pane's copy-mode state, and a
 // notification the watcher decided to raise.

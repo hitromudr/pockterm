@@ -101,6 +101,41 @@ The bridge cannot say whether anything was composing — `commitInput` returns
 the answer. `test/ui/bytes.test.mjs` proves the order on the wire: a real
 keystroke delivered right after the tap lands before the `^M`.
 
+## A quiet socket and a dead socket look the same from in here
+
+Reported from the phone as the screen freezing: a message typed on it had plainly
+been sent — the laptop's window showed the agent answering it — while the phone sat
+on the same frame and caught up "about a minute later". Nothing in the page was
+frozen. The socket had been handed between Wi-Fi and cellular, the far end was a
+black hole, and `readyState` stayed OPEN with sends appearing to succeed. The minute
+is TCP giving up.
+
+**`ping` was answered by the server before anything sent one.** That is the whole
+defect: the protocol had the question and the page never asked it, so a dead
+connection was indistinguishable from a session with nothing to say.
+
+`linkAction` in `web/js/link.js` decides, and it is a pure function because the
+alternative is a timer nobody can test. After `PING_AFTER` of silence the page asks;
+if nothing arrives within `PONG_WAIT` the socket is discarded and `connect()` runs
+again — fifteen seconds against the minute it was. Any inbound traffic counts as the
+answer, pong or output alike, so a busy session is never pinged.
+
+**Only while the page is on screen.** A backgrounded page has its timers throttled to
+roughly one firing a minute, so every measurement it takes is late by construction —
+tearing down a socket because Android slowed the clock is worse than the freeze this
+fixes. A pocketed phone keeps its socket, and `visibilitychange` asks the question the
+moment it comes back, which is also when the answer is most often "gone".
+
+The backoff is reset when the watchdog fires: this is a socket being thrown away, not
+a host that cannot be reached. And `socket-stalled` goes to the journal with how long
+the silence was — "иногда зависает" becomes a count with timestamps.
+
+The UI test drops the page's own sends (`WebSocket.prototype.send` swallowed) so
+nothing reaches the server and nothing comes back, then requires the journal line, the
+reconnect, and a terminal that types again. With the watchdog's timer commented out it
+times out — checked, because a test that passes against the defect is worse than none,
+which happened once already in this file.
+
 ## A client attaches at a size, and the wrong one is everyone's problem
 
 Sessions here are grouped — `new-session -t <name>`, one window, several clients —

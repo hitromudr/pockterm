@@ -386,6 +386,21 @@ to pick: `--chat <id>`. Without `--write` it just prints the lines to add.
 
 `--link https://your.address` sets the link the messages carry.
 
+## A socket that has gone quiet
+
+A phone hands its socket between Wi-Fi and cellular whenever it feels like it, and
+the far end of a handed-over connection is a black hole: `readyState` stays OPEN,
+sends look like they succeed, and nothing arrives. It showed as the screen freezing —
+the message had plainly been sent, the laptop's window showed the agent answering it,
+and the phone caught up about a minute later, which is TCP giving up.
+
+The page asks now: after 10s of silence it sends a `ping`, and if nothing arrives
+within 5s the socket is discarded and the connection is made again. Any inbound frame
+counts as the answer, so a busy session is never pinged. Nothing is asked while the
+page is off screen: a backgrounded page has its timers throttled to about one firing a
+minute, and tearing down a socket because the clock slowed is worse than the freeze
+being fixed. Coming back to the page is itself a reason to ask.
+
 ## Deployment
 
 pockterm itself listens on loopback. Put a reverse proxy in front for

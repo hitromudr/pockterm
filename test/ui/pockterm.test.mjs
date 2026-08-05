@@ -80,6 +80,59 @@ describe('the size a client attaches at', () => {
   });
 });
 
+describe('a socket that has stopped delivering', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['demo'] }); });
+  after(async () => { await stand.stop(); });
+
+  test('the page notices and reconnects instead of sitting frozen', async () => {
+    // Reported from the phone as the screen freezing: a message typed on it had
+    // plainly been sent — the laptop showed the agent answering it — while the
+    // phone stayed on the same frame and caught up about a minute later. That
+    // minute is TCP giving up on a connection the phone handed between Wi-Fi and
+    // cellular; `readyState` stays OPEN and sends look like they succeed.
+    //
+    // A black hole is simulated the only honest way from in here: the page's own
+    // sends are dropped, so nothing it says reaches the server and nothing comes
+    // back. What is being tested is whether the page asks at all — it never did.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    await page.evaluate(() => {
+      const send = WebSocket.prototype.send;
+      window.__dropped = 0;
+      WebSocket.prototype.send = function (data) {
+        window.__dropped += 1;
+        return undefined; // swallowed: the far end hears nothing
+      };
+      window.__restore = () => { WebSocket.prototype.send = send; };
+    });
+
+    // Nothing arrives either, so the page's own idea of "last heard from" goes
+    // stale on its own. PING_AFTER + PONG_WAIT is 15s, so this is the wait.
+    await page.waitForFunction(() => window.__dropped > 0, null, { timeout: 20000 });
+    await page.evaluate(() => window.__restore());
+
+    // The journal is where the page says why, which is what turns "иногда
+    // зависает" into a fact with a count.
+    await page.waitForFunction(
+      () => document.getElementById('status') && !document.getElementById('status').hidden,
+      null, { timeout: 20000 },
+    );
+    assert.match(stand.serverLog(), /socket-stalled/, 'the page never said the socket had stalled');
+
+    // And it comes back on its own: a live terminal, with tmux behind it
+    // untouched.
+    await page.waitForFunction(
+      () => document.getElementById('status').hidden, null, { timeout: 20000 });
+    await page.click('#term');
+    await page.keyboard.type('alive again');
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('alive again'),
+      null, { timeout: 10000 });
+  });
+});
+
 describe('the session list is a drawer', () => {
   let stand;
   before(async () => { stand = await startStand({ sessions: ['demo', 'other'] }); });
