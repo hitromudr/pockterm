@@ -519,6 +519,19 @@ them at 9px in a corner 20px wide came out as exactly the smudge the single plat
 had been defended with. A triangle is at its tallest down its left edge, so what
 room there is goes to the digit and the rest of the width is the point.
 
+**On a tab they hang off the edge, one above the other.** Side by side they cost
+the name twice the width of a plate, and the strip is read along a row that
+already scrolls sideways; stacked at the right edge they cost it once. Each is
+then hung about half of itself past the tab — the triangle over the top, the
+shield under the bottom — because two plates inside a tab 34px tall crowd each
+other and the name. The triangle is as wide as it is tall: drawn longer, its
+point ran out past the tab's own corner and read as an arrow leaving rather than
+as a mark on it. The room they hang into is `#tabs`' own padding, given back by an equal
+negative margin: the strip clips both axes, and a taller strip would move `☰` down
+with the drawer's `❮` measured against it. That trick was already there for the
+question's `!` at the top; this adds the same at the bottom. The drawer's rows
+keep them side by side — a row is three times as tall and has the room.
+
 They are drawn as the pseudo-elements of a `.bg` span (`data-sh`, `data-mon`),
 because the button's own `::before` is the question's `!` and one pseudo-element
 cannot carry two plates. Still not text in the button, for the same reason the

@@ -2038,8 +2038,9 @@ describe('a tab says what its session is doing', () => {
     // Shields, and the point at the bottom is what makes them ones.
     assert.ok(/^polygon\(/.test(plates.shell.clip), `not a shield: ${plates.shell.clip}`);
     assert.ok(/^polygon\(/.test(plates.monitor.clip), `not a shield: ${plates.monitor.clip}`);
-    // Room for both, or the name runs under them and loses its last letters.
-    assert.ok(plates.room >= 40, `no room reserved for two plates: ${plates.room}`);
+    // Room for the column, or the name runs under it and loses its last letters.
+    // One plate's width and not two: they are stacked, which is what that buys.
+    assert.ok(plates.room >= 20, `no room reserved for the plates: ${plates.room}`);
 
     // And it goes away when the bottom of the pane stops claiming it: a badge
     // that only ever appeared would say "something is running" about every

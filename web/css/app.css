@@ -113,6 +113,9 @@ html, body {
      ☰ down and with it the header the drawer's ❮ is measured against. */
   padding-top: 8px;
   margin-top: -8px;
+  /* And the same again below, for the shield hung past the bottom edge. */
+  padding-bottom: 9px;
+  margin-bottom: -9px;
 }
 /* A tab carries three answers, and they are three different questions: which
    sessions exist, which one you are in, and what each is doing. So the frame is
@@ -274,18 +277,36 @@ html, body {
    when work starts in it rather than every tab carrying the reserve for good:
    the strip already scrolls sideways on a phone, and empty space on every tab is
    paid for constantly, while the shift is paid when something actually changed. */
-#tabs button[data-bg="1"] { padding-right: 22px; }
-#tabs button[data-bg="2"] { padding-right: 42px; }
-#tabs .bg { right: 3px; bottom: 0; }
+/* One column at the right edge rather than two plates side by side, and each
+   one hung a third of itself past the tab: side by side they cost the name
+   twice the width of a plate, and a tab is read along a row that already
+   scrolls. Stacked they cost it once, and hanging them outward is what keeps
+   them from crowding each other in a tab 34px tall.
+
+   The strip clips both axes — it scrolls sideways — so the room they hang into
+   is padding of #tabs' own, given back to the layout by an equal negative
+   margin. Exactly the trick the question's ! already uses at the top, now at
+   the bottom as well: without it a taller strip would move ☰ down, and the
+   drawer's ❮ is measured against it. */
+#tabs button[data-bg] { padding-right: 24px; }
+#tabs .bg {
+  right: 2px;
+  top: 0;
+  bottom: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0;
+}
 #tabs .bg::before, #tabs .bg::after {
   min-width: 14px;
   font-size: 9px;
   line-height: 10px;
 }
-/* Same box on both, and the padding is where the point of each one goes: down
-   for the shield, to the right for the pennant. */
-#tabs .bg::before { min-width: 18px; padding: 2px 11px 2px 2px; }
-#tabs .bg::after { padding: 1px 2px 4px; }
+/* The padding is where each shape's own point goes: to the right for the
+   triangle, down for the shield. The transform is the overhang. */
+#tabs .bg::before { min-width: 15px; padding: 2px 7px 2px 2px; transform: translateY(-46%); }
+#tabs .bg::after { padding: 1px 2px 4px; transform: translateY(46%); }
 /* Which button started the session, in that button's own glyph — ▸ shell,
    ✦ claude, ⚡ yolo, ↻ continue, ★ or its own lead for one the owner added.
 
