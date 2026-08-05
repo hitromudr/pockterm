@@ -583,7 +583,7 @@ describe("the owner's own session buttons", () => {
       const b = [...document.querySelectorAll('#tabs button')].find((x) => x.dataset.session === n);
       // ❄ since the owner asked for it — Claude is cold — and the four defaults are
       // the first row of the grid a custom button picks its mark from.
-      return b && b.querySelector('.kind') && b.querySelector('.kind').textContent === '❄';
+      return b && b.querySelector('.kind') && b.querySelector('.kind').textContent === '❄️';
     }, name, { timeout: 8000 });
 
     // A long press asks what the mark means. Through the browser's own touch
@@ -600,7 +600,7 @@ describe("the owner's own session buttons", () => {
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at });
     await page.waitForSelector('#kind-help:not([hidden])', { timeout: 3000 });
-    assert.match(await page.textContent('#kind-help'), /❄ Claude/);
+    assert.match(await page.textContent('#kind-help'), /❄️ Claude/);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(300);
     assert.equal(
@@ -803,12 +803,53 @@ describe("the owner's own session buttons", () => {
     assert.match(await page.textContent('#custom-mark'), /🚀/);
     await page.click('#custom-mark');
     await page.click('#mark-grid button:has-text("🚀")');
-    assert.match(await page.textContent('#custom-mark'), /★/);
+    assert.match(await page.textContent('#custom-mark'), /⭐/);
     await page.click('#custom-add');
     await page.waitForFunction(
       () => !(document.querySelector('#custom-list li:has-text("Ракета")')?.textContent || '').includes('🚀'),
       null, { timeout: 5000 }).catch(() => {});
-    assert.match(await page.textContent('#custom-list li:has-text("Ракета")'), /★/);
+    assert.match(await page.textContent('#custom-list li:has-text("Ракета")'), /⭐/);
+  });
+
+  test('the grid opens under the button that opens it', async () => {
+    // Reported from the phone: it was drawn at the end of the panel, a screen away
+    // from the 44px button it belongs to — and that button had been styled as a
+    // full-width bar by `#buttons-box .add button`, which an id selector loses to.
+    await stand.open();
+    const { page } = stand;
+    await stand.openSettings();
+    await page.click('#custom-mark');
+    await page.waitForSelector('#mark-grid:not([hidden])');
+    // Both measured with the grid open: opening it scrolls the panel, so a box taken
+    // before the tap describes a layout that has since moved.
+    const markBox = await page.locator('#custom-mark').boundingBox();
+    const gridBox = await page.locator('#mark-grid').boundingBox();
+    assert.ok(markBox.width < 120, `the mark button is a bar, not a button: ${markBox.width}px`);
+    assert.ok(gridBox.y >= markBox.y, 'the grid is above the button that opens it');
+    assert.ok(gridBox.y - (markBox.y + markBox.height) < 120,
+      `the grid is ${Math.round(gridBox.y - markBox.y - markBox.height)}px away from its button`);
+    await page.click('#custom-mark');
+  });
+
+  test('the form shows the glyph the button will be drawn with', async () => {
+    // Reported from the phone: "сейчас там звезда всегда". Nothing picked is the
+    // common case — every button of the owner's had no mark of its own — and a ⭐ on
+    // the form while the row above shows ❄️ describes the form's own state instead
+    // of what is being edited.
+    await stand.open();
+    const { page } = stand;
+    await stand.openSettings();
+    await page.click('#custom-list li:has-text("Claude") >> nth=0 >> button.rename');
+    assert.match(await page.textContent('#custom-mark'), /❄️/, 'the form does not show the default\'s glyph');
+    await page.click('#custom-list li:has-text("Claude") >> nth=0 >> button.rename');
+
+    // And it follows the label as it is typed, because that is one of the things the
+    // glyph is read from.
+    await page.fill('#custom-label', 'Codex что-то');
+    assert.match(await page.textContent('#custom-mark'), /☀️/);
+    await page.fill('#custom-label', 'Ничего знакомого');
+    assert.match(await page.textContent('#custom-mark'), /⭐/);
+    await page.fill('#custom-label', '');
   });
 
   test('a default keeps the glyph its button has, and Claude is cold', async () => {
@@ -818,12 +859,12 @@ describe("the owner's own session buttons", () => {
     await stand.open();
     const { page } = stand;
     await stand.openSettings();
-    assert.match(await page.textContent('#custom-list li:has-text("Claude") >> nth=0'), /❄/);
+    assert.match(await page.textContent('#custom-list li:has-text("Claude") >> nth=0'), /❄️/);
     await page.fill('#custom-label', 'Codex-cont');
     await page.fill('#custom-cmd', 'codex resume');
     await page.click('#custom-add');
     await page.waitForSelector('#custom-list li:has-text("Codex-cont")');
-    assert.match(await page.textContent('#custom-list li:has-text("Codex-cont")'), /☀/);
+    assert.match(await page.textContent('#custom-list li:has-text("Codex-cont")'), /☀️/);
   });
 
   test('a default can be removed, and the reset brings it back alone', async () => {

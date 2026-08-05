@@ -102,17 +102,19 @@
           <!-- The mark, picked from a grid rather than typed into the label. It sits
                with the label because that is the pair a button is named by; the
                command is a line of its own below. -->
-          <button id="custom-mark" type="button" title="Знак кнопки">&#9733;</button>
+          <button id="custom-mark" type="button" title="Знак кнопки">&#11088;</button>
           <input id="custom-label" type="text" autocomplete="off" placeholder="подпись">
+          <!-- Under the button that opens it, not at the end of the panel: a grid of
+               forty glyphs is a lot to связать with a 44px button a screen away.
+               Written by the page from MARKS in js/kinds.js — one vocabulary, shared
+               with the strip and the drawer. -->
+          <div id="mark-grid" hidden></div>
           <input id="custom-cmd" type="text" autocomplete="off" spellcheck="false" placeholder="команда (qwen) или make цель">
           <button id="custom-add">Добавить</button>
         </div>
         <!-- Two taps, like every other removal here: it puts back what the four
              were and leaves the owner's own buttons alone. -->
         <button id="custom-reset" type="button" title="Вернуть четыре кнопки по умолчанию">&#8635; Сбросить к умолчанию</button>
-        <!-- Written by the page from MARKS in js/kinds.js: one vocabulary, shared
-             with the strip and the drawer. -->
-        <div id="mark-grid" hidden></div>
         <p id="custom-note" hidden></p>
       </div>
       <div class="row">

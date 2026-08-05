@@ -11,7 +11,7 @@ test('a built-in preset is marked with the same glyph as its button', () => {
   assert.equal(kindMark('shell', buttons), '▸');
   // ❄ since the owner asked for it: Claude is cold, and the four are the first
   // row of the grid a custom button picks from.
-  assert.equal(kindMark('claude', buttons), '❄');
+  assert.equal(kindMark('claude', buttons), '❄️');
   assert.equal(kindMark('yolo', buttons), '⚡');
   assert.equal(kindMark('continue', buttons), '↻');
   assert.equal(kindName('yolo', buttons), 'Claude (yolo)');
@@ -101,7 +101,7 @@ test('a default without a mark of its own keeps the stock one', () => {
   const buttons = [{ id: 'claude', label: 'Клод', cmd: '' }];
   // ❄ since the owner asked for it: Claude is cold, and the four are the first
   // row of the grid a custom button picks from.
-  assert.equal(kindMark('claude', buttons), '❄');
+  assert.equal(kindMark('claude', buttons), '❄️');
   assert.equal(kindName('claude', buttons), 'Клод');
 });
 
@@ -124,8 +124,8 @@ test('a picked mark wins, and a name is the last guess', () => {
   assert.equal(markOf({ id: 'b1', label: '🐍 Python', mark: '' }), '🐍');
   // Two agents are what this serves, so two names are guessed at: Claude is cold,
   // Codex is sol. One tap in the grid overrules either.
-  assert.equal(markOf({ id: 'b1', label: 'Codex-cont', cmd: 'codex resume' }), '☀');
-  assert.equal(markOf({ id: 'b2', label: 'Claude Cont (yolo)' }), '❄');
+  assert.equal(markOf({ id: 'b1', label: 'Codex-cont', cmd: 'codex resume' }), '☀️');
+  assert.equal(markOf({ id: 'b2', label: 'Claude Cont (yolo)' }), '❄️');
   assert.equal(markOf({ id: 'b3', label: 'Qwen' }), CUSTOM_MARK);
   // A default keeps its own glyph unless something says otherwise.
   assert.equal(markOf({ id: 'yolo', label: 'Claude (yolo)' }), '⚡');
@@ -151,6 +151,8 @@ test('the grid is a set of single glyphs', () => {
   // What is read at 13px on a phone. Duplicates would be two taps for one answer.
   assert.equal(new Set(MARKS).size, MARKS.length);
   for (const m of MARKS) {
+    // Two code points at most: a glyph plus the variation selector that asks the
+    // platform for its colour version.
     assert.ok([...m].length <= 2, `${m} is more than a glyph`);
     assert.doesNotMatch(m, /\s/);
   }

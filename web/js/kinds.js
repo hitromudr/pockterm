@@ -20,10 +20,19 @@
 // First row: what the four defaults use, so a custom button can look like one on
 // purpose. After that agents, languages, and the plain shapes that say "this one is
 // different" without saying anything else.
+// The glyphs carry U+FE0F where they have an emoji presentation — `❄️` rather than
+// `❄` — because a mark drawn in text presentation takes the colour of whatever it
+// sits in: on a tab it came out the same shade as the session's name, which is a
+// mark nobody notices. With the selector the platform draws its colour version, and
+// the same string then looks the same in the grid, in the menu and on the tab.
+//
+// The ones with no colour form (`✦ ↻ ▸ ⌁ ⎔ ◆ ●`…) stay monochrome, and that is a
+// choice on offer rather than an omission: the four defaults are drawn with two of
+// them.
 export const MARKS = [
-  '❄', '☀', '✦', '⚡', '↻', '▸', '★', '☾',
-  '✺', '✹', '✿', '❉', '⌁', '⎔', '◆', '●',
-  '▲', '■', '⬢', '✚', '⚙', '⌛', '☕', '✂',
+  '❄️', '☀️', '✦', '⚡', '↻', '▸', '⭐', '🌙',
+  '✳️', '✴️', '❇️', '💠', '🌀', '⬡', '🔷', '🔴',
+  '🔺', '🟩', '⬢', '➕', '⚙️', '⏳', '☕', '✂️',
   '🤖', '🧠', '🐍', '🦀', '🐧', '🚀', '🔧', '🧪',
   '📦', '🔒', '🎯', '🧭', '🔥', '💤', '🌊', '🌱',
 ];
@@ -33,8 +42,8 @@ export const MARKS = [
 // cold, Codex is sol. It only ever applies to a button with no mark of its own, so
 // one tap in the grid overrules it.
 const NAMED = [
-  [/claude/i, '❄'],
-  [/codex/i, '☀'],
+  [/claude/i, '❄️'],
+  [/codex/i, '☀️'],
 ];
 
 // The four built-in presets, in the menu's own words and marks.
@@ -45,13 +54,13 @@ const NAMED = [
 // tab whose button has since been removed is what these names are left for.
 const BUILTIN = {
   shell: { mark: '▸', name: 'Shell' },
-  claude: { mark: '❄', name: 'Claude' },
+  claude: { mark: '❄️', name: 'Claude' },
   yolo: { mark: '⚡', name: 'Claude (yolo)' },
   continue: { mark: '↻', name: 'Continue' },
 };
 
 // A custom button's mark when its label does not carry one of its own.
-export const CUSTOM_MARK = '★';
+export const CUSTOM_MARK = '⭐';
 
 const CUSTOM_PREFIX = 'custom:';
 

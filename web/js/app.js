@@ -19,7 +19,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v114';
+const APP_VERSION = 'v115';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -483,6 +483,17 @@ const customCmd = document.getElementById('custom-cmd');
 const customAdd = document.getElementById('custom-add');
 const customNote = document.getElementById('custom-note');
 const customReset = document.getElementById('custom-reset');
+// Which button the two fields below are currently about: null for a new one,
+// an id while an existing one is being changed.
+//
+// One form for both, the way the session list has one rename field: a phone has
+// no room for a second pair of inputs, and a form that appears per row would put
+// the one being edited under the keyboard.
+//
+// Declared here rather than beside startEdit because the mark picker reads it while
+// it draws itself, and it draws itself as the page loads: a `let` below that point
+// is a ReferenceError, which took the whole page down.
+let editingID = null;
 const customMarkBtn = document.getElementById('custom-mark');
 const markGrid = document.getElementById('mark-grid');
 // The mark the form is about: '' means "let the page decide", which is what every
@@ -506,7 +517,18 @@ function note(text) {
 // The grid is written from MARKS in js/kinds.js — one vocabulary, shared with the
 // strip and the drawer — and the button beside the label shows what is chosen.
 function paintMarkButton() {
-  customMarkBtn.textContent = formMark || CUSTOM_MARK;
+  // What the button will actually be drawn with, not just what was picked: nothing
+  // picked is the common case — every button of the owner's had it — and a ⭐ on the
+  // form while the row two lines up shows ❄️ says the wrong thing about what is
+  // being edited. markOf answers it, the same function the row and the tab use, so
+  // the form previews what will happen rather than describing its own state.
+  //
+  // It follows the label as it is typed, because that is one of the things markOf
+  // reads: typing "Codex" turns the button into ☀️ before anything is saved.
+  const effective = markOf({ id: editingID || '', label: customLabel.value, mark: formMark });
+  customMarkBtn.textContent = effective || CUSTOM_MARK;
+  // Lit only for a glyph that was chosen: the rest is the page deciding, and the
+  // grid's highlight has to say which of the forty is the owner's answer.
   customMarkBtn.classList.toggle('on', !!formMark);
   for (const b of markGrid.querySelectorAll('button')) {
     b.classList.toggle('on', b.textContent === formMark);
@@ -519,6 +541,11 @@ function buildMarkGrid() {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = m;
+    // Nothing here may move the focus. Picking a glyph hides the grid, and hiding
+    // the focused element is what hands focus back to whatever had it before — on
+    // Android that raises the keyboard, over the very grid being used. Same guard
+    // as the tab strip and the terminal's menu.
+    keepsTerminalFocus(b);
     b.addEventListener('click', () => {
       // The same glyph again means "no mark of my own": one tap in, one tap out,
       // rather than a separate button for clearing it.
@@ -531,17 +558,13 @@ function buildMarkGrid() {
 }
 buildMarkGrid();
 paintMarkButton();
+keepsTerminalFocus(customMarkBtn);
 customMarkBtn.addEventListener('click', () => {
   markGrid.hidden = !markGrid.hidden;
 });
+// The preview follows the label: what markOf answers depends on it.
+customLabel.addEventListener('input', paintMarkButton);
 
-// Which button the two fields below are currently about: null for a new one,
-// an id while an existing one is being changed.
-//
-// One form for both, the way the session list has one rename field: a phone has
-// no room for a second pair of inputs, and a form that appears per row would put
-// the one being edited under the keyboard.
-let editingID = null;
 
 // Draw the editor and, from the same list, the entries under +.
 function renderCustom() {

@@ -256,8 +256,12 @@ The command is checked before it reaches a command line: letters, digits, spaces
 this is a gate rather than advice.
 
 **A button's mark is picked from a grid.** Left of the label sits a button showing
-the current glyph; tapping it opens a grid, tapping a glyph picks it and closes the
-grid, and tapping the one already chosen clears it. The mark is drawn in the `+`
+the current glyph; tapping it opens a grid **right under it**, tapping a glyph picks
+it and closes the grid, and tapping the one already chosen clears it. The button shows
+the glyph the button will be drawn with rather than the one that was picked — with
+nothing picked that is the page's own answer, and it follows the label as it is typed.
+Glyphs that have a colour form carry it (`❄️`, not `❄`): in text presentation a mark
+takes the colour of the label around it and goes unnoticed on a tab. The mark is drawn in the `+`
 menu, on every tab the button opens, and in the drawer. The only way to have one
 used to be an emoji at the front of the label — a trick you had to know, and a
 character out of a name that has 24 — which is why three custom buttons all drew the

@@ -569,6 +569,31 @@ is a popup grid beside the label field, since the mark and the label are the pai
 button is named by. Picking the glyph already chosen clears it: one tap in, one tap
 out, rather than a button of its own for "no mark".
 
+Three things about it were wrong on the first phone that saw it, and each is a rule
+worth keeping. **The grid opens under the button that opens it** — it was appended at
+the end of the panel, a screen away from a 44px target. **That button had been drawn
+as a full-width bar**, because `#buttons-box .add button` styles the Add button and
+an id selector loses to it: `#buttons-box .add #custom-mark` is what wins.
+**Nothing in the picker may move the focus** (`keepsTerminalFocus` on the button and
+on every glyph): hiding the grid hides the element that has focus, and Android hands
+focus back to whatever had it before — which raised the keyboard over the grid being
+used.
+
+**The form shows the glyph the button will be drawn with, not the one that was
+picked.** Nothing picked is the common case, and a `⭐` on the form while the row two
+lines up shows `❄️` describes the form's own state instead of what is being edited —
+reported as "сейчас там звезда всегда". `paintMarkButton` asks `markOf` the same
+question the row and the tab ask, so the form previews the answer; it follows the
+label as it is typed, because that is one of the things `markOf` reads. The button is
+only *lit* for a glyph that was actually chosen — that is a different claim, and the
+grid's highlight is where it belongs.
+
+**The glyphs carry U+FE0F where they have a colour form** (`❄️`, not `❄`). In text
+presentation a mark takes the colour of whatever it sits in, so on a tab it came out
+the same shade as the session's name — a mark nobody notices. The ones with no colour
+form stay monochrome and are on offer as such; two of the four defaults are drawn
+with them.
+
 `markOf` is the one order of precedence, and every surface goes through it: the mark
 that was picked, then a mark the label leads with (which is how this worked before
 and still does), then what the id is known for — a default's own glyph, or the name
