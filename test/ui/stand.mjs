@@ -288,13 +288,26 @@ export async function startStand({
       await openDrawer();
       await page.waitForSelector('#session-list li');
     },
-    // Attach to a session and wait until the terminal is live.
+    // Attach to a session and wait until the terminal is live — and until the
+    // drawer that was covering it has actually gone.
+    //
+    // The same lesson as shutDrawer, learned twice: the panel slides out over
+    // 200ms, so a touch dispatched at the terminal in the meantime lands on the
+    // drawer instead. It does not fail loudly — the event goes to a <ul> in the
+    // drawer, never reaches #screen-term, and the test times out waiting for a
+    // gesture nobody received. Latent for as long as the page was quick enough:
+    // it started failing when the drawer grew four rows, which is a change to
+    // the timing and not to the page.
     async attach(name = sessions[0]) {
       await openDrawer();
       await page.click(`button.session:has-text("${name}")`);
       await page.waitForSelector('#screen-term:not([hidden])');
       await page.waitForFunction(() => !document.getElementById('status') ||
         document.getElementById('status').hidden);
+      await page.waitForFunction(() => {
+        const el = document.getElementById('screen-sessions');
+        return !el.classList.contains('open') && el.getBoundingClientRect().right <= 0;
+      }, null, { timeout: 5000 });
     },
     async stop() {
       await browser.close().catch(() => {});

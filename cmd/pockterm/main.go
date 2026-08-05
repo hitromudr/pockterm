@@ -270,6 +270,17 @@ func serve() {
 			log.Printf("custom buttons: %d", len(saved))
 			return saved, nil
 		},
+		ResetButtons: func() ([]session.Custom, error) {
+			restored, err := buttons.Reset()
+			if err != nil && restored == nil {
+				return nil, err
+			}
+			if err != nil {
+				log.Printf("session buttons: %v", err)
+			}
+			log.Printf("session buttons back to the defaults: %d", len(restored))
+			return restored, nil
+		},
 	})
 	log.Printf("pockterm listening on %s", cfg.Listen)
 	log.Fatal(http.ListenAndServe(cfg.Listen, h))
@@ -320,21 +331,14 @@ func starter(cfg config.Config, buttons *session.Buttons) func(preset, folder st
 	}
 	log.Printf("starting sessions on, via make -C %s", dir)
 	return func(preset, folder string) error {
-		// A custom button is the owner's own command against one target; a
-		// built-in preset is a target of its own. Either way the Makefile is
-		// what launches anything, which is the rule this indirection keeps.
-		target, cmd := "", ""
-		if id := session.CustomID(preset); id != "" {
-			c, ok := buttons.Find(id)
-			if !ok {
-				return fmt.Errorf("no such button")
-			}
-			target, cmd = session.CustomTarget, c.Cmd
-		} else {
-			var err error
-			if target, err = session.Target(preset); err != nil {
-				return err
-			}
+		// What a button runs is the store's answer, not this file's: a default
+		// with a command of its own goes through the same `custom` target as any
+		// other, and a button the owner removed cannot be started at all. Either
+		// way the Makefile is what launches it, which is the rule this
+		// indirection keeps.
+		target, cmd, err := buttons.Resolve(preset)
+		if err != nil {
+			return err
 		}
 		// The projects root is the Makefile's own directory: one setting, and
 		// the same value in every deployment this was written for.

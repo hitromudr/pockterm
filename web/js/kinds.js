@@ -12,6 +12,11 @@
 // is why this one is shared by the menu, the tab strip and the drawer.
 
 // The four built-in presets, in the menu's own words and marks.
+//
+// The marks are this file's business and stay here. The words are a fallback
+// only: the four are entries in the host's button list now and can be renamed,
+// so the label to show comes from that list when it is there — see kindName. A
+// tab whose button has since been removed is what these names are left for.
 const BUILTIN = {
   shell: { mark: '▸', name: 'Shell' },
   claude: { mark: '✦', name: 'Claude' },
@@ -63,7 +68,13 @@ export function kindMark(kind, buttons) {
     // longer known. The shared mark says that much and does not invent a name.
     return b ? customMark(b.label) : CUSTOM_MARK;
   }
-  return BUILTIN[kind] ? BUILTIN[kind].mark : '';
+  if (!BUILTIN[kind]) return '';
+  // A renamed default may carry a mark of its own, the same way a custom button
+  // does — one rule for leading marks, or the menu and the strip would disagree
+  // about the same label. Its stock mark is what it has until then.
+  const b = (buttons || []).find((x) => x.id === kind);
+  const own = b ? leadingMark(b.label) : '';
+  return own || BUILTIN[kind].mark;
 }
 
 // How long a session has been up, for the drawer's row.
@@ -100,5 +111,27 @@ export function kindName(kind, buttons) {
     const b = (buttons || []).find((x) => x.id === id);
     return b ? labelBody(b.label) : '';
   }
+  // The list first: a default can be renamed, and then that is what it is called
+  // everywhere. The stock name is the fallback for a tab whose button is gone.
+  const b = (buttons || []).find((x) => x.id === kind);
+  if (b) return labelBody(b.label);
   return BUILTIN[kind] ? BUILTIN[kind].name : '';
+}
+
+// builtinId reports whether an id is one of the four — which is to say whether
+// its button runs a make target of its own. The page needs it to know what to
+// send when the button is tapped: a default by its own name, everything else
+// behind the "custom:" prefix.
+export function builtinId(id) {
+  return !!BUILTIN[id];
+}
+
+// presetOf(button) → what to send to start it.
+export function presetOf(b) {
+  return builtinId(b.id) ? b.id : CUSTOM_PREFIX + b.id;
+}
+
+// markOf(button) → the glyph to draw for it in the menu and the list.
+export function markOf(b) {
+  return builtinId(b.id) ? kindMark(b.id, [b]) : customMark(b.label);
 }

@@ -74,8 +74,10 @@ func TestValidCustomLabel(t *testing.T) {
 func TestButtonsSetHandsOutIdsAndKeepsThem(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sub", "buttons.json")
 	b := LoadButtons(path)
-	if len(b.List()) != 0 {
-		t.Fatal("a fresh store is not empty")
+	// A fresh store is the four defaults: a phone with no buttons at all cannot
+	// start a session, which is the one thing this package exists for.
+	if got := b.List(); len(got) != len(DefaultButtons()) || got[0].ID != "shell" {
+		t.Fatalf("a fresh store is not the defaults: %+v", got)
 	}
 
 	saved, err := b.Set([]Custom{{Label: "Qwen", Cmd: "qwen"}, {Label: "Open", Cmd: "opencode"}})
@@ -121,8 +123,8 @@ func TestButtonsSetRefusesTheWholeListOnOneBadEntry(t *testing.T) {
 	if _, err := b.Set([]Custom{{Label: "ok", Cmd: "qwen"}, {Label: "bad", Cmd: "rm -rf / ; :"}}); err == nil {
 		t.Fatal("a list with a refused command was accepted")
 	}
-	if len(b.List()) != 0 {
-		t.Fatalf("the refused list was stored anyway: %+v", b.List())
+	if got := b.List(); len(got) != len(DefaultButtons()) {
+		t.Fatalf("the refused list replaced what was there: %+v", got)
 	}
 }
 
@@ -136,15 +138,18 @@ func TestLoadButtonsSurvivesARottenFile(t *testing.T) {
 		`{"label":"no id","cmd":"qwen"}]`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// The bare array is the old format, so the defaults are put in front of what
+	// it holds — see parseButtons.
 	got := LoadButtons(path).List()
-	if len(got) != 1 || got[0].ID != "b1" {
+	if len(got) != len(DefaultButtons())+1 || got[len(got)-1].ID != "b1" {
 		t.Fatalf("kept the wrong entries: %+v", got)
 	}
 
 	if err := os.WriteFile(path, []byte("not json at all"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := LoadButtons(path).List(); len(got) != 0 {
+	// Unreadable is not an answer about the buttons, so the defaults stand.
+	if got := LoadButtons(path).List(); len(got) != len(DefaultButtons()) {
 		t.Fatalf("garbage was read as buttons: %+v", got)
 	}
 }
@@ -162,5 +167,118 @@ func TestCustomPresetNames(t *testing.T) {
 		if got := CustomID(p); got != "" {
 			t.Fatalf("CustomID(%q) = %q", p, got)
 		}
+	}
+}
+
+func TestBuiltinsAreEntriesInTheSameList(t *testing.T) {
+	// The four are editable because they are entries, not a map somewhere else.
+	// What makes one a default rather than a custom is its id being a make target.
+	for _, c := range DefaultButtons() {
+		if !c.Builtin() {
+			t.Fatalf("%q is a default that is not a known target", c.ID)
+		}
+		if c.Cmd != "" {
+			t.Fatalf("%q ships with a command: %q", c.ID, c.Cmd)
+		}
+		// A default is asked for by its own name; only the owner's own buttons
+		// travel behind the prefix.
+		if c.PresetName() != c.ID {
+			t.Fatalf("PresetName(%q) = %q", c.ID, c.PresetName())
+		}
+	}
+	own := Custom{ID: "b1", Label: "Qwen", Cmd: "qwen"}
+	if own.Builtin() || own.PresetName() != "custom:b1" {
+		t.Fatalf("a custom button is not itself: %+v %q", own, own.PresetName())
+	}
+}
+
+func TestOnlyABuiltinMayHaveNoCommand(t *testing.T) {
+	// A button with nothing to run is a button that does nothing — except a
+	// default, whose id is the target.
+	if _, err := ValidCustom(Custom{ID: "claude", Label: "Claude"}); err != nil {
+		t.Fatalf("a default without a command was refused: %v", err)
+	}
+	if _, err := ValidCustom(Custom{ID: "b1", Label: "Qwen"}); err == nil {
+		t.Fatal("a custom button with no command was accepted")
+	}
+	if _, err := ValidCustom(Custom{Label: "New"}); err == nil {
+		t.Fatal("a new button with no command was accepted")
+	}
+}
+
+func TestResolveIsWhatRunsAndTheListDecides(t *testing.T) {
+	b := LoadButtons("")
+
+	// A default runs its own target and carries no command.
+	target, cmd, err := b.Resolve("claude")
+	if err != nil || target != "claude" || cmd != "" {
+		t.Fatalf("Resolve(claude) = %q, %q, %v", target, cmd, err)
+	}
+
+	// Give it a command and it goes through the custom target instead, keeping
+	// its id — so the tabs it has already opened keep their mark.
+	if _, err := b.Set([]Custom{{ID: "claude", Label: "Claude", Cmd: "claude --model opus"}}); err != nil {
+		t.Fatal(err)
+	}
+	target, cmd, err = b.Resolve("claude")
+	if err != nil || target != CustomTarget || cmd != "claude --model opus" {
+		t.Fatalf("an edited default = %q, %q, %v", target, cmd, err)
+	}
+	if Kind("claude") != "claude" {
+		t.Fatalf("an edited default lost its kind: %q", Kind("claude"))
+	}
+
+	// A button that is not in the list cannot be started, however well known its
+	// name: otherwise removing one would only have hidden it.
+	if _, _, err := b.Resolve("yolo"); err == nil {
+		t.Fatal("a removed default was started anyway")
+	}
+	if _, _, err := b.Resolve("custom:b9"); err == nil {
+		t.Fatal("a button that never existed was started")
+	}
+}
+
+func TestResetPutsTheDefaultsBackAndKeepsTheOwnersOwn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "buttons.json")
+	b := LoadButtons(path)
+	saved, err := b.Set([]Custom{{ID: "claude", Label: "Клод", Cmd: "claude --model opus"}, {Label: "Qwen", Cmd: "qwen"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine := saved[1].ID
+
+	restored, err := b.Reset()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restored) != len(DefaultButtons())+1 {
+		t.Fatalf("reset = %+v", restored)
+	}
+	for i, want := range DefaultButtons() {
+		if restored[i] != want {
+			t.Fatalf("default %d = %+v, want %+v", i, restored[i], want)
+		}
+	}
+	// The four are a default; `qwen` typed on a phone is not, so a reset does not
+	// take it away.
+	if restored[len(restored)-1].ID != mine {
+		t.Fatalf("the owner's own button was lost: %+v", restored)
+	}
+	if got := LoadButtons(path).List(); len(got) != len(restored) || got[1].Label != "Claude" {
+		t.Fatalf("the reset was not written down: %+v", got)
+	}
+}
+
+func TestRemovingEveryButtonIsAnAnswer(t *testing.T) {
+	// An empty stored list means the owner removed them all, which has to survive
+	// a restart — the shape of the file is what tells that from a store written
+	// before the defaults were in it (parseButtons).
+	path := filepath.Join(t.TempDir(), "buttons.json")
+	b := LoadButtons(path)
+	if _, err := b.Set(nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := LoadButtons(path).List(); len(got) != 0 {
+		t.Fatalf("the defaults came back on their own: %+v", got)
 	}
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { kindMark, kindName, customMark, labelBody, customId, shortAge, CUSTOM_MARK } from '../web/js/kinds.js';
+import { kindMark, kindName, customMark, labelBody, customId, shortAge, CUSTOM_MARK, builtinId, presetOf, markOf } from '../web/js/kinds.js';
 
 const buttons = [
   { id: 'b1', label: 'qwen', cmd: 'qwen' },
@@ -83,4 +83,32 @@ test('how long a session has been up, in one coarse unit', () => {
   // Nothing to go on: no claim.
   assert.equal(shortAge(0, now), '');
   assert.equal(shortAge(undefined, now), '');
+});
+
+test('a renamed default is called what it was renamed to', () => {
+  // The four are entries in the host's list now, so the label to show comes from
+  // there. The stock name is a fallback for a tab whose button has been removed.
+  const buttons = [{ id: 'yolo', label: '⚡ Ярость', cmd: 'echo hi' }];
+  assert.equal(kindName('yolo', buttons), 'Ярость');
+  assert.equal(kindMark('yolo', buttons), '⚡', 'a label may carry its own mark, the same as a custom one');
+  assert.equal(kindName('yolo', []), 'Claude (yolo)', 'a removed default still says what it was');
+  assert.equal(kindMark('yolo', []), '⚡');
+});
+
+test('a default without a mark of its own keeps the stock one', () => {
+  const buttons = [{ id: 'claude', label: 'Клод', cmd: '' }];
+  assert.equal(kindMark('claude', buttons), '✦');
+  assert.equal(kindName('claude', buttons), 'Клод');
+});
+
+test('what the page sends to start a button', () => {
+  // A default is asked for by its own name — its id is a make target — and the
+  // owner's own travel behind the prefix. Which is which decides both.
+  assert.equal(builtinId('yolo'), true);
+  assert.equal(builtinId('b1'), false);
+  assert.equal(presetOf({ id: 'yolo', label: 'Claude (yolo)' }), 'yolo');
+  assert.equal(presetOf({ id: 'b1', label: 'Qwen' }), 'custom:b1');
+  assert.equal(markOf({ id: 'shell', label: 'Shell' }), '▸');
+  assert.equal(markOf({ id: 'b1', label: 'Qwen' }), CUSTOM_MARK);
+  assert.equal(markOf({ id: 'b1', label: '🐍 Python' }), '🐍');
 });

@@ -1262,8 +1262,10 @@ func TestCustomButtonsAreReadAndReplacedWhole(t *testing.T) {
 		t.Fatal(err)
 	}
 	res.Body.Close()
-	if len(got.Buttons) != 0 {
-		t.Fatalf("a fresh host has buttons: %+v", got.Buttons)
+	// A fresh host has the four defaults: they are entries in this same list now,
+	// which is what makes them editable at all.
+	if len(got.Buttons) != len(session.DefaultButtons()) {
+		t.Fatalf("a fresh host does not have the defaults: %+v", got.Buttons)
 	}
 
 	resp, err := http.Post(srv.URL+"/api/presets", "application/json",
@@ -1306,8 +1308,42 @@ func TestCustomButtonRefusalSaysWhy(t *testing.T) {
 	if !strings.Contains(string(body), "quotes") {
 		t.Fatalf("the reason did not reach the page: %q", body)
 	}
-	if len(store.List()) != 0 {
-		t.Fatalf("the refused list was stored: %+v", store.List())
+	if got := store.List(); len(got) != len(session.DefaultButtons()) {
+		t.Fatalf("the refused list replaced what was there: %+v", got)
+	}
+}
+
+func TestResetPutsTheDefaultButtonsBack(t *testing.T) {
+	// The defaults are the host's list, so restoring them is a flag rather than a
+	// list the page sends: a page old enough to hold different ones would
+	// otherwise install them quietly.
+	store := session.LoadButtons("")
+	o := testOptions("")
+	o.Buttons = store.List
+	o.SetButtons = store.Set
+	o.ResetButtons = store.Reset
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	if _, err := store.Set([]session.Custom{{Label: "Qwen", Cmd: "qwen"}}); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.Post(srv.URL+"/api/presets", "application/json", strings.NewReader(`{"reset":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got struct {
+		Buttons []session.Custom `json:"buttons"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Buttons) != len(session.DefaultButtons())+1 {
+		t.Fatalf("reset answered %+v", got.Buttons)
+	}
+	if got.Buttons[0].ID != "shell" || got.Buttons[len(got.Buttons)-1].Cmd != "qwen" {
+		t.Fatalf("reset answered %+v", got.Buttons)
 	}
 }
 

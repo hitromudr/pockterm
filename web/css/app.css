@@ -426,6 +426,20 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
   font-size: 14px;
   font-weight: 600;
 }
+/* Back to the four. Quiet by default — it is a way out of a mess, not something
+   to reach for — and it reddens like every other second-tap-to-confirm here. */
+#custom-reset {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 0;
+  color: #8b93a7;
+  background: #1b2230;
+  border: 1px solid #2a3345;
+  border-radius: 8px;
+  font-size: 13px;
+}
+#custom-reset.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340; }
+
 /* Why a button was refused, in the words the host used: on a phone there is no
    log to open, and "не сохранилось" is not something anyone can act on. */
 #custom-note {
@@ -438,7 +452,7 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
   border-radius: 8px;
 }
 /* A custom entry under +, next to the four presets it joins. */
-#new-menu button.custom, #new-menu-term button.custom { color: #ffe9a8; }
+#new-menu button.own, #new-menu-term button.own { color: #ffe9a8; }
 
 /* --- session list --- */
 /* The bottom safe-area inset is the reason the last session was unreachable

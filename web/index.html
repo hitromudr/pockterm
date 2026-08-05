@@ -40,10 +40,10 @@
            was just tapped, and a menu that did not say which would start a
            session somewhere the owner did not mean. -->
       <span id="new-where" hidden></span>
-      <button data-preset="shell">&#9656; Shell</button>
-      <button data-preset="claude">&#10022; Claude</button>
-      <button data-preset="yolo">&#9889; Claude (yolo)</button>
-      <button data-preset="continue">&#8635; Continue</button>
+      <!-- The buttons themselves are written by the page from the host's list:
+           the four defaults are entries in it, editable and removable like any
+           other, so a menu spelled out here would be a second answer to what
+           exists. See renderButtons in js/app.js. -->
     </div>
     <div id="rename-box" hidden>
       <input id="rename-input" type="text" autocomplete="off" placeholder="new name">
@@ -91,17 +91,21 @@
              records the typed text itself. -->
         <button id="input-diag" title="Record what the keyboard does">&#128269; Input log</button>
       </div>
-      <!-- The owner's own session buttons: a label to tap and a command to run.
-           They join the four presets under +, and what starts them is the same
-           Makefile — one target, with the command in CMD. -->
+      <!-- The session buttons: the four the page starts with and whatever the
+           owner added beside them, one list. A label to tap and a command to
+           run — and for a default, no command at all: its own name is the make
+           target, and the Makefile decides what that does. -->
       <div id="buttons-box">
-        <div class="head">Свои кнопки</div>
+        <div class="head">Кнопки сессий</div>
         <ul id="custom-list"></ul>
         <div class="add">
           <input id="custom-label" type="text" autocomplete="off" placeholder="подпись">
           <input id="custom-cmd" type="text" autocomplete="off" spellcheck="false" placeholder="команда, например qwen">
           <button id="custom-add">Добавить</button>
         </div>
+        <!-- Two taps, like every other removal here: it puts back what the four
+             were and leaves the owner's own buttons alone. -->
+        <button id="custom-reset" type="button" title="Вернуть четыре кнопки по умолчанию">&#8635; Сбросить к умолчанию</button>
         <p id="custom-note" hidden></p>
       </div>
       <div class="row">
@@ -133,16 +137,11 @@
          under the tab rather than over it: the strip is the top edge of the
          screen, and there is nothing above it to hang a plate on. -->
     <div id="kind-help" hidden></div>
-    <!-- The presets, again. Same four as on the list screen and the same
+    <!-- The buttons, again. The same list as on the drawer screen and the same
          handler; a popup rather than a row, because the header has no space for
          four buttons on a phone. -->
     <div id="menu-scrim" hidden></div>
-    <div id="new-menu-term" hidden>
-      <button data-preset="shell">&#9656; Shell</button>
-      <button data-preset="claude">&#10022; Claude</button>
-      <button data-preset="yolo">&#9889; Claude (yolo)</button>
-      <button data-preset="continue">&#8635; Continue</button>
-    </div>
+    <div id="new-menu-term" hidden></div>
     <div id="status" hidden></div>
     <!-- CI installs a build the moment it arrives, so the unit restarts under
          whoever is looking and the page reconnects still running the previous

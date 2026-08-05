@@ -72,16 +72,21 @@ type Options struct {
 	Folders     func() (root string, dirs []string, err error)
 	RenameSess  func(from, to string) error // rename a session; nil disables /api/sessions/rename
 	KillSession func(name string) error     // close a session; nil disables /api/sessions/kill
-	// Buttons and SetButtons are the custom presets the owner added in the
-	// drawer's settings — a label to tap and a command to run. nil leaves
-	// /api/presets absent, which is a host that only has the built-in four.
+	// Buttons and SetButtons are the session buttons under "+": the four the
+	// page starts with and whatever the owner added beside them. nil leaves
+	// /api/presets absent, which is a host where the four cannot be edited.
 	//
 	// The list is read and written whole: the page holds it while it is being
 	// edited, and a partial save would leave the two disagreeing about what
 	// exists. Validation belongs to the store, not here — SetButtons answers
 	// with the list as it now stands, or with the reason it refused.
-	Buttons    func() []session.Custom
-	SetButtons func([]session.Custom) ([]session.Custom, error)
+	//
+	// ResetButtons puts the defaults back. It is the store's job and not a list
+	// the page could send, because the defaults are the host's: a page old
+	// enough to hold different ones would quietly install them.
+	Buttons      func() []session.Custom
+	SetButtons   func([]session.Custom) ([]session.Custom, error)
+	ResetButtons func() ([]session.Custom, error)
 }
 
 // modePoll is how often a client's pane is checked for tmux copy-mode. The
@@ -346,9 +351,26 @@ func servePresets(o Options, w http.ResponseWriter, r *http.Request) {
 		}
 		var req struct {
 			Buttons []session.Custom `json:"buttons"`
+			// Put the defaults back. A flag rather than an endpoint of its own:
+			// it is the same list being replaced, and the answer is the same
+			// list coming back.
+			Reset bool `json:"reset"`
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<14)).Decode(&req); err != nil {
 			http.Error(w, "unreadable request", http.StatusBadRequest)
+			return
+		}
+		if req.Reset {
+			if o.ResetButtons == nil {
+				http.Error(w, "the defaults cannot be restored on this host", http.StatusNotFound)
+				return
+			}
+			restored, err := o.ResetButtons()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeButtons(w, restored)
 			return
 		}
 		saved, err := o.SetButtons(req.Buttons)
@@ -363,6 +385,10 @@ func servePresets(o Options, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "get or post the buttons", http.StatusMethodNotAllowed)
 		return
 	}
+	writeButtons(w, list)
+}
+
+func writeButtons(w http.ResponseWriter, list []session.Custom) {
 	if list == nil {
 		list = []session.Custom{}
 	}

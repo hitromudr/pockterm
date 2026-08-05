@@ -215,13 +215,25 @@ command line.
 
 The plain + lost nothing: it still starts a preset in the root.
 
-### Your own buttons, next to the four presets
+### Session buttons: the four defaults and your own, one list
 
-The bottom of the drawer holds a **Settings** panel, and in it the custom session
-buttons: a label and a command. A button joins the four presets under + (and in the
-menu over the terminal — it is one list), starts in the same folder and takes the
-same name from it. So `qwen`, `opencode` or anything else arrives from the phone
-instead of through an edit to a Makefile on the host.
+The bottom of the drawer holds a **Settings** panel, and in it the session buttons: a
+label and a command. One of your own joins the four defaults under + (and in the menu
+over the terminal — it is one list), starts in the same folder and takes the same name
+from it. So `qwen`, `opencode` or anything else arrives from the phone instead of
+through an edit to a Makefile on the host.
+
+**The four defaults are entries in that same list**, so they take the same edit and
+the same removal. What makes one a default is that its id is a make target (`shell`,
+`claude`, `yolo`, `continue`) and its command is empty: what the target does stays the
+Makefile's decision. Give a default a command and it goes through the same `custom`
+target while keeping its id — and with it the mark on every tab it has already opened:
+`claude --model opus` is still `✦`. A removed button the server refuses to start,
+since otherwise removing one would only have hidden it.
+
+**"↻ Сбросить к умолчанию"** restores the four and leaves yours alone: the four are a
+default and `qwen` typed on a phone is not. Two taps, like every removal here, because
+it does undo renames and commands.
 
 What launches it is still the Makefile: the command travels as `CMD=` to one target
 (`custom`) which wraps it in the same launcher as every other target. A Makefile

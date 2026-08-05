@@ -431,10 +431,11 @@ describe("the owner's own session buttons", () => {
     assert.equal(await page.locator('#custom-list li.editing').count(), 1);
     assert.match(await page.textContent('#custom-add'), /Сохранить/);
 
+    const rows = await page.locator('#custom-list li').count();
     await page.fill('#custom-cmd', 'qwen --yolo --verbose');
     await page.click('#custom-add');
     await page.waitForSelector('#custom-list li:has-text("qwen --yolo --verbose")');
-    assert.equal(await page.locator('#custom-list li').count(), 1, 'the edit added a second button');
+    assert.equal(await page.locator('#custom-list li').count(), rows, 'the edit added a second button');
     assert.equal(
       await page.getAttribute('#new-menu button[data-preset^="custom:"]', 'data-preset'), id,
       'the button that was edited is not the button that came back',
@@ -446,9 +447,9 @@ describe("the owner's own session buttons", () => {
 
     // The same tap that opened the editing closes it, leaving the button alone —
     // there is no room on a phone for a Cancel of its own.
-    await page.click('#custom-list li button.rename');
+    await page.click('#custom-list li:has-text("Квен") button.rename');
     assert.equal(await page.locator('#custom-list li.editing').count(), 1);
-    await page.click('#custom-list li button.rename');
+    await page.click('#custom-list li:has-text("Квен") button.rename');
     assert.equal(await page.locator('#custom-list li.editing').count(), 0);
     assert.equal(await page.inputValue('#custom-label'), '');
 
@@ -457,6 +458,84 @@ describe("the owner's own session buttons", () => {
     await page.fill('#custom-cmd', 'qwen --yolo');
     await page.click('#custom-add');
     await page.waitForSelector('#custom-list li:has-text("qwen --yolo")');
+  });
+
+  test('a default can be given a command, and keeps its mark', async () => {
+    // The four were a menu written into the page and a map in Go. Editable means
+    // they are entries in the same list as the owner's own — so this is the whole
+    // chain: the label and the command are the host's, the glyph is the page's, and
+    // what actually runs is the Makefile's `custom` target with CMD= now that the
+    // button carries a command of its own.
+    await stand.open();
+    const { page } = stand;
+    await stand.openSettings();
+    await page.click('#custom-list li:has-text("Claude (yolo)") button.rename');
+    // A default's command field is empty because its id is the make target, and the
+    // placeholder is the only place a phone can be told that empty is an answer.
+    assert.equal(await page.inputValue('#custom-cmd'), '');
+    assert.match(await page.getAttribute('#custom-cmd', 'placeholder'), /make yolo/);
+
+    await page.fill('#custom-label', '⚡ Ярость');
+    await page.fill('#custom-cmd', 'echo edited-yolo');
+    await page.click('#custom-add');
+    await page.waitForSelector('#custom-list li:has-text("Ярость")');
+
+    // Still asked for by its own name — the id is what the tabs it opened carry.
+    const b = page.locator('#new-menu button[data-preset="yolo"]');
+    assert.equal(await b.count(), 1, 'an edited default stopped being itself');
+    assert.match(await b.textContent(), /⚡ Ярость/);
+
+    // And the command reaches the session: the stand's custom target echoes it.
+    await stand.shutDrawer();
+    await stand.openDrawer();
+    const before = await page.locator('#session-list li').count();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset="yolo"]');
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
+    const name = (await page.locator('#session-list li').last().locator('.name').textContent()).trim();
+    let pane = '';
+    for (let i = 0; i < 20 && !pane.includes('ran:'); i++) {
+      pane = stand.tmux(['capture-pane', '-p', '-t', name]);
+      if (!pane.includes('ran:')) await page.waitForTimeout(200);
+    }
+    assert.match(pane, /ran: echo edited-yolo/, `the edited command did not reach the session: ${pane}`);
+    // The stamp is still the button's id, so the tab draws ⚡ rather than nothing.
+    assert.equal(stand.tmux(['show-options', '-v', '-t', name, '@pockterm-kind']).trim(), 'yolo');
+  });
+
+  test('a default can be removed, and the reset brings it back alone', async () => {
+    await stand.open();
+    const { page } = stand;
+    await stand.openSettings();
+    const del = page.locator('#custom-list li:has-text("Shell") button.close');
+    await del.click();
+    await del.click();
+    await page.waitForFunction(
+      () => !document.querySelector('#new-menu button[data-preset="shell"]'), null, { timeout: 5000 });
+    // Removed means removed: the server refuses to start it, or hiding a button
+    // would have been all this did.
+    const refused = await page.evaluate(async () => {
+      const res = await fetch(`/api/sessions/new${location.search ? location.search : ''}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preset: 'shell' }),
+      });
+      return { status: res.status, body: (await res.text()).trim() };
+    });
+    assert.equal(refused.status, 400, `a removed button still started a session: ${JSON.stringify(refused)}`);
+
+    // The reset restores the four and leaves the owner's own where they are —
+    // `qwen` typed on a phone is not a default, and losing it to a mistap would be
+    // worse than the mess being cleaned up. Two taps, like every removal here.
+    await page.click('#custom-reset');
+    assert.match(await page.textContent('#custom-reset'), /Сбросить\?/);
+    await page.click('#custom-reset');
+    await page.waitForSelector('#custom-list li:has-text("Shell")');
+    assert.equal(await page.locator('#new-menu button[data-preset="shell"]').count(), 1);
+    // The edit from the previous test is undone too: a default is stock again.
+    await page.waitForSelector('#custom-list li:has-text("Claude (yolo)")');
+    assert.equal(await page.locator('#custom-list li:has-text("Ярость")').count(), 0);
   });
 
   test('the buttons are the host\'s, so a reload finds them', async () => {
@@ -477,16 +556,20 @@ describe("the owner's own session buttons", () => {
     // for a while, and a stray touch took a button away with nothing asked. The
     // first tap only arms.
     const del = page.locator('#custom-list li:has-text("Квен") button.close');
+    const rows = await page.locator('#custom-list li').count();
     await del.click();
-    assert.equal(await page.locator('#custom-list li').count(), 1, 'the first tap removed it');
+    assert.equal(await page.locator('#custom-list li').count(), rows, 'the first tap removed it');
     assert.match(await del.textContent(), /\?/, 'the armed button does not say it is armed');
     assert.ok(await del.evaluate((b) => b.classList.contains('armed')));
 
     // And the second one takes it out of the menu as well, because it is one list.
+    // What is left is the four defaults: removing a button of the owner's own is
+    // not a reset.
     await del.click();
     await page.waitForFunction(
-      () => document.querySelectorAll('#custom-list li').length === 0, null, { timeout: 5000 });
+      (n) => document.querySelectorAll('#custom-list li').length === n - 1, rows, { timeout: 5000 });
     assert.equal(await page.locator('#new-menu button[data-preset^="custom:"]').count(), 0);
+    assert.equal(await page.locator('#new-menu button[data-preset="claude"]').count(), 1);
   });
 });
 

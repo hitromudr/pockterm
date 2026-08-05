@@ -551,6 +551,50 @@ this binary several times on a working day. Ids are the host's to hand out, so a
 rename keeps the button rather than making a new one, and the page saves **the whole
 list** and draws what came back — never what was just typed.
 
+## The four buttons are entries in the list, not a menu written into the page
+
+They were a map in Go (`session.Presets`) and four `<button>`s in the HTML, and both
+were the answer to "what can be started". That is two answers, and it showed the
+moment either could change: a default renamed or removed was still in the menu, in
+its stock words, starting what it always had.
+
+So the stored list is the whole set. A default is an entry whose **id is a make
+target** (`shell`, `claude`, `yolo`, `continue`) and whose command is empty, which is
+`Custom.Builtin()` and the one case `ValidCustom` lets through without a command —
+the Makefile decides what that target does, as it always did. `DefaultButtons()`
+carries their labels, because a label that can be renamed has to be stored
+somewhere; the glyph stays in the page (`web/js/kinds.js`), which is its own
+vocabulary and shared by the menu, the strip and the drawer.
+
+**Editing a default's command moves it onto the `custom` target and keeps its id.**
+The id is what `KIND=` stamps and what a tab is marked from, so `claude --model opus`
+is still `✦ claude` on every tab it opens. `Buttons.Resolve` is the only place that
+turns a preset name into a target and a command, and **the list is the authority**: a
+button the owner removed cannot be started however well-known its name, or removing
+it would have been hiding it. The UI test asks the endpoint directly for a removed
+`shell` and requires a 400.
+
+**The stored file grew a shape.** It was a bare array of the owner's own buttons;
+now it is `{"buttons":[…]}`. The difference carries a fact no array could: an empty
+list means every button was removed and must stay removed, while a bare array is a
+store written before the defaults were in it — `parseButtons` puts them back in
+front of what it holds. Without that, the first release would have looked like it
+deleted the four on every host that had ever saved a custom button.
+
+**A reset restores the defaults and nothing else.** `Buttons.Reset` drops the
+built-in entries, puts `DefaultButtons()` back in front, and leaves the owner's own
+where they are: the four are a default, and `qwen` typed on a phone is not. It is the
+store's operation rather than a list the page could send, because a page older than
+the binary would otherwise install whatever it thought the defaults were — the
+endpoint takes `{"reset":true}`. Two taps on the button, like every other removal
+here, since it does undo renames and commands.
+
+Both menus are written from the list (`renderCustom`), and opening one waits for
+`customReady` — the first `/api/presets` answer. A `+` tapped before it arrived would
+open an empty popup, which reads as "nothing can be started". On a host with no store
+at all (404) the page falls back to `DEFAULT_BUTTONS`: not a second source of truth,
+since there is no list there to disagree with.
+
 **A button can be changed, and that is what the id was for.** `✎` on a row loads it
 into the two fields the form already has and `Добавить` becomes `Сохранить`; the row
 being edited is outlined, because with the label retyped there is nothing else on
@@ -643,6 +687,15 @@ closing the very session being used. `❮` and the scrim are gone in that state
 rather than inert: an exit that does nothing is worse than no exit. The swipe obeys
 that too — it goes through `closeDrawer`, which refuses then, rather than checking
 for itself.
+
+**A touch aimed at the terminal must wait for the drawer to be gone**, and that is
+the same lesson as `shutDrawer`'s, learned a second time. The panel slides out over
+200ms; `stand.attach()` waited only for the terminal to appear, so a gesture
+dispatched right after it landed on a `<ul>` in the drawer, never reached
+`#screen-term`, and the test timed out waiting for a move nobody received. It was
+latent for as long as the page was quick enough and started failing when the drawer
+grew four rows — a change to the timing, not to the page. `attach()` now waits on the
+geometry too.
 
 Anything in the tests that clicks a session has to open the drawer **by its
 state**, never by tapping `☰`. `☰` toggles, and the restore of the last session

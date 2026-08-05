@@ -8,7 +8,7 @@ import { watch as watchInput } from './inputdiag.js';
 import { Scroller, movedWholeScreen } from './scroll.js';
 import { staleNotice } from './update.js';
 import { endingKeys } from './ender.js';
-import { kindMark, kindName, customMark, labelBody, shortAge } from './kinds.js';
+import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf } from './kinds.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -18,7 +18,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v108';
+const APP_VERSION = 'v109';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -256,11 +256,12 @@ function renderFolder(dir, label, meta) {
     (meta ? `<span class="meta">${escapeHtml(meta)}</span>` : '');
   // Tapping a folder does not start anything by itself: which preset still has
   // to be answered, and the presets are one menu shared by every way in here.
-  b.addEventListener('click', () => {
+  b.addEventListener('click', async () => {
     setPendingDir(dir);
     newMenu.hidden = false;
     renameBox.hidden = true;
     screenSessions.scrollTop = 0;
+    await customReady;
   });
   li.appendChild(b);
   folderList.appendChild(li);
@@ -284,11 +285,15 @@ let renameTarget = null;
 const newMenuTerm = document.getElementById('new-menu-term');
 const newTermBtn = document.getElementById('new-term');
 
-newBtn.addEventListener('click', () => {
+newBtn.addEventListener('click', async () => {
+  const opening = newMenu.hidden;
   newMenu.hidden = !newMenu.hidden;
   renameBox.hidden = true;
   // The plain + is the root, whatever folder was tapped before it.
   setPendingDir(null);
+  // The buttons in it come from the host. Opening the menu before that answer
+  // arrives shows an empty popup, which reads as "nothing can be started".
+  if (opening) await customReady;
 });
 
 foldersBtn.addEventListener('click', () => showFolders(!foldersShown));
@@ -310,7 +315,11 @@ function setTermMenu(open) {
 if (newTermBtn) {
   keepsTerminalFocus(newTermBtn);
   keepsTerminalFocus(menuScrim);
-  newTermBtn.addEventListener('click', () => setTermMenu(newMenuTerm.hidden));
+  newTermBtn.addEventListener('click', async () => {
+    const opening = newMenuTerm.hidden;
+    setTermMenu(opening);
+    if (opening) await customReady;
+  });
   menuScrim.addEventListener('click', () => setTermMenu(false));
 }
 
@@ -430,22 +439,27 @@ function escapeHtml(s) {
 // The arming expires after ARM_MS, because a button left armed is a button whose
 // next tap, minutes later, does something other than what it says.
 const ARM_MS = 4000;
-function armTwice(btn, ask, act) {
+function armTwice(btn, ask, act, armedText = '✕?') {
+  // What it said before is what it says again on the way back: the same helper
+  // serves a ✕ and a button with words on it.
+  const idle = btn.textContent;
   let armed = null;
   btn.addEventListener('click', () => {
     if (!armed) {
       btn.classList.add('armed');
-      btn.textContent = '✕?';
+      btn.textContent = armedText;
       toast(ask);
       armed = setTimeout(() => {
         armed = null;
         btn.classList.remove('armed');
-        btn.textContent = '✕';
+        btn.textContent = idle;
       }, ARM_MS);
       return;
     }
     clearTimeout(armed);
     armed = null;
+    btn.classList.remove('armed');
+    btn.textContent = idle;
     act();
   });
 }
@@ -467,6 +481,7 @@ const customLabel = document.getElementById('custom-label');
 const customCmd = document.getElementById('custom-cmd');
 const customAdd = document.getElementById('custom-add');
 const customNote = document.getElementById('custom-note');
+const customReset = document.getElementById('custom-reset');
 const buttonsBox = document.getElementById('buttons-box');
 let customButtons = [];
 
@@ -488,8 +503,12 @@ function renderCustom() {
   customList.innerHTML = '';
   for (const c of customButtons) {
     const li = document.createElement('li');
-    li.innerHTML = `<span class="name">${escapeHtml(c.label)}</span>` +
-      `<code>${escapeHtml(c.cmd)}</code>`;
+    // What a default runs is its own make target, and that is worth showing: the
+    // command field being empty is not the same as the button doing nothing, and
+    // on a phone there is nowhere else to find out which.
+    const runs = c.cmd ? c.cmd : `make ${c.id}`;
+    li.innerHTML = `<span class="name">${escapeHtml(markOf(c))} ${escapeHtml(labelBody(c.label))}</span>` +
+      `<code>${escapeHtml(runs)}</code>`;
     if (c.id === editingID) li.classList.add('editing');
     // Changing a button rather than deleting and adding it keeps its id, and the
     // id is what the sessions it started are marked with: retyping the same
@@ -520,19 +539,25 @@ function renderCustom() {
     li.appendChild(del);
     customList.appendChild(li);
   }
+  // Both menus are written from the same list, defaults included. They used to
+  // be four buttons spelled out in the HTML with the owner's own appended, and
+  // that was a second answer to what exists: a default that had been renamed or
+  // removed was still there, in its stock words, starting what it always had.
   for (const menu of [newMenu, newMenuTerm]) {
     if (!menu) continue;
-    for (const old of menu.querySelectorAll('button.custom')) old.remove();
+    for (const old of menu.querySelectorAll('button.preset')) old.remove();
     for (const c of customButtons) {
       const b = document.createElement('button');
-      b.className = 'custom';
-      b.dataset.preset = `custom:${c.id}`;
+      // `own` is the tint that says this one is the owner's rather than a default
+      // — the marks say it too, and a colour is what reads at a glance.
+      b.className = builtinId(c.id) ? 'preset' : 'preset own';
+      b.dataset.preset = presetOf(c);
       b.dataset.name = c.label;
       // A label that leads with a symbol carries its own mark, and then that is
       // the mark shown here and on the tab the session opens in. Drawing ★ in
       // front of it as well would leave two marks and no way to tell which of
       // them is the one on the tabs.
-      b.textContent = `${customMark(c.label)} ${labelBody(c.label)}`;
+      b.textContent = `${markOf(c)} ${labelBody(c.label)}`;
       wirePreset(b);
       menu.appendChild(b);
     }
@@ -543,13 +568,23 @@ function renderCustom() {
   if (screenSessions.classList.contains('open')) loadSessions();
 }
 
+// The first load, kept so anything that needs the buttons can wait for it: the
+// menus are drawn from this list now, including the four, so a + tapped before
+// the host has answered would open an empty menu. It is a promise rather than a
+// flag because the answer is one fetch away, not one frame.
+let customReady = null;
+
 async function loadCustom() {
   try {
     const res = await fetch(`/api/presets?${tokenQS}`);
     if (!res.ok) {
-      // A host without a store says 404, and then there is nothing to edit:
-      // an editor whose Save can never work is worse than no editor.
-      if (res.status === 404) buttonsBox.hidden = true;
+      // A host that cannot edit them says 404. The four still work — the server
+      // resolves them itself — so the menus are drawn from what they were.
+      if (res.status === 404) {
+        buttonsBox.hidden = true;
+        customButtons = DEFAULT_BUTTONS.slice();
+        renderCustom();
+      }
       return;
     }
     const data = await res.json();
@@ -557,6 +592,16 @@ async function loadCustom() {
     renderCustom();
   } catch (_) { /* offline: the buttons are the least of it */ }
 }
+
+// What a host without a button store has. Not a second source of truth: it is
+// only reached on a 404, where there is no list to disagree with — the labels a
+// store-carrying host uses come from it (session.DefaultButtons in Go).
+const DEFAULT_BUTTONS = [
+  { id: 'shell', label: 'Shell', cmd: '' },
+  { id: 'claude', label: 'Claude', cmd: '' },
+  { id: 'yolo', label: 'Claude (yolo)', cmd: '' },
+  { id: 'continue', label: 'Continue', cmd: '' },
+];
 
 // Save the whole list and draw what the host says it now has — never what was
 // just typed. A refusal is shown as it came: which button and why is the only
@@ -585,13 +630,19 @@ async function saveCustom(list) {
   }
 }
 
+// What the command field says when nothing is typed in it. For a default that is
+// not "type a command" but "leave this empty and the make target runs" — the one
+// place a phone can be told that an empty field is an answer.
+const CMD_PLACEHOLDER = customCmd.placeholder;
+
 // startEdit puts an existing button into the form. The row it came from is
 // marked, because the fields are nowhere near it once the keyboard is up and
 // "which one am I changing" is then unanswerable.
 function startEdit(c) {
   editingID = c.id;
   customLabel.value = c.label;
-  customCmd.value = c.cmd;
+  customCmd.value = c.cmd || '';
+  customCmd.placeholder = builtinId(c.id) ? `пусто — цель make ${c.id}` : CMD_PLACEHOLDER;
   note('');
   renderCustom();
   customAdd.textContent = 'Сохранить';
@@ -603,6 +654,7 @@ function cancelEdit() {
   editingID = null;
   customLabel.value = '';
   customCmd.value = '';
+  customCmd.placeholder = CMD_PLACEHOLDER;
   customAdd.textContent = 'Добавить';
   note('');
   renderCustom();
@@ -611,7 +663,11 @@ function cancelEdit() {
 customAdd.addEventListener('click', async () => {
   const label = customLabel.value.trim();
   const cmd = customCmd.value.trim();
-  if (!label || !cmd) { note('нужны подпись и команда'); return; }
+  // An empty command is an answer for a default and a mistake for anything else:
+  // a default's id is a make target, so no command means the Makefile decides —
+  // which is what the four did before they were editable at all.
+  const keepsTarget = editingID !== null && builtinId(editingID);
+  if (!label || (!cmd && !keepsTarget)) { note('нужны подпись и команда'); return; }
   // The whole list travels either way — the host replaces it and answers with
   // what it now has. Editing differs only in that the entry keeps its id and its
   // place in the row.
@@ -623,10 +679,35 @@ customAdd.addEventListener('click', async () => {
     customAdd.textContent = 'Добавить';
     customLabel.value = '';
     customCmd.value = '';
+    customCmd.placeholder = CMD_PLACEHOLDER;
     renderCustom();
   }
 });
-loadCustom();
+
+// Back to the four, and only them: the defaults are the host's to restore, so the
+// page asks rather than sending a list of its own — a page older than the binary
+// would otherwise install whatever it thought the defaults were. The owner's own
+// buttons are not defaults and are left alone; two taps, like every removal here,
+// because it does undo renames and commands.
+armTwice(customReset, 'ещё раз — и кнопки станут как были', async () => {
+  note('');
+  try {
+    const res = await fetch(`/api/presets?${tokenQS}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reset: true }),
+    });
+    const text = await res.text();
+    if (!res.ok) { note(text.trim() || `не сбросилось: ${res.status}`); return; }
+    cancelEdit();
+    customButtons = (JSON.parse(text).buttons) || [];
+    renderCustom();
+    report('custom-buttons', { ok: true, reset: true, count: customButtons.length });
+  } catch (_) {
+    note('нет связи с сервером');
+  }
+}, '↻ Сбросить?');
+customReady = loadCustom();
 
 // --- settings, at the bottom of the drawer ---
 //

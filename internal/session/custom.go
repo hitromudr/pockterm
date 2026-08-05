@@ -45,8 +45,41 @@ func CustomID(preset string) string {
 	return strings.TrimPrefix(preset, customPrefix)
 }
 
-// PresetName is what the page sends to start this button's session.
-func (c Custom) PresetName() string { return customPrefix + c.ID }
+// PresetName is what the page sends to start this button's session: a built-in
+// is asked for by its own name, everything else by its id behind the prefix.
+func (c Custom) PresetName() string {
+	if _, ok := Presets[c.ID]; ok {
+		return c.ID
+	}
+	return customPrefix + c.ID
+}
+
+// Builtin reports whether this entry is one of the four the page starts with —
+// which is to say whether its id names a make target of its own.
+func (c Custom) Builtin() bool {
+	_, ok := Presets[c.ID]
+	return ok
+}
+
+// DefaultButtons is the list a host starts with, and what a reset restores.
+//
+// The labels live here rather than in the page because the four are now entries
+// in the same list as the owner's own: they can be renamed, and a rename has to
+// be stored somewhere. What stays in the page is the glyph — that is its own
+// vocabulary, shared by the menu, the strip and the drawer (web/js/kinds.js).
+//
+// A default carries no command: its id *is* a make target, and the Makefile
+// decides what that target does. Give one a command and it starts going through
+// the `custom` target instead, keeping its id — so the sessions it has already
+// opened keep their mark.
+func DefaultButtons() []Custom {
+	return []Custom{
+		{ID: "shell", Label: "Shell"},
+		{ID: "claude", Label: "Claude"},
+		{ID: "yolo", Label: "Claude (yolo)"},
+		{ID: "continue", Label: "Continue"},
+	}
+}
 
 // Limits on what a button may carry. Both are about a phone: a label longer
 // than this is unreadable in the menu it sits in, and a command longer than
@@ -87,6 +120,12 @@ func ValidCustom(c Custom) (Custom, error) {
 		}
 	}
 	if c.Cmd == "" {
+		// One kind of button may have no command: a built-in, whose id is a make
+		// target of its own. Everything else without one would be a button that
+		// starts nothing.
+		if c.Builtin() {
+			return c, nil
+		}
 		return c, fmt.Errorf("a button needs a command")
 	}
 	if len(c.Cmd) > maxCmd {
@@ -114,11 +153,21 @@ type Buttons struct {
 	path string
 }
 
-// LoadButtons reads the stored list. A file that cannot be read or parsed
-// leaves an empty list rather than refusing to start: the buttons are a
-// convenience, and a broken file must not cost the terminal.
+// stored is the file's shape. An object rather than the bare array it used to
+// be, and the difference carries a fact no array could: whether the four
+// built-ins are absent because the owner removed them or because the file
+// predates their being in the list at all. The first must survive a restart, the
+// second has to be filled in — see LoadButtons.
+type stored struct {
+	Buttons []Custom `json:"buttons"`
+}
+
+// LoadButtons reads the stored list. A file that cannot be read or parsed leaves
+// the defaults rather than refusing to start: the buttons are a convenience, and
+// a broken file must not cost the terminal — but a phone with no buttons at all
+// cannot start a session, which is the one thing this package exists for.
 func LoadButtons(path string) *Buttons {
-	b := &Buttons{path: path}
+	b := &Buttons{path: path, list: DefaultButtons()}
 	if path == "" {
 		return b
 	}
@@ -126,20 +175,41 @@ func LoadButtons(path string) *Buttons {
 	if err != nil {
 		return b
 	}
-	var list []Custom
-	if err := json.Unmarshal(raw, &list); err != nil {
+	list, ok := parseButtons(raw)
+	if !ok {
 		return b
 	}
 	// Held to the same gate as anything arriving from the page: the file is
 	// hand-editable, and what it says ends up on a command line.
+	clean := make([]Custom, 0, len(list))
 	for _, c := range list {
 		v, err := ValidCustom(c)
 		if err != nil || v.ID == "" {
 			continue
 		}
-		b.list = append(b.list, v)
+		clean = append(clean, v)
 	}
+	// An empty list is an answer — every button removed — and it is kept as one.
+	b.list = clean
 	return b
+}
+
+// parseButtons reads either shape of the file.
+//
+// The bare array is what versions before the built-ins joined the list wrote,
+// and it holds custom buttons only: a store from then says nothing about the
+// four, so they are put back in front rather than treated as deleted. The object
+// form says exactly what it means, empty list included.
+func parseButtons(raw []byte) ([]Custom, bool) {
+	var obj stored
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.Buttons, true
+	}
+	var old []Custom
+	if err := json.Unmarshal(raw, &old); err != nil {
+		return nil, false
+	}
+	return append(DefaultButtons(), old...), true
 }
 
 // List returns the buttons in the order they are shown.
@@ -216,7 +286,7 @@ func (b *Buttons) Set(list []Custom) ([]Custom, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return out, fmt.Errorf("custom buttons: %w", err)
 	}
-	raw, err := json.MarshalIndent(clean, "", "  ")
+	raw, err := json.MarshalIndent(stored{Buttons: clean}, "", "  ")
 	if err != nil {
 		return out, fmt.Errorf("custom buttons: %w", err)
 	}
@@ -224,4 +294,53 @@ func (b *Buttons) Set(list []Custom) ([]Custom, error) {
 		return out, fmt.Errorf("custom buttons: %w", err)
 	}
 	return out, nil
+}
+
+// Reset puts the four built-ins back and leaves the owner's own alone.
+//
+// Restoring everything would be one predictable state and one list of buttons
+// lost with a mistap — the four are a default, and `qwen` typed on a phone is
+// not. So this is about the defaults only: whichever of them were removed come
+// back, whichever were renamed or given a command are stock again, and they lead
+// the list in their own order.
+func (b *Buttons) Reset() ([]Custom, error) {
+	b.mu.Lock()
+	keep := make([]Custom, 0, len(b.list))
+	for _, c := range b.list {
+		if !c.Builtin() {
+			keep = append(keep, c)
+		}
+	}
+	b.mu.Unlock()
+	return b.Set(append(DefaultButtons(), keep...))
+}
+
+// Resolve turns a preset name into the make target to run and the command to
+// hand it, and it is the only place that decides either.
+//
+// The list is the authority, not this package's map: a button the owner removed
+// cannot be started, however well-known its name, or removing it would only have
+// hidden it. And an entry with a command runs through the `custom` target even
+// when its id is a built-in's — that is what editing a default's command means,
+// and it keeps the id so the sessions it already opened keep their mark.
+func (b *Buttons) Resolve(preset string) (target, cmd string, err error) {
+	id := preset
+	if custom := CustomID(preset); custom != "" {
+		id = custom
+	}
+	c, ok := b.Find(id)
+	if !ok {
+		return "", "", fmt.Errorf("no such button")
+	}
+	if c.Cmd != "" {
+		return CustomTarget, c.Cmd, nil
+	}
+	// No command: the id has to be a target of its own, which is exactly what
+	// ValidCustom already required of an entry without one. Checked again here
+	// because this value reaches a command line.
+	t, err := Target(c.ID)
+	if err != nil {
+		return "", "", err
+	}
+	return t, "", nil
 }
