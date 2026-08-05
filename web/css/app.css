@@ -238,22 +238,31 @@ html, body {
   text-align: center;
   color: #0f1b14;
 }
-/* The shell points right, in the same box and at the same size as the shield
-   beside it: two identical shapes in one corner were told apart by colour
-   alone, and the owner asked for the third signal. Flat down the left with the
-   point on the right rather than a bare triangle — the digit has to stay
-   readable at 9px, and the padding on that side is the room the point takes. */
+/* The shell is a triangle pointing right, in the same box and at the same
+   height as the shield beside it: two identical shapes in one corner were told
+   apart by colour alone, which is one signal for something read at 9px.
+
+   It carries no glyph — the shape is the mark, and it is the same ▸ the strip
+   gives a shell session. There is no room for both: a triangle is at its
+   tallest down its left edge, so the digit sits there and the rest of the width
+   is the point. */
 .bg::before {
-  content: '▸' attr(data-sh);
+  content: attr(data-sh);
   background: #7fd8e8;
-  clip-path: polygon(0 0, 70% 0, 100% 50%, 70% 100%, 0 100%);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  text-align: left;
 }
 /* The monitor keeps the heraldic shield: flat across the top, straight down the
    sides, a point at the bottom. The digit sits in the upper part, which is what
    the padding under it is for — the point is where the shape narrows to nothing
-   and a glyph centred in the box would sit half inside it. */
+   and anything centred in the box would sit half inside it.
+
+   No glyph here either. Both plates carried one in front of the number and both
+   were read at 9px in a corner 20px wide: the pair came out as a smudge, which
+   is the very objection the single plate was defended with. The shape and the
+   colour say which kind it is, and the plate says how many. */
 .bg::after {
-  content: '◉' attr(data-mon);
+  content: attr(data-mon);
   background: #7fdca4;
   clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
 }
@@ -269,13 +278,13 @@ html, body {
 #tabs button[data-bg="2"] { padding-right: 42px; }
 #tabs .bg { right: 3px; bottom: 0; }
 #tabs .bg::before, #tabs .bg::after {
-  min-width: 20px;
+  min-width: 14px;
   font-size: 9px;
   line-height: 10px;
 }
 /* Same box on both, and the padding is where the point of each one goes: down
    for the shield, to the right for the pennant. */
-#tabs .bg::before { padding: 2px 6px 2px 2px; }
+#tabs .bg::before { min-width: 18px; padding: 2px 11px 2px 2px; }
 #tabs .bg::after { padding: 1px 2px 4px; }
 /* Which button started the session, in that button's own glyph — ▸ shell,
    ✦ claude, ⚡ yolo, ↻ continue, ★ or its own lead for one the owner added.
@@ -678,11 +687,11 @@ button.session.asking::before {
    row having more room than a tab. */
 button.session .bg { right: 8px; bottom: 6px; gap: 3px; }
 button.session .bg::before, button.session .bg::after {
-  min-width: 23px;
+  min-width: 16px;
   font-size: 10px;
   line-height: 11px;
 }
-button.session .bg::before { padding: 3px 7px 3px 3px; }
+button.session .bg::before { min-width: 21px; padding: 3px 13px 3px 3px; }
 button.session .bg::after { padding: 1px 3px 5px; }
 /* The meta line runs under the plates otherwise: it is the row's full width, and
    the corner is where its tail lands. */

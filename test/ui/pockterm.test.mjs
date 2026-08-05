@@ -2024,9 +2024,13 @@ describe('a tab says what its session is doing', () => {
     assert.equal(plates.position, 'absolute', 'the badges are in the text flow');
     assert.ok(parseFloat(plates.right) < 6 && parseFloat(plates.bottom) < 6,
       `the badges are not in the bottom-right corner: ${JSON.stringify(plates)}`);
-    // Each says its own count, next to the glyph of its own kind.
-    assert.match(plates.shell.content, /▸.*1/, `the shell plate says ${plates.shell.content}`);
-    assert.match(plates.monitor.content, /◉.*2/, `the monitor plate says ${plates.monitor.content}`);
+    // Each says its own count and nothing else: at this size a glyph in front of
+    // the number was the smudge the single plate used to be defended with.
+    assert.match(plates.shell.content, /^"?1"?$/, `the shell plate says ${plates.shell.content}`);
+    assert.match(plates.monitor.content, /^"?2"?$/, `the monitor plate says ${plates.monitor.content}`);
+    // So which kind is which is the shape and the colour, and both have to differ.
+    assert.notEqual(plates.shell.clip, plates.monitor.clip,
+      'both kinds are drawn in the same shape');
     assert.equal(plates.monitor.background, 'rgb(127, 220, 164)',
       `the monitor plate is ${plates.monitor.background}`);
     assert.notEqual(plates.monitor.background, plates.shell.background,

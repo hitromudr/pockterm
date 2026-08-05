@@ -506,15 +506,18 @@ says otherwise. Nothing else moved: the footer has always counted them apart and
 the session list has carried both numbers since the badge existed, so what
 changed is only that the page stopped summing them.
 
-**Three signals, all decided by looking at them on the phone.** Glyph: `▸` for
-the shells, the same mark the strip gives a shell session, and `◉` for the
-monitors. Colour: cyan for the shells, green for the monitors — green is the
-strip's own "gone quiet after doing something", and of the two a monitor is the
-one still waiting to report. Shape: the monitor keeps the heraldic shield, the
-shell points right, in the same box and at the same size. Two identical shapes in
-one corner were being told apart by colour alone, which is one signal for a plate
-read at 9px; the shell's is flat down the left with the point on the right rather
-than a bare triangle, because the digit has to stay readable inside it.
+**The plate carries a number, and its shape and colour say which kind it is.**
+Both were decided by looking at them on the phone rather than argued. Shape: the
+monitor keeps the heraldic shield, the shell is a triangle pointing right — the
+same `▸` the strip gives a shell session, at the same height and in the same
+corner. Colour: cyan for the shells, green for the monitors, because green is the
+strip's own "gone quiet after doing something" and of the two a monitor is the one
+still waiting to report.
+
+Both plates began with a glyph in front of the number and neither kept it: two of
+them at 9px in a corner 20px wide came out as exactly the smudge the single plate
+had been defended with. A triangle is at its tallest down its left edge, so what
+room there is goes to the digit and the rest of the width is the point.
 
 They are drawn as the pseudo-elements of a `.bg` span (`data-sh`, `data-mon`),
 because the button's own `::before` is the question's `!` and one pseudo-element
