@@ -206,6 +206,39 @@ describe('the session list is a drawer', () => {
     const d = await drawer();
     assert.equal(d.termHidden, true, 'an empty terminal is sitting under the drawer');
   });
+
+  test('the settings panel comes back the way it was left', async () => {
+    // Closing the drawer collapses it, and that used to be the same act as
+    // answering "closed": whoever keeps the text size and the keyboard mode
+    // within reach reopened the panel on every visit.
+    const { page } = stand;
+    await stand.open();
+    await stand.attach('demo');
+    await stand.openSettings();
+    await page.click('#drawer-close');
+    // On the property, not the selector: Playwright's waitForSelector waits for
+    // an element to become visible, and this one never will.
+    const collapsed = () => page.waitForFunction(
+      () => document.getElementById('settings').hidden, null, { timeout: 5000 });
+    await collapsed();
+
+    await stand.openDrawer();
+    await page.waitForSelector('#settings:not([hidden])');
+    assert.equal(await page.evaluate(() => localStorage.getItem('pt-settings-open')), '1',
+      'closing the drawer overwrote the answer it was not asked');
+
+    // And a reload is the same question: the preference is the browser's.
+    await page.goto(stand.base);
+    await stand.openDrawer();
+    await page.waitForSelector('#settings:not([hidden])');
+
+    // Closed on purpose stays closed, which is the other half of remembering.
+    await page.click('#settings-toggle');
+    await collapsed();
+    await page.goto(stand.base);
+    await stand.openDrawer();
+    assert.equal(await page.evaluate(() => document.getElementById('settings').hidden), true);
+  });
 });
 
 describe("the owner's own session buttons", () => {

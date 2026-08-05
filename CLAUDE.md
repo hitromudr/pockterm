@@ -475,6 +475,15 @@ buttons cannot push the toggle off screen. `closeDrawer` collapses it for the sa
 reason it closes the rename field: leaving it open would have it waiting behind a
 closed drawer.
 
+**Collapsing it is not the same as closing it, and for one version it was.** Open
+or closed is remembered (`pt-settings-open`) because for anyone who keeps the text
+size or the keyboard mode within reach it is a preference, not a state — and the
+drawer collapsing the panel on the way out wrote "closed" down every time, so the
+panel had to be reopened on every visit. `showSettings` is the owner's answer and
+records it; `paintSettings` only draws, and `collapseSettings` is what the drawer
+calls. `openDrawer` paints what was last answered. A preference must not be
+overwritten by the mechanics of the thing it is a preference about.
+
 `▾ hide the bars` stayed in the key bar. It is a one-tap action on the working
 surface, not a setting, and its way back (`▴`) is the only thing on screen when
 everything is hidden.

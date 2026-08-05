@@ -251,6 +251,10 @@ and Install. Moved rather than copied: two places holding one lever drift apart.
 `▾` that hides the bars stayed on the key bar, being an action on the working
 surface rather than a setting.
 
+Whether the Settings panel is open is **remembered**: closing the drawer collapses
+it without answering for you, so it comes back the way it was left — on the next
+visit to the drawer and after a reload.
+
 ### The tab strip: the colour says what the session is doing
 
 A tab answers three different questions and says them three different ways:

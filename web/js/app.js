@@ -18,7 +18,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v106';
+const APP_VERSION = 'v107';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -629,12 +629,42 @@ customAdd.addEventListener('click', async () => {
 loadCustom();
 
 // --- settings, at the bottom of the drawer ---
+//
+// Open or closed is remembered (`pt-settings-open`), and that is a preference
+// rather than a state: whoever keeps the size and the keyboard mode within reach
+// had to reopen the panel on every visit to the drawer, because closing the
+// drawer collapses it.
+//
+// So the two are separated. `showSettings` is the owner's answer and is written
+// down; `collapseSettings` is what closing the drawer does — the panel goes away
+// with the drawer that held it, and the answer stays for the next opening. A
+// single function doing both would record "closed" every time the drawer shut,
+// which is the preference being overwritten by the thing it is a preference
+// about.
 const settingsEl = document.getElementById('settings');
 const settingsToggle = document.getElementById('settings-toggle');
-function showSettings(on) {
+const SETTINGS_KEY = 'pt-settings-open';
+
+function paintSettings(on) {
   settingsEl.hidden = !on;
   settingsToggle.classList.toggle('on', on);
 }
+
+function showSettings(on) {
+  paintSettings(on);
+  try { localStorage.setItem(SETTINGS_KEY, on ? '1' : '0'); } catch (_) {}
+}
+
+// Collapse without answering the question: the drawer is going away and its
+// panels go with it.
+function collapseSettings() {
+  paintSettings(false);
+}
+
+function settingsWanted() {
+  try { return localStorage.getItem(SETTINGS_KEY) === '1'; } catch (_) { return false; }
+}
+
 settingsToggle.addEventListener('click', () => showSettings(settingsEl.hidden));
 
 // The drawer, and the two things that are not the same: showing the list, and
@@ -656,6 +686,9 @@ function openDrawer() {
   screenSessions.classList.add('open');
   drawerScrim.hidden = !current;
   drawerCloseBtn.hidden = !current;
+  // The panel comes back the way it was left, which is why closing the drawer
+  // does not write "closed" down.
+  paintSettings(settingsWanted());
   loadSessions();
 }
 function closeDrawer() {
@@ -671,7 +704,7 @@ function closeDrawer() {
   // a form still saying "Сохранить" about a button chosen a day ago is a form
   // that saves the wrong thing when it is finally tapped.
   cancelEdit();
-  showSettings(false);
+  collapseSettings();
   showFolders(false);
 }
 function toggleDrawer() {
