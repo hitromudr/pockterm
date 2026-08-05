@@ -458,17 +458,24 @@ scrolls sideways and the names are the only thing worth reading along it.
 A session at "done" with two monitors alive is not a session with nothing left,
 and the colour cannot say so: it goes green the moment the agent stops speaking.
 
-**One shield per kind, and for a while it was one shield for both.** The sum
+**One plate per kind, and for a while it was one shield for both.** The sum
 answered "is anything still running" and refused every follow-up: a shell is
 something started and forgotten, a monitor is something still watching for an
 answer, and `3` said neither. The argument for adding them up was that two glyphs
 in a corner that size are a smudge — the owner, who is the one reading the strip,
-says otherwise. So the kinds are told apart twice over, by glyph and by colour:
-`▸` in green for the shells, which is the same mark the strip gives a shell
-session, and `◉` in cyan for the monitors, far enough from the blue of a question
-that the two do not trade places at a glance. Nothing else moved: the footer has
-always counted them apart and the session list has carried both numbers since the
-badge existed, so what changed is only that the page stopped summing them.
+says otherwise. Nothing else moved: the footer has always counted them apart and
+the session list has carried both numbers since the badge existed, so what
+changed is only that the page stopped summing them.
+
+**Three signals, all decided by looking at them on the phone.** Glyph: `▸` for
+the shells, the same mark the strip gives a shell session, and `◉` for the
+monitors. Colour: cyan for the shells, green for the monitors — green is the
+strip's own "gone quiet after doing something", and of the two a monitor is the
+one still waiting to report. Shape: the monitor keeps the heraldic shield, the
+shell points right, in the same box and at the same size. Two identical shapes in
+one corner were being told apart by colour alone, which is one signal for a plate
+read at 9px; the shell's is flat down the left with the point on the right rather
+than a bare triangle, because the digit has to stay readable inside it.
 
 They are drawn as the pseudo-elements of a `.bg` span (`data-sh`, `data-mon`),
 because the button's own `::before` is the question's `!` and one pseudo-element
@@ -490,10 +497,11 @@ about what it was doing. The same three states, the same keyframes at the same
 duration, the same per-session phase, because a row and a tab describing one session
 differently is worse than either of them saying nothing. What differs is only what a
 row has room for: the sweep runs its width, the `!` straddles its top edge at the
-left instead of centred, and the shields stand in its own bottom-right corner, one
-size larger. The plates are the very same rule — the CSS for the shape, the glyphs
-and the colours is shared and only the size differs — because a row and a tab
-disagreeing about a session is exactly what this section exists to prevent.
+left instead of centred, and the plates stand in its own bottom-right corner, one
+size larger. They are the very same rule — the CSS for the shapes, the glyphs and
+the colours is shared, and only the size and the padding differ — because a row
+and a tab disagreeing about a session is exactly what this section exists to
+prevent.
 
 Two things make it honest rather than decorative. **The rows are painted, never
 rebuilt** (`paintRows`) — the same rule the strip follows, and here it also protects

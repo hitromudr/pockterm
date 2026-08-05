@@ -221,9 +221,10 @@ html, body {
    (▸ the shell, the same mark the strip uses for a shell session; ◉ the
    monitor) and by the colour — because either alone is a guess at this size.
 
-   Green stays with the shells: it is the colour of "gone quiet", which is when
-   this is worth reading at all. The monitors take cyan, far enough from the
-   blue of a question that the two do not trade places at a glance.
+   Cyan for the shells and green for the monitors, which is the owner's own
+   answer after looking at both on a phone: green is the strip's "gone quiet
+   after doing something", and a monitor is the one of the two that is still
+   watching for something to report.
 
    Drawn as the plates' own pseudo-elements off a span of its own, rather than
    the button's ::after: the button's ::before is the question's mark, and one
@@ -233,18 +234,29 @@ html, body {
 .bg { position: absolute; display: flex; gap: 2px; pointer-events: none; }
 .bg::before, .bg::after {
   box-sizing: border-box;
-  padding: 1px 2px 4px;
   font-weight: 700;
   text-align: center;
   color: #0f1b14;
-  /* A heraldic shield, not a rounded pill: flat across the top, straight down
-     the sides, a point at the bottom. The digit sits in the upper part, which is
-     what the padding under it is for — the point is where the shape narrows to
-     nothing and a glyph centred in the box would sit half inside it. */
+}
+/* The shell points right, in the same box and at the same size as the shield
+   beside it: two identical shapes in one corner were told apart by colour
+   alone, and the owner asked for the third signal. Flat down the left with the
+   point on the right rather than a bare triangle — the digit has to stay
+   readable at 9px, and the padding on that side is the room the point takes. */
+.bg::before {
+  content: '▸' attr(data-sh);
+  background: #7fd8e8;
+  clip-path: polygon(0 0, 70% 0, 100% 50%, 70% 100%, 0 100%);
+}
+/* The monitor keeps the heraldic shield: flat across the top, straight down the
+   sides, a point at the bottom. The digit sits in the upper part, which is what
+   the padding under it is for — the point is where the shape narrows to nothing
+   and a glyph centred in the box would sit half inside it. */
+.bg::after {
+  content: '◉' attr(data-mon);
+  background: #7fdca4;
   clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
 }
-.bg::before { content: '▸' attr(data-sh); background: #7fdca4; }
-.bg::after { content: '◉' attr(data-mon); background: #7fd8e8; }
 /* No plate for a kind with nothing in it: a zero is a claim too. */
 .bg:not([data-sh])::before, .bg:not([data-mon])::after { content: none; }
 /* Room for them, and only on the tabs that have one. The plates stand in the
@@ -257,10 +269,14 @@ html, body {
 #tabs button[data-bg="2"] { padding-right: 42px; }
 #tabs .bg { right: 3px; bottom: 0; }
 #tabs .bg::before, #tabs .bg::after {
-  min-width: 18px;
+  min-width: 20px;
   font-size: 9px;
   line-height: 10px;
 }
+/* Same box on both, and the padding is where the point of each one goes: down
+   for the shield, to the right for the pennant. */
+#tabs .bg::before { padding: 2px 6px 2px 2px; }
+#tabs .bg::after { padding: 1px 2px 4px; }
 /* Which button started the session, in that button's own glyph — ▸ shell,
    ✦ claude, ⚡ yolo, ↻ continue, ★ or its own lead for one the owner added.
 
@@ -662,11 +678,12 @@ button.session.asking::before {
    row having more room than a tab. */
 button.session .bg { right: 8px; bottom: 6px; gap: 3px; }
 button.session .bg::before, button.session .bg::after {
-  min-width: 21px;
-  padding: 1px 3px 5px;
+  min-width: 23px;
   font-size: 10px;
   line-height: 11px;
 }
+button.session .bg::before { padding: 3px 7px 3px 3px; }
+button.session .bg::after { padding: 1px 3px 5px; }
 /* The meta line runs under the plates otherwise: it is the row's full width, and
    the corner is where its tail lands. */
 button.session[data-bg="1"] .meta { padding-right: 26px; }
@@ -1147,6 +1164,53 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   border: none;
   border-radius: 8px;
 }
+/* What was sent from here before. Narrow and quiet — it is a way back to
+   something, not a thing to do — and it takes its width from the field only
+   when there is a history to open, since it is hidden until then. */
+#composer #history {
+  flex: 0 0 36px;
+  align-self: stretch;
+  font-size: 17px;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 8px;
+}
+#composer #history.on { color: #0b0e14; background: var(--accent); }
+/* The list itself, over the terminal and never beside it: in the flow it would
+   shorten the pane, and this page has learned twice what that costs — see
+   #answers above. Rows are one line each, because the point is to recognise a
+   message rather than to read it. */
+#history-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  max-height: 45vh;
+  overflow-y: auto;
+  background: var(--bar);
+  border-top: 1px solid #2a3345;
+}
+#history-list button {
+  width: 100%;
+  padding: 12px 10px;
+  font-size: 15px;
+  text-align: left;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#history-list button:active { background: #3a4458; }
+#history-list .empty { padding: 10px; font-size: 14px; color: #8b93a7; }
 
 /* The key bar used to be hidden on a device with a mouse and a real keyboard,
    on the grounds that you just type there. It is shown everywhere now: reported

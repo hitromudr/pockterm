@@ -1934,8 +1934,8 @@ describe('a tab says what its session is doing', () => {
     // Each says its own count, next to the glyph of its own kind.
     assert.match(plates.shell.content, /▸.*1/, `the shell plate says ${plates.shell.content}`);
     assert.match(plates.monitor.content, /◉.*2/, `the monitor plate says ${plates.monitor.content}`);
-    assert.equal(plates.shell.background, 'rgb(127, 220, 164)',
-      `the shell plate is ${plates.shell.background}`);
+    assert.equal(plates.monitor.background, 'rgb(127, 220, 164)',
+      `the monitor plate is ${plates.monitor.background}`);
     assert.notEqual(plates.monitor.background, plates.shell.background,
       'both kinds are drawn in the same colour');
     // Shields, and the point at the bottom is what makes them ones.
