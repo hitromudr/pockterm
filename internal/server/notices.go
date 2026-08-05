@@ -57,20 +57,35 @@ func (n *Notices) remove(id int64) {
 	delete(n.m, id)
 }
 
-// Send delivers to every page with a socket open.
+// Send delivers to every page with a socket open, except the ones `showing`
+// answers for — the pages that have this very session visible.
 //
-// Whether it should be sent at all was decided upstream, and the rule there is
-// about the session rather than the page: the watcher stays silent for a session
-// somebody has visible. What is left for here is everyone who might want to
-// know, which is anyone looking at this host at all.
-func (n *Notices) Send(notice Notice) {
+// The exception is per page, and that is the point. "Somebody has it on screen"
+// was the whole rule and it was decided upstream for everyone at once: a phone
+// open on one session was told nothing about the session beside it, because
+// another screen had that one visible. A page cannot see the other screens and
+// has no business being silenced by them; what it does know is what it is showing
+// itself, and about that one a notice would be news to nobody.
+//
+// A nil `showing` sends to everyone, which is what an event about a session
+// nobody has open comes to.
+//
+// It reports how many pages took it and how many were skipped, because "the
+// notifications do not arrive" is otherwise an impression: with this the journal
+// says whether the frame was sent and to how many sockets.
+func (n *Notices) Send(notice Notice, showing func(id int64) bool) (sent, skipped int) {
 	n.mu.Lock()
 	sends := make([]func(Notice), 0, len(n.m))
-	for _, s := range n.m {
+	for id, s := range n.m {
+		if showing != nil && showing(id) {
+			skipped++
+			continue
+		}
 		sends = append(sends, s)
 	}
 	n.mu.Unlock()
 	for _, s := range sends {
 		s(notice)
 	}
+	return len(sends), skipped
 }

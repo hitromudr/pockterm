@@ -670,7 +670,7 @@ func TestNoticeReachesTheAttachedPage(t *testing.T) {
 	notices.Send(Notice{
 		Type: "notify", Kind: "done", Session: "demo",
 		Title: "✅ demo закончил", Body: "тесты зелёные",
-	})
+	}, nil)
 
 	c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	for {
@@ -721,7 +721,7 @@ func TestNoticesForgetAClosedPage(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	notices.Send(Notice{Type: "notify", Kind: "done", Session: "demo", Title: "x"})
+	notices.Send(Notice{Type: "notify", Kind: "done", Session: "demo", Title: "x"}, nil)
 }
 
 func TestNoticeReachesAPageLookingAtAnotherSession(t *testing.T) {
@@ -750,7 +750,7 @@ func TestNoticeReachesAPageLookingAtAnotherSession(t *testing.T) {
 	notices.Send(Notice{
 		Type: "notify", Kind: "question", Session: "natal",
 		Title: "❓ natal просит ответ", Body: "Apply this change?",
-	})
+	}, nil)
 
 	c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	for {
@@ -771,6 +771,41 @@ func TestNoticeReachesAPageLookingAtAnotherSession(t *testing.T) {
 			t.Fatalf("frame arrived mangled: %+v", f)
 		}
 		return
+	}
+}
+
+func TestOnlyThePageShowingTheSessionIsSkipped(t *testing.T) {
+	// The exception is per page. "Somebody has it on screen" was decided once for
+	// everybody upstream, and with two devices in the house that is a rule that
+	// silences the wrong one: a phone open on `demo` was told nothing about `natal`
+	// because the laptop had `natal` visible.
+	notices := NewNotices()
+	got := make(map[int64]int)
+	var mu sync.Mutex
+	for _, id := range []int64{1, 2} {
+		client := id
+		notices.add(client, func(Notice) {
+			mu.Lock()
+			got[client]++
+			mu.Unlock()
+		})
+	}
+
+	// Client 1 is the page showing `natal`; client 2 is looking at something else.
+	sent, skipped := notices.Send(
+		Notice{Type: "notify", Kind: "done", Session: "natal", Title: "✅ natal закончил"},
+		func(id int64) bool { return id == 1 },
+	)
+	if sent != 1 || skipped != 1 {
+		t.Fatalf("sent %d, skipped %d, want one of each", sent, skipped)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if got[1] != 0 {
+		t.Errorf("the page showing the session got %d notices", got[1])
+	}
+	if got[2] != 1 {
+		t.Errorf("the page showing something else got %d notices, want one", got[2])
 	}
 }
 

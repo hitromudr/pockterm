@@ -1035,6 +1035,22 @@ next to it reached nobody at all. `Notices` is keyed by client id now and `Send`
 takes just the notice. Nothing else had to change: the notice already names its
 session, and a tap on it already switches there.
 
+**Being on screen is now a per-page answer, and it was everyone's.** The watcher
+stayed silent about a session somebody had visible — one rule, decided once, for
+every recipient there is. That is the right answer for Telegram, which is one
+recipient: a message about what the owner is looking at is noise. It is no answer at
+all for the pages, which are several. With a phone open on one session and a laptop
+showing the one beside it, a finish in the session on the laptop reached nobody: the
+phone was silenced by a screen it cannot see, which is exactly the notice it is
+holding the phone for.
+
+So `OnScreen` travels on the event, and the two channels read it differently.
+Telegram skips it. `Notices.Send` takes a `showing` predicate and drops only the
+sockets that have that very session visible — a page is silenced by what it is
+itself showing and by nothing else. Every send says how many pages took it and how
+many were skipped (`journalctl -u pockterm | grep notify:`), because "уведомления
+не приходят" is otherwise an impression on both sides of the socket.
+
 **A page that was never asked cannot notify, and that looked identical to a broken
 switch.** The default mode is `pwa+tg`, so a fresh install starts in a notifying
 state — and permission used to be requested only on the way *into* one, which

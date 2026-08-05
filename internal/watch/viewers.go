@@ -73,6 +73,18 @@ func (v *Viewers) Counts() (clients, visible int) {
 	return clients, visible
 }
 
+// Watching reports whether this one client has this session visible.
+//
+// The per-page question, and the one a notice is routed by: "somebody has it
+// visible" is not an answer for a page that is showing something else. It was
+// the reason a phone open on one session heard nothing about the session next to
+// it — the laptop had that one on screen, and that silenced every page there is.
+func (v *Viewers) Watching(session string, id int64) bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.m[session][id]
+}
+
 // Viewing reports whether any client has this session visible.
 func (v *Viewers) Viewing(session string) bool {
 	v.mu.Lock()

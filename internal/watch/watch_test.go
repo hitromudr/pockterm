@@ -369,25 +369,44 @@ func TestIdleSessionNeverNotifies(t *testing.T) {
 	}
 }
 
-func TestViewerSilencesNotifications(t *testing.T) {
+func TestOnScreenIsCarriedRatherThanSilencing(t *testing.T) {
+	// Being on screen used to end the event here, for every channel at once. That
+	// is an answer for Telegram — one recipient, and a message about what the owner
+	// is looking at is noise — and no answer at all for the pages, which are
+	// several: a phone open on one session was told nothing about the session next
+	// to it because the laptop had that one visible. So the fact travels on the
+	// event and the pages are decided one at a time, in server.Notices.
 	h := newHarness(30 * time.Second)
 	h.seen = true
 	h.screen = "working…\n"
 	h.w.Tick()
 	h.screen = menu
 	h.w.Tick()
-	h.advance(31 * time.Second)
-	h.w.Tick()
 
-	if len(h.events) != 0 {
-		t.Fatalf("events = %+v, want none while watching", h.events)
+	if len(h.events) != 1 {
+		t.Fatalf("events = %+v, want the question raised", h.events)
+	}
+	if !h.events[0].OnScreen {
+		t.Fatalf("event = %+v, want OnScreen — the delivery cannot decide without it", h.events[0])
 	}
 
-	// Looking away does not replay what was suppressed.
+	// And the same event is not raised a second time when the viewer looks away:
+	// the state was updated while they were watching, so nothing is replayed.
 	h.seen = false
 	h.w.Tick()
-	if len(h.events) != 0 {
+	if len(h.events) != 1 {
 		t.Fatalf("events = %+v, want no replay", h.events)
+	}
+
+	// A session nobody is looking at says so, which is what lets everything be
+	// delivered without a second question.
+	h.screen = "$ make check\nok\n"
+	h.w.Tick()
+	h.advance(31 * time.Second)
+	h.w.Tick()
+	last := h.events[len(h.events)-1]
+	if last.Kind != Done || last.OnScreen {
+		t.Fatalf("event = %+v, want a done with OnScreen false", last)
 	}
 }
 

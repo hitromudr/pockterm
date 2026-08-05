@@ -509,19 +509,23 @@ func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref) serv
 			page, tg := watch.Deliver(pref.Mode(), bot != nil)
 			if page {
 				title, body := watch.Notice(e)
-				// To every page that is open, not only to one attached to this
-				// session: the watcher is already silent about a session somebody
-				// has visible, so what is left is news from somewhere else — and
-				// the page it is news to is the one showing a different session.
-				notices.Send(server.Notice{
+				// To every page that is open except the ones showing this very
+				// session. Being on screen used to silence the notice for
+				// everybody, which is a rule that cannot hold with two devices in
+				// the house: a phone open on one session heard nothing about the
+				// one next to it, because the laptop had that one visible.
+				sent, skipped := notices.Send(server.Notice{
 					Type:    "notify",
 					Kind:    string(e.Kind),
 					Session: e.Session,
 					Title:   title,
 					Body:    body,
-				})
+				}, func(id int64) bool { return viewers.Watching(e.Session, id) })
+				log.Printf("notify: %s %s to %d page(s), %d showing it", e.Kind, e.Session, sent, skipped)
 			}
-			if !tg {
+			// Telegram is one recipient, and for it being on screen is the whole
+			// question: a message about what the owner is looking at is noise.
+			if !tg || e.OnScreen {
 				return
 			}
 			if err := bot.Send(watch.Format(e, cfg.TGLink, cfg.TGPreview)); err != nil {

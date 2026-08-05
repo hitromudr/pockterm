@@ -152,6 +152,16 @@ type Event struct {
 	// pane worth showing a human — see Tail.
 	Prompt  string
 	Options []detect.Option
+	// OnScreen: some page had this session visible when the event was raised.
+	//
+	// It is carried rather than acted on here, because the answer differs by
+	// channel. Telegram is one recipient and this is the whole question for it —
+	// a message about what the owner is already looking at is noise. The pages
+	// are several, and "somebody has it visible" is not an answer for any of
+	// them: it was the reason a phone open on one session heard nothing about
+	// the one next to it, because the laptop had that one on screen. So the
+	// pages are decided one at a time, in server.Notices.
+	OnScreen bool
 }
 
 type Options struct {
@@ -443,21 +453,25 @@ func (w *Watcher) poll(session string) {
 	notify := st.notify
 	w.mu.Unlock()
 
-	// Someone looking at the session sees all this already. The state was
-	// updated regardless, so nothing is replayed once they look away.
+	// A session no page has ever attached to is read but not announced: it is on
+	// the strip in colour, and the phone is told about the sessions it was asked
+	// to be told about. Attaching once is the asking.
 	//
-	// And a session no page has ever attached to is read but not announced: it is
-	// on the strip in colour, and the phone is told about the sessions it was
-	// asked to be told about. Attaching once is the asking.
+	// Being on screen is no longer decided here, and that is the difference
+	// between one recipient and several: it travels on the event instead, so
+	// Telegram can stay quiet about what the owner is looking at while a page
+	// showing a different session still hears about this one. The state was
+	// updated either way, so nothing is replayed when they look away.
 	if len(events) == 0 {
 		return
 	}
+	seen := w.o.Viewing(session)
+	for i := range events {
+		events[i].OnScreen = seen
+	}
 	quiet := ""
-	switch {
-	case !notify:
+	if !notify {
 		quiet = "not announced: never opened here"
-	case w.o.Viewing(session):
-		quiet = "not announced: on screen"
 	}
 	// Every event, whether it was announced or not, with the rule that raised it.
 	// Without this line "it goes green for no reason" is an impression: the state
@@ -465,13 +479,22 @@ func (w *Watcher) poll(session string) {
 	// be told from a real one an hour later. The colour of a tab is decided here
 	// too, so this is the log of that as well.
 	if w.o.Log != nil {
+		note := quiet
+		if note == "" && seen {
+			// Announced, but not everywhere: telegram is silent about it and so is
+			// any page that has this very session on screen.
+			note = "on screen: telegram and the pages showing it are skipped"
+		}
 		for _, e := range events {
 			reason := why
 			if e.Kind == Question {
 				reason = "menu on screen"
 			}
-			w.o.Log(fmt.Sprintf("watch: %s %s (%s)%s", e.Kind, session, reason,
-				map[bool]string{true: "", false: " — " + quiet}[quiet == ""]))
+			line := fmt.Sprintf("watch: %s %s (%s)", e.Kind, session, reason)
+			if note != "" {
+				line += " — " + note
+			}
+			w.o.Log(line)
 		}
 	}
 	if quiet != "" {
