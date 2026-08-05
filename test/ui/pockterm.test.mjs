@@ -5,6 +5,7 @@ import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import { startStand } from './stand.mjs';
+import { readFileSync } from 'node:fs';
 
 // A one-pixel PNG, base64 — the smallest thing the server will accept.
 const PNG_B64 =
@@ -92,44 +93,48 @@ describe('a socket that has stopped delivering', () => {
     // minute is TCP giving up on a connection the phone handed between Wi-Fi and
     // cellular; `readyState` stays OPEN and sends look like they succeed.
     //
-    // A black hole is simulated the only honest way from in here: the page's own
-    // sends are dropped, so nothing it says reaches the server and nothing comes
-    // back. What is being tested is whether the page asks at all — it never did.
-    await stand.open();
-    await stand.attach('demo');
+    // A black hole has to be both ways, and getting that wrong is how an earlier
+    // version of this test proved nothing: it swallowed only the page's own sends,
+    // the stand's far end kept talking, and the watchdog was right to stay quiet.
+    // So the socket is born mute and deaf — sends go nowhere and the page's
+    // onmessage is never wired to anything.
     const { page } = stand;
+    await stand.open();
     await page.evaluate(() => {
-      const send = WebSocket.prototype.send;
-      window.__dropped = 0;
-      WebSocket.prototype.send = function (data) {
-        window.__dropped += 1;
-        return undefined; // swallowed: the far end hears nothing
+      const proto = WebSocket.prototype;
+      const send = proto.send;
+      const onmessage = Object.getOwnPropertyDescriptor(proto, 'onmessage');
+      proto.send = function () { window.__muted = (window.__muted || 0) + 1; };
+      Object.defineProperty(proto, 'onmessage', {
+        configurable: true,
+        get: onmessage.get,
+        set(fn) { onmessage.set.call(this, () => {}); },
+      });
+      window.__restore = () => {
+        proto.send = send;
+        Object.defineProperty(proto, 'onmessage', onmessage);
       };
-      window.__restore = () => { WebSocket.prototype.send = send; };
     });
+    await stand.attach('demo');
 
-    // Nothing arrives either, so the page's own idea of "last heard from" goes
-    // stale on its own. PING_AFTER + PONG_WAIT is 15s, so this is the wait.
-    await page.waitForFunction(() => window.__dropped > 0, null, { timeout: 20000 });
-    await page.evaluate(() => window.__restore());
-
-    // The journal is where the page says why, which is what turns "иногда
-    // зависает" into a fact with a count.
+    // PING_AFTER + PONG_WAIT is 15s, and the watchdog ticks every 2.5s on top. The
+    // wait is far longer than that on purpose: `node --test test/ui/` runs the files
+    // in parallel, and a browser timer on a loaded four-core box is late by seconds.
     await page.waitForFunction(
       () => document.getElementById('status') && !document.getElementById('status').hidden,
-      null, { timeout: 20000 },
-    );
+      null, { timeout: 60000 });
     assert.match(stand.serverLog(), /socket-stalled/, 'the page never said the socket had stalled');
+    assert.ok(await page.evaluate(() => window.__muted > 0), 'the page never asked anything of the socket');
 
-    // And it comes back on its own: a live terminal, with tmux behind it
-    // untouched.
+    // With the hole closed the reconnect lands, and tmux behind it was untouched.
+    await page.evaluate(() => window.__restore());
     await page.waitForFunction(
-      () => document.getElementById('status').hidden, null, { timeout: 20000 });
+      () => document.getElementById('status').hidden, null, { timeout: 40000 });
     await page.click('#term');
     await page.keyboard.type('alive again');
     await page.waitForFunction(
       () => document.querySelector('.xterm-rows')?.textContent?.includes('alive again'),
-      null, { timeout: 10000 });
+      null, { timeout: 15000 });
   });
 });
 
@@ -405,6 +410,34 @@ describe("the owner's own session buttons", () => {
       if (!pane.includes('ran:')) await page.waitForTimeout(200);
     }
     assert.match(pane, /ran: qwen --yolo/, `the command did not reach the session: ${pane}`);
+  });
+
+  test('the session it starts does not inherit make\'s own variables', async () => {
+    // A variable given on a make command line is exported to the recipe and rides
+    // in MAKEFLAGS, so without clearing it the session carries PREFIX, DIR, KIND and
+    // CMD — and a `make` typed by hand inside that session inherits them. Measured
+    // on the author's host: `make custom CMD=qwen` in such a session came out named
+    // after the folder of the session it was run from, and stamped with the button
+    // that had started that one.
+    //
+    // Read off the pane's own process rather than from tmux, because the question is
+    // what the shell in there actually has.
+    await stand.open();
+    const { page } = stand;
+    await stand.openDrawer();
+    const before = await page.locator('#session-list li').count();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset="shell"]');
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
+    const name = (await page.locator('#session-list li').last().locator('.name').textContent()).trim();
+
+    const pid = stand.tmux(['list-panes', '-t', name, '-F', '#{pane_pid}']).trim().split('\n')[0];
+    const env = readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').filter(Boolean);
+    for (const v of ['PREFIX', 'DIR', 'KIND', 'CMD', 'MAKEFLAGS', 'MAKELEVEL']) {
+      const found = env.find((e) => e.startsWith(`${v}=`));
+      assert.equal(found, undefined, `the session inherited ${found} from make`);
+    }
   });
 
   test('a tab carries the mark of the button that started it', async () => {

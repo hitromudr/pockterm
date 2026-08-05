@@ -458,12 +458,24 @@ session the page started held `PREFIX`, `DIR`, `KIND` and `CMD` in its environme
 — and a `make` typed by hand inside that session inherited them. Measured on the
 author's own host: `make custom CMD=qwen` in such a session came out named after the
 folder of the session it was run from and stamped with the button that had started
-*that* one, which is a session lying about what it is. `env -u` on the line that
-starts it is the fix, `MAKELEVEL` included or make reports itself as recursive.
+*that* one, which is a session lying about what it is.
+
+**The cleaning goes on the pane's command, and the obvious placement does nothing.**
+`env -u … tmux new-session …` changes the environment of the tmux *client*, and the
+pane is started by the *server* — running since the first session, carrying whatever
+it was started with. That version was written, shipped and then measured: the
+variables were still there. What works is wrapping the command the pane runs
+(`clean="env -u …"; cmd=$(1)`; the pane gets `"$clean $cmd"`), because tmux hands
+that string to `sh`, which splits the words and honours the quoting the callers
+already use. `-e VAR=` on `new-session` also reaches the pane but only empties the
+variables, and an empty `DIR` is worse than an inherited one — `DIR ?= $(CURDIR)`
+then keeps the empty value.
+
 `TestExampleMakefileKeepsMakesVariablesOutOfTheSession` reads the `spawn` definition
-rather than the file, because a mention in a comment is not a variable being unset.
-The host's own Makefile is an ansible template (`pockterm_app`), so the same line
-has to go there separately.
+rather than the file, because a mention in a comment is not a variable being unset,
+and the UI test reads `/proc/<pane_pid>/environ` of a session the page started —
+which is what caught the placement being wrong. The host's own Makefile is an
+ansible template (`pockterm_app`), so the same lines have to go there separately.
 
 **No `=` before the name in `set-option`.** That prefix means "exact match" to the
 commands that take a session (`rename-session`, `kill-session` both use it here),
