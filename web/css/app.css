@@ -248,7 +248,31 @@ html, body {
    legible on all four backgrounds without competing with any of them. Empty for a
    session nobody stamped, and an empty span takes no room: an untyped tab looks
    exactly as it did before. */
-#tabs button .kind { opacity: 0.7; font-size: 12px; }
+/* Every mark on the page is drawn by this, and it is about the glyph rather than
+   about where it sits.
+
+   A codepoint that has both a text and an emoji form is drawn in whichever the
+   font stack reaches first, and the page's stack is the system UI font: it has a
+   text glyph for ❄ and ☀, so the mark came out the colour of the label around it
+   — reported as the icons being colourless on the tabs and in the menu, while the
+   drawer's list, whose rows are drawn in a heavier weight, happened to fall
+   through to the colour font. Two answers for one glyph is the defect, whichever
+   of the two is prettier.
+
+   So the colour fonts come first in the stack for these spans, and
+   `font-variant-emoji` asks for the emoji form outright where the browser is new
+   enough to be asked. Both are needed: the property is recent, and the stack
+   alone leaves a monochrome glyph in a font that has one. The marks with no
+   colour form at all (▸ ✦ ↻ ⬡) are unaffected — no emoji font has them, so the
+   stack falls through to the text font as it always did. */
+.kind, #custom-mark, #mark-grid button {
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', system-ui, sans-serif;
+  font-variant-emoji: emoji;
+  font-weight: 400;
+}
+/* On a tab it is smaller than the name and no longer dimmed: colour is what the
+   mark says with, and 0.7 of it read as a washed-out version of the label. */
+#tabs button .kind { font-size: 12px; }
 /* The gap belongs to the mark, so only a tab that has one pays for it: a margin
    on the empty span would indent every untyped name by a space standing for
    nothing. */
@@ -405,6 +429,11 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
   border-radius: 8px;
 }
 #custom-list li .name { font-weight: 600; }
+/* The gap belongs to the mark, so a button with none is not indented by a space
+   standing for nothing — the same rule the tabs and the drawer's rows follow. */
+#custom-list li .name .kind:not(:empty),
+#new-menu button .kind:not(:empty),
+#new-menu-term button .kind:not(:empty) { margin-right: 6px; }
 #custom-list li code {
   flex: 1;
   min-width: 0;
@@ -626,7 +655,6 @@ button.session[data-bg]::after {
    on the empty one would indent every unstamped name by a space standing for
    nothing. */
 button.session .line { display: flex; align-items: baseline; }
-button.session .line .kind { font-weight: 400; opacity: 0.8; }
 button.session .line .kind:not(:empty) { margin-right: 6px; }
 
 /* Someone who asked not to be moved gets the colour without the movement. */

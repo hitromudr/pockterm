@@ -659,6 +659,27 @@ label as it is typed, because that is one of the things `markOf` reads. The butt
 only *lit* for a glyph that was actually chosen — that is a different claim, and the
 grid's highlight is where it belongs.
 
+**U+FE0F asks for the colour form and does not get it on its own.** The marks were
+stored and drawn with the selector and still came out monochrome on the tabs and in
+the `+` menu, while the drawer's list — heavier weight, larger size — reached the
+colour font and showed them properly: two answers for one glyph, which is the defect
+whichever of the two is prettier. The stack is the reason. `font-family: system-ui`
+resolves to a font that has a *text* glyph for `❄` and `☀`, and a font that has the
+glyph is where the lookup stops. So the mark now lives in a `.kind` cell on every
+surface — the strip, both `+` menus, the drawer's rows and its button list — and that
+cell puts the colour fonts first (`Noto Color Emoji`, `Apple Color Emoji`, `Segoe UI
+Emoji`) and asks outright with `font-variant-emoji: emoji`. Both halves are needed:
+the property is recent, and the stack alone still loses to a text glyph in a font
+listed ahead of it. The monochrome-only marks (`▸ ✦ ↻ ⬡`) are untouched, since no
+emoji font has them and the lookup falls through as it always did.
+
+Two things follow from the cell. The tab's mark is **no longer dimmed** — `opacity:
+0.7` on a coloured glyph reads as a washed-out version of the label, which is the
+thing this was fixing. And the gap between mark and label is a **margin on the cell**
+rather than a space in the text, so a button with no mark is not indented by a space
+standing for nothing — `assert.match(text, /⚡ Ярость/)` had to become `/⚡\s?Ярость/`,
+the space having stopped being text.
+
 **The glyphs carry U+FE0F where they have a colour form** (`❄️`, not `❄`). In text
 presentation a mark takes the colour of whatever it sits in, so on a tab it came out
 the same shade as the session's name — a mark nobody notices. The ones with no colour

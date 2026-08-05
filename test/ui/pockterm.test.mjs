@@ -751,7 +751,9 @@ describe("the owner's own session buttons", () => {
     // Still asked for by its own name — the id is what the tabs it opened carry.
     const b = page.locator('#new-menu button[data-preset="yolo"]');
     assert.equal(await b.count(), 1, 'an edited default stopped being itself');
-    assert.match(await b.textContent(), /⚡ Ярость/);
+    // The gap between the mark and the label is a margin on the mark's own cell
+    // now, not a space in the text: the cell is what asks for the colour form.
+    assert.match(await b.textContent(), /⚡\s?Ярость/);
 
     // And the command reaches the session: the stand's custom target echoes it.
     await stand.shutDrawer();
@@ -849,6 +851,33 @@ describe("the owner's own session buttons", () => {
       (n) => [...document.querySelectorAll('#tabs button')].some(
         (b) => b.dataset.session === n && (b.textContent || '').includes('🚀')),
       name, { timeout: 8000 });
+
+    // Every surface draws it in a cell of its own, and that cell asks for the
+    // colour form. The page's font stack is the system UI font, which has a text
+    // glyph for ❄ and ☀ — so the mark came out the colour of the label beside it,
+    // reported as the icons being colourless on the tabs and in the menu while the
+    // drawer's heavier rows happened to reach the colour font.
+    const cells = await page.evaluate((n) => {
+      const row = [...document.querySelectorAll('#custom-list li')]
+        .find((li) => (li.textContent || '').includes('Ракета'));
+      const where = {
+        list: row && row.querySelector('.name .kind'),
+        menu: ([...document.querySelectorAll('#new-menu button[data-preset^="custom:"]')]
+          .find((b) => (b.textContent || '').includes('Ракета')) || {}).querySelector?.('.kind'),
+        tab: document.querySelector(`#tabs button[data-session="${n}"] .kind`),
+      };
+      const out = {};
+      for (const [what, el] of Object.entries(where)) {
+        out[what] = el ? { text: el.textContent, font: getComputedStyle(el).fontFamily } : null;
+      }
+      return out;
+    }, name);
+    for (const [what, cell] of Object.entries(cells)) {
+      assert.ok(cell, `${what} draws the mark outside a cell of its own`);
+      assert.match(cell.text, /🚀/, `${what} has no mark in its cell: ${cell.text}`);
+      assert.match(cell.font, /Noto Color Emoji/,
+        `${what} does not ask for the colour form: ${cell.font}`);
+    }
 
     // Editing loads the mark back, and the same glyph again clears it — one tap in,
     // one tap out, rather than a button of its own for "no mark".

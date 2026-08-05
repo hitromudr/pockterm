@@ -20,7 +20,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v119';
+const APP_VERSION = 'v120';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -623,7 +623,11 @@ function renderCustom() {
     // on a phone there is nowhere else to find out which. A button that names a
     // target reads the same way, which is also how it is typed.
     const runs = c.cmd || `make ${c.target || c.id}`;
-    li.innerHTML = `<span class="name">${escapeHtml(markOf(c))} ${escapeHtml(labelBody(c.label))}</span>` +
+    // The mark in a cell of its own, here and in the menus and on the tabs: it is
+    // the one element the emoji rule below is hung on, and a glyph mixed into a
+    // label cannot be styled apart from it.
+    li.innerHTML = `<span class="name"><span class="kind">${escapeHtml(markOf(c))}</span>` +
+      `${escapeHtml(labelBody(c.label))}</span>` +
       `<code>${escapeHtml(runs)}</code>`;
     if (c.id === editingID) li.classList.add('editing');
     // Changing a button rather than deleting and adding it keeps its id, and the
@@ -673,7 +677,11 @@ function renderCustom() {
       // the mark shown here and on the tab the session opens in. Drawing ★ in
       // front of it as well would leave two marks and no way to tell which of
       // them is the one on the tabs.
-      b.textContent = `${markOf(c)} ${labelBody(c.label)}`;
+      const mk = document.createElement('span');
+      mk.className = 'kind';
+      mk.textContent = markOf(c);
+      b.appendChild(mk);
+      b.appendChild(document.createTextNode(labelBody(c.label)));
       wirePreset(b);
       menu.appendChild(b);
     }
