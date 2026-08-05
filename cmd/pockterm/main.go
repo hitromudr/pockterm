@@ -481,6 +481,11 @@ func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref) serv
 	viewers := watch.NewViewers()
 	w := watch.New(watch.Options{
 		Capture: capturePane,
+		// What it decided and why, in the journal: `journalctl -u pockterm | grep
+		// watch:`. The watcher's state is per process and nothing else records it,
+		// so a tab that went green for no visible reason is otherwise unanswerable
+		// an hour later.
+		Log: func(line string) { log.Print(line) },
 		// Everything tmux has, so a tab is coloured for a session this phone has
 		// never opened — the watcher's state is per process and CI replaces the
 		// binary several times a day, which left every strip neutral after a

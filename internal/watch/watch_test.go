@@ -35,6 +35,15 @@ func newHarness(idle time.Duration) *harness {
 
 func (h *harness) advance(d time.Duration) { h.now = h.now.Add(d) }
 
+// settle is the second reading the end of a turn now needs: the counter has to
+// stay away for liveGrace, because one poll without it is also what a redraw
+// caught mid-flight looks like. Two ticks with the clock moved between them.
+func (h *harness) settle() {
+	h.w.Tick()
+	h.advance(liveGrace)
+	h.w.Tick()
+}
+
 func (h *harness) kinds() []Kind {
 	var ks []Kind
 	for _, e := range h.events {
@@ -121,11 +130,17 @@ func TestDoneWhenTheCounterGoes(t *testing.T) {
 	if got := h.w.Activity("claude"); got != ActivityWorking {
 		t.Fatalf("a counting turn: %q, want %q", got, ActivityWorking)
 	}
-	// Not a second of the threshold has passed, and none needs to.
+	// One poll without the counter is not an answer — a redraw caught between the
+	// footer being erased and painted again looks exactly like it. Two are.
 	h.screen = turnOver
 	h.w.Tick()
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want none from a single missing poll", h.events)
+	}
+	h.advance(liveGrace)
+	h.w.Tick()
 	if got := h.kinds(); len(got) != 1 || got[0] != Done {
-		t.Fatalf("events = %+v, want one done at once", h.events)
+		t.Fatalf("events = %+v, want one done, far sooner than the threshold", h.events)
 	}
 	if got := h.w.Activity("claude"); got != ActivityDone {
 		t.Fatalf("after the counter went: %q, want %q", got, ActivityDone)
@@ -141,7 +156,7 @@ func TestDoneWhenTheCounterGoes(t *testing.T) {
 		t.Fatalf("the next turn: %q, want %q", got, ActivityWorking)
 	}
 	h.screen = turnOver
-	h.w.Tick()
+	h.settle()
 	if got := h.kinds(); len(got) != 2 || got[1] != Done {
 		t.Fatalf("events = %+v, want a second done", h.events)
 	}
@@ -157,7 +172,7 @@ func TestTypingIsNotWork(t *testing.T) {
 	h.screen = turnRunning
 	h.w.Tick()
 	h.screen = turnOver
-	h.w.Tick()
+	h.settle()
 	if got := h.w.Activity("claude"); got != ActivityDone {
 		t.Fatalf("the turn ended: %q, want %q", got, ActivityDone)
 	}
@@ -182,9 +197,79 @@ func TestTypingIsNotWork(t *testing.T) {
 		t.Fatalf("the answer sent: %q, want %q", got, ActivityWorking)
 	}
 	h.screen = turnOver
-	h.w.Tick()
+	h.settle()
 	if got := h.kinds(); len(got) != 2 || got[1] != Done {
 		t.Fatalf("events = %+v, want a done for the second turn too", h.events)
+	}
+}
+
+func TestOneMissingPollIsNotTheEndOfATurn(t *testing.T) {
+	// The end of a turn is read off the counter going away, and a single reading of
+	// it being absent is also what a capture landing between the footer being erased
+	// and painted again looks like — or a release that stops drawing it during a
+	// tool call. That answer was a green tab and a "finished" notice, taken back a
+	// moment later, which is how it was reported: "часто зеленеет на время".
+	h := newHarness(30 * time.Second)
+	h.screen = turnRunning
+	h.w.Tick()
+
+	h.screen = turnOver
+	h.w.Tick()
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want none yet", h.events)
+	}
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("one poll without the counter: %q, want it still %q", got, ActivityWorking)
+	}
+
+	// The counter comes back: nothing happened, and nothing was said about it.
+	h.advance(2 * time.Second)
+	h.screen = turnRunning
+	h.w.Tick()
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want none — the turn never stopped", h.events)
+	}
+
+	// And when it really goes, the window is short: four seconds, against the
+	// thirty the silence rule costs.
+	h.screen = turnOver
+	h.w.Tick()
+	h.advance(liveGrace)
+	h.w.Tick()
+	if got := h.kinds(); len(got) != 1 || got[0] != Done {
+		t.Fatalf("events = %+v, want the one done", h.events)
+	}
+}
+
+func TestEveryDecisionIsWritten(t *testing.T) {
+	// Without a line per event, "it goes green for no reason" is an impression: the
+	// state lives in this process, and an hour later a false finish cannot be told
+	// from a real one. The reason is in it, because which of the two rules fired is
+	// the first thing worth knowing.
+	var lines []string
+	h := newHarness(30 * time.Second)
+	h.w.o.Log = func(l string) { lines = append(lines, l) }
+
+	h.screen = turnRunning
+	h.w.Tick()
+	h.screen = turnOver
+	h.settle()
+	if len(lines) != 1 || !strings.Contains(lines[0], "done claude") ||
+		!strings.Contains(lines[0], "counter gone") {
+		t.Fatalf("lines = %q, want the done and why", lines)
+	}
+
+	// A session on screen is not told, and the line says so — the event happened
+	// either way, and that is what makes the log readable against a phone that was
+	// looking at the time.
+	lines = nil
+	h.seen = true
+	h.screen = turnRunning
+	h.w.Tick()
+	h.screen = turnOver
+	h.settle()
+	if len(lines) != 1 || !strings.Contains(lines[0], "on screen") {
+		t.Fatalf("lines = %q, want the reason it was not announced", lines)
 	}
 }
 
@@ -245,7 +330,7 @@ func TestQuestionIsNotFinished(t *testing.T) {
 	h.screen = turnRunning
 	h.w.Tick()
 	h.screen = turnOver
-	h.w.Tick()
+	h.settle()
 	if got := h.kinds(); len(got) != 2 || got[1] != Done {
 		t.Fatalf("events = %+v, want a done after the answer", h.events)
 	}
@@ -767,8 +852,11 @@ func TestEverySessionIsWatchedAndOnlyTheOpenedOnesAnnounced(t *testing.T) {
 		}
 	}
 
-	// Both finish; only the opened one is announced.
+	// Both finish; only the opened one is announced. Twice, because the end of a
+	// turn is the counter staying away rather than one poll of it being absent.
 	screens["seen"], screens["unseen"] = turnOver, turnOver
+	w.Tick()
+	now = now.Add(liveGrace)
 	w.Tick()
 	for _, s := range []string{"seen", "unseen"} {
 		if got := w.Activity(s); got != ActivityDone {
@@ -784,6 +872,8 @@ func TestEverySessionIsWatchedAndOnlyTheOpenedOnesAnnounced(t *testing.T) {
 	screens["unseen"] = turnRunning
 	w.Tick()
 	screens["unseen"] = turnOver
+	w.Tick()
+	now = now.Add(liveGrace)
 	w.Tick()
 	if len(events) != 2 || events[1].Session != "unseen" {
 		t.Fatalf("events = %+v, want a second one for the session now opened", events)
@@ -847,7 +937,7 @@ func TestGreenFadesWhenItStopsBeingNews(t *testing.T) {
 	h.screen = turnRunning
 	h.w.Tick()
 	h.screen = turnOver
-	h.w.Tick()
+	h.settle()
 	if got := h.w.Activity("claude"); got != ActivityDone {
 		t.Fatalf("just finished: %q, want %q", got, ActivityDone)
 	}
@@ -866,7 +956,7 @@ func TestGreenFadesWhenItStopsBeingNews(t *testing.T) {
 		t.Fatalf("working again: %q", got)
 	}
 	h.screen = turnOver
-	h.w.Tick()
+	h.settle()
 	if got := h.w.Activity("claude"); got != ActivityDone {
 		t.Fatalf("finished again: %q, want %q", got, ActivityDone)
 	}

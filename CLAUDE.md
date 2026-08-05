@@ -214,11 +214,31 @@ began, and a tab then paints itself neutral instead of inventing a fact.
 
 **The end of a turn is read off the agent, not waited out.** `detect.Live` looks
 for the counter an agent keeps on screen while a turn runs — `✶ Doing… (1m 13s ·
-↓ 3.9k tokens)` — and its going away is the event: `watch` reports "done" in the
-poll that sees it leave, instead of thirty seconds after the last change. The
-silence rule is still there and still needed — a shell running a build has no
-counter to read — but it is no longer the only one, and it was costing thirty
-seconds of a tab painted as working after the answer was already on it.
+↓ 3.9k tokens)` — and its going away is the event: `watch` reports "done" once it
+has stayed away for `liveGrace`, four seconds, instead of thirty seconds after the
+last change. The silence rule is still there and still needed — a shell running a
+build has no counter to read — but it is no longer the only one, and it was costing
+thirty seconds of a tab painted as working after the answer was already on it.
+
+**One poll without the counter is not an answer.** It was, and the report was "часто
+зеленеет на время и отправляет уведомление": a capture landing between the footer
+being erased and painted again, or a release that stops drawing the counter during a
+tool call, is one screen without a counter on a turn still running. The window is
+four seconds — two polls — which keeps almost all of the advantage over the silence
+rule. `Activity` waits exactly as long as the notification does, because the whole
+reason both are decided here is that they cannot disagree about what a session is
+doing. Sampling the author's own sessions at twice the poll rate found no flicker in
+this release (30s and 55s, no transitions), so this is a guard rather than a fix for
+something caught in the act.
+
+**Every event is written down** (`Options.Log`, `journalctl -u pockterm | grep
+watch:`) with the session, the rule that raised it — `counter gone for 4s`, `quiet
+for 32s` — and, when nothing was sent, why: the session was on screen, or no page
+had ever opened it. Before that line the watcher's state lived in this process and
+nothing recorded it, so "it goes green for no reason" could not be told from a real
+finish an hour later. It was measurable only from the page's side, and even there
+what looked like a burst of notices was one event delivered to the several sockets a
+stalled reconnect had left behind.
 
 Three readings say a turn is running, and the first of them had to be widened
 after it sent a "finished" notice mid-thought:

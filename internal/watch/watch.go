@@ -71,7 +71,16 @@ func (w *Watcher) Activity(session string) Activity {
 	// answer: no counter, no turn. What the screen does in between is somebody
 	// typing their next message, and a tab that called that "working" was
 	// reporting the person as the machine.
+	//
+	// The one exception is the moment the counter has just gone: for liveGrace it
+	// is still a turn, because one reading of an absent counter is also what a
+	// redraw caught mid-flight looks like. The colour has to wait exactly as long
+	// as the notification does — the whole point of both being decided here is
+	// that they cannot disagree about what a session is doing.
 	if st.sawLive {
+		if !st.liveGone.IsZero() && w.o.Now().Sub(st.liveGone) < liveGrace {
+			return ActivityWorking
+		}
 		return w.fresh(st, ActivityDone)
 	}
 	if !st.active {
@@ -93,6 +102,19 @@ func (w *Watcher) Activity(session string) Activity {
 // reported as "only now everything is green", which is a strip that has stopped
 // saying anything.
 const doneFresh = 10 * time.Minute
+
+// How long the counter has to stay away before the turn is called over.
+//
+// Two polls rather than one, and the reason is what a single reading is: a
+// capture that lands between the footer being erased and painted again, or a
+// release that stops drawing the counter while a tool call is in flight, is one
+// screen without a counter on a turn that is still running — and the answer to it
+// was a green tab and a "finished" notice, taken back a moment later. Measured on
+// the author's own sessions at twice the poll rate, this release never flickered
+// (30s and 55s samples, no transitions), so this is a guard rather than a fix for
+// something seen: what it costs is four seconds, against the thirty the silence
+// rule costs and the zero this had before.
+const liveGrace = 4 * time.Second
 
 // fresh gives a finished session its colour while the finish is recent, and
 // nothing afterwards. Nothing rather than some third colour: "quiet for hours" is
@@ -143,7 +165,11 @@ type Options struct {
 	// session started in the morning then said nothing until it was opened again.
 	//
 	// Being watched is not the same as being notified about: see Watch.
-	Sessions  func() []string
+	Sessions func() []string
+	// Log records what the watcher decided and why; nil keeps it quiet. A hook
+	// rather than the log package, so the rules stay testable and the caller
+	// decides where the line goes.
+	Log       func(string)
 	IdleAfter time.Duration    // silence that counts as "done"
 	Poll      time.Duration    // how often Run reads the panes
 	Now       func() time.Time // injected for tests
@@ -169,6 +195,10 @@ type state struct {
 	// reporting the human's typing as the machine's work.
 	live    bool
 	sawLive bool
+	// When the counter was first missing after having been seen. The end of a turn
+	// is read off the counter going away, and one poll of it being absent used to
+	// be the whole of that reading — see liveGrace for why it now has to hold.
+	liveGone time.Time
 	// ours is how long a change to the screen still belongs to us rather than to
 	// the agent — see Rebase. A page attaching resizes the pane, and that is not
 	// somebody's work.
@@ -362,6 +392,11 @@ func (w *Watcher) poll(session string) {
 		st.sawLive = true
 		st.doneSent = false
 		st.quiet = time.Time{}
+		st.liveGone = time.Time{}
+	} else if st.sawLive && st.liveGone.IsZero() {
+		// The first poll without it. Whether that is the end of the turn is
+		// answered by the next one — see liveGrace.
+		st.liveGone = now
 	}
 	var events []Event
 	menu := detect.Question(lines)
@@ -389,14 +424,18 @@ func (w *Watcher) poll(session string) {
 	// Neither fires while a menu is on screen. "Finished" for a session that is
 	// waiting for an answer is the opposite of what is true, and a question is
 	// already being announced in its own right.
+	why := ""
 	switch {
 	case menu != nil || st.live || st.doneSent:
 		// A question, a turn still counting, or a turn already reported.
+	case st.sawLive && !st.liveGone.IsZero() && now.Sub(st.liveGone) >= liveGrace:
+		why = fmt.Sprintf("counter gone for %s", now.Sub(st.liveGone).Round(time.Second))
 	case st.sawLive:
-		st.doneSent = true
-		st.quiet = now
-		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines)})
+		// Missing, but not for long enough to be an answer yet.
 	case st.active && now.Sub(st.changed) >= w.o.IdleAfter:
+		why = fmt.Sprintf("quiet for %s", now.Sub(st.changed).Round(time.Second))
+	}
+	if why != "" {
 		st.doneSent = true
 		st.quiet = now
 		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines)})
@@ -410,7 +449,32 @@ func (w *Watcher) poll(session string) {
 	// And a session no page has ever attached to is read but not announced: it is
 	// on the strip in colour, and the phone is told about the sessions it was
 	// asked to be told about. Attaching once is the asking.
-	if len(events) == 0 || !notify || w.o.Viewing(session) {
+	if len(events) == 0 {
+		return
+	}
+	quiet := ""
+	switch {
+	case !notify:
+		quiet = "not announced: never opened here"
+	case w.o.Viewing(session):
+		quiet = "not announced: on screen"
+	}
+	// Every event, whether it was announced or not, with the rule that raised it.
+	// Without this line "it goes green for no reason" is an impression: the state
+	// lives in this process, nothing is written down, and a false "finished" cannot
+	// be told from a real one an hour later. The colour of a tab is decided here
+	// too, so this is the log of that as well.
+	if w.o.Log != nil {
+		for _, e := range events {
+			reason := why
+			if e.Kind == Question {
+				reason = "menu on screen"
+			}
+			w.o.Log(fmt.Sprintf("watch: %s %s (%s)%s", e.Kind, session, reason,
+				map[bool]string{true: "", false: " — " + quiet}[quiet == ""]))
+		}
+	}
+	if quiet != "" {
 		return
 	}
 	for _, e := range events {

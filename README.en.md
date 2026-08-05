@@ -359,8 +359,9 @@ with `capture-pane` and tells two events apart:
 
 - **asks for an answer** — an interactive menu appeared (one message per
   menu, not per poll);
-- **finished** — the screen has not changed for `POCKTERM_IDLE` after
-  something happened.
+- **finished** — the agent's own counter (`✻ Pondering… (4m 23s · …)`) has left
+  the screen and stayed away for 4s; or, for a pane with no counter to read, the
+  screen has not changed for `POCKTERM_IDLE` after something happened.
 
 **One decision, two channels.** The event goes to Telegram and, as a frame
 on the websocket, to an open page, which raises a system notification (in
