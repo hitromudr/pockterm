@@ -289,15 +289,16 @@ html, body {
    the bottom as well: without it a taller strip would move ☰ down, and the
    drawer's ❮ is measured against it. */
 #tabs .bg {
-  left: 50%;
+  /* Right edge flush with the right edge of the name, which is the tab's own
+     content box — so 12px, the tab's horizontal padding. Anchored to the text
+     rather than centred on the border: the label is what the eye follows along
+     the strip, and a plate that ends where the text ends belongs to it. */
+  right: 12px;
   bottom: 0;
   gap: 3px;
-  /* Centred on the bottom border and half of itself below it. Not in a corner:
-     the corner is where the name ends, and the plates were either eating its
-     width or hanging over the tab beside them. The middle of that edge belongs
-     to nothing else, and half out is what makes them read as hung on the line
-     rather than as sitting inside the tab. */
-  transform: translate(-50%, 50%);
+  /* Half of itself below the line, which is what makes the pair read as hung on
+     the border rather than as sitting inside the tab. */
+  transform: translateY(50%);
 }
 #tabs .bg::before, #tabs .bg::after {
   min-width: 14px;

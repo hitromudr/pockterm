@@ -2016,7 +2016,7 @@ describe('a tab says what its session is doing', () => {
       const tab = b.getBoundingClientRect();
       return {
         position: s.position,
-        offCentre: Math.abs((bg.left + bg.width / 2) - (tab.left + tab.width / 2)),
+        offText: Math.abs(bg.right - (tab.right - parseFloat(getComputedStyle(b).paddingRight))),
         below: bg.bottom - tab.bottom,
         height: bg.height,
         shell: of('::before'),
@@ -2024,11 +2024,12 @@ describe('a tab says what its session is doing', () => {
       };
     });
     assert.equal(plates.position, 'absolute', 'the badges are in the text flow');
-    // Centred on the tab's bottom border and hanging about a third of themselves
-    // under it: the corner is where the name ends, and plates there either ate
-    // its width or hung over the tab beside them.
-    assert.ok(plates.offCentre <= 2,
-      `the badges are not centred on the tab: ${JSON.stringify(plates)}`);
+    // Flush with the right edge of the name — the tab's own content box — and
+    // hanging half of themselves under the bottom border. Not in the corner
+    // itself: a plate there either ate the width the name is read in or hung
+    // over the tab beside it.
+    assert.ok(plates.offText <= 1.5,
+      `the badges do not end where the name does: ${JSON.stringify(plates)}`);
     assert.ok(plates.below >= plates.height * 0.4 && plates.below <= plates.height * 0.6,
       `the badges do not hang half under the edge: ${JSON.stringify(plates)}`);
     // Each says its own count and nothing else: at this size a glyph in front of
