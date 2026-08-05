@@ -619,6 +619,14 @@ on every glyph): hiding the grid hides the element that has focus, and Android h
 focus back to whatever had it before — which raised the keyboard over the grid being
 used.
 
+A fourth followed on a laptop: **the mark has to share its line with the name.**
+Every input in this form is `flex: 1 1 100%` — one field per line, which the command
+wants — and the name inherited that basis and wrapped to the next row, leaving the
+mark button alone above it, a control belonging to nothing on screen.
+`#buttons-box .add #custom-label` gives that one field `auto` instead. The field is
+labelled `название` rather than `подпись`, because what it holds is the button's own
+name and the row it appears in reads as one.
+
 **The form shows the glyph the button will be drawn with, not the one that was
 picked.** Nothing picked is the common case, and a `⭐` on the form while the row two
 lines up shows `❄️` describes the form's own state instead of what is being edited —

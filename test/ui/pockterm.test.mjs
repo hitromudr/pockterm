@@ -883,6 +883,23 @@ describe("the owner's own session buttons", () => {
     assert.ok(gridBox.y - (markBox.y + markBox.height) < 120,
       `the grid is ${Math.round(gridBox.y - markBox.y - markBox.height)}px away from its button`);
     await page.click('#custom-mark');
+
+    // And the mark shares its line with the name, which is the pair a button is
+    // named by. Every input in this form takes a line of its own, and that basis
+    // wrapped the name to the next row — leaving the mark above it, a control
+    // belonging to nothing on screen.
+    // Both taken with the grid closed, for the same reason the pair above was taken
+    // with it open: closing it moves everything under it.
+    await page.waitForFunction(() => document.getElementById('mark-grid').hidden);
+    const barBox = await page.locator('#custom-mark').boundingBox();
+    const nameBox = await page.locator('#custom-label').boundingBox();
+    assert.ok(nameBox.x > barBox.x + barBox.width - 2,
+      `the name is not to the right of the mark: ${JSON.stringify({ barBox, nameBox })}`);
+    const share = Math.min(nameBox.y + nameBox.height, barBox.y + barBox.height)
+      - Math.max(nameBox.y, barBox.y);
+    assert.ok(share > nameBox.height / 2,
+      `the mark and the name are not on one line: they share ${Math.round(share)}px`);
+    assert.equal(await page.getAttribute('#custom-label', 'placeholder'), 'название');
   });
 
   test('the form shows the glyph the button will be drawn with', async () => {

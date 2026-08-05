@@ -463,6 +463,7 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
 #buttons-box .add input {
   flex: 1 1 100%;
   min-width: 0;
+  /* one input per line, except the name — see #custom-label below */
   padding: 10px 12px;
   color: var(--fg);
   background: #0f141d;
@@ -470,6 +471,12 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
   border-radius: 8px;
   font-size: 14px;
 }
+/* The name sits beside the mark, not under it. Every input in this form takes a
+   line of its own, and that basis wrapped the field to the next row — which left
+   the mark button alone above it, reading as a control belonging to nothing.
+   `auto` lets it share the row with the 44px button; the command keeps its own
+   line, being the longer of the two. */
+#buttons-box .add #custom-label { flex: 1 1 auto; }
 #buttons-box .add button {
   flex: 1;
   padding: 10px 0;
