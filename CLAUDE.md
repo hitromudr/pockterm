@@ -559,6 +559,28 @@ answer about buttons and this is the answer about shells — for a session start
 before the Makefile knew how, or by hand with `tmux new`. It never overrules a
 stamp.
 
+**The mark is picked from a grid, and that replaced a trick.** The way to give a
+button a glyph was to type an emoji at the front of its label: something you had to
+know, and a character out of a name that has 24. The owner's own row was three
+custom buttons all drawing the same `★`, which is what he was looking at when he
+asked for this. `MARKS` in `web/js/kinds.js` is the vocabulary — a curated set
+rather than a keyboard, because the glyph is read at 13px on a tab — and the picker
+is a popup grid beside the label field, since the mark and the label are the pair a
+button is named by. Picking the glyph already chosen clears it: one tap in, one tap
+out, rather than a button of its own for "no mark".
+
+`markOf` is the one order of precedence, and every surface goes through it: the mark
+that was picked, then a mark the label leads with (which is how this worked before
+and still does), then what the id is known for — a default's own glyph, or the name
+of an agent this recognises — and the shared `★` when nothing says anything.
+`kindMark` answers a tab by looking the button up and calling the same function, so
+the menu and the strip cannot drift into two glyphs for one button.
+
+Two names are guessed at and no more: **Claude is cold, Codex is sol** (`❄`, `☀`,
+the owner's own vocabulary, and `claude`'s stock glyph changed from `✦` to match).
+Two agents are what this serves; a third would be a guess, and one tap in the grid
+overrules either.
+
 **The mark lives in a span of its own, never in the label.** Same reason the state
 is a class and the badge an attribute: the kind arrives on a later poll than the
 name — the session list is fetched before `/api/presets` answers — and rebuilding

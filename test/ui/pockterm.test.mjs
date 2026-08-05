@@ -581,7 +581,9 @@ describe("the owner's own session buttons", () => {
     // rebuilds the button, and a WebView answers that by raising the keyboard.
     await page.waitForFunction((n) => {
       const b = [...document.querySelectorAll('#tabs button')].find((x) => x.dataset.session === n);
-      return b && b.querySelector('.kind') && b.querySelector('.kind').textContent === '✦';
+      // ❄ since the owner asked for it — Claude is cold — and the four defaults are
+      // the first row of the grid a custom button picks its mark from.
+      return b && b.querySelector('.kind') && b.querySelector('.kind').textContent === '❄';
     }, name, { timeout: 8000 });
 
     // A long press asks what the mark means. Through the browser's own touch
@@ -598,7 +600,7 @@ describe("the owner's own session buttons", () => {
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at });
     await page.waitForSelector('#kind-help:not([hidden])', { timeout: 3000 });
-    assert.match(await page.textContent('#kind-help'), /✦ Claude/);
+    assert.match(await page.textContent('#kind-help'), /❄ Claude/);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(300);
     assert.equal(
@@ -754,6 +756,74 @@ describe("the owner's own session buttons", () => {
     await page.click('#custom-list li:has-text("Cont yolo") button.rename');
     assert.equal(await page.inputValue('#custom-cmd'), 'make cont-yolo');
     await page.click('#custom-list li:has-text("Cont yolo") button.rename');
+  });
+
+  test('a mark is picked from a grid, and the tabs it opens carry it', async () => {
+    // The way to give a button a glyph was to type an emoji at the front of its
+    // label — a trick you had to know, and a character out of a name that has 24.
+    // Three custom buttons therefore all drew the same star, which is the row the
+    // owner was looking at when he asked for a grid.
+    await stand.open();
+    const { page } = stand;
+    await stand.openSettings();
+    await page.click('#custom-mark');
+    await page.waitForSelector('#mark-grid:not([hidden])');
+    await page.click('#mark-grid button:has-text("🚀")');
+    // The picker closes on the pick and shows it, so the form says what will be
+    // saved before anything is.
+    assert.equal(await page.evaluate(() => document.getElementById('mark-grid').hidden), true);
+    assert.match(await page.textContent('#custom-mark'), /🚀/);
+
+    await page.fill('#custom-label', 'Ракета');
+    await page.fill('#custom-cmd', 'qwen');
+    await page.click('#custom-add');
+    await page.waitForSelector('#custom-list li:has-text("Ракета")');
+    assert.match(await page.textContent('#custom-list li:has-text("Ракета")'), /🚀/);
+    assert.match(await page.textContent('#new-menu button[data-preset^="custom:"]:has-text("Ракета")'), /🚀/);
+
+    // And the tab the button opens carries the same glyph: one vocabulary for the
+    // menu, the strip and the drawer.
+    await stand.shutDrawer();
+    await stand.openDrawer();
+    const before = await page.locator('#session-list li').count();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset^="custom:"]:has-text("Ракета")');
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
+    const name = (await page.locator('#session-list li').last().locator('.name').textContent()).trim();
+    await page.waitForFunction(
+      (n) => [...document.querySelectorAll('#tabs button')].some(
+        (b) => b.dataset.session === n && (b.textContent || '').includes('🚀')),
+      name, { timeout: 8000 });
+
+    // Editing loads the mark back, and the same glyph again clears it — one tap in,
+    // one tap out, rather than a button of its own for "no mark".
+    await stand.openSettings();
+    await page.click('#custom-list li:has-text("Ракета") button.rename');
+    assert.match(await page.textContent('#custom-mark'), /🚀/);
+    await page.click('#custom-mark');
+    await page.click('#mark-grid button:has-text("🚀")');
+    assert.match(await page.textContent('#custom-mark'), /★/);
+    await page.click('#custom-add');
+    await page.waitForFunction(
+      () => !(document.querySelector('#custom-list li:has-text("Ракета")')?.textContent || '').includes('🚀'),
+      null, { timeout: 5000 }).catch(() => {});
+    assert.match(await page.textContent('#custom-list li:has-text("Ракета")'), /★/);
+  });
+
+  test('a default keeps the glyph its button has, and Claude is cold', async () => {
+    // The owner's own vocabulary: Claude is cold, Codex is sol. It applies to a
+    // button with no mark of its own, so one tap in the grid overrules it — and the
+    // four defaults have their own glyphs, which the grid's first row is made of.
+    await stand.open();
+    const { page } = stand;
+    await stand.openSettings();
+    assert.match(await page.textContent('#custom-list li:has-text("Claude") >> nth=0'), /❄/);
+    await page.fill('#custom-label', 'Codex-cont');
+    await page.fill('#custom-cmd', 'codex resume');
+    await page.click('#custom-add');
+    await page.waitForSelector('#custom-list li:has-text("Codex-cont")');
+    assert.match(await page.textContent('#custom-list li:has-text("Codex-cont")'), /☀/);
   });
 
   test('a default can be removed, and the reset brings it back alone', async () => {

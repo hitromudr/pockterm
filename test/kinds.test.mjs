@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { kindMark, kindName, customMark, labelBody, customId, shortAge, CUSTOM_MARK, builtinId, presetOf, markOf } from '../web/js/kinds.js';
+import { kindMark, kindName, customMark, labelBody, customId, shortAge, CUSTOM_MARK, builtinId, presetOf, markOf, MARKS } from '../web/js/kinds.js';
 
 const buttons = [
   { id: 'b1', label: 'qwen', cmd: 'qwen' },
@@ -9,7 +9,9 @@ const buttons = [
 
 test('a built-in preset is marked with the same glyph as its button', () => {
   assert.equal(kindMark('shell', buttons), '▸');
-  assert.equal(kindMark('claude', buttons), '✦');
+  // ❄ since the owner asked for it: Claude is cold, and the four are the first
+  // row of the grid a custom button picks from.
+  assert.equal(kindMark('claude', buttons), '❄');
   assert.equal(kindMark('yolo', buttons), '⚡');
   assert.equal(kindMark('continue', buttons), '↻');
   assert.equal(kindName('yolo', buttons), 'Claude (yolo)');
@@ -97,7 +99,9 @@ test('a renamed default is called what it was renamed to', () => {
 
 test('a default without a mark of its own keeps the stock one', () => {
   const buttons = [{ id: 'claude', label: 'Клод', cmd: '' }];
-  assert.equal(kindMark('claude', buttons), '✦');
+  // ❄ since the owner asked for it: Claude is cold, and the four are the first
+  // row of the grid a custom button picks from.
+  assert.equal(kindMark('claude', buttons), '❄');
   assert.equal(kindName('claude', buttons), 'Клод');
 });
 
@@ -111,4 +115,43 @@ test('what the page sends to start a button', () => {
   assert.equal(markOf({ id: 'shell', label: 'Shell' }), '▸');
   assert.equal(markOf({ id: 'b1', label: 'Qwen' }), CUSTOM_MARK);
   assert.equal(markOf({ id: 'b1', label: '🐍 Python' }), '🐍');
+});
+
+test('a picked mark wins, and a name is the last guess', () => {
+  // In order: the grid, then a mark the label leads with (which is how this worked
+  // before the grid existed), then what the id or the name is known for.
+  assert.equal(markOf({ id: 'b1', label: 'Codex', mark: '🚀' }), '🚀');
+  assert.equal(markOf({ id: 'b1', label: '🐍 Python', mark: '' }), '🐍');
+  // Two agents are what this serves, so two names are guessed at: Claude is cold,
+  // Codex is sol. One tap in the grid overrules either.
+  assert.equal(markOf({ id: 'b1', label: 'Codex-cont', cmd: 'codex resume' }), '☀');
+  assert.equal(markOf({ id: 'b2', label: 'Claude Cont (yolo)' }), '❄');
+  assert.equal(markOf({ id: 'b3', label: 'Qwen' }), CUSTOM_MARK);
+  // A default keeps its own glyph unless something says otherwise.
+  assert.equal(markOf({ id: 'yolo', label: 'Claude (yolo)' }), '⚡');
+  assert.equal(markOf({ id: 'yolo', label: 'Claude (yolo)', mark: '☾' }), '☾');
+});
+
+test('a tab is marked by the button as it stands now', () => {
+  // One rule for the menu and the strip: a tab carries the mark of the button that
+  // made it, and two rules would drift into two answers about one glyph.
+  const buttons = [
+    { id: 'b1', label: 'Codex', mark: '🚀' },
+    { id: 'claude', label: 'Claude', mark: '☾' },
+  ];
+  assert.equal(kindMark('custom:b1', buttons), '🚀');
+  assert.equal(kindMark('claude', buttons), '☾');
+  // A button since removed: the shared mark for one of the owner's own, the stock
+  // glyph for a default.
+  assert.equal(kindMark('custom:b9', buttons), CUSTOM_MARK);
+  assert.equal(kindMark('yolo', buttons), '⚡');
+});
+
+test('the grid is a set of single glyphs', () => {
+  // What is read at 13px on a phone. Duplicates would be two taps for one answer.
+  assert.equal(new Set(MARKS).size, MARKS.length);
+  for (const m of MARKS) {
+    assert.ok([...m].length <= 2, `${m} is more than a glyph`);
+    assert.doesNotMatch(m, /\s/);
+  }
 });

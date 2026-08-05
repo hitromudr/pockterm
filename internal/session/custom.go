@@ -39,6 +39,14 @@ type Custom struct {
 	// die. A target is also a narrower thing to allow than a command: a name, and
 	// nothing that can reach a shell.
 	Target string `json:"target,omitempty"`
+	// The glyph this button and every tab it opens are drawn with, picked from the
+	// grid in the drawer. Empty leaves it to the page: its own vocabulary for the
+	// four, a mark the label leads with, or the shared star.
+	//
+	// Chosen rather than typed, because the way to have one was to put an emoji at
+	// the front of the label: three custom buttons all drew the same star until
+	// somebody knew that trick, and it cost a character of a name that has 24.
+	Mark string `json:"mark,omitempty"`
 }
 
 // CustomTarget is the make target a custom button runs. It takes the command in
@@ -134,11 +142,27 @@ func asMake(v string) string {
 	return rest
 }
 
+// How much of a glyph a mark may be. One symbol is one code point; an emoji is
+// often several — a variation selector, a skin tone, a ZWJ sequence — so this is a
+// ceiling on a glyph rather than a count of characters.
+const maxMark = 8
+
 // ValidCustom checks one button and returns it with the label trimmed.
 func ValidCustom(c Custom) (Custom, error) {
 	c.Label = strings.TrimSpace(c.Label)
 	c.Cmd = strings.TrimSpace(c.Cmd)
 	c.Target = strings.TrimSpace(c.Target)
+	c.Mark = strings.TrimSpace(c.Mark)
+	if len([]rune(c.Mark)) > maxMark {
+		return c, fmt.Errorf("a mark is one glyph")
+	}
+	for _, r := range c.Mark {
+		// A control character would reach the page and the journal; a space would
+		// draw a button with a hole where its mark is.
+		if unicode.IsControl(r) || unicode.IsSpace(r) {
+			return c, fmt.Errorf("a mark cannot contain spaces or control characters")
+		}
+	}
 	// `make <target>` in the command field is a target and not a command. Read
 	// here rather than in the page so a hand-edited file means the same thing, and
 	// so the two cannot drift into different ideas of what was typed.

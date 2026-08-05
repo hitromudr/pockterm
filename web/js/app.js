@@ -9,7 +9,7 @@ import { watch as watchInput } from './inputdiag.js';
 import { Scroller, movedWholeScreen } from './scroll.js';
 import { staleNotice } from './update.js';
 import { endingKeys } from './ender.js';
-import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf } from './kinds.js';
+import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, MARKS, CUSTOM_MARK } from './kinds.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -19,7 +19,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v113';
+const APP_VERSION = 'v114';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -483,6 +483,11 @@ const customCmd = document.getElementById('custom-cmd');
 const customAdd = document.getElementById('custom-add');
 const customNote = document.getElementById('custom-note');
 const customReset = document.getElementById('custom-reset');
+const customMarkBtn = document.getElementById('custom-mark');
+const markGrid = document.getElementById('mark-grid');
+// The mark the form is about: '' means "let the page decide", which is what every
+// button had before there was a grid.
+let formMark = '';
 const buttonsBox = document.getElementById('buttons-box');
 let customButtons = [];
 
@@ -490,6 +495,45 @@ function note(text) {
   customNote.textContent = text || '';
   customNote.hidden = !text;
 }
+
+// --- the mark, picked from a grid ---
+//
+// The way to give a button a glyph was to type an emoji at the front of its label:
+// a trick you had to know, and a character out of a name that has 24. Three custom
+// buttons therefore drew the same ★, which is the row the owner was looking at when
+// he asked for this.
+//
+// The grid is written from MARKS in js/kinds.js — one vocabulary, shared with the
+// strip and the drawer — and the button beside the label shows what is chosen.
+function paintMarkButton() {
+  customMarkBtn.textContent = formMark || CUSTOM_MARK;
+  customMarkBtn.classList.toggle('on', !!formMark);
+  for (const b of markGrid.querySelectorAll('button')) {
+    b.classList.toggle('on', b.textContent === formMark);
+  }
+}
+
+function buildMarkGrid() {
+  markGrid.innerHTML = '';
+  for (const m of MARKS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = m;
+    b.addEventListener('click', () => {
+      // The same glyph again means "no mark of my own": one tap in, one tap out,
+      // rather than a separate button for clearing it.
+      formMark = formMark === m ? '' : m;
+      paintMarkButton();
+      markGrid.hidden = true;
+    });
+    markGrid.appendChild(b);
+  }
+}
+buildMarkGrid();
+paintMarkButton();
+customMarkBtn.addEventListener('click', () => {
+  markGrid.hidden = !markGrid.hidden;
+});
 
 // Which button the two fields below are currently about: null for a new one,
 // an id while an existing one is being changed.
@@ -642,6 +686,8 @@ const CMD_PLACEHOLDER = customCmd.placeholder;
 // "which one am I changing" is then unanswerable.
 function startEdit(c) {
   editingID = c.id;
+  formMark = c.mark || '';
+  paintMarkButton();
   customLabel.value = c.label;
   // Back into the field as it was typed: a target came in as `make <target>` and
   // has to go back out that way, or editing the label would turn the button into
@@ -657,6 +703,9 @@ function startEdit(c) {
 function cancelEdit() {
   if (editingID === null) return;
   editingID = null;
+  formMark = '';
+  paintMarkButton();
+  markGrid.hidden = true;
   customLabel.value = '';
   customCmd.value = '';
   customCmd.placeholder = CMD_PLACEHOLDER;
@@ -680,14 +729,17 @@ customAdd.addEventListener('click', async () => {
   // — the page sends what was typed. The old target is cleared with it: a button
   // whose command was rewritten must not keep a target it no longer names.
   const list = editingID === null
-    ? [...customButtons, { label, cmd }]
-    : customButtons.map((c) => (c.id === editingID ? { ...c, label, cmd, target: '' } : c));
+    ? [...customButtons, { label, cmd, mark: formMark }]
+    : customButtons.map((c) => (c.id === editingID ? { ...c, label, cmd, target: '', mark: formMark } : c));
   if (await saveCustom(list)) {
     editingID = null;
     customAdd.textContent = 'Добавить';
     customLabel.value = '';
     customCmd.value = '';
     customCmd.placeholder = CMD_PLACEHOLDER;
+    formMark = '';
+    paintMarkButton();
+    markGrid.hidden = true;
     renderCustom();
   }
 });

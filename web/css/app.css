@@ -414,6 +414,40 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
 #custom-list li.editing { border-color: var(--accent); }
 #custom-list li.editing button.rename { color: var(--accent); }
 #buttons-box .add { display: flex; flex-wrap: wrap; gap: 6px; }
+/* The mark and the label are one line: that pair is what a button is named by. */
+#custom-mark {
+  flex: 0 0 44px;
+  padding: 10px 0;
+  color: var(--fg);
+  background: #1b2230;
+  border: 1px solid #2a3345;
+  border-radius: 8px;
+  font-size: 18px;
+  line-height: 1;
+}
+#custom-mark.on { border-color: var(--accent); }
+/* The grid itself: rows of glyphs at the size they are read at on a tab, laid out
+   to be hit with a thumb rather than to be compact. */
+#mark-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  margin-top: 6px;
+  padding: 6px;
+  background: #0f141d;
+  border: 1px solid #2a3345;
+  border-radius: 8px;
+}
+#mark-grid button {
+  padding: 8px 0;
+  color: var(--fg);
+  background: #1b2230;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 17px;
+  line-height: 1;
+}
+#mark-grid button.on { border-color: var(--accent); background: #232a38; }
 #buttons-box .add input {
   flex: 1 1 100%;
   min-width: 0;

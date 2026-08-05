@@ -255,6 +255,20 @@ The command is checked before it reaches a command line: letters, digits, spaces
 `&`, `|` are refused with a reason — the value reaches a shell inside the recipe, so
 this is a gate rather than advice.
 
+**A button's mark is picked from a grid.** Left of the label sits a button showing
+the current glyph; tapping it opens a grid, tapping a glyph picks it and closes the
+grid, and tapping the one already chosen clears it. The mark is drawn in the `+`
+menu, on every tab the button opens, and in the drawer. The only way to have one
+used to be an emoji at the front of the label — a trick you had to know, and a
+character out of a name that has 24 — which is why three custom buttons all drew the
+same `★`.
+
+With nothing picked the order is: an emoji the label leads with (as before), then
+what the id is known for — a default's own glyph, or the name of an agent this
+recognises — and the shared `★` when nothing says anything. Exactly two names are
+guessed at: **Claude is cold (`❄`), Codex is sol (`☀`)**; a third would be a guess,
+and either is overruled by one tap in the grid.
+
 Every button in the list carries two actions: `✎` to change it, and `✕` to remove it
 **in two taps**, the same as closing a session: the first reddens the cross and asks,
 the second acts, and the arming lapses after four seconds. It was one tap until a

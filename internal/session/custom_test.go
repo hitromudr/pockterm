@@ -332,3 +332,31 @@ func TestATargetIsNotACommandAndNotBoth(t *testing.T) {
 		t.Fatal("a target that could reach a shell was accepted")
 	}
 }
+
+func TestAMarkIsOneGlyph(t *testing.T) {
+	// Picked from a grid rather than typed into the label, which is what it was:
+	// three custom buttons all drew the same star until somebody knew that trick.
+	for _, mark := range []string{"❄", "☀", "🐍", "🇺🇦", ""} {
+		if _, err := ValidCustom(Custom{ID: "b1", Label: "x", Cmd: "qwen", Mark: mark}); err != nil {
+			t.Errorf("mark %q was refused: %v", mark, err)
+		}
+	}
+	// Trimmed at the edges like every other field; refused when the trouble is
+	// inside it.
+	for _, bad := range []string{"a b", "❄\n❄", "way too many glyphs here"} {
+		if _, err := ValidCustom(Custom{ID: "b1", Label: "x", Cmd: "qwen", Mark: bad}); err == nil {
+			t.Errorf("mark %q was accepted", bad)
+		}
+	}
+	// It survives the trip to disk and back, or a picked glyph would last until the
+	// next restart — which CI does several times a working day.
+	path := filepath.Join(t.TempDir(), "buttons.json")
+	b := LoadButtons(path)
+	if _, err := b.Set([]Custom{{ID: "b1", Label: "Codex", Cmd: "codex", Mark: "☀"}}); err != nil {
+		t.Fatal(err)
+	}
+	got := LoadButtons(path).List()
+	if got[len(got)-1].Mark != "☀" {
+		t.Fatalf("the mark was not kept: %+v", got)
+	}
+}

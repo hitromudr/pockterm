@@ -11,6 +11,32 @@
 // it is the same mark as the button that made it. Two lists would drift, which
 // is why this one is shared by the menu, the tab strip and the drawer.
 
+// The grid of marks a button can be given, in the drawer.
+//
+// A curated set rather than a keyboard: the mark is read at tab size on a phone, so
+// what belongs here is glyphs that stay legible at 13px — and picking one from a
+// grid is a tap, where typing an emoji into a label was a trick you had to know.
+//
+// First row: what the four defaults use, so a custom button can look like one on
+// purpose. After that agents, languages, and the plain shapes that say "this one is
+// different" without saying anything else.
+export const MARKS = [
+  '❄', '☀', '✦', '⚡', '↻', '▸', '★', '☾',
+  '✺', '✹', '✿', '❉', '⌁', '⎔', '◆', '●',
+  '▲', '■', '⬢', '✚', '⚙', '⌛', '☕', '✂',
+  '🤖', '🧠', '🐍', '🦀', '🐧', '🚀', '🔧', '🧪',
+  '📦', '🔒', '🎯', '🧭', '🔥', '💤', '🌊', '🌱',
+];
+
+// What an agent's name suggests when nothing was picked. Two entries, because two
+// agents are what this serves and a guess about a third would be a guess: Claude is
+// cold, Codex is sol. It only ever applies to a button with no mark of its own, so
+// one tap in the grid overrules it.
+const NAMED = [
+  [/claude/i, '❄'],
+  [/codex/i, '☀'],
+];
+
 // The four built-in presets, in the menu's own words and marks.
 //
 // The marks are this file's business and stay here. The words are a fallback
@@ -19,7 +45,7 @@
 // tab whose button has since been removed is what these names are left for.
 const BUILTIN = {
   shell: { mark: '▸', name: 'Shell' },
-  claude: { mark: '✦', name: 'Claude' },
+  claude: { mark: '❄', name: 'Claude' },
   yolo: { mark: '⚡', name: 'Claude (yolo)' },
   continue: { mark: '↻', name: 'Continue' },
 };
@@ -61,20 +87,15 @@ export function customMark(label) {
 // say. `buttons` is the custom list as the host reports it.
 export function kindMark(kind, buttons) {
   if (!kind) return '';
-  const id = customId(kind);
-  if (id) {
-    const b = (buttons || []).find((x) => x.id === id);
-    // A button since removed: it was one of the owner's, and which one is no
-    // longer known. The shared mark says that much and does not invent a name.
-    return b ? customMark(b.label) : CUSTOM_MARK;
-  }
-  if (!BUILTIN[kind]) return '';
-  // A renamed default may carry a mark of its own, the same way a custom button
-  // does — one rule for leading marks, or the menu and the strip would disagree
-  // about the same label. Its stock mark is what it has until then.
-  const b = (buttons || []).find((x) => x.id === kind);
-  const own = b ? leadingMark(b.label) : '';
-  return own || BUILTIN[kind].mark;
+  const id = customId(kind) || kind;
+  const b = (buttons || []).find((x) => x.id === id);
+  // The button as it stands, by the same rule the menu draws it with: a tab has to
+  // carry the mark of the button that made it, and two rules would drift.
+  if (b) return markOf(b);
+  // A button since removed: which one it was is no longer known. The shared mark
+  // says that much for one of the owner's own; a default still has its own glyph.
+  if (BUILTIN[id]) return BUILTIN[id].mark;
+  return customId(kind) ? CUSTOM_MARK : '';
 }
 
 // How long a session has been up, for the drawer's row.
@@ -131,7 +152,19 @@ export function presetOf(b) {
   return builtinId(b.id) ? b.id : CUSTOM_PREFIX + b.id;
 }
 
-// markOf(button) → the glyph to draw for it in the menu and the list.
+// markOf(button) → the glyph to draw for it in the menu, the list and the tabs it
+// opens.
+//
+// In order: what was picked in the grid, then a mark the label leads with (which is
+// how this worked before there was a grid, and still works), then what the id is
+// known for — a default's own glyph, or the name of an agent this recognises — and
+// the shared star when nothing says anything.
 export function markOf(b) {
-  return builtinId(b.id) ? kindMark(b.id, [b]) : customMark(b.label);
+  if (!b) return CUSTOM_MARK;
+  if (b.mark) return b.mark;
+  const lead = leadingMark(b.label);
+  if (lead) return lead;
+  if (builtinId(b.id)) return BUILTIN[b.id].mark;
+  const named = NAMED.find(([re]) => re.test(String(b.label || '')));
+  return named ? named[1] : CUSTOM_MARK;
 }
