@@ -21,7 +21,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v120';
+const APP_VERSION = 'v121';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -2586,7 +2586,22 @@ async function attachImage(file) {
   if (!res.ok) {
     // The server explains a refusal in plain text (not an image, too large);
     // silence here would read as "the paste did nothing".
-    const why = (await res.text().catch(() => '')).trim();
+    //
+    // 413 is the exception, and the tell is that it does not come from this
+    // server at all — nothing here answers with it. The proxy in front refuses
+    // the body before pockterm sees a byte of it, and what comes back is a page
+    // of HTML, which is a poor thing to put in a toast. It only ever appeared
+    // with a photo: a screenshot is a few hundred kilobytes and goes through,
+    // a camera frame is several megabytes and does not.
+    const why = res.status === 413
+      ? `${kb} KB is more than the proxy in front lets through`
+      : (await res.text().catch(() => '')).trim().slice(0, 120);
+    // Written down, because a failed upload used to be the one outcome here
+    // that left no line in the journal: "413 при загрузке фото" had to be
+    // reported by hand before anything could be looked at.
+    report('upload', {
+      ok: false, status: res.status, bytes: file.size || 0, type: file.type || '', why,
+    });
     toast(why ? `upload refused: ${why}` : `upload failed: ${res.status}`);
     return;
   }

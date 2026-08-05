@@ -1359,6 +1359,18 @@ bridge is there — plus copy/paste/upload results and uncaught errors. It is
 there because the device this serves has no console anyone can open, and every
 fix before it was a guess.
 
+**A refused upload had been the one outcome here that wrote nothing down.** Only
+the successful path reported, so "413 при загрузке фото" arrived as a sentence from
+the owner with nothing in the journal to put beside it — and 413 is a status this
+server never sends. It comes from the nginx in front, whose default body limit is
+one megabyte: a screenshot is a few hundred kilobytes and went through for months,
+a camera frame is several megabytes and never did. The limit lives in the
+`pockterm_vhost` role in the devops repository (`client_max_body_size 12M`, chosen
+just above `upload.MaxBytes` so an oversized image is refused by this program's own
+words rather than by the proxy's status code), and it takes a deploy of that role
+to be in force. The page now names the proxy instead of pasting nginx's HTML into a
+toast, and logs the failure with its status and the size.
+
 ## Deploy
 
 A push to `main` builds, tests and hands the binary over, and **the host
