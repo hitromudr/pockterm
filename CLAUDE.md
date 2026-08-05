@@ -512,6 +512,29 @@ this binary several times on a working day. Ids are the host's to hand out, so a
 rename keeps the button rather than making a new one, and the page saves **the whole
 list** and draws what came back — never what was just typed.
 
+**A button can be changed, and that is what the id was for.** `✎` on a row loads it
+into the two fields the form already has and `Добавить` becomes `Сохранить`; the row
+being edited is outlined, because with the label retyped there is nothing else on
+screen saying which button the fields are about, and the keyboard has by then put
+them a screen apart. The one form rather than a pair of fields per row, for the same
+reason the session list has one rename field: there is no room, and a form that
+appeared under the row would appear under the keyboard.
+
+Without it the way to fix a command was to remove the button and type it again — the
+same button to look at, and a different id. The id is what the tabs it opened are
+marked with (`custom:<id>`, `session.Kind`), so every session that button had started
+would have been left marked by a button that no longer exists, drawing the shared `★`
+and no name. Nothing on screen would have said that retyping cost anything. The edit
+sends the same list with the same id in place, which the server already supported —
+`Buttons.Set` keeps an id that arrives and hands out numbers only for entries without
+one.
+
+A second tap on `✎` cancels, and `closeDrawer` cancels too: a form still saying
+`Сохранить` about a button chosen a day ago saves the wrong thing when it is finally
+tapped. The UI test proves the id survives by reading `data-preset` off the menu
+entry before and after — the label and the command are what the owner sees, and both
+of them changing is exactly the case where a new id would look identical.
+
 ## A session name can be a group in disguise
 
 tmux names a session group after the session it was created from and never
@@ -673,6 +696,27 @@ the path. Now the bell asks whenever the mode it moves to notifies, an unpermitt
 `🔔` wears a dashed outline saying one tap is the fix, the permission is in the
 `hello` line of the journal, and a dropped notice says why it was dropped.
 
+**And the bell is no longer the only place that asks — the first touch does.** The
+dashed outline is a fix for whoever notices it, which is a poor thing to hang a
+whole install on: the default notifies, so nothing on a fresh install ever asks the
+one question standing between the frames arriving and a notice appearing.
+`shouldAskPermission` (in `js/notify.js`, so it is testable) decides, and
+`armPermissionAsk` fires it from a one-shot `pointerdown`.
+
+Two bounds, both learned from what browsers do rather than from what they document.
+It is not asked **on load**: a prompt raised without a gesture is refused outright
+by some browsers and shown as a quieter, easier-to-miss UI by others, and a phone
+touches the page within seconds anyway. And it is asked **once per install**, which
+is why `pt-notify-asked` exists rather than reading `Notification.permission`:
+`default` is what a *dismissed* prompt leaves behind too, so the state alone cannot
+tell "never asked" from "asked and ignored" — and a page that asks on every load is
+one the browser stops letting ask at all. The flag is written before the answer
+comes back for the same reason.
+
+The UI stand grants `notifications` alongside the clipboard. Not for convenience:
+the first touch in most of those tests is the start of a swipe being measured, and a
+permission prompt in the middle of a gesture is a different measurement.
+
 **Every notice names its own icon.** Left unset, Chrome draws a generic bell — and
 unpredictably: two notices from this page sat in the owner's shade one above the
 other, one bell and one app mark, because whether the manifest icon resolves
@@ -790,6 +834,51 @@ shipping it:
 
 `lag`, `predicted` and `lost` in the gesture report are diagnostics now, not
 controls: the shift no longer reads them.
+
+## The installer does what the README used to ask of a reader
+
+Everything `deploy/install.sh` gained is one shape of defect: a step that was
+written down instead of done, and whose absence does not look like an absence.
+
+**A host without `tmux` is refused, not served.** Nothing here works without it —
+the phone gets an empty session list, which reads as a broken terminal rather than
+as a package nobody installed. `make` is a warning instead, because only the `+`
+button goes through it, and its absence turns that button off just as quietly.
+Neither was checked at all before. The refusal carries the command that fixes it,
+picked off the package manager that exists rather than off `/etc/os-release`.
+
+**The session Makefile is installed, and `POCKTERM_SESSION_DIR` points at it.**
+Those were four steps in the README — copy, edit, set the variable, restart — and
+the moment they are wanted is the moment a phone has no session on it and no way to
+start one, which is the worst possible moment to be reading a README. The root
+defaults to the served account's home; `POCKTERM_SESSION_DIR` names another.
+
+Two refusals inside that, and both are about not owning what we did not write. A
+Makefile already in the root is never overwritten — `make claude` in somebody
+else's Makefile is an unknown target, not a session — and then the variable is not
+written either, because pointing the `+` button at unknown targets is worse than
+leaving it off. A copy of ours is recognised by `pockterm-sessions` in the header
+and left exactly as edited, the file being meant for editing. `GNUmakefile` and
+`makefile` count as the Makefile that is there: make reads the first of the three,
+so writing `Makefile` beside a `GNUmakefile` would install a file make never opens
+and report success.
+
+**A restart happens when the env file changed, and only then.** systemd reads that
+file at start, so anything added to it is not in force yet — and the README's
+`tee -a` plus `systemctl restart` was where people stopped reading. The condition
+matters as much: a restart drops every open terminal, so an install that changed
+nothing must cost nobody a reconnect.
+
+**`--tg` runs the pairing that already existed.** `pockterm tg-setup` has done the
+mechanical half since it was written; what it could not do is be remembered, and
+the part left out afterwards was the restart. Its failure ends only itself — the
+install stands and prints the link, because a bot that is not ready yet is not a
+reason to have no terminal.
+
+`test/install_test.sh` covers each of those, including both answers where a machine
+can only give one: `REQUIRE_TMUX`/`REQUIRE_MAKE` name the tool to look for, so the
+missing-tool path is exercised on a host that has it, and a stub `tmux` on `PATH`
+lets the happy path run in a container that has none.
 
 ## Diagnostics
 

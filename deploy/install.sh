@@ -5,10 +5,18 @@
 # service when something actually changed.
 #
 #   sudo bash deploy/install.sh              # install or update
+#   sudo bash deploy/install.sh --tg         # ...and pair a Telegram bot
 #   sudo bash deploy/install.sh --uninstall  # remove unit and binary
 #
-# The pieces it assembles (token, unit text) come from the binary itself —
-# `pockterm token`, `pockterm unit` — so this script stays readable.
+# The pieces it assembles (token, unit text, the Telegram chat id) come from
+# the binary itself — `pockterm token`, `pockterm unit`, `pockterm tg-setup` —
+# so this script stays readable.
+#
+# What it does beyond the binary and the unit is everything a first run needed
+# doing by hand afterwards: the Makefile the "+" button starts sessions
+# through, POCKTERM_SESSION_DIR pointing at it, and a restart when either
+# changed. Each of those was a line in the README, and a phone with no session
+# on it is exactly where a README cannot be followed.
 #
 # Paths can be overridden, which is also how the test suite exercises this
 # script without touching a real system:
@@ -25,6 +33,15 @@ LISTEN="${POCKTERM_LISTEN:-127.0.0.1:8130}"
 RUN_AS="${POCKTERM_USER:-${SUDO_USER:-$(id -un)}}"
 BIN="$PREFIX/pockterm"
 UNIT="$UNIT_DIR/pockterm.service"
+
+# Set when the env file gained something the running service has not read, and
+# when writing the unit already restarted for us. Together they decide whether
+# the install ends in a restart — which drops the terminal somebody may be
+# sitting in, so it happens only for a change that would otherwise be invisible
+# until the next reboot.
+ENV_CHANGED=""
+UNIT_RESTARTED=""
+WITH_TG=""
 
 log()  { printf '\033[1;34m[pockterm]\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m  ✓\033[0m %s\n' "$*"; }
@@ -45,7 +62,135 @@ uninstall() {
 	rm -f "$UNIT" "$BIN"
 	use_systemd && systemctl daemon-reload
 	ok "unit and binary removed"
-	warn "kept $ENV_FILE and your tmux sessions — delete them yourself if you want them gone"
+	warn "kept $ENV_FILE, the session Makefile and your tmux sessions — delete them yourself if you want them gone"
+}
+
+# pkg_hint turns a missing tool into the one line that installs it here. The
+# distribution is read off the package manager that exists rather than off
+# /etc/os-release: derivatives lie about the latter and all of them keep the
+# tool.
+pkg_hint() {
+	if command -v apt-get >/dev/null; then echo "sudo apt-get install -y $1"
+	elif command -v dnf >/dev/null; then echo "sudo dnf install -y $1"
+	elif command -v pacman >/dev/null; then echo "sudo pacman -S --noconfirm $1"
+	elif command -v zypper >/dev/null; then echo "sudo zypper install -y $1"
+	elif command -v apk >/dev/null; then echo "sudo apk add $1"
+	else echo "install $1 with your package manager"
+	fi
+}
+
+# check_tools refuses what nothing works without and warns about what one
+# feature needs. Neither was checked before, and neither absence announced
+# itself: without tmux the phone gets an empty session list, and without make
+# the "+" button is quietly off — both look like the terminal being broken
+# rather than like a package that was never installed.
+#
+# The names are overridable because the test has to exercise a missing tool on
+# a machine that has it.
+check_tools() {
+	local tmux_bin make_bin
+	tmux_bin="${REQUIRE_TMUX:-tmux}"
+	command -v "$tmux_bin" >/dev/null ||
+		die "$tmux_bin is not installed — pockterm serves tmux sessions, so there would be nothing to serve: $(pkg_hint "$tmux_bin")"
+	make_bin="${REQUIRE_MAKE:-make}"
+	if ! command -v "$make_bin" >/dev/null; then
+		warn "$make_bin is not installed — the \"+\" button starts sessions through it and stays off: $(pkg_hint "$make_bin")"
+	fi
+}
+
+# session_root is where the session Makefile goes, and the directory whose
+# folders the drawer offers to start a session in. POCKTERM_SESSION_DIR names
+# it; the served account's home is the default, because that is where a person
+# keeps projects.
+session_root() {
+	local home
+	if [ -n "${POCKTERM_SESSION_DIR:-}" ]; then
+		printf '%s' "$POCKTERM_SESSION_DIR"
+		return
+	fi
+	home="$(getent passwd "$RUN_AS" 2>/dev/null | cut -d: -f6 || true)"
+	printf '%s' "${home:-$HOME}"
+}
+
+# install_sessions puts the example Makefile in the projects root and points
+# POCKTERM_SESSION_DIR at it, which is how the "+" button comes to work without
+# anyone having read the README: copy the file, edit it, set the variable,
+# restart — four steps, and the moment they are wanted is the moment a phone has
+# no session to open and no way to start one.
+#
+# Two things it will not do. It never overwrites a Makefile it did not write:
+# `make claude` in somebody else's Makefile is an unknown command, not a
+# session. And it never changes a POCKTERM_SESSION_DIR that is already in the
+# env file — that value was chosen by a person.
+install_sessions() {
+	local root src existing f
+	if [ -n "${POCKTERM_NO_SESSIONS:-}" ]; then
+		ok "session Makefile skipped (POCKTERM_NO_SESSIONS)"
+		return
+	fi
+	root="$(session_root)"
+	src="$PROJECT_DIR/deploy/sessions.mk.example"
+	# `off` is what the server reads as "do not let the page start sessions", so
+	# it is an answer here too rather than a directory that happens not to exist.
+	if [ "$root" = off ]; then
+		ok "sessions are off (POCKTERM_SESSION_DIR=off) — no Makefile installed"
+		return
+	fi
+	if [ ! -d "$root" ]; then
+		warn "$root does not exist — no session Makefile installed, so the \"+\" button stays off"
+		return
+	fi
+	if [ ! -f "$src" ]; then
+		warn "$src is missing — no session Makefile installed, so the \"+\" button stays off"
+		return
+	fi
+
+	existing=""
+	# make reads the first of these that exists, so all three have to be looked
+	# at: writing Makefile next to a GNUmakefile would install a file make never
+	# reads and report success.
+	for f in GNUmakefile makefile Makefile; do
+		if [ -f "$root/$f" ]; then existing="$root/$f"; break; fi
+	done
+	if [ -n "$existing" ]; then
+		# The marker is in the example's header, so a copy the owner has since
+		# edited is still recognised as ours — the file is meant to be edited.
+		if grep -q 'pockterm-sessions' "$existing"; then
+			ok "session Makefile already at $existing (yours to edit — kept)"
+		else
+			warn "$existing is not pockterm's — leaving it, and POCKTERM_SESSION_DIR, alone"
+			warn "  for the \"+\" button: add the targets from $src to it, or point"
+			warn "  POCKTERM_SESSION_DIR at another directory, then restart the service"
+			return
+		fi
+	else
+		install -m644 "$src" "$root/Makefile"
+		if [ "$(id -u)" = 0 ]; then chown "$RUN_AS" "$root/Makefile" || true; fi
+		ok "session Makefile → $root/Makefile (point CLAUDE in it at a wrapper to sandbox sessions)"
+	fi
+
+	if grep -q '^POCKTERM_SESSION_DIR=' "$ENV_FILE" 2>/dev/null; then
+		ok "POCKTERM_SESSION_DIR kept ($ENV_FILE)"
+	else
+		(umask 077; printf 'POCKTERM_SESSION_DIR=%s\n' "$root" >> "$ENV_FILE")
+		chmod 600 "$ENV_FILE"
+		ok "POCKTERM_SESSION_DIR=$root → $ENV_FILE"
+		ENV_CHANGED=1
+	fi
+}
+
+# pair_telegram runs the pairing the binary already knows how to do, in the
+# install rather than after it: on its own it is a second command plus a
+# service restart, and the restart is the half people leave out.
+pair_telegram() {
+	echo
+	log "telegram: make a bot with @BotFather, write anything to it, then answer here"
+	if "$BIN" tg-setup --write "$ENV_FILE"; then
+		ENV_CHANGED=1
+		ok "telegram configured in $ENV_FILE"
+	else
+		warn "telegram is not configured — when the bot is ready: sudo $BIN tg-setup --write $ENV_FILE"
+	fi
 }
 
 # Build from source when a toolchain is present, and only fall back to a
@@ -102,10 +247,20 @@ fetch_release() {
 }
 
 main() {
-	if [ "${1:-}" = "--uninstall" ]; then
-		uninstall
-		return
-	fi
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--uninstall) uninstall; return ;;
+			--tg) WITH_TG=1 ;;
+			-h | --help)
+				sed -n '2,20p' "${BASH_SOURCE[0]}"
+				return
+				;;
+			*) die "unknown option: $1 (try --help)" ;;
+		esac
+		shift
+	done
+
+	check_tools
 
 	local src
 	src="$(build_binary)"
@@ -135,7 +290,10 @@ main() {
 		(umask 077; printf 'POCKTERM_TOKEN=%s\n' "$("$BIN" token)" >> "$ENV_FILE")
 		chmod 600 "$ENV_FILE"
 		ok "token generated → $ENV_FILE (0600)"
+		ENV_CHANGED=1
 	fi
+
+	install_sessions
 
 	local rendered
 	rendered="$("$BIN" unit --user "$RUN_AS" --listen "$LISTEN" --env-file "$ENV_FILE" --binary "$BIN")"
@@ -149,7 +307,21 @@ main() {
 			systemctl daemon-reload
 			systemctl enable --now pockterm.service
 			systemctl restart pockterm.service
+			UNIT_RESTARTED=1
 		fi
+	fi
+
+	if [ -n "$WITH_TG" ]; then
+		pair_telegram
+	fi
+
+	# systemd reads the env file when the service starts, so anything added to
+	# it above is not in effect yet. Only then, though: a restart drops every
+	# open terminal, and an install that changed nothing must cost nobody a
+	# reconnect.
+	if [ -n "$ENV_CHANGED" ] && [ -z "$UNIT_RESTARTED" ] && use_systemd; then
+		systemctl restart pockterm.service
+		ok "service restarted to pick up $ENV_FILE"
 	fi
 
 	if use_systemd; then

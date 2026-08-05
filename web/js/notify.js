@@ -91,6 +91,30 @@ export function nextMode(cur, telegram) {
   return ring[(ring.indexOf(from) + 1) % ring.length];
 }
 
+// shouldAskPermission decides whether this page still has to ask the browser
+// before anything it is told to notify can be shown.
+//
+// The switch is the host's and its default notifies, so a fresh install starts
+// in a notifying state — and permission used to be asked for only by a tap on
+// the bell, which is the one thing nobody taps when the label already says what
+// they want. Every new install was therefore silent: the page labelled 🔔, the
+// server sending frames, `Notification.permission` still `default`, and nothing
+// anywhere saying that the missing piece was a browser prompt.
+//
+// Asked once and then never again. `default` is also what a dismissed prompt
+// leaves behind, so a page that reads the state alone would ask on every load —
+// and browsers answer a page that does that by refusing it a prompt at all.
+// `asked` is what the caller remembers; the bell's dashed outline is what is
+// left for someone who dismissed it.
+//
+// A native notifier needs no permission from the browser: the Android client
+// raises the notice itself, through the app's own.
+export function shouldAskPermission({ mode, permission, native = false, asked = false } = {}) {
+  if (native || asked) return false;
+  if (!mode || mode === 'off') return false;
+  return permission === 'default';
+}
+
 // modeLabel is what the button says, and whether it reads as on.
 //
 // Three states need three labels: on a phone the same bell with the same word

@@ -1,6 +1,6 @@
 import { keyBytes } from './keys.js';
 import { detectQuestion, answerKeys } from './detect.js';
-import { noticeFrom, deliver, nextMode, modeLabel } from './notify.js';
+import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from './notify.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
 import { snapshotText } from './select.js';
 import { initDiag, environment, report } from './diag.js';
@@ -18,7 +18,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v104';
+const APP_VERSION = 'v105';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -458,6 +458,14 @@ function note(text) {
   customNote.hidden = !text;
 }
 
+// Which button the two fields below are currently about: null for a new one,
+// an id while an existing one is being changed.
+//
+// One form for both, the way the session list has one rename field: a phone has
+// no room for a second pair of inputs, and a form that appears per row would put
+// the one being edited under the keyboard.
+let editingID = null;
+
 // Draw the editor and, from the same list, the entries under +.
 function renderCustom() {
   customList.innerHTML = '';
@@ -465,13 +473,30 @@ function renderCustom() {
     const li = document.createElement('li');
     li.innerHTML = `<span class="name">${escapeHtml(c.label)}</span>` +
       `<code>${escapeHtml(c.cmd)}</code>`;
+    if (c.id === editingID) li.classList.add('editing');
+    // Changing a button rather than deleting and adding it keeps its id, and the
+    // id is what the sessions it started are marked with: retyping the same
+    // command would leave every tab it had opened marked by a button that no
+    // longer exists (see session.Kind in the Go side).
+    const edit = document.createElement('button');
+    edit.className = 'rename';
+    edit.textContent = '✎';
+    edit.title = c.id === editingID ? `Не менять ${c.label}` : `Изменить ${c.label}`;
+    edit.addEventListener('click', () => {
+      if (c.id === editingID) { cancelEdit(); return; }
+      startEdit(c);
+    });
+    li.appendChild(edit);
     const del = document.createElement('button');
     del.className = 'close';
     del.textContent = '✕';
     del.title = `Remove ${c.label}`;
     // One tap, unlike closing a session: this removes a button, not a running
     // agent, and adding it back is two fields.
-    del.addEventListener('click', () => saveCustom(customButtons.filter((x) => x.id !== c.id)));
+    del.addEventListener('click', () => {
+      if (c.id === editingID) cancelEdit();
+      saveCustom(customButtons.filter((x) => x.id !== c.id));
+    });
     li.appendChild(del);
     customList.appendChild(li);
   }
@@ -540,13 +565,45 @@ async function saveCustom(list) {
   }
 }
 
+// startEdit puts an existing button into the form. The row it came from is
+// marked, because the fields are nowhere near it once the keyboard is up and
+// "which one am I changing" is then unanswerable.
+function startEdit(c) {
+  editingID = c.id;
+  customLabel.value = c.label;
+  customCmd.value = c.cmd;
+  note('');
+  renderCustom();
+  customAdd.textContent = 'Сохранить';
+  customLabel.focus();
+}
+
+function cancelEdit() {
+  if (editingID === null) return;
+  editingID = null;
+  customLabel.value = '';
+  customCmd.value = '';
+  customAdd.textContent = 'Добавить';
+  note('');
+  renderCustom();
+}
+
 customAdd.addEventListener('click', async () => {
   const label = customLabel.value.trim();
   const cmd = customCmd.value.trim();
   if (!label || !cmd) { note('нужны подпись и команда'); return; }
-  if (await saveCustom([...customButtons, { label, cmd }])) {
+  // The whole list travels either way — the host replaces it and answers with
+  // what it now has. Editing differs only in that the entry keeps its id and its
+  // place in the row.
+  const list = editingID === null
+    ? [...customButtons, { label, cmd }]
+    : customButtons.map((c) => (c.id === editingID ? { ...c, label, cmd } : c));
+  if (await saveCustom(list)) {
+    editingID = null;
+    customAdd.textContent = 'Добавить';
     customLabel.value = '';
     customCmd.value = '';
+    renderCustom();
   }
 });
 loadCustom();
@@ -590,6 +647,10 @@ function closeDrawer() {
   // reopening the drawer to see what is running should show what is running.
   renameBox.hidden = true;
   newMenu.hidden = true;
+  // Half-edited fields go with the panel that held them, for the same reason:
+  // a form still saying "Сохранить" about a button chosen a day ago is a form
+  // that saves the wrong thing when it is finally tapped.
+  cancelEdit();
   showSettings(false);
   showFolders(false);
 }
@@ -2070,6 +2131,47 @@ function applyMode(mode, telegram) {
   if (typeof telegram === 'boolean') notifyTG = telegram;
   try { localStorage.setItem('pt-notify-mode', mode); } catch (_) {}
   renderBell();
+  armPermissionAsk();
+}
+
+// Whether the browser has been asked at all. Kept per install rather than read
+// off `Notification.permission`, which says `default` both for "never asked"
+// and for "asked and dismissed" — see shouldAskPermission in js/notify.js.
+const ASKED_KEY = 'pt-notify-asked';
+let permissionArmed = false;
+
+// armPermissionAsk asks for the notification permission at the first touch
+// after the host has said it notifies — not on load, and not only from the bell.
+//
+// Not from the bell alone, because the default mode notifies: nobody taps a
+// switch that already says what they want, so a first install stayed silent
+// until its owner went looking for the lever. And not on load, because a prompt
+// raised without a gesture is refused outright by some browsers and shown as a
+// quieter, easier-to-miss UI by others — the first touch is a gesture, and on a
+// phone it arrives within seconds of the page.
+//
+// The listener is passive and does not consume the event: it rides along with
+// whatever the touch was for.
+function armPermissionAsk() {
+  if (permissionArmed) return;
+  let asked = false;
+  try { asked = localStorage.getItem(ASKED_KEY) === '1'; } catch (_) {}
+  const permission = 'Notification' in window ? Notification.permission : 'unsupported';
+  if (!shouldAskPermission({ mode: notifyMode, permission, native: nativeNotifier(), asked })) return;
+  permissionArmed = true;
+  window.addEventListener('pointerdown', () => {
+    // Remembered before the answer, not after: a dismissed prompt resolves to
+    // `default`, and asking again on the next load is how a page loses the
+    // right to ask at all.
+    try { localStorage.setItem(ASKED_KEY, '1'); } catch (_) {}
+    Promise.resolve(Notification.permission === 'default'
+      ? Notification.requestPermission() : Notification.permission)
+      .then((perm) => {
+        report('notify-permission', { permission: perm, asked: 'first-touch' });
+        renderBell();
+      })
+      .catch((e) => report('notify-permission', { error: (e && e.name) || 'error', asked: 'first-touch' }));
+  }, { once: true, passive: true, capture: true });
 }
 
 bellBtn.addEventListener('click', async () => {
@@ -2086,6 +2188,8 @@ bellBtn.addEventListener('click', async () => {
     if (!('Notification' in window)) { toast('this browser has no notifications'); return; }
     let perm = Notification.permission;
     if (perm === 'default') perm = await Notification.requestPermission();
+    // A tap here is the asking, so the first-touch prompt has nothing left to do.
+    try { localStorage.setItem(ASKED_KEY, '1'); } catch (_) {}
     renderBell();
     if (perm !== 'granted') {
       // Denied is sticky: the browser will not ask again from here.

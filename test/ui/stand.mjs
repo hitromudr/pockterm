@@ -187,15 +187,21 @@ export async function startStand({
   // A phone by default. `desktop` is the other client this serves — the owner's
   // laptop opens the same page in Chrome, with a mouse and no touch at all, and
   // nothing covered it until a report came in from there.
+  // `notifications` is granted for the same reason as the clipboard, and for one
+  // more: the page asks for that permission at the first touch when the host says
+  // it notifies, and the first touch in most of these tests is the start of a
+  // swipe. A prompt the browser raises there is a prompt in the middle of the
+  // gesture being measured.
+  const allowed = ['clipboard-read', 'clipboard-write', 'notifications'];
   const context = await browser.newContext(desktop ? {
     viewport: { width: 1280, height: 800 },
-    permissions: ['clipboard-read', 'clipboard-write'],
+    permissions: allowed,
   } : {
     viewport: { width: 390, height: 780 },
     deviceScaleFactor: 3,
     hasTouch: true,
     isMobile: true,
-    permissions: ['clipboard-read', 'clipboard-write'],
+    permissions: allowed,
   });
   const page = await context.newPage();
   // Две разные вещи, и смешивать их нельзя. `pageerror` — необработанное

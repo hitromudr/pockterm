@@ -12,10 +12,45 @@ trap 'rm -rf "$WORK"' EXIT
 ok()  { printf '\033[1;32m  ✓\033[0m %s\n' "$*"; }
 bad() { printf '\033[1;31m  ✗\033[0m %s\n' "$*"; exit 1; }
 
+# tmux stands in front of the real one on PATH: the installer refuses to run
+# without it, and the containers this suite runs in have no reason to carry a
+# terminal multiplexer. The stub is never called — only looked up.
+mkdir -p "$WORK/bin"
+printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/tmux"
+chmod +x "$WORK/bin/tmux"
+export PATH="$WORK/bin:$PATH"
+
+# The session root defaults to the served account's home, which is the machine
+# running the test. Every run points it somewhere disposable instead; the two
+# checks that care about the default say so themselves.
+ROOTDIR="$WORK/projects"
+mkdir -p "$ROOTDIR"
+
+# run_install VAR=value... [-- script arguments...]
+#
+# Everything before `--` is environment for the installer, everything after it
+# is arguments to the script itself. Without the separator an option would be
+# handed to `env`, which reads it as the command to run.
+install_run() {
+	local envs=() args=()
+	while [ $# -gt 0 ]; do
+		if [ "$1" = "--" ]; then shift; args=("$@"); break; fi
+		envs+=("$1"); shift
+	done
+	env PREFIX="$WORK" UNIT_DIR="$WORK" ENV_FILE="$WORK/pockterm.env" \
+		POCKTERM_SESSION_DIR="$ROOTDIR" ${envs[@]+"${envs[@]}"} \
+		bash "$ROOT/deploy/install.sh" ${args[@]+"${args[@]}"} >"$WORK/out" 2>&1
+}
+
 run_install() {
-	env PREFIX="$WORK" UNIT_DIR="$WORK" ENV_FILE="$WORK/pockterm.env" "$@" \
-		bash "$ROOT/deploy/install.sh" >"$WORK/out" 2>&1 || {
-		cat "$WORK/out"; bad "installer failed"; }
+	install_run "$@" || { cat "$WORK/out"; bad "installer failed"; }
+}
+
+# run_install_expecting_failure runs it the same way but wants a non-zero exit.
+run_install_expecting_failure() {
+	if install_run "$@"; then
+		cat "$WORK/out"; bad "the installer succeeded where it should have refused"
+	fi
 }
 
 # --- default: a token is generated ---
@@ -72,6 +107,81 @@ fi
 run_install POCKTERM_PUBLIC_URL=https://cc.example
 grep -q "https://cc.example/?token=$token" "$WORK/out" || bad "the public URL did not reach the QR"
 ok "POCKTERM_PUBLIC_URL is what gets encoded when it is set"
+
+# --- the "+" button works without anyone having read the README ---
+# A fresh install leaves a phone with no session and no way to start one unless
+# the session Makefile is in place and the server has been told where it is.
+grep -q 'pockterm-sessions' "$ROOTDIR/Makefile" || bad "no session Makefile in the projects root"
+grep -q "^POCKTERM_SESSION_DIR=$ROOTDIR$" "$WORK/pockterm.env" || bad "POCKTERM_SESSION_DIR did not reach the env file"
+ok "the session Makefile is installed and pointed at"
+
+# The file is meant to be edited, so a second run must not undo the editing —
+# and the variable must not accumulate a second line, which is what an
+# `echo >>` in a README does.
+printf '\n# mine\n' >> "$ROOTDIR/Makefile"
+run_install
+grep -q '^# mine$' "$ROOTDIR/Makefile" || bad "the installer overwrote an edited session Makefile"
+[ "$(grep -c '^POCKTERM_SESSION_DIR=' "$WORK/pockterm.env")" = 1 ] || bad "POCKTERM_SESSION_DIR was written twice"
+grep -q 'yours to edit' "$WORK/out" || bad "the installer did not say it kept the Makefile"
+ok "an edited session Makefile survives, and the variable is written once"
+
+# Somebody else's Makefile is not ours to read targets into: `make claude` in it
+# is an unknown command rather than a session, so neither it nor the variable is
+# touched and the reason is printed.
+FOREIGN="$WORK/foreign"
+mkdir -p "$FOREIGN"
+printf 'all:\n\t@echo not pockterm\n' > "$FOREIGN/Makefile"
+run_install POCKTERM_SESSION_DIR="$FOREIGN" ENV_FILE="$WORK/foreign.env"
+grep -q 'not pockterm' "$FOREIGN/Makefile" || bad "a foreign Makefile was overwritten"
+grep -q '^POCKTERM_SESSION_DIR=' "$WORK/foreign.env" && bad "pointed the + button at a Makefile that is not ours"
+grep -q 'is not pockterm' "$WORK/out" || bad "no word about the foreign Makefile"
+ok "a Makefile that is not pockterm's is left alone, and said so"
+
+# make reads GNUmakefile before Makefile, so writing next to one would install a
+# file make never opens and report success.
+GNUDIR="$WORK/gnu"
+mkdir -p "$GNUDIR"
+printf 'all:\n\t@echo gnu\n' > "$GNUDIR/GNUmakefile"
+run_install POCKTERM_SESSION_DIR="$GNUDIR" ENV_FILE="$WORK/gnu.env"
+[ -f "$GNUDIR/Makefile" ] && bad "installed a Makefile that make would never read"
+ok "a GNUmakefile counts as the Makefile that is already there"
+
+# `off` is the server's own word for "the page may not start sessions", so the
+# installer reads it as an answer rather than as a directory it cannot find.
+run_install POCKTERM_SESSION_DIR=off ENV_FILE="$WORK/off.env"
+grep -q 'sessions are off' "$WORK/out" || bad "POCKTERM_SESSION_DIR=off was not understood"
+grep -q '^POCKTERM_SESSION_DIR=' "$WORK/off.env" && bad "off was written to the env file as a directory"
+ok "POCKTERM_SESSION_DIR=off is an answer, not a missing directory"
+
+run_install POCKTERM_NO_SESSIONS=1 POCKTERM_SESSION_DIR="$WORK/none" ENV_FILE="$WORK/none.env"
+[ -f "$WORK/none/Makefile" ] && bad "POCKTERM_NO_SESSIONS still installed a Makefile"
+grep -q 'POCKTERM_NO_SESSIONS' "$WORK/out" || bad "the installer did not say it skipped the sessions setup"
+ok "POCKTERM_NO_SESSIONS leaves the projects root alone"
+
+# --- what the host must have, checked before anything is installed ---
+# Without tmux there is nothing to serve, and an empty session list on a phone
+# looks like a broken terminal rather than a missing package.
+run_install_expecting_failure REQUIRE_TMUX=pockterm-no-such-tool
+grep -q 'pockterm-no-such-tool is not installed' "$WORK/out" || bad "no word about the missing tmux"
+grep -qE 'apt-get install|dnf install|pacman -S|zypper install|apk add|with your package manager' "$WORK/out" ||
+	bad "the refusal did not say how to install it"
+ok "a host without tmux is refused, with the command that fixes it"
+
+# make is only the "+" button, so its absence is a warning and the install goes on.
+run_install REQUIRE_MAKE=pockterm-no-such-tool
+grep -q 'pockterm-no-such-tool is not installed' "$WORK/out" || bad "no warning about the missing make"
+grep -q 'binary → ' "$WORK/out" || bad "a missing make stopped the install"
+ok "a host without make is warned, not refused"
+
+# --- --tg pairs Telegram inside the install, and a failure is not fatal ---
+# Port 1 refuses instantly, which is what a bot token that cannot be checked
+# looks like from here. What matters is that the rest of the install stands.
+run_install POCKTERM_TG_TOKEN=not-a-real-token POCKTERM_TG_API=http://127.0.0.1:1 \
+	ENV_FILE="$WORK/tg.env" -- --tg
+grep -q '^POCKTERM_TG_TOKEN=' "$WORK/tg.env" && bad "a token that was never verified reached the env file"
+grep -q 'telegram is not configured' "$WORK/out" || bad "no warning that the pairing failed"
+grep -q 'here: http://127.0.0.1:8130/' "$WORK/out" || bad "a failed pairing took the rest of the install with it"
+ok "--tg pairs Telegram in the install, and its failure ends only itself"
 
 # --- installing from a published release, no toolchain needed ---
 # A local directory stands in for the release page: curl reads file:// URLs,

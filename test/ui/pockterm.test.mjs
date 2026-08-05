@@ -338,6 +338,52 @@ describe("the owner's own session buttons", () => {
     assert.equal(await page.inputValue('#custom-cmd'), 'qwen; rm -rf /', 'what was typed was thrown away');
   });
 
+  test('a button can be changed, and stays the same button', async () => {
+    // Retyping it as a new one would work and cost the id, and the id is what the
+    // tabs it opened are marked with: every session it had started would be marked
+    // by a button that no longer exists. So the edit keeps it.
+    await stand.open();
+    const { page } = stand;
+    await stand.openSettings();
+    const id = await page.getAttribute('#new-menu button[data-preset^="custom:"]', 'data-preset');
+
+    await page.click('#custom-list li:has-text("Квен") button.rename');
+    // The fields carry what is there now — an edit is a correction, not a retype —
+    // and the row says which button they are about, since the two are far apart
+    // once the keyboard is up.
+    assert.equal(await page.inputValue('#custom-label'), 'Квен');
+    assert.equal(await page.inputValue('#custom-cmd'), 'qwen --yolo');
+    assert.equal(await page.locator('#custom-list li.editing').count(), 1);
+    assert.match(await page.textContent('#custom-add'), /Сохранить/);
+
+    await page.fill('#custom-cmd', 'qwen --yolo --verbose');
+    await page.click('#custom-add');
+    await page.waitForSelector('#custom-list li:has-text("qwen --yolo --verbose")');
+    assert.equal(await page.locator('#custom-list li').count(), 1, 'the edit added a second button');
+    assert.equal(
+      await page.getAttribute('#new-menu button[data-preset^="custom:"]', 'data-preset'), id,
+      'the button that was edited is not the button that came back',
+    );
+    // Nothing is left half-edited: the next tap on Добавить must add, not save.
+    assert.equal(await page.locator('#custom-list li.editing').count(), 0);
+    assert.match(await page.textContent('#custom-add'), /Добавить/);
+    assert.equal(await page.inputValue('#custom-cmd'), '');
+
+    // The same tap that opened the editing closes it, leaving the button alone —
+    // there is no room on a phone for a Cancel of its own.
+    await page.click('#custom-list li button.rename');
+    assert.equal(await page.locator('#custom-list li.editing').count(), 1);
+    await page.click('#custom-list li button.rename');
+    assert.equal(await page.locator('#custom-list li.editing').count(), 0);
+    assert.equal(await page.inputValue('#custom-label'), '');
+
+    // Put the command back: the tests after this one are about the same button.
+    await page.click('#custom-list li:has-text("Квен") button.rename');
+    await page.fill('#custom-cmd', 'qwen --yolo');
+    await page.click('#custom-add');
+    await page.waitForSelector('#custom-list li:has-text("qwen --yolo")');
+  });
+
   test('the buttons are the host\'s, so a reload finds them', async () => {
     // Not localStorage: what they start happens on the host, a second phone must
     // find the same buttons, and CI restarts the binary several times a day.

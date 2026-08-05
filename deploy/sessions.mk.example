@@ -1,4 +1,10 @@
-# Session helpers for pockterm's "+" button — an example to copy and edit.
+# pockterm-sessions — session helpers for pockterm's "+" button.
+#
+# That first word is a marker, not decoration: deploy/install.sh copies this
+# file into the projects root when nothing is there, and on the next run it has
+# to tell a copy of this file — edited, as it is meant to be — from a Makefile
+# that belongs to somebody else. Only the first is left alone as ours; the
+# second is never written over.
 #
 # pockterm lists and attaches; it does not invent a way to start a session.
 # When the page asks for a preset it runs `make -C $POCKTERM_SESSION_DIR
@@ -7,7 +13,9 @@
 # yolo, continue (internal/session/session.go). A target missing from this
 # file simply makes that button fail with make's own message.
 #
-# Install:
+# Install: deploy/install.sh does it — this file into the served account's home
+# (or wherever POCKTERM_SESSION_DIR says), and the variable into the env file.
+# By hand, if that root is somewhere else:
 #   cp deploy/sessions.mk.example ~/work/Makefile   # edit CLAUDE below
 #   POCKTERM_SESSION_DIR=~/work                     # in /etc/pockterm/pockterm.env
 # Without POCKTERM_SESSION_DIR the server looks in its working directory,

@@ -5,7 +5,7 @@
 // left on this side is the shaping of a frame that has already been decided.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { noticeFrom, deliver, nextMode, modeLabel } from '../web/js/notify.js';
+import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from '../web/js/notify.js';
 
 const done = { type: 'notify', kind: 'done', session: 'claude-1', title: '✅ claude-1 закончил', body: 'ok  github.com/x/y' };
 
@@ -164,6 +164,38 @@ test('the label says which channels are live', () => {
   const seen = new Set(['off', 'pwa', 'pwa+tg'].map((m) => modeLabel(m).text));
   assert.equal(seen.size, 3);
   assert.match(modeLabel('pwa+tg').text, /TG/i);
+});
+
+test('a mode that notifies and a browser never asked means asking', () => {
+  // The host's default notifies, so this is the state a fresh install loads in.
+  assert.equal(shouldAskPermission({ mode: 'pwa+tg', permission: 'default' }), true);
+  assert.equal(shouldAskPermission({ mode: 'pwa', permission: 'default' }), true);
+});
+
+test('nothing to notify, nothing to ask', () => {
+  assert.equal(shouldAskPermission({ mode: 'off', permission: 'default' }), false);
+  assert.equal(shouldAskPermission({ mode: '', permission: 'default' }), false);
+  assert.equal(shouldAskPermission({}), false);
+});
+
+test('an answered browser is not asked again', () => {
+  // Granted needs nothing; denied is sticky, and asking again cannot lift it.
+  assert.equal(shouldAskPermission({ mode: 'pwa', permission: 'granted' }), false);
+  assert.equal(shouldAskPermission({ mode: 'pwa', permission: 'denied' }), false);
+  // No Notification API at all — the page says so elsewhere; there is no prompt.
+  assert.equal(shouldAskPermission({ mode: 'pwa', permission: 'unsupported' }), false);
+});
+
+test('a dismissed prompt is asked once, not on every load', () => {
+  // Dismissing leaves `default` behind, so the state alone cannot tell "never
+  // asked" from "asked and ignored" — and a page that keeps asking is a page the
+  // browser stops letting ask.
+  assert.equal(shouldAskPermission({ mode: 'pwa', permission: 'default', asked: true }), false);
+});
+
+test('the native notifier needs no permission from the browser', () => {
+  // Inside the Android client the notice is raised by the app itself.
+  assert.equal(shouldAskPermission({ mode: 'pwa+tg', permission: 'default', native: true }), false);
 });
 
 test('every notice names its own icon, on both paths', () => {

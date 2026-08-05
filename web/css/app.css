@@ -398,7 +398,13 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#custom-list li button.close { flex: 0 0 34px; padding: 4px 0; font-size: 14px; }
+#custom-list li button.close,
+#custom-list li button.rename { flex: 0 0 34px; padding: 4px 0; font-size: 14px; }
+/* The row the two fields below are about. They are far from it once the keyboard
+   is up — and with the label already retyped, nothing else on screen says which
+   button is being changed. */
+#custom-list li.editing { border-color: var(--accent); }
+#custom-list li.editing button.rename { color: var(--accent); }
 #buttons-box .add { display: flex; flex-wrap: wrap; gap: 6px; }
 #buttons-box .add input {
   flex: 1 1 100%;

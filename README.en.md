@@ -88,6 +88,30 @@ that is whoever invoked it. Re-running is safe: the token is kept and the unit
 is rewritten only when it actually changed. Remove it with
 `sudo bash deploy/install.sh --uninstall`.
 
+It also does what used to be left to a human afterwards — otherwise the first
+session on a new phone meant reading this file to the end first:
+
+- **Checks that the host has `tmux`** and refuses to install the service
+  without it, printing the command that installs it here. An empty session list
+  on a phone reads as a broken terminal rather than as a missing package. A
+  missing `make` is a warning: only the + button depends on it.
+- **Installs the session Makefile** (`deploy/sessions.mk.example`) into the
+  projects root and writes `POCKTERM_SESSION_DIR` beside it, so the + button
+  works straight away. The root defaults to the served account's home; name
+  another with the same variable: `sudo POCKTERM_SESSION_DIR=/home/me/projects
+  bash deploy/install.sh`. Somebody else's Makefile is neither overwritten nor
+  pointed at — `make claude` in it is an unknown target, not a session — so the
+  file and the variable are left alone and the reason is printed. A copy of its
+  own is recognised by `pockterm-sessions` in the header, edits and all. Turn
+  it off with `POCKTERM_NO_SESSIONS=1`.
+- **Restarts the service when the env file changed**, and only then: a restart
+  drops every open terminal, and an install that changed nothing must not cost
+  anyone a reconnect.
+- **`--tg` sets Telegram up during the install**: it asks for the bot token,
+  finds the chat id, sends a test message and restarts the service. On its own
+  that is `pockterm tg-setup --write /etc/pockterm/pockterm.env` — and the
+  restart is the half people left out.
+
 The service listens on loopback. To reach it from outside, put a reverse proxy
 in front — worked examples ship alongside:
 
@@ -150,7 +174,10 @@ The page never sends a command — only a preset name (`shell`, `claude`,
 session is stays the Makefile's decision, not pockterm's: it remains the one
 place that knows about a sandbox wrapper, session numbering and slices.
 
-`deploy/sessions.mk.example` is a working starting point:
+`deploy/sessions.mk.example` is a working starting point, and
+**`deploy/install.sh` puts it in place**: into the projects root, with
+`POCKTERM_SESSION_DIR` in the env file. By hand only where the root is
+somewhere else and the installer has already run:
 
 ```bash
 cp deploy/sessions.mk.example ~/work/Makefile   # edit CLAUDE inside
@@ -202,6 +229,14 @@ The command is checked before it reaches a command line: letters, digits, spaces
 `- _ . / = : , @ +`, starting with a letter, a digit or a path. Quotes, `$`, `;`,
 `&`, `|` are refused with a reason — the value reaches a shell inside the recipe, so
 this is a gate rather than advice.
+
+Every button in the list carries two actions: `✎` to change it, `✕` to remove it.
+Editing loads the label and the command into the same two fields — a phone has no
+room for a second pair, just as it has none for a second rename field — marks the
+row they are about, and "Добавить" becomes "Сохранить"; tapping `✎` again cancels.
+Changing a button is not deleting and re-adding it: it keeps its id, and the id is
+what the tabs it opened are marked with, so retyping the same command would leave
+those sessions marked by a button that no longer exists.
 
 The list lives on the host (`POCKTERM_PRESETS_FILE`, next to the notification
 switch) rather than in the browser: what it starts happens on the host, a second
@@ -282,7 +317,7 @@ it is throttled to about once a minute once Android backgrounds the
 WebView. What arrived, and when, was unexplainable. The server reads the
 pane directly — no status line in it, and nothing throttles it.
 
-**One switch, three states** — the 🔔 button in the ⋯ menu: `PWA` (notify the
+**One switch, three states** — the 🔔 button in Settings: `PWA` (notify the
 open page only), `PWA+TG` (and Telegram when nothing is open) and `Off`
 (neither). The state lives on the server rather than in the browser: half of
 what it controls is sent from the host to a phone that has the page closed, and
@@ -291,6 +326,16 @@ remembered across restarts — CI installs this binary on every push to `main`,
 and a mode held in memory would return to its default several times a working
 day. With no bot configured the middle state drops out of the ring: promising
 Telegram where there is no token would be a lie.
+
+**The page asks the browser for permission itself, at the first touch.** The
+server's default is `PWA+TG`, so a fresh install starts in a notifying state, and
+nobody taps a switch that already says what they want: permission used to be asked
+for only there, which left every new install silent with nothing saying why. At the
+first touch rather than on load, because a prompt raised without a gesture is
+refused outright by some browsers and shown more quietly by the rest. Asked once: a
+prompt dismissed without an answer leaves the same "never asked" state behind, and a
+page that asks on every load loses the right to ask at all. What is left after that
+is the dashed `🔔` — a tap on it is the second chance.
 
 While the session is open in pockterm and the tab is on screen, its
 notifications stay quiet — you can already see it. A backgrounded PWA
