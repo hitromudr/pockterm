@@ -83,6 +83,20 @@ func (w *Watcher) Activity(session string) Activity {
 		}
 		return w.fresh(st, ActivityDone)
 	}
+	// An agent's own input box on screen and nothing counting in it. The box and
+	// the counter are drawn by the same TUI, so this session's turns are reported
+	// and it is not running one — whatever the screen has been doing.
+	//
+	// What it has been doing is somebody typing into that box, which is the same
+	// defect sawLive fixes one turn later and could not fix before the first one:
+	// a session opened and typed into went purple with the agent yet to say a
+	// word. Reported from the phone with the message still half-written.
+	if st.agent {
+		if st.doneSent {
+			return w.fresh(st, ActivityDone)
+		}
+		return ActivityUnknown
+	}
 	if !st.active {
 		return ActivityUnknown
 	}
@@ -205,6 +219,12 @@ type state struct {
 	// reporting the human's typing as the machine's work.
 	live    bool
 	sawLive bool
+	// agent is the agent's input box on screen at the last poll — a pane whose
+	// turns are counted, whether or not one has been counted here yet. It is read
+	// fresh every time rather than remembered: a session that ran an agent and
+	// dropped back to a shell is a shell now, and for a shell the screen changing
+	// is the only evidence of work there is.
+	agent bool
 	// When the counter was first missing after having been seen. The end of a turn
 	// is read off the counter going away, and one poll of it being absent used to
 	// be the whole of that reading — see liveGrace for why it now has to hold.
@@ -392,6 +412,7 @@ func (w *Watcher) poll(session string) {
 	// describe two different moments.
 	st.bg = detect.ReadBackground(lines)
 	st.live = detect.Live(lines)
+	st.agent = detect.InputBox(lines)
 	if st.live {
 		// A counter on screen is activity by itself, and it is what re-arms the
 		// next "finished". The screen's hash used to be the only evidence there
@@ -442,6 +463,12 @@ func (w *Watcher) poll(session string) {
 		why = fmt.Sprintf("counter gone for %s", now.Sub(st.liveGone).Round(time.Second))
 	case st.sawLive:
 		// Missing, but not for long enough to be an answer yet.
+	case st.agent:
+		// An agent that has never counted has not finished anything: nothing
+		// started. The silence under it is a person reading the screen, and thirty
+		// seconds of that used to be announced as "finished" — about a session
+		// whose agent had not spoken a word yet. The journal had four of those in
+		// five minutes while the first message was being typed.
 	case st.active && now.Sub(st.changed) >= w.o.IdleAfter:
 		why = fmt.Sprintf("quiet for %s", now.Sub(st.changed).Round(time.Second))
 	}

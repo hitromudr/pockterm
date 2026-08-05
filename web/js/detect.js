@@ -14,6 +14,16 @@ const OPTION = /^([\s│>❯›*-]*)(\d{1,2})[.):]\s+(\S.*?)\s*$/;
 const CHROME = /[>❯›│]/;
 const RIGHT_BORDER = /│\s*$/;
 
+// The agent's own input box, which carries the very same ❯ — and under it,
+// whatever is being typed. A numbered list in a half-written message drew answer
+// buttons before it had been sent, and one of them would have submitted it with a
+// digit on the end.
+//
+// The space after the glyph is what tells the two apart: the composer draws a
+// non-breaking one, a menu pointer an ordinary one. Measured on Claude Code
+// v2.1.222 off both panes — see internal/detect/composer.go, which has to agree.
+const COMPOSER = /^[ \t]*\u276f\u00a0/;
+
 function stripAnsi(s) {
   // xterm's translateToString already yields plain text; strip escapes
   // anyway so the parser also works on raw captures.
@@ -32,10 +42,15 @@ function boxGlyphs(s) {
 // Where a line's own text starts, past the chrome drawn down the left edge —
 // the box's border and the pointer at the highlighted option. In columns, not
 // in code units: it is compared across lines written in any language.
+//
+// A non-breaking space is a space here. It is what the input box puts after its
+// ❯, so a line wrapped in that box came out a column deeper than the line above
+// it — the shape of an option with a description under it.
 function indentOf(line) {
   let col = 0;
   for (const ch of line) {
-    if (ch === ' ' || ch === '\t' || ch === '│' || ch === '>' || ch === '❯' || ch === '›') col++;
+    if (ch === ' ' || ch === '\t' || ch === '\u00a0' || ch === '\u202f'
+        || ch === '│' || ch === '>' || ch === '❯' || ch === '›') col++;
     else return col;
   }
   return col;
@@ -101,7 +116,10 @@ export function detectQuestion(lines) {
     // Not a numbered line: it may still belong to the option above, so the run
     // is left open and the next number is what decides.
     if (!m) continue;
-    const chrome = CHROME.test(m[1]) || RIGHT_BORDER.test(plain[i]);
+    // A line of the input box brings no chrome with it: what is under that ❯ is
+    // being typed, not offered.
+    const chrome = (CHROME.test(m[1]) || RIGHT_BORDER.test(plain[i]))
+      && !COMPOSER.test(plain[i]);
     // Continues the run if this line carries the next number and everything
     // between it and the previous option belongs to that option.
     if (run && m[2] === String(run.opts.length + 1)

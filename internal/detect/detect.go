@@ -79,7 +79,12 @@ func Question(lines []string) *Menu {
 		if m == nil {
 			continue
 		}
-		hasChrome := chrome.MatchString(m[1]) || rightBorder.MatchString(line)
+		// The agent's own input box carries the same ❯ a menu points with, and
+		// what is under it is whatever is being typed — see composer.go for how
+		// the two are told apart. A line from there brings no chrome, so a
+		// numbered list in a half-written message is prose like any other.
+		hasChrome := (chrome.MatchString(m[1]) || rightBorder.MatchString(line)) &&
+			!composerPrompt.MatchString(line)
 		// Continues the run if this line carries the next number and everything
 		// between it and the previous option belongs to that option.
 		if cur != nil && m[2] == strconv.Itoa(len(cur.opts)+1) && continues(plain[cur.last+1:i], cur.indent) {
@@ -153,11 +158,16 @@ func continues(between []string, indent int) bool {
 // written in whatever language the prompt is, and one Cyrillic letter is two
 // bytes to a box glyph's three — comparing byte offsets made a description look
 // shallower than the option above it.
+//
+// A non-breaking space is a space here. It is what the agent's input box puts
+// after its ❯, so a line wrapped in that box came out one column deeper than the
+// line above it — which is exactly the shape of an option with a description
+// under it, and the message being typed read as a menu.
 func indentOf(line string) int {
 	col := 0
 	for _, r := range line {
 		switch r {
-		case ' ', '\t', '│', '>', '❯', '›':
+		case ' ', '\t', '\u00a0', '\u202f', '│', '>', '❯', '›':
 			col++
 		default:
 			return col

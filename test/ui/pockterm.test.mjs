@@ -2067,4 +2067,48 @@ describe('the answer buttons and the pane they are read from', () => {
       assert.equal(height(), before, `the pane changed height on scan ${i}`);
     }
   });
+
+  test('a list being typed into the input box draws no answer buttons', async () => {
+    // Reported from the phone with the message still in the box: a reply that
+    // began "1. …" newline "2. …" grew two answer buttons, and pressing one would
+    // have sent the half-written message with a digit on the end.
+    //
+    // The input box carries the same ❯ a menu points with; what separates them is
+    // the non-breaking space the box draws after it. This test is here rather than
+    // only in the shared fixtures because the page reads its lines out of xterm,
+    // and a terminal that folded that space into an ordinary one would leave the
+    // fix true in the unit tests and absent on the phone.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    // The stand is shared and the test above leaves a real menu on the pane. The
+    // detector answers with the lowest run on screen, so without this what gets
+    // measured is that menu's row — the first version of this test failed for
+    // exactly that reason, which is the good failure: the row is drawn from what
+    // is on the pane, not from what was typed last.
+    for (let i = 0; i < 50; i++) stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    await page.waitForFunction(
+      () => document.querySelectorAll('#answers button').length === 0, null, { timeout: 15000 });
+
+    const box = [
+      '❯\u00a01. Надо разнести иконки изображения шела и',
+      '  монитора на табах  и в меню.',
+      '  2. Сейчас я пишу а таб поктерма мигает',
+    ];
+    for (const l of box) stand.tmux(['send-keys', '-t', 'demo', l, 'Enter']);
+    // Several scans, because the row is drawn on a throttled timer: one look
+    // straight after the last line would pass against the defect.
+    for (let i = 0; i < 5; i++) {
+      await page.waitForTimeout(400);
+      assert.equal(await page.locator('#answers button').count(), 0,
+        `the input box was read as a menu on scan ${i}`);
+    }
+    // And the same shape with an ordinary space is a menu, which is what keeps
+    // the check above from passing for the wrong reason — a page that had stopped
+    // detecting anything would satisfy it too.
+    stand.tmux(['send-keys', '-t', 'demo', '❯ 1. Yes', 'Enter']);
+    stand.tmux(['send-keys', '-t', 'demo', '  2. No', 'Enter']);
+    await page.waitForFunction(
+      () => document.querySelectorAll('#answers button').length >= 2, null, { timeout: 15000 });
+  });
 });

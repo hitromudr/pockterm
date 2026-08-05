@@ -321,6 +321,35 @@
           }
         ]
       }
+    },
+    {
+      "name": "the input box is not a menu: a numbered list still being typed",
+      "_note": "Captured off a real pane (Claude Code v2.1.222, 51 columns) while the message was in the composer. The page drew answer buttons for it, and pressing one would have sent the half-written message with a digit on the end. The ❯ is the input prompt's, not a pointer at an option: what follows it is a non-breaking space.",
+      "lines": [
+        "✻ Brewed for 10s",
+        "",
+        "───────────────────────────────────────────────────",
+        "❯ 1. Надо разнести иконки изображения шела и",
+        "  монитора на табах  и в меню.",
+        "  2. Сейчас я пишу а Таб поктерма в этом окне",
+        "  мигает фиолетовым, хотя должен быть голубым, я",
+        "  ещё не начинал с ним работать, то есть не",
+        "  зеленый",
+        "───────────────────────────────────────────────────",
+        "  ctx 4% | dms@ai:~/work $ | Opus 5 (1M context)"
+      ],
+      "expect": null
+    },
+    {
+      "name": "short numbered lines in the input box are not a menu either",
+      "_note": "Nothing between the options to measure, so the indentation rule has nothing to say: what refuses this one is the prompt itself.",
+      "lines": [
+        "───────────────────────────────────────────────────",
+        "❯ 1. раз",
+        "  2. два",
+        "───────────────────────────────────────────────────"
+      ],
+      "expect": null
     }
   ]
 }

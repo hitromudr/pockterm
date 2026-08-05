@@ -362,6 +362,43 @@ is two bytes against a box glyph's three. `test/fixtures/menus.json` carries the
 real screen, captured off the pane rather than typed from memory, and both
 implementations run against it.
 
+**And the agent's own input box is not a menu, though it is drawn like one.** It
+carries the very same `❯`, and what sits under that `❯` is whatever is being
+typed: a message beginning "1. …" newline "2. …" drew two answer buttons before it
+had been sent, and pressing one would have submitted the half-written message with
+a digit on the end. Reported from the phone as the buttons appearing while the text
+was still in the box.
+
+What tells the two apart is the space after the glyph, and it took a capture to
+find: the composer draws a **non-breaking** one, a menu pointer an ordinary one.
+That is also what made the indentation rule miss it — `indentOf` counted the
+non-breaking space as text, so the option line measured one column shallower than
+the lines wrapped under it, which is exactly the shape of an option with a
+description. Both halves are fixed and either would do alone: a non-breaking space
+is a space to `indentOf`, and a line of the input box brings no chrome with it
+(`composerPrompt`, `detect.InputBox`). Measured on Claude Code v2.1.222 at 51
+columns off two real panes — the box with the list in it, and `/model`, which is a
+real menu and still detected. Both are in the shared fixtures.
+
+**Typing into a session that has never counted is not work either.** The rule that
+a person at the keyboard is not the machine was written for a session whose agent
+had already run a turn — `sawLive` — and a session just opened has not. So the only
+evidence of work was the screen changing, and the screen was changing because the
+first message was being written into it: the tab swept purple beside the one that
+was really running, and thirty seconds after the last keystroke the watcher
+announced the session as *finished*, four times in five minutes (`watch: done
+pockterm (quiet for 30s)` in the journal, which is what made this measurable rather
+than an impression).
+
+`detect.InputBox` answers it, and it is the same measurement as above: the box and
+the counter are drawn by the same TUI, so a pane showing the box and no counter has
+no turn running in it, whether or not one has ever been seen. The tab is neutral —
+`ActivityUnknown`, nothing has happened, which is the honest claim — and nothing is
+announced, because an agent that has not started a turn has not finished one. It is
+read fresh on every poll rather than remembered: a session that ran an agent and
+dropped back to a shell is a shell now, and for a shell a changed screen is still
+the only evidence of work there is.
+
 The mark's upper half lives in `#tabs`' own `padding-top`, given back to the layout
 by an equal negative margin: the strip scrolls sideways, so it clips both axes, and
 a taller strip would move `☰` down — the drawer's `❮` is measured against it.

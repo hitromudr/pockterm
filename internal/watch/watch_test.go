@@ -118,9 +118,16 @@ func TestDoneAfterSilence(t *testing.T) {
 // The agent's own counter, and what it costs not to read it: thirty seconds of
 // a tab painted as working after the answer was already on it, and thirty
 // seconds before the phone was told.
+//
+// The prompt of the input box carries the non-breaking space the agent draws
+// after it (`\u00a0`), because that is what tells the box from a menu pointer —
+// a screen typed from memory with an ordinary space is a screen this code would
+// read differently from the pane it stands for.
 const (
-	turnRunning = "● reading detect.go\n✶ Doing… (1m 13s · ↓ 3.9k tokens)\n❯ \n  ctx 62% | ~/work $ | Opus 5\n"
-	turnOver    = "● reading detect.go\n✻ Cooked for 19s\nвсё, детектор поправлен\n❯ \n  ctx 62% | ~/work $ | Opus 5\n"
+	turnRunning = "● reading detect.go\n✶ Doing… (1m 13s · ↓ 3.9k tokens)\n❯\u00a0\n  ctx 62% | ~/work $ | Opus 5\n"
+	turnOver    = "● reading detect.go\n✻ Cooked for 19s\nвсё, детектор поправлен\n❯\u00a0\n  ctx 62% | ~/work $ | Opus 5\n"
+	// A session just opened: the agent's box is there and nothing has run in it.
+	welcome = "Claude Code v2.1.222\n~/work/pockterm\n──────────\n❯\u00a0"
 )
 
 func TestDoneWhenTheCounterGoes(t *testing.T) {
@@ -200,6 +207,48 @@ func TestTypingIsNotWork(t *testing.T) {
 	h.settle()
 	if got := h.kinds(); len(got) != 2 || got[1] != Done {
 		t.Fatalf("events = %+v, want a done for the second turn too", h.events)
+	}
+}
+
+func TestTypingIntoAFreshAgentIsNotWorkEither(t *testing.T) {
+	// The same defect one turn earlier, and the rule above could not reach it:
+	// sawLive is set by a counter, and a session opened and typed into has never
+	// had one. So the only evidence of work was the screen changing, and the
+	// screen was changing because the owner was writing the first message —
+	// reported from the phone with the message still half-written, the tab
+	// sweeping purple next to the one that was actually running.
+	//
+	// What answers it is the box being typed into: the agent draws it and the
+	// counter both, so a pane with the box and no counter has no turn in it.
+	h := newHarness(30 * time.Second)
+	h.screen = welcome
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityUnknown {
+		t.Fatalf("nothing has happened yet: %q, want %q", got, ActivityUnknown)
+	}
+	for i, typed := range []string{"1", "1.", "1. на", "1. надо разнести"} {
+		h.screen = welcome + typed
+		h.advance(2 * time.Second)
+		h.w.Tick()
+		if got := h.w.Activity("claude"); got != ActivityUnknown {
+			t.Fatalf("keystroke %d: %q, want %q — typing is not the agent working", i, got, ActivityUnknown)
+		}
+	}
+	// And the silence after it is a person reading, not a turn ending: a
+	// "finished" here is about a session whose agent has not spoken yet.
+	h.advance(2 * time.Minute)
+	h.w.Tick()
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want none for a turn that never started", h.events)
+	}
+	if got := h.w.Activity("claude"); got != ActivityUnknown {
+		t.Fatalf("after the silence: %q, want %q", got, ActivityUnknown)
+	}
+	// Sent, and now there is something to report.
+	h.screen = turnRunning
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("the message sent: %q, want %q", got, ActivityWorking)
 	}
 }
 
