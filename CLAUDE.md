@@ -432,6 +432,29 @@ words appear in the line an agent prints when a turn ends ("Cogitated for 2m 23s
 about now — that one is skipped by its wording, and output scrolled above the last
 few lines is out of range by position.
 
+**The drawer says all of it too, in the strip's own colours.** It is the list you
+open to see what else is running, and it was the one surface that could not answer
+that: a row said what a session *is* — its button, its folder, its age — and nothing
+about what it was doing. The same three states, the same keyframes at the same
+duration, the same per-session phase, because a row and a tab describing one session
+differently is worse than either of them saying nothing. What differs is only what a
+row has room for: the sweep runs its width, the `!` straddles its top edge at the
+left instead of centred, and the shield stands in its own bottom-right corner.
+
+Two things make it honest rather than decorative. **The rows are painted, never
+rebuilt** (`paintRows`) — the same rule the strip follows, and here it also protects
+the armed `✕`: a session flipping between working and done would otherwise disarm a
+confirmation half way through. And **the poll runs while the drawer is open**, the
+terminal being on screen no longer being the only reason to ask: with nothing
+attached the drawer is all there is, and a colour that was true when the drawer
+opened is exactly the claim this was built to stop making.
+
+**The mark is a cell of its own beside the name, never inside it.** `.name` is the
+session's name and nothing else — the page reads it back to attach, to rename and to
+close — and a glyph spliced into it produced a session called `⭐pockterm-ui-oWck6x`
+that tmux had never heard of. Four tests failed on that, which is the cheap version
+of the same defect on a phone.
+
 ## The row is the owner's, and a held tab is carried
 
 tmux orders its sessions by name, which is the one order nobody chose: the strip is

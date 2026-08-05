@@ -20,7 +20,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v118';
+const APP_VERSION = 'v119';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -160,7 +160,23 @@ async function loadSessions() {
       shortAge(s.created, Date.now()),
       s.attached ? 'attached' : '',
     ].filter(Boolean);
-    b.innerHTML = `<span class="name">${escapeHtml(s.name)}</span>` +
+    // The same three answers the strip gives, in the list that has room to say
+    // them: what it is (the mark, before the name), what it is doing (the state,
+    // as a class — one value, so the classes are exclusive by construction), and
+    // what is still running in it (the shield, from an attribute). One vocabulary
+    // for both surfaces, because a row and a tab disagreeing about a session is
+    // worse than either of them saying nothing.
+    b.dataset.session = s.name;
+    // Where in the sweep this one starts, from the name — so a drawer of working
+    // sessions is not one decoration pulsing in step, and a row keeps its phase
+    // when the list is rebuilt.
+    b.style.animationDelay = workingPhase(s.name);
+    // The mark is a cell of its own beside the name, never inside it: `.name` is
+    // the session's name and nothing else — the page reads it back to attach, to
+    // rename and to close, and a glyph spliced into it makes a session called
+    // `⭐demo` that tmux has never heard of.
+    b.innerHTML = '<span class="line"><span class="kind"></span>' +
+      `<span class="name">${escapeHtml(s.name)}</span></span>` +
       `<span class="meta">${escapeHtml(meta.join(' · '))}</span>`;
     b.addEventListener('click', () => attach(s.name));
     li.appendChild(b);
@@ -183,6 +199,36 @@ async function loadSessions() {
     li.appendChild(close);
 
     sessionList.appendChild(li);
+  }
+  paintRows(sessions);
+}
+
+// paintRows puts the state on the rows the drawer already has.
+//
+// Painted, never rebuilt — the same rule the strip follows and for the same two
+// reasons: a rebuild takes the row out from under the finger, and it takes the
+// armed ✕ with it, so a session flipping between working and done would disarm a
+// confirmation half way through. On a WebView it also hands focus back to the
+// terminal, which raises the keyboard over the list being read.
+//
+// The mark is written into a span of its own for the same reason: the kind arrives
+// on a later poll than the name — the session list is fetched before /api/presets
+// answers — and rewriting a child's text costs nothing.
+function paintRows(sessions) {
+  const by = new Map(sessions.map((s) => [s.name, s]));
+  for (const b of sessionList.querySelectorAll('button.session')) {
+    const s = by.get(b.dataset.session);
+    if (!s) continue;
+    const st = s.state || '';
+    b.classList.toggle('working', st === 'working');
+    b.classList.toggle('done', st === 'done');
+    b.classList.toggle('asking', st === 'asking');
+    b.classList.toggle('current', s.name === current);
+    const running = (s.shells || 0) + (s.monitors || 0);
+    if (running > 0) b.dataset.bg = String(running);
+    else delete b.dataset.bg;
+    const mark = b.querySelector('.line .kind');
+    if (mark) mark.textContent = kindMark(s.kind || '', customButtons);
   }
 }
 
@@ -855,6 +901,9 @@ function openDrawer() {
   // does not write "closed" down.
   paintSettings(settingsWanted());
   loadSessions();
+  // The rows carry the state now, so the list is worth polling for while it is
+  // open — including with nothing attached, when it is the only thing on screen.
+  pollTabs(true);
 }
 function closeDrawer() {
   if (!current) return;
@@ -871,6 +920,9 @@ function closeDrawer() {
   cancelEdit();
   collapseSettings();
   showFolders(false);
+  // And it stops being a reason to poll: with the terminal on screen the strip is
+  // still one, and pollTabs works that out for itself.
+  pollTabs(true);
 }
 function toggleDrawer() {
   if (screenSessions.classList.contains('open')) closeDrawer();
@@ -1121,6 +1173,9 @@ async function renderTabs() {
     if (n > 0) b.dataset.bg = String(n);
     else delete b.dataset.bg;
   }
+  // The drawer's rows say the same thing off the same answer: one fetch, so a row
+  // and a tab cannot describe one session out of two different moments.
+  paintRows(sessions);
 }
 
 // --- what the mark on a tab means ---
@@ -1423,12 +1478,23 @@ function workingPhase(name) {
 // header runs every 400ms, so this is the cheap one.
 const TAB_POLL_MS = 3000;
 let tabPoll = null;
+// The drawer counts as something to poll for, and it is the surface the question
+// is usually asked from: it is what you open to see what else is running, and with
+// nothing attached it is the only thing on screen — so the strip's own condition
+// would leave the list as a snapshot of the moment it opened.
 function pollTabs(on) {
-  const want = on && !screenTerm.hidden && document.visibilityState === 'visible';
+  const drawerOpen = screenSessions.classList.contains('open');
+  const want = on && document.visibilityState === 'visible' && (!screenTerm.hidden || drawerOpen);
   if (want === !!tabPoll) return;
   if (!want) { clearInterval(tabPoll); tabPoll = null; return; }
-  tabPoll = setInterval(() => { if (!screenTerm.hidden) renderTabs(); }, TAB_POLL_MS);
-  renderTabs();
+  tabPoll = setInterval(tickState, TAB_POLL_MS);
+  tickState();
+}
+// One fetch for both surfaces. renderTabs paints the rows as well, and with the
+// terminal hidden there is no strip to draw — only the drawer, which is then all
+// there is.
+function tickState() {
+  if (!screenTerm.hidden || screenSessions.classList.contains('open')) renderTabs();
 }
 // Coming back to the page is when the answer is most out of date: the session was
 // working when the phone went into the pocket and has probably finished since.

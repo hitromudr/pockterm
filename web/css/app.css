@@ -546,6 +546,95 @@ button.session {
 button.session .name { font-size: 16px; font-weight: 600; color: var(--accent); }
 button.session .meta { font-size: 13px; color: #8b93a7; }
 
+/* --- a row says what its session is doing, in the strip's own vocabulary ---
+
+   The drawer is the list you open to see what else is running, and it was the one
+   surface that could not answer that: the state was on the tabs only, so a row
+   said what a session *is* (its button, its folder, its age) and nothing about
+   what it is up to. The same three colours are used here rather than a second
+   set — a row and a tab describing one session differently is worse than either
+   of them saying nothing — and the same keyframes at the same duration, so the
+   two cannot drift apart in speed either.
+
+   What differs is only what a row has room for: the sweep runs the width of it,
+   the mark sits before the name where the meta line already names that button,
+   and the shield stands in the row's own bottom-right corner instead of over its
+   padding. */
+button.session { position: relative; }
+/* You are here. The frame rather than the fill, exactly as on the tab: the fill
+   is spoken for. */
+button.session.current { border-color: var(--accent); }
+/* Output is arriving. */
+button.session.working {
+  background: linear-gradient(100deg, #2f2350 0%, #2f2350 35%, #7d5cff 50%, #2f2350 65%, #2f2350 100%);
+  background-size: 300% 100%;
+  animation: tab-working 4.2s linear infinite alternate;
+  border-color: #4a3a7d;
+}
+button.session.working .name { color: #e6dcff; }
+button.session.working .meta { color: #b9a4ff; }
+/* Gone quiet after doing something. */
+button.session.done { background: #1d3a2b; border-color: #2f5c45; }
+button.session.done .name { color: #a8ecc4; }
+button.session.done .meta { color: #7fdca4; }
+/* Waiting for an answer, which is the one state that is about the person holding
+   the phone — so it takes the blue and the yellow mark, and the mark straddles
+   the row's top edge for the same reason it straddles the tab's. */
+button.session.asking {
+  background: linear-gradient(100deg, #16233f 0%, #16233f 35%, #3b7dff 50%, #16233f 65%, #16233f 100%);
+  background-size: 300% 100%;
+  animation: tab-working 4.2s linear infinite alternate;
+  border-color: #2c4a80;
+}
+button.session.asking .name { color: #dbe7ff; }
+button.session.asking .meta { color: #9dc0ff; }
+button.session.asking::before {
+  content: '!';
+  position: absolute;
+  left: 16px;
+  top: 0;
+  transform: translate(-50%, -50%);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffd23f;
+  /* Over two backgrounds at once — the row below the edge and the drawer above
+     it — so it carries its own outline rather than trusting either. */
+  text-shadow: 0 0 3px #0b0e14, 0 0 2px #0b0e14;
+}
+/* What is still running while the agent says nothing: the same green shield,
+   carrying how many, in the corner of the row. */
+button.session[data-bg]::after {
+  content: attr(data-bg);
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  box-sizing: border-box;
+  min-width: 16px;
+  padding: 1px 3px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 11px;
+  text-align: center;
+  color: #0f1b14;
+  background: #7fdca4;
+  clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+}
+/* The mark takes no colour of its own here either: form says what a session is
+   and colour says what it is doing, so it inherits the name's colour and steps
+   back. An empty span takes no room, and the gap belongs to the mark — a margin
+   on the empty one would indent every unstamped name by a space standing for
+   nothing. */
+button.session .line { display: flex; align-items: baseline; }
+button.session .line .kind { font-weight: 400; opacity: 0.8; }
+button.session .line .kind:not(:empty) { margin-right: 6px; }
+
+/* Someone who asked not to be moved gets the colour without the movement. */
+@media (prefers-reduced-motion: reduce) {
+  button.session.working { animation: none; background: #4a3a7d; }
+  button.session.asking { animation: none; background: #24427e; }
+}
+
 /* --- folders --- */
 /* The same box as a session row, so the two lists read as one drawer, but not
    the same colour: a folder is somewhere to start a session, not a session. */

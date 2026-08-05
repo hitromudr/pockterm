@@ -1910,6 +1910,60 @@ describe('a tab says what its session is doing', () => {
       null, { timeout: 20000 });
   });
 
+  test('the drawer says it too, in the same colours as the strip', async () => {
+    // The drawer is what you open to see what else is running, and it was the one
+    // surface that could not say what any of it was doing: the state was on the
+    // tabs only. Same three colours, same keyframes, same phase mechanism —
+    // a row and a tab describing one session differently is worse than either of
+    // them saying nothing.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    const typing = setInterval(() => {
+      try { stand.tmux(['send-keys', '-t', 'demo', 'still going', 'Enter']); } catch (_) {}
+    }, 700);
+    try {
+      await stand.openDrawer();
+      // The row is painted by the same poll as the strip, so it goes on answering
+      // while the drawer is open rather than being a snapshot of when it opened.
+      await page.waitForFunction(
+        () => !!document.querySelector('#session-list button.session[data-session="demo"].working'),
+        null, { timeout: 20000 });
+    } finally {
+      clearInterval(typing);
+    }
+    const both = await page.evaluate(() => {
+      const row = document.querySelector('#session-list button.session[data-session="demo"]');
+      const tab = document.querySelector('#tabs button[data-session="demo"]');
+      const of = (el) => {
+        const s = getComputedStyle(el);
+        return {
+          duration: s.animationDuration,
+          direction: s.animationDirection,
+          delay: s.animationDelay,
+          purple: s.backgroundImage.includes('125, 92, 255'),
+        };
+      };
+      return { row: of(row), tab: of(tab) };
+    });
+    assert.ok(both.row.purple, 'the row is not sweeping purple while output arrives');
+    assert.equal(both.row.duration, both.tab.duration, 'the row and the tab sweep at different speeds');
+    assert.equal(both.row.direction, both.tab.direction);
+    // The same phase for one session, because both come from its name.
+    assert.equal(both.row.delay, both.tab.delay, 'the row and the tab are out of phase');
+
+    // And the row carries the mark of the button that started the session, which
+    // its meta line already names in words.
+    const before = await page.locator('#session-list li').count();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset="shell"]');
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
+    const marks = await page.evaluate(() => [...document.querySelectorAll('#session-list .line .kind')]
+      .map((el) => el.textContent).filter(Boolean));
+    assert.ok(marks.includes('▸'), `no shell mark among the rows: ${JSON.stringify(marks)}`);
+  });
+
   test('the working sweep is slow, goes both ways, and is not in step across tabs', async () => {
     // A fast one-way sweep with every tab in phase was a strip of decoration
     // flickering at the corner of the eye. The phase comes from the session name
