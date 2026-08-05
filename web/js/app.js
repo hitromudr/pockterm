@@ -18,7 +18,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v105';
+const APP_VERSION = 'v106';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -177,23 +177,7 @@ async function loadSessions() {
     close.className = 'close';
     close.textContent = '✕';
     close.title = `Close ${s.name}`;
-    let armed = null;
-    close.addEventListener('click', () => {
-      if (!armed) {
-        close.classList.add('armed');
-        close.textContent = '✕?';
-        toast(`tap again to close ${s.name}`);
-        armed = setTimeout(() => {
-          armed = null;
-          close.classList.remove('armed');
-          close.textContent = '✕';
-        }, 4000);
-        return;
-      }
-      clearTimeout(armed);
-      armed = null;
-      killSession(s.name);
-    });
+    armTwice(close, `tap again to close ${s.name}`, () => killSession(s.name));
     li.appendChild(close);
 
     sessionList.appendChild(li);
@@ -433,6 +417,39 @@ function escapeHtml(s) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+// Two taps to remove, the first of them reversible: the button reddens, says
+// `✕?` and asks in a toast, and only the second tap acts.
+//
+// One implementation for both lists rather than one each. A session and a custom
+// button are worth different amounts — one ends an agent mid-task, the other is
+// two fields to type again — and that is exactly why the difference must not be
+// in the gesture: on a phone the two rows look alike, sit in the same drawer, and
+// are hit by the same stray thumb. A ✕ that sometimes asks and sometimes does not
+// is a ✕ nobody can trust.
+//
+// The arming expires after ARM_MS, because a button left armed is a button whose
+// next tap, minutes later, does something other than what it says.
+const ARM_MS = 4000;
+function armTwice(btn, ask, act) {
+  let armed = null;
+  btn.addEventListener('click', () => {
+    if (!armed) {
+      btn.classList.add('armed');
+      btn.textContent = '✕?';
+      toast(ask);
+      armed = setTimeout(() => {
+        armed = null;
+        btn.classList.remove('armed');
+        btn.textContent = '✕';
+      }, ARM_MS);
+      return;
+    }
+    clearTimeout(armed);
+    armed = null;
+    act();
+  });
+}
+
 // --- the owner's own session buttons ---
 //
 // The four presets are make targets and always were: the Makefile decides how a
@@ -491,9 +508,12 @@ function renderCustom() {
     del.className = 'close';
     del.textContent = '✕';
     del.title = `Remove ${c.label}`;
-    // One tap, unlike closing a session: this removes a button, not a running
-    // agent, and adding it back is two fields.
-    del.addEventListener('click', () => {
+    // Two taps, the same as closing a session. It was one for a while, on the
+    // grounds that this removes a button rather than a running agent — and a
+    // stray touch took a button away with nothing asked, which is what it was
+    // reported as. The rows look alike and are in the same drawer; the gesture
+    // is where they must not differ.
+    armTwice(del, `tap again to remove ${c.label}`, () => {
       if (c.id === editingID) cancelEdit();
       saveCustom(customButtons.filter((x) => x.id !== c.id));
     });

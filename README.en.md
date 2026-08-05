@@ -230,8 +230,11 @@ The command is checked before it reaches a command line: letters, digits, spaces
 `&`, `|` are refused with a reason — the value reaches a shell inside the recipe, so
 this is a gate rather than advice.
 
-Every button in the list carries two actions: `✎` to change it, `✕` to remove it.
-Editing loads the label and the command into the same two fields — a phone has no
+Every button in the list carries two actions: `✎` to change it, and `✕` to remove it
+**in two taps**, the same as closing a session: the first reddens the cross and asks,
+the second acts, and the arming lapses after four seconds. It was one tap until a
+stray touch took a button away with nothing asked — the rows in the drawer look
+alike, and the gesture is where they must not differ. Editing loads the label and the command into the same two fields — a phone has no
 room for a second pair, just as it has none for a second rename field — marks the
 row they are about, and "Добавить" becomes "Сохранить"; tapping `✎` again cancels.
 Changing a button is not deleting and re-adding it: it keeps its id, and the id is

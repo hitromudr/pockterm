@@ -398,9 +398,17 @@ describe("the owner's own session buttons", () => {
     await page.waitForSelector('#custom-list li:has-text("Квен")');
     assert.equal(await page.locator('#new-menu button[data-preset^="custom:"]').count(), 1);
 
-    // And removing one takes it out of the menu as well, in one tap: this is a
-    // button, not a running agent.
-    await page.click('#custom-list li:has-text("Квен") button.close');
+    // Removing takes two taps, the same as closing a session: one tap was enough
+    // for a while, and a stray touch took a button away with nothing asked. The
+    // first tap only arms.
+    const del = page.locator('#custom-list li:has-text("Квен") button.close');
+    await del.click();
+    assert.equal(await page.locator('#custom-list li').count(), 1, 'the first tap removed it');
+    assert.match(await del.textContent(), /\?/, 'the armed button does not say it is armed');
+    assert.ok(await del.evaluate((b) => b.classList.contains('armed')));
+
+    // And the second one takes it out of the menu as well, because it is one list.
+    await del.click();
     await page.waitForFunction(
       () => document.querySelectorAll('#custom-list li').length === 0, null, { timeout: 5000 });
     assert.equal(await page.locator('#new-menu button[data-preset^="custom:"]').count(), 0);

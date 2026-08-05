@@ -529,6 +529,18 @@ sends the same list with the same id in place, which the server already supporte
 `Buttons.Set` keeps an id that arrives and hands out numbers only for entries without
 one.
 
+**`✕` takes two taps, and the first is the question.** It took one, on the argument
+that this removes a button rather than a running agent and typing it back is two
+fields — and a stray thumb removed one with nothing asked, which is how it was
+reported. The argument was about what a mistake costs, and the gesture is the wrong
+place to encode that: the two rows look alike, live in the same drawer, and are hit
+the same way, so a `✕` that asks in one list and not in the other is a `✕` nobody
+reads before pressing. `armTwice` is the one implementation both use — the session
+list had it first, inline — because two copies of a confirmation drift into two
+different answers to one gesture. The arming lapses after `ARM_MS`, since a button
+left armed is a button whose next tap, minutes later, does something other than what
+it says.
+
 A second tap on `✎` cancels, and `closeDrawer` cancels too: a form still saying
 `Сохранить` about a button chosen a day ago saves the wrong thing when it is finally
 tapped. The UI test proves the id survives by reading `data-preset` off the menu
