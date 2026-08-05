@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -587,7 +588,10 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 		defer o.Notices.remove(id)
 	}
 
-	t, err := term.Start(o.Attach(id, target), 80, 24)
+	// The size the page reported when it opened the socket, not a default nobody
+	// asked for: see requestedSize.
+	cols, rows := requestedSize(r)
+	t, err := term.Start(o.Attach(id, target), cols, rows)
 	if err != nil {
 		log.Printf("attach failed: %v", err)
 		writeMu.Lock()
@@ -683,6 +687,36 @@ type modeFrame struct {
 // A change in the scroll position is a change worth sending: it is what tells
 // the page it has arrived at the end, and tmux does not always leave copy-mode
 // when it gets there.
+// requestedSize reads the terminal size the page put in the socket's address.
+//
+// It is there because of what tmux does with a client of the wrong size. Sessions
+// here are grouped — one window, several clients — and tmux's own `window-size
+// latest` gives the window the size of the newest client. A client attached at a
+// default 80x24 and resized a moment later therefore drags the shared window down
+// under everyone else looking at that session: they keep drawing at their own
+// width while tmux fills lines to 80, which shows as halves of two lines in one
+// row and a cursor in the wrong place. It cleared itself when the page's first
+// resize message arrived, and came back on the next attach — every tab switch is
+// one.
+//
+// Bounds rather than trust: the value comes from a query string. Anything missing,
+// unparsable or absurd falls back to the classic 80x24, which is what this did
+// before the size was asked for at all.
+func requestedSize(r *http.Request) (cols, rows uint16) {
+	return dimension(r.URL.Query().Get("cols"), 80), dimension(r.URL.Query().Get("rows"), 24)
+}
+
+// dimension parses one of them. The ceiling is a limit on what this program will
+// allocate a grid for, not a guess about screens: the value arrives from a query
+// string, and tmux would take a client claiming 60000 columns at its word.
+func dimension(v string, fallback uint16) uint16 {
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 2 || n > 1000 {
+		return fallback
+	}
+	return uint16(n)
+}
+
 func pollMode(conn *websocket.Conn, writeMu *sync.Mutex, in func() (bool, int, error), done <-chan struct{}) {
 	ticker := time.NewTicker(modePoll)
 	defer ticker.Stop()

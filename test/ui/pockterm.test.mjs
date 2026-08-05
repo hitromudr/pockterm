@@ -38,6 +38,48 @@ describe('sessions screen', () => {
   });
 });
 
+describe('the size a client attaches at', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['demo'] }); });
+  after(async () => { await stand.stop(); });
+
+  test('the window is never resized to a default nobody asked for', async () => {
+    // Sessions here are grouped — one window, several clients — and tmux gives the
+    // shared window the newest client's size. A client attached at 80x24 while it
+    // waits to be told better therefore redraws the pane at 80 columns under every
+    // other client on that session: the laptop, and this phone's other tabs. What
+    // it looked like was halves of two lines in one row and a cursor in the wrong
+    // place, and it cleared itself as soon as the page's resize arrived — which is
+    // exactly why measuring after an ordinary attach proves nothing. So the resize
+    // message is dropped on the way out, leaving only what the attach itself asked
+    // for: the size in the socket's own address.
+    await stand.open();
+    const { page } = stand;
+    await page.evaluate(() => {
+      const send = WebSocket.prototype.send;
+      WebSocket.prototype.send = function (data) {
+        if (typeof data === 'string' && data.includes('"resize"')) return;
+        return send.call(this, data);
+      };
+    });
+
+    await stand.attach('demo');
+    // The page publishes its own size on #term (see fitNow), which is also what
+    // makes a screenshot of a broken redraw answerable.
+    await page.waitForFunction(() => document.getElementById('term').dataset.size);
+    const cols = Number((await page.getAttribute('#term', 'data-size')).split('x')[0]);
+    const width = () => Number(stand.tmux(['display-message', '-p', '-t', 'demo', '#{window_width}']).trim());
+    assert.equal(width(), cols,
+      `tmux drew ${width()} columns for a page showing ${cols} — the attach used a size of its own`);
+
+    // And it holds across a switch, which is what made this recur: every tab is a
+    // new client, so every switch was another chance to resize the window under
+    // whoever else was looking.
+    await stand.attach('demo');
+    assert.equal(width(), cols, 'a second attach moved the window');
+  });
+});
+
 describe('the session list is a drawer', () => {
   let stand;
   before(async () => { stand = await startStand({ sessions: ['demo', 'other'] }); });

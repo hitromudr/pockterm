@@ -101,6 +101,36 @@ The bridge cannot say whether anything was composing — `commitInput` returns
 the answer. `test/ui/bytes.test.mjs` proves the order on the wire: a real
 keystroke delivered right after the tap lands before the `^M`.
 
+## A client attaches at a size, and the wrong one is everyone's problem
+
+Sessions here are grouped — `new-session -t <name>`, one window, several clients —
+and tmux's own `window-size latest` gives the shared window the size of the newest
+client. So a client attached at a default 80x24 and told its real size a moment
+later does not merely look wrong to itself: it resizes the window under **every
+other client on that session**, the laptop included, and they keep drawing at
+their own width while tmux fills lines to 80. On screen that is halves of two
+lines in one row and a cursor landing nowhere.
+
+It was reported twice from the phone as a desync — "на всех вкладках курсор
+прыгает, потом прошло" — and both halves of that sentence are the mechanism. Every
+tab switch attaches a new client, which is why it recurred; the page's first
+`resize` message arrived a moment later and fixed it, which is why it passed.
+
+The size travels in the socket's address now (`/ws?session=…&cols=…&rows=…`) and
+`requestedSize` reads it there, so the pty is created at the page's size and the
+window is never handed a number nobody asked for. Missing or absurd values fall
+back to 80x24, since the value comes from a query string.
+
+**Measuring this after an ordinary attach proves nothing**, which the first version
+of the test demonstrated by passing against the defect: `sendResize` corrects the
+window before any assertion can run. The test drops resize frames on their way out
+of the page and then compares `#{window_width}` with what the page says its own
+size is — that difference is 80 against 44 on the old code.
+
+The page publishes that size on `#term` (`data-size`, set in `fitNow`). It is a
+diagnostic first: a screenshot of a broken redraw then answers the first question
+about it.
+
 ## Scrolled back is not the same as copy-mode
 
 The page shows two things while the pane is scrolled back into history: the

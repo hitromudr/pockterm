@@ -14,7 +14,10 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   to the one you pick. It never **creates** sessions — you start those on
   the server yourself.
 - **tmux grouped sessions.** Each client gets its own view size; your
-  laptop's tmux window is never shrunk by a phone.
+  laptop's tmux window is never shrunk by a phone. The page names that size in
+  the socket's address, so a client attaches at it rather than at 80×24 until
+  told otherwise: a group has one window, and such a client would redraw it
+  under everyone else.
 - **Answer buttons.** An interactive menu (a Claude Code permission prompt,
   say) is recognised by its pointer and box rather than by any numbering,
   so a numbered list in prose produces no buttons. While the pane is

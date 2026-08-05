@@ -18,7 +18,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v107';
+const APP_VERSION = 'v108';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1059,7 +1059,23 @@ document.addEventListener('visibilitychange', () => pollTabs(true));
 function connect() {
   if (!current) return;
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-  const qs = [tokenQS, `session=${encodeURIComponent(current)}`].filter(Boolean).join('&');
+  // The size travels in the address, not in the first message after it.
+  //
+  // tmux attaches a client at whatever size its pty has, and sessions here are
+  // grouped — one window, several clients. With `window-size latest` (tmux's own
+  // default) the newest client's size becomes the window's, so a client attached
+  // at 80x24 while waiting to be told better resizes the shared window under
+  // every other client looking at that session: the laptop, and this phone's
+  // other tabs. They then draw a screen tmux is filling to a different width,
+  // which is halves of two lines in one row and a cursor landing nowhere —
+  // reported from the phone twice, "потом прошло" being the resize arriving a
+  // moment later. Every tab switch made a new one.
+  const qs = [
+    tokenQS,
+    `session=${encodeURIComponent(current)}`,
+    `cols=${term.cols}`,
+    `rows=${term.rows}`,
+  ].filter(Boolean).join('&');
   ws = new WebSocket(`${scheme}://${location.host}/ws?${qs}`);
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => { statusEl.hidden = true; retry = 1000; sendResize(); sendVisible(); };
@@ -2463,6 +2479,10 @@ function fitNow() {
     report('fit-failed', { message: String((e && e.message) || e).slice(0, 120) });
     return false;
   }
+  // What the page thinks its size is, on the element itself. A screenshot then
+  // says it too, and the size is the first thing to know when a redraw arrives
+  // wrapped against a width nobody here chose.
+  box.dataset.size = `${term.cols}x${term.rows}`;
   return true;
 }
 

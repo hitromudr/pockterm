@@ -1395,3 +1395,29 @@ func TestSessionListSaysNothingWhenThereIsNoWatcher(t *testing.T) {
 		t.Fatalf("a state appeared without a watcher: %v", got[0])
 	}
 }
+
+func TestTheSizeTheClientAsksForIsTheSizeItAttachesAt(t *testing.T) {
+	// A client attached at the wrong size does not only look wrong to itself.
+	// Sessions here are grouped, tmux gives the shared window the newest client's
+	// size, and 80x24 for one moment is 80 columns for the laptop and every other
+	// tab on that session — halves of two lines in one row, twice reported from
+	// the phone.
+	for _, c := range []struct {
+		query      string
+		cols, rows uint16
+		why        string
+	}{
+		{"cols=51&rows=44", 51, 44, "a phone"},
+		{"cols=172&rows=52", 172, 52, "a laptop"},
+		{"", 80, 24, "a client that says nothing keeps the classic default"},
+		{"cols=0&rows=0", 80, 24, "a size nothing can be drawn in"},
+		{"cols=-4&rows=nine", 80, 24, "nonsense in a query string"},
+		{"cols=60000&rows=60000", 80, 24, "a grid this will not allocate"},
+	} {
+		r := httptest.NewRequest("GET", "/ws?"+c.query, nil)
+		cols, rows := requestedSize(r)
+		if cols != c.cols || rows != c.rows {
+			t.Errorf("%q (%s) = %dx%d, want %dx%d", c.query, c.why, cols, rows, c.cols, c.rows)
+		}
+	}
+}
