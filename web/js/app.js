@@ -9,6 +9,7 @@ import { watch as watchInput } from './inputdiag.js';
 import { Scroller, movedWholeScreen } from './scroll.js';
 import { staleNotice } from './update.js';
 import { endingKeys } from './ender.js';
+import { pushHistory, previewOf } from './compose.js';
 import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, MARKS, CUSTOM_MARK } from './kinds.js';
 import { dropIndex } from './carry.js';
 import { installDecision, installText, isIOS } from './install.js';
@@ -21,7 +22,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v121';
+const APP_VERSION = 'v122';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1670,8 +1671,18 @@ function onControl(raw) {
   if (c && c.type === 'config') offerUpdate(c.version);
 }
 
+// send(data) → whether the socket took it.
+//
+// The answer is new; the dropping is not. A socket that is connecting, closing
+// or gone silently swallowed everything handed to it, which is right for a
+// keystroke — there is nowhere to put it — and wrong for a message somebody
+// wrote: the composer cleared its field in the same tick, and the text was
+// gone. So the outcome is returned, and what is worth keeping is kept by
+// whoever knows it is worth keeping.
 function send(data) {
-  if (ws && ws.readyState === WebSocket.OPEN) ws.send(enc.encode(data));
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  ws.send(enc.encode(data));
+  return true;
 }
 function sendResize() {
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -2000,7 +2011,7 @@ const gestureArea = document.getElementById('screen-term');
 // than scroll the terminal underneath.
 function ownsGesture(target) {
   return !(target instanceof Element) ||
-    !target.closest('#composer, #snapshot, header.bar, #answers');
+    !target.closest('#composer, #snapshot, header.bar, #answers, #history-list');
 }
 
 gestureArea.addEventListener('touchstart', (e) => {
@@ -2357,21 +2368,102 @@ smoothBtn.addEventListener('click', () => {
   report('smooth', { on: smoothScroll });
 });
 
-// Send the composed prompt (text + Enter), then clear and keep the field.
+// --- the composer's memory ------------------------------------------------
+// Why any of this exists is in js/compose.js: a send is not guaranteed, and the
+// field used to be cleared as though it were.
+let sentHistory = [];
+try { sentHistory = JSON.parse(localStorage.getItem('pt-sent') || '[]'); } catch (_) { /* gone */ }
+if (!Array.isArray(sentHistory)) sentHistory = [];
+const historyBtn = document.getElementById('history');
+const historyListEl = document.getElementById('history-list');
+
+function saveHistory() {
+  historyBtn.hidden = sentHistory.length === 0;
+  try { localStorage.setItem('pt-sent', JSON.stringify(sentHistory)); } catch (_) { /* full or off */ }
+}
+saveHistory();
+
+// The draft, written down as it is typed. A reload is the page's own suggestion
+// after a deploy (see #update-bar), the WebView is killed whenever Android
+// decides, and either used to take a half-written message with it.
+let draftTimer = null;
+function saveDraft() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    try { localStorage.setItem('pt-draft', promptEl.value); } catch (_) { /* full or off */ }
+  }, 300);
+}
+try {
+  const draft = localStorage.getItem('pt-draft');
+  if (draft) promptEl.value = draft;
+} catch (_) { /* gone */ }
+
+function showHistory(on) {
+  historyListEl.hidden = !on;
+  historyBtn.classList.toggle('on', on);
+  if (!on) return;
+  historyListEl.innerHTML = '';
+  for (const text of sentHistory) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = previewOf(text);
+    b.title = text;
+    // Into the field rather than straight down the socket: what is recalled is
+    // usually being sent again *because* something went wrong with it, and a
+    // second copy of the wrong thing is worse than the first.
+    b.addEventListener('click', () => {
+      promptEl.value = text;
+      growPrompt();
+      saveDraft();
+      showHistory(false);
+      promptEl.focus();
+    });
+    historyListEl.appendChild(b);
+  }
+}
+historyBtn.addEventListener('click', () => showHistory(historyListEl.hidden));
+// A tap anywhere else puts it away. It covers the bottom of the terminal, so
+// the way out has to be the one a hand tries first — and the bar it belongs to
+// can be swapped for the key bar while it is open, which would otherwise leave
+// a list hanging over a composer that is no longer there.
+document.addEventListener('pointerdown', (e) => {
+  if (historyListEl.hidden) return;
+  if (e.target instanceof Element && e.target.closest('#history-list, #history')) return;
+  showHistory(false);
+}, true);
+
+// Send the composed prompt (text + Enter). The field is cleared only when the
+// socket took the bytes, and what went out is remembered either way.
 composerEl.addEventListener('submit', (e) => {
   e.preventDefault();
   const text = promptEl.value;
   if (!text) return;
-  send(text + '\r');
+  const gone = send(text + '\r');
+  report('prompt', { chars: text.length, sent: gone, state: ws ? ws.readyState : -1 });
+  if (!gone) {
+    // Held, not queued: a message delivered on the next connect would arrive
+    // into whatever the session is doing by then, and nothing downstream knows
+    // it is a latecomer.
+    toast('not sent: no connection — the text is still here');
+    return;
+  }
+  sentHistory = pushHistory(sentHistory, text);
+  saveHistory();
   promptEl.value = '';
-  promptEl.style.height = 'auto';
+  try { localStorage.removeItem('pt-draft'); } catch (_) { /* gone */ }
+  growPrompt();
   promptEl.focus();
 });
 // Grow the textarea with its content, up to the CSS max-height.
-promptEl.addEventListener('input', () => {
+function growPrompt() {
   promptEl.style.height = 'auto';
-  promptEl.style.height = promptEl.scrollHeight + 'px';
+  promptEl.style.height = promptEl.value ? promptEl.scrollHeight + 'px' : 'auto';
+}
+promptEl.addEventListener('input', () => {
+  growPrompt();
+  saveDraft();
 });
+growPrompt();
 
 // --- selection mode and the clipboard ---
 // Copy and paste are otherwise silent, and "no idea what got copied" is the

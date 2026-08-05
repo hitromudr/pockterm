@@ -1664,6 +1664,99 @@ describe('which bar the phone opens on', () => {
   });
 });
 
+describe('what the composer remembers', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['one'] }); });
+  after(async () => { await stand.stop(); });
+
+  // Open on the composer rather than the key bar: inside the app it is the
+  // default, and this whole block is about that field.
+  const openComposer = async () => {
+    await stand.page.addInitScript(() => { window.PockNative = { copy: () => true }; });
+    // Keep hold of the sockets the page opens: taking one away is the only way
+    // from out here to put the page in the state this block is about. Offline
+    // emulation does not do it — loopback traffic is not what it governs.
+    await stand.page.addInitScript(() => {
+      window.__sockets = [];
+      window.WebSocket = new Proxy(window.WebSocket, {
+        construct(target, args) {
+          const s = new target(...args);
+          window.__sockets.push(s);
+          return s;
+        },
+      });
+    });
+    await stand.open();
+    await stand.attach('one');
+    await stand.page.waitForSelector('#composer:not([hidden])');
+  };
+
+  test('a message that could not be sent stays in the field', async () => {
+    // Reported from the phone: the send does not go through and the text is
+    // gone. `send()` dropped whatever it was given while the socket was not
+    // open — right for a keystroke, which has nowhere to go — and the composer
+    // cleared the field in the same tick, on the assumption that it had.
+    await openComposer();
+    const { page } = stand;
+    assert.equal(await page.locator('#history').isVisible(), false,
+      'nothing has been sent from this install yet');
+    await page.fill('#prompt', 'сообщение в никуда');
+    // The socket is taken away and the form submitted in the same task. Both
+    // halves matter: `close()` leaves OPEN synchronously, so the state the
+    // handler reads is certain, and the page starts reconnecting on a timer of
+    // its own — anything slower than this would be racing its recovery.
+    await page.evaluate(() => {
+      window.__sockets[window.__sockets.length - 1].close();
+      document.getElementById('composer').requestSubmit();
+    });
+    await page.waitForTimeout(300);
+    assert.equal(await page.inputValue('#prompt'), 'сообщение в никуда',
+      'the text was thrown away with the send');
+    assert.match(await page.textContent('#toast'), /not sent/,
+      'nothing said that it had not gone');
+    // Nothing went out, so there is nothing to remember: the history is what
+    // was sent, and the field is where what was not sent stays.
+    assert.equal(await page.locator('#history').isVisible(), false);
+  });
+
+  test('what was sent can be found again, and a draft outlives a reload', async () => {
+    await openComposer();
+    const { page } = stand;
+    // Still nothing offered: the send that failed above is in the field, not in
+    // the history — what is remembered here is what went out.
+    assert.equal(await page.locator('#history').isVisible(), false);
+
+    await page.fill('#prompt', 'первое сообщение');
+    await page.click('#send');
+    await page.waitForFunction(() => document.getElementById('prompt').value === '',
+      null, { timeout: 5000 });
+    assert.equal(await page.locator('#history').isVisible(), true,
+      'nothing offers what was sent before');
+
+    await page.click('#history');
+    await page.waitForSelector('#history-list:not([hidden])');
+    assert.equal(await page.locator('#history-list button').count(), 1);
+    await page.click('#history-list button');
+    assert.equal(await page.inputValue('#prompt'), 'первое сообщение',
+      'the recalled message did not land in the field');
+    // Into the field and not down the socket: it is usually recalled because
+    // something went wrong with it the first time.
+    assert.equal(await page.locator('#history-list').isVisible(), false);
+
+    // And what is half-written survives the reload the page itself asks for
+    // after a deploy.
+    await page.fill('#prompt', 'недописанное');
+    await page.waitForTimeout(500); // the draft is written on a short timer
+    await stand.open();
+    await stand.attach('one');
+    await page.waitForSelector('#composer:not([hidden])');
+    assert.equal(await page.inputValue('#prompt'), 'недописанное',
+      'the draft did not survive the reload');
+    // The history outlives it too — it is the same storage and the same install.
+    assert.equal(await page.locator('#history').isVisible(), true);
+  });
+});
+
 describe('a new version on the server', () => {
   let stand;
   before(async () => { stand = await startStand(); });

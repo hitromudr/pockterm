@@ -101,6 +101,45 @@ The bridge cannot say whether anything was composing — `commitInput` returns
 the answer. `test/ui/bytes.test.mjs` proves the order on the wire: a real
 keystroke delivered right after the tap lands before the `^M`.
 
+## A message that did not go out is still the owner's
+
+`send()` drops what it is given when the socket is not open, and that is right
+for a keystroke: there is nowhere to put it and nobody typed it twice. The
+composer handed it a whole message and then cleared its field in the same tick,
+as though the socket had taken it. Reported from the phone as the text
+disappearing when the send does not go through, with nothing anywhere to get it
+back from — and the moments when a send fails are exactly the ones with a long
+message in the box: a reconnect, a handover between Wi-Fi and cellular, the unit
+restarted by CI under whoever is typing.
+
+So `send()` answers whether the socket took the bytes, and the composer clears
+its field only then. **Held, not queued.** A message delivered on the next
+connect would arrive minutes later into whatever the session is doing by then,
+and nothing downstream — pty, tmux, the agent — knows it is a latecomer. The
+text stays where the person holding the phone can decide.
+
+**And what did go out is kept**, because the other half of this cannot be
+detected at all: a socket that is open and dead looks exactly like a quiet one
+from in here (see the watchdog above), so the page cannot refuse to send on a
+suspicion. The last twenty messages live in `localStorage` (`pt-sent`,
+`js/compose.js`), newest first, a repeat moved rather than added — sending the
+same line twice is what a retry after this defect looks like. `↻` in the
+composer opens them, and it is hidden until there is one: a way back to nothing
+is a control that explains itself only by being pressed. A recalled message goes
+**into the field, not down the socket** — it is usually being recalled because
+something went wrong with it the first time.
+
+The list is drawn over the terminal and never beside it, which is the same rule
+`#answers` follows and for the same reason: a panel in the flow shortens the
+pane, tmux redraws to the new height, and what the page reads changes under it.
+
+**The draft is written down as it is typed** (`pt-draft`, on a 300ms timer).
+The page asks for a reload itself after a deploy, and Android kills a WebView
+whenever it likes; both used to take a half-written message with them. That is
+also the fear behind the update bar being a button rather than an automatic
+reload — the fear is smaller now, and the button stays, because a reload also
+interrupts whatever is on screen.
+
 ## A quiet socket and a dead socket look the same from in here
 
 Reported from the phone as the screen freezing: a message typed on it had plainly

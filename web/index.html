@@ -190,6 +190,11 @@
            blinking. A row whose own presence decides whether it should be there
            cannot be in the flow. -->
       <div id="answers" hidden></div>
+      <!-- What was sent from the composer before. Over the terminal and never
+           beside it, for the same reason the answer row is: a list in the flow
+           shortens the pane, tmux redraws, and what the page is reading changes
+           under it. -->
+      <div id="history-list" hidden></div>
     </div>
     <!-- Quick macros for prompt mode. No plain Enter here: the composer's ▶
          sends, and the key bar owns Esc and ^C — one key, one place. -->
@@ -205,8 +210,13 @@
     <!-- Shown when the browser refuses to hand over the clipboard: the
          system's own Paste writes here, which needs no permission. -->
     <input id="paste-target" type="text" autocomplete="off" placeholder="long-press here → Paste" hidden>
-    <!-- Prompt composer (shown in prompt mode instead of the key bar) -->
+    <!-- Prompt composer (shown in prompt mode instead of the key bar).
+         The clock opens what has been sent from here before: a send is not
+         guaranteed — the socket can be closed, or open and dead — and until
+         this existed a message that did not arrive was gone. Hidden until
+         there is something in it. -->
     <form id="composer" hidden>
+      <button id="history" type="button" title="Sent before" hidden>&#8635;</button>
       <textarea id="prompt" rows="1" placeholder="Message… (▶ to send)"></textarea>
       <button id="send" type="submit" title="Send">&#9654;</button>
     </form>
