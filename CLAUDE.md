@@ -522,8 +522,8 @@ room there is goes to the digit and the rest of the width is the point.
 **On a tab they hang off the edge, one above the other.** Side by side they cost
 the name twice the width of a plate, and the strip is read along a row that
 already scrolls sideways; stacked at the right edge they cost it once. Each is
-then hung about half of itself past the tab — the triangle over the top, the
-shield under the bottom — because two plates inside a tab 34px tall crowd each
+then hung a third of itself past the tab in both directions — out to the right,
+and the triangle over the top edge with the shield under the bottom — because two plates inside a tab 34px tall crowd each
 other and the name. The triangle is as wide as it is tall: drawn longer, its
 point ran out past the tab's own corner and read as an arrow leaving rather than
 as a mark on it. The room they hang into is `#tabs`' own padding, given back by an equal

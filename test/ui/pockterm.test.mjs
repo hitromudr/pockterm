@@ -2012,18 +2012,25 @@ describe('a tab says what its session is doing', () => {
         return { content: s.content, background: s.backgroundColor, clip: s.clipPath };
       };
       const s = getComputedStyle(box);
+      const bg = box.getBoundingClientRect();
+      const tab = b.getBoundingClientRect();
       return {
         position: s.position,
-        right: s.right,
-        bottom: s.bottom,
-        room: parseFloat(getComputedStyle(b).paddingRight),
+        offCentre: Math.abs((bg.left + bg.width / 2) - (tab.left + tab.width / 2)),
+        below: bg.bottom - tab.bottom,
+        height: bg.height,
         shell: of('::before'),
         monitor: of('::after'),
       };
     });
     assert.equal(plates.position, 'absolute', 'the badges are in the text flow');
-    assert.ok(parseFloat(plates.right) < 6 && parseFloat(plates.bottom) < 6,
-      `the badges are not in the bottom-right corner: ${JSON.stringify(plates)}`);
+    // Centred on the tab's bottom border and hanging about a third of themselves
+    // under it: the corner is where the name ends, and plates there either ate
+    // its width or hung over the tab beside them.
+    assert.ok(plates.offCentre <= 2,
+      `the badges are not centred on the tab: ${JSON.stringify(plates)}`);
+    assert.ok(plates.below > 2 && plates.below < plates.height * 0.5,
+      `the badges do not hang a third under the edge: ${JSON.stringify(plates)}`);
     // Each says its own count and nothing else: at this size a glyph in front of
     // the number was the smudge the single plate used to be defended with.
     assert.match(plates.shell.content, /^"?1"?$/, `the shell plate says ${plates.shell.content}`);
@@ -2038,9 +2045,6 @@ describe('a tab says what its session is doing', () => {
     // Shields, and the point at the bottom is what makes them ones.
     assert.ok(/^polygon\(/.test(plates.shell.clip), `not a shield: ${plates.shell.clip}`);
     assert.ok(/^polygon\(/.test(plates.monitor.clip), `not a shield: ${plates.monitor.clip}`);
-    // Room for the column, or the name runs under it and loses its last letters.
-    // One plate's width and not two: they are stacked, which is what that buys.
-    assert.ok(plates.room >= 20, `no room reserved for the plates: ${plates.room}`);
 
     // And it goes away when the bottom of the pane stops claiming it: a badge
     // that only ever appeared would say "something is running" about every

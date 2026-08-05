@@ -114,8 +114,8 @@ html, body {
   padding-top: 8px;
   margin-top: -8px;
   /* And the same again below, for the shield hung past the bottom edge. */
-  padding-bottom: 9px;
-  margin-bottom: -9px;
+  padding-bottom: 7px;
+  margin-bottom: -7px;
 }
 /* A tab carries three answers, and they are three different questions: which
    sessions exist, which one you are in, and what each is doing. So the frame is
@@ -288,15 +288,15 @@ html, body {
    margin. Exactly the trick the question's ! already uses at the top, now at
    the bottom as well: without it a taller strip would move ☰ down, and the
    drawer's ❮ is measured against it. */
-#tabs button[data-bg] { padding-right: 24px; }
 #tabs .bg {
-  right: 2px;
-  top: 0;
+  left: 50%;
   bottom: 0;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 0;
+  gap: 3px;
+  /* Centred on the bottom border and sitting a third of itself below it. Not in
+     a corner: the corner is where the name ends, and the plates were either
+     eating its width or hanging over the tab beside them. The middle of that
+     edge belongs to nothing else. */
+  transform: translate(-50%, 33%);
 }
 #tabs .bg::before, #tabs .bg::after {
   min-width: 14px;
@@ -305,8 +305,8 @@ html, body {
 }
 /* The padding is where each shape's own point goes: to the right for the
    triangle, down for the shield. The transform is the overhang. */
-#tabs .bg::before { min-width: 15px; padding: 2px 7px 2px 2px; transform: translateY(-46%); }
-#tabs .bg::after { padding: 1px 2px 4px; transform: translateY(46%); }
+#tabs .bg::before { min-width: 15px; padding: 2px 7px 2px 2px; }
+#tabs .bg::after { padding: 1px 2px 4px; }
 /* Which button started the session, in that button's own glyph — ▸ shell,
    ✦ claude, ⚡ yolo, ↻ continue, ★ or its own lead for one the owner added.
 
