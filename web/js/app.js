@@ -11,6 +11,7 @@ import { staleNotice } from './update.js';
 import { endingKeys } from './ender.js';
 import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, MARKS, CUSTOM_MARK } from './kinds.js';
 import { dropIndex } from './carry.js';
+import { installDecision, installText, isIOS } from './install.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -2220,23 +2221,89 @@ renderBars();
 // Ctrl+W/T/N keys ever reach the shell. Chrome hands over its own prompt and
 // only once, so the button appears when the offer arrives and disappears
 // after it is used.
+// The button in the drawer stays — it is where you go to install after waving
+// the bar away — but the bar is what makes the offer findable. Two taps deep in
+// a screen nobody opens on a first visit is not an offer.
 const installBtn = document.getElementById('install');
+const installBarEl = document.getElementById('install-bar');
+const installTextEl = document.getElementById('install-text');
+const installDoBtn = document.getElementById('install-do');
 let installPrompt = null;
+let installDismissed = false;
+try { installDismissed = localStorage.getItem('pt-install-dismissed') === 'yes'; } catch (_) {}
+
+function installState() {
+  return installDecision({
+    native: !!window.PockNative,
+    // Both, because the two platforms answer in different places: Chrome opens
+    // the installed app in a standalone display mode, Safari sets a flag.
+    standalone: !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || navigator.standalone === true,
+    prompt: !!installPrompt,
+    ios: isIOS(navigator.userAgent || '', navigator.maxTouchPoints || 0),
+    dismissed: installDismissed,
+  });
+}
+
+let installOffered = '';
+function renderInstall() {
+  const state = installState();
+  const text = installText(state);
+  installBtn.hidden = !installPrompt;
+  if (!text) {
+    installBarEl.hidden = true;
+    return;
+  }
+  installTextEl.textContent = text.body;
+  installDoBtn.hidden = !text.action;
+  if (text.action) installDoBtn.textContent = text.action;
+  installBarEl.hidden = false;
+  // Reported once per kind of offer, not once per render: the bar is redrawn
+  // whenever the page reconsiders, and a counter that moves on redraw says
+  // nothing about how often the offer is seen.
+  if (installOffered === state) return;
+  installOffered = state;
+  report('install-offer', { how: state });
+}
+
 window.addEventListener('beforeinstallprompt', (e) => {
+  // Chrome would otherwise show its own mini-infobar, which is easy to miss and
+  // impossible to bring back; this page asks in its own words instead.
   e.preventDefault();
   installPrompt = e;
-  installBtn.hidden = false;
-  report('install-offer', {});
+  renderInstall();
 });
-installBtn.addEventListener('click', async () => {
+
+async function takeInstall() {
   if (!installPrompt) return;
   installPrompt.prompt();
   const { outcome } = await installPrompt.userChoice.catch(() => ({ outcome: 'error' }));
   report('install-choice', { outcome });
   installPrompt = null;
-  installBtn.hidden = true;
+  renderInstall();
+}
+installBtn.addEventListener('click', takeInstall);
+installDoBtn.addEventListener('click', takeInstall);
+
+// "Later" is remembered, because a bar that comes back on every load is a bar
+// that gets ignored — and then the update bar in the same place gets ignored
+// with it. A one-tap install offer still returns: see installDecision.
+document.getElementById('install-close').addEventListener('click', () => {
+  installDismissed = true;
+  try { localStorage.setItem('pt-install-dismissed', 'yes'); } catch (_) {}
+  report('install-dismissed', {});
+  renderInstall();
 });
-window.addEventListener('appinstalled', () => report('installed', {}));
+
+window.addEventListener('appinstalled', () => {
+  report('installed', {});
+  installPrompt = null;
+  renderInstall();
+});
+
+// Drawn once at load: on iOS nothing will ever fire an event, so a page that
+// only reacted to one would never say anything there.
+renderInstall();
 
 // Text size, notifications, the keyboard mode and the smooth lever are settings,
 // not controls — they live at the bottom of the drawer now (see #settings in

@@ -34,6 +34,18 @@
       <button id="new" title="New session">&plus;</button>
       <button id="refresh" title="Refresh">&#8635;</button>
     </header>
+    <!-- The install offer, on the screen a scanned link lands on.
+         It used to be only the button at the bottom of this drawer's settings
+         (#install below): the browser hands over its prompt, the button appears
+         two taps deep, and a first visit closes the tab without ever seeing it
+         — reported as "по QR ничего не установилось". In the flow rather than
+         over it: this screen is a list, and a bar floating over a list covers
+         the row somebody is reaching for. -->
+    <div id="install-bar" hidden>
+      <span id="install-text"></span>
+      <button id="install-do" type="button" hidden>Установить</button>
+      <button id="install-close" type="button" title="Позже">&#10005;</button>
+    </div>
     <div id="new-menu" hidden>
       <!-- Which folder the preset will start in. Written by the page: the same
            four buttons serve the plain + (the projects root) and a folder that

@@ -787,6 +787,40 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   font-size: 13px;
 }
 
+/* The install offer, under the drawer's header. In the flow and not over it:
+   the screen it sits on is a list, and a bar floating above a list covers the
+   row being reached for — the same trap that caught #update-bar and the preset
+   menu. No z-index either, for the same reason. */
+#install-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1e2f4a;
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.4;
+}
+#install-bar #install-text { flex: 1; }
+#install-bar button {
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #0b0e14;
+  font-size: 13px;
+}
+/* The dismissal is not the action: a close that looks like the button next to
+   it gets pressed by mistake, and the mistake here is losing the offer. */
+#install-bar #install-close {
+  border-color: #3a465e;
+  background: transparent;
+  color: var(--fg);
+  padding: 4px 8px;
+}
+
 /* Overlay too, for the same reason as #status: a toast must never resize
    the terminal. Short-lived feedback for copy/paste, which is otherwise
    invisible — the whole point is knowing what landed in the clipboard. */
