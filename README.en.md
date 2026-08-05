@@ -231,6 +231,16 @@ target while keeping its id — and with it the mark on every tab it has already
 `claude --model opus` is still `✦`. A removed button the server refuses to start,
 since otherwise removing one would only have hidden it.
 
+**A button may name a make target rather than carry a command.** Type `make
+cont-yolo` in the command field and that is the target it runs, exactly as `make
+claude` is for a default — which is what the rows show anyway. It exists because a
+Makefile has targets the four do not cover, and `make cont-yolo` as a *command* runs
+make inside the session the button just created: a second session appears beside it
+and the first one dies. A target name is a narrower thing to allow than a command:
+letters, digits and dashes, no arguments and no path. The target is one in **your**
+Makefile, at the same trust as the four; an unknown one is refused by make itself and
+the message reaches the drawer.
+
 **"↻ Сбросить к умолчанию"** restores the four and leaves yours alone: the four are a
 default and `qwen` typed on a phone is not. Two taps, like every removal here, because
 it does undo renames and commands.
@@ -265,6 +275,11 @@ text size, notifications, `〰 smooth`, the keyboard mode, the input log, the ve
 and Install. Moved rather than copied: two places holding one lever drift apart. The
 `▾` that hides the bars stayed on the key bar, being an action on the working
 surface rather than a setting.
+
+The Settings panel also closes on a **swipe down** inside it: it opens upward from
+the row at the bottom of the drawer, so pulling it back down says the same thing as
+tapping that row. Only from the top of the panel, since it scrolls under the same
+finger and taking that away from a list of buttons would be worse than one more tap.
 
 Whether the Settings panel is open is **remembered**: closing the drawer collapses
 it without answering for you, so it comes back the way it was left — on the next

@@ -540,6 +540,14 @@ buttons cannot push the toggle off screen. `closeDrawer` collapses it for the sa
 reason it closes the rename field: leaving it open would have it waiting behind a
 closed drawer.
 
+**A pull down inside the panel closes it**, because that is where the panel goes:
+it opens upward from the row at the bottom of the drawer, so dragging it back down
+says the same thing as tapping that row — and it is what a hand tries first. It
+counts only from the top of the panel (`scrollTop <= 0`) and only when the drag is
+mostly vertical: the panel scrolls under the same finger, and a list of buttons that
+collapsed while being scrolled would be worse than one more tap. It goes through
+`showSettings`, so it is remembered as the owner's answer.
+
 **Collapsing it is not the same as closing it, and for one version it was.** Open
 or closed is remembered (`pt-settings-open`) because for anyone who keeps the text
 size or the keyboard mode within reach it is a preference, not a state — and the
@@ -629,6 +637,18 @@ Both menus are written from the list (`renderCustom`), and opening one waits for
 open an empty popup, which reads as "nothing can be started". On a host with no store
 at all (404) the page falls back to `DEFAULT_BUTTONS`: not a second source of truth,
 since there is no list there to disagree with.
+
+**A button may name a make target instead of carrying a command.** The four are
+targets; a Makefile has others that they do not cover — the author's own has
+`cont-yolo` — and reaching one from a phone meant typing `make cont-yolo` into the
+command field. That runs make *inside* the session the button just created: a second
+session appears beside it and the first one dies. So `make <target>` in that field
+now means that target (`asMake`, `Custom.Target`), which is also what the rows
+already show for the defaults — one vocabulary, and the thing to type is the thing
+on screen. `targetOK` is a narrower gate than `cmdOK`: a name, no arguments, no
+path, nothing that reaches a shell. The target is the owner's own Makefile's, at the
+same trust as the four, and make answers an unknown one with its own message which
+the drawer shows as text.
 
 **A button can be changed, and that is what the id was for.** `✎` on a row loads it
 into the two fields the form already has and `Добавить` becomes `Сохранить`; the row

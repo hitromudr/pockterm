@@ -169,6 +169,11 @@ export async function startStand({
     'custom:',
     `\t@test -n "$(CMD)" || { echo "usage: make custom CMD='qwen'"; exit 2; }`,
     ...spawnLine('custom', `'echo ran: $(CMD); exec cat'`, 'custom'),
+    // A target the four do not cover, which is the case a button naming a target
+    // exists for: the author's own Makefile has `cont-yolo`, and until buttons
+    // could name a target there was no way to reach it from a phone.
+    'cont-yolo:',
+    ...spawnLine('cont', `'echo ran: the cont-yolo target; exec cat'`, 'custom'),
     '',
   ].join('\n'));
   env.POCKTERM_SESSION_DIR = dir;

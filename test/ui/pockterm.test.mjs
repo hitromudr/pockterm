@@ -302,6 +302,37 @@ describe('the session list is a drawer', () => {
     assert.equal(d.termHidden, true, 'an empty terminal is sitting under the drawer');
   });
 
+  test('a pull down inside the settings closes them', async () => {
+    // The panel opens upward from the row at the bottom of the drawer, so pulling
+    // it back down is the same statement as tapping that row — and on a phone it is
+    // the gesture the hand tries first. It must not take the panel's own scrolling
+    // away, which is why it only counts from the top of it.
+    const { page } = stand;
+    await stand.open();
+    await stand.attach('demo');
+    await stand.openSettings();
+    const cdp = await page.context().newCDPSession(page);
+    const box = await page.locator('#settings').boundingBox();
+    let x = Math.round(box.x + box.width / 2);
+    let y = Math.round(box.y + 20);
+    await page.evaluate(() => { document.getElementById('settings').scrollTop = 0; });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let i = 0; i < 8; i++) {
+      y += 12;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+    await page.waitForFunction(() => document.getElementById('settings').hidden, null, { timeout: 3000 });
+    // The drawer itself stays: this closed a panel, not the list.
+    assert.equal(
+      await page.evaluate(() => document.getElementById('screen-sessions').classList.contains('open')),
+      true, 'the pull-down took the drawer with it');
+    // And it is an answer, not the collapsing a closing drawer does: the panel
+    // stays closed on the next visit.
+    assert.equal(await page.evaluate(() => localStorage.getItem('pt-settings-open')), '0');
+  });
+
   test('the settings panel comes back the way it was left', async () => {
     // Closing the drawer collapses it, and that used to be the same act as
     // answering "closed": whoever keeps the text size and the keyboard mode
@@ -557,6 +588,46 @@ describe("the owner's own session buttons", () => {
     assert.equal(stand.tmux(['show-options', '-v', '-t', name, '@pockterm-kind']).trim(), 'yolo');
   });
 
+  test('a button can name a make target instead of carrying a command', async () => {
+    // A Makefile has targets the four do not cover — the author's own has
+    // `cont-yolo` — and reaching one from a phone meant typing `make cont-yolo` as
+    // a command. That runs make *inside* the session the button just made: a second
+    // session appears beside it and the first one dies. So the same words mean the
+    // target now, which is also what the rows already show for the defaults.
+    await stand.open();
+    const { page } = stand;
+    await stand.openSettings();
+    await page.fill('#custom-label', 'Cont yolo');
+    await page.fill('#custom-cmd', 'make cont-yolo');
+    await page.click('#custom-add');
+    await page.waitForSelector('#custom-list li:has-text("Cont yolo")');
+    const row = page.locator('#custom-list li:has-text("Cont yolo")');
+    assert.match(await row.textContent(), /make cont-yolo/, 'the row does not say what it runs');
+
+    // It starts through that target, with no CMD in sight.
+    await stand.shutDrawer();
+    await stand.openDrawer();
+    const before = await page.locator('#session-list li').count();
+    await page.click('#new');
+    await page.click('#new-menu button[data-preset^="custom:"]:has-text("Cont yolo")');
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#session-list li').length > n, before, { timeout: 8000 });
+    const name = (await page.locator('#session-list li').last().locator('.name').textContent()).trim();
+    let pane = '';
+    for (let i = 0; i < 20 && !pane.includes('ran:'); i++) {
+      pane = stand.tmux(['capture-pane', '-p', '-t', name]);
+      if (!pane.includes('ran:')) await page.waitForTimeout(200);
+    }
+    assert.match(pane, /ran: the cont-yolo target/, `the target did not run: ${pane}`);
+
+    // And editing puts back what was typed, or renaming the button would leave one
+    // that runs nothing.
+    await stand.openSettings();
+    await page.click('#custom-list li:has-text("Cont yolo") button.rename');
+    assert.equal(await page.inputValue('#custom-cmd'), 'make cont-yolo');
+    await page.click('#custom-list li:has-text("Cont yolo") button.rename');
+  });
+
   test('a default can be removed, and the reset brings it back alone', async () => {
     await stand.open();
     const { page } = stand;
@@ -603,7 +674,9 @@ describe("the owner's own session buttons", () => {
     }, null, { timeout: 10000 });
     await stand.openSettings();
     await page.waitForSelector('#custom-list li:has-text("Квен")');
-    assert.equal(await page.locator('#new-menu button[data-preset^="custom:"]').count(), 1);
+    // Its entry under +, by the button rather than by the count: the owner's own
+    // buttons are however many were added by the tests before this one.
+    assert.equal(await page.locator('#new-menu button[data-preset^="custom:"]:has-text("Квен")').count(), 1);
 
     // Removing takes two taps, the same as closing a session: one tap was enough
     // for a while, and a stray touch took a button away with nothing asked. The
@@ -616,12 +689,12 @@ describe("the owner's own session buttons", () => {
     assert.ok(await del.evaluate((b) => b.classList.contains('armed')));
 
     // And the second one takes it out of the menu as well, because it is one list.
-    // What is left is the four defaults: removing a button of the owner's own is
-    // not a reset.
+    // Only that one: removing a button of the owner's own is not a reset, and the
+    // defaults are not touched either.
     await del.click();
     await page.waitForFunction(
       (n) => document.querySelectorAll('#custom-list li').length === n - 1, rows, { timeout: 5000 });
-    assert.equal(await page.locator('#new-menu button[data-preset^="custom:"]').count(), 0);
+    assert.equal(await page.locator('#new-menu button[data-preset^="custom:"]:has-text("Квен")').count(), 0);
     assert.equal(await page.locator('#new-menu button[data-preset="claude"]').count(), 1);
   });
 });

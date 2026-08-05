@@ -19,7 +19,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v110';
+const APP_VERSION = 'v111';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -506,8 +506,9 @@ function renderCustom() {
     const li = document.createElement('li');
     // What a default runs is its own make target, and that is worth showing: the
     // command field being empty is not the same as the button doing nothing, and
-    // on a phone there is nowhere else to find out which.
-    const runs = c.cmd ? c.cmd : `make ${c.id}`;
+    // on a phone there is nowhere else to find out which. A button that names a
+    // target reads the same way, which is also how it is typed.
+    const runs = c.cmd || `make ${c.target || c.id}`;
     li.innerHTML = `<span class="name">${escapeHtml(markOf(c))} ${escapeHtml(labelBody(c.label))}</span>` +
       `<code>${escapeHtml(runs)}</code>`;
     if (c.id === editingID) li.classList.add('editing');
@@ -642,7 +643,10 @@ const CMD_PLACEHOLDER = customCmd.placeholder;
 function startEdit(c) {
   editingID = c.id;
   customLabel.value = c.label;
-  customCmd.value = c.cmd || '';
+  // Back into the field as it was typed: a target came in as `make <target>` and
+  // has to go back out that way, or editing the label would turn the button into
+  // one that runs nothing.
+  customCmd.value = c.cmd || (c.target ? `make ${c.target}` : '');
   customCmd.placeholder = builtinId(c.id) ? `пусто — цель make ${c.id}` : CMD_PLACEHOLDER;
   note('');
   renderCustom();
@@ -672,9 +676,12 @@ customAdd.addEventListener('click', async () => {
   // The whole list travels either way — the host replaces it and answers with
   // what it now has. Editing differs only in that the entry keeps its id and its
   // place in the row.
+  // `make <target>` in this field means that target, and the host is what reads it
+  // — the page sends what was typed. The old target is cleared with it: a button
+  // whose command was rewritten must not keep a target it no longer names.
   const list = editingID === null
     ? [...customButtons, { label, cmd }]
-    : customButtons.map((c) => (c.id === editingID ? { ...c, label, cmd } : c));
+    : customButtons.map((c) => (c.id === editingID ? { ...c, label, cmd, target: '' } : c));
   if (await saveCustom(list)) {
     editingID = null;
     customAdd.textContent = 'Добавить';
@@ -809,18 +816,35 @@ drawerCloseBtn.addEventListener('click', closeDrawer);
 // session attached the drawer is modal — closeDrawer refuses then, which is the
 // same refusal ✕ and the scrim get.
 const DRAWER_SWIPE = 45; // px of leftward travel that means "away"
+// And downward inside the settings, which is where that panel goes: it opens
+// upward from the row at the bottom, so pulling it back down is the same
+// statement as tapping the row again. A separate threshold from the drawer's
+// because it competes with a different thing — the panel's own scrolling.
+const SETTINGS_SWIPE = 45;
 let drawerTouch = null;
 screenSessions.addEventListener('touchstart', (e) => {
   drawerTouch = null;
   if (e.touches.length !== 1) return;
   const t = e.touches[0];
   if (t.target instanceof Element && t.target.closest('input, textarea')) return;
-  drawerTouch = { x: t.clientX, y: t.clientY };
+  // Whether the finger came down inside the settings, and whether that panel was
+  // at its top when it did. A pull-down anywhere else in it is a scroll, and
+  // taking a scroll away from a list of buttons would be worse than one more tap.
+  const inSettings = t.target instanceof Element && !settingsEl.hidden
+    && settingsEl.contains(t.target) && settingsEl.scrollTop <= 0;
+  drawerTouch = { x: t.clientX, y: t.clientY, inSettings };
 }, { passive: true });
 screenSessions.addEventListener('touchmove', (e) => {
   if (!drawerTouch || e.touches.length !== 1) return;
   const dx = e.touches[0].clientX - drawerTouch.x;
   const dy = e.touches[0].clientY - drawerTouch.y;
+  if (drawerTouch.inSettings && dy > SETTINGS_SWIPE && Math.abs(dy) > Math.abs(dx)) {
+    drawerTouch = null;
+    // The owner's answer, so it is remembered as one: the same act as the toggle,
+    // not the collapsing a closing drawer does.
+    showSettings(false);
+    return;
+  }
   if (dx > -DRAWER_SWIPE || Math.abs(dx) <= Math.abs(dy)) return;
   drawerTouch = null;
   closeDrawer();

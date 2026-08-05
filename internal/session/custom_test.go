@@ -282,3 +282,53 @@ func TestRemovingEveryButtonIsAnAnswer(t *testing.T) {
 		t.Fatalf("the defaults came back on their own: %+v", got)
 	}
 }
+
+func TestAButtonMayNameAMakeTarget(t *testing.T) {
+	// A Makefile has targets the four do not cover — the author's own has
+	// `cont-yolo`. Reaching one from a phone meant typing `make cont-yolo` as a
+	// command, which runs make inside the session the button just created: a second
+	// session appears beside it and the first one dies.
+	c, err := ValidCustom(Custom{ID: "b2", Label: "Cont yolo", Cmd: "make cont-yolo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Target != "cont-yolo" || c.Cmd != "" {
+		t.Fatalf("`make cont-yolo` = %+v", c)
+	}
+
+	b := LoadButtons("")
+	if _, err := b.Set([]Custom{{ID: "b2", Label: "Cont yolo", Target: "cont-yolo"}}); err != nil {
+		t.Fatal(err)
+	}
+	target, cmd, err := b.Resolve("custom:b2")
+	if err != nil || target != "cont-yolo" || cmd != "" {
+		t.Fatalf("Resolve = %q, %q, %v", target, cmd, err)
+	}
+}
+
+func TestOnlyAMakeTargetLooksLikeOne(t *testing.T) {
+	// Everything else stays a command, because that is what it is: the shape has to
+	// be exactly `make <one target>`, or `make -C /elsewhere all` would pass as a
+	// target and reach a command line as one.
+	for _, cmd := range []string{"make", "make -C /elsewhere all", "make two targets", "makefile", "make Cap"} {
+		c, err := ValidCustom(Custom{ID: "b1", Label: "x", Cmd: cmd})
+		if err != nil {
+			continue // refused as a command, which is also an answer
+		}
+		if c.Target != "" {
+			t.Errorf("%q was read as the target %q", cmd, c.Target)
+		}
+	}
+}
+
+func TestATargetIsNotACommandAndNotBoth(t *testing.T) {
+	if _, err := ValidCustom(Custom{ID: "b1", Label: "x", Cmd: "qwen", Target: "yolo"}); err == nil {
+		t.Fatal("a button carrying both was accepted")
+	}
+	if _, err := ValidCustom(Custom{ID: "b1", Label: "x", Target: "rm -rf /"}); err == nil {
+		t.Fatal("a target with a space in it was accepted")
+	}
+	if _, err := ValidCustom(Custom{ID: "b1", Label: "x", Target: "$(shell id)"}); err == nil {
+		t.Fatal("a target that could reach a shell was accepted")
+	}
+}

@@ -27,6 +27,18 @@ type Custom struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 	Cmd   string `json:"cmd"`
+	// Target is a make target of its own, for a button that names one instead of
+	// carrying a command. Written as `make <target>` in the same field the command
+	// goes in — which is what the drawer already shows for the four defaults, so
+	// there is one vocabulary rather than a second input nobody would find.
+	//
+	// It exists because a Makefile has targets the four do not cover: the author's
+	// own has `cont-yolo`, and reaching it from a phone meant typing `make
+	// cont-yolo` as a *command*, which runs make inside the session the button
+	// just made — it creates a second session beside it and leaves the first to
+	// die. A target is also a narrower thing to allow than a command: a name, and
+	// nothing that can reach a shell.
+	Target string `json:"target,omitempty"`
 }
 
 // CustomTarget is the make target a custom button runs. It takes the command in
@@ -102,10 +114,45 @@ const (
 // costs nothing.
 var cmdOK = regexp.MustCompile(`^[A-Za-z0-9/.][A-Za-z0-9 _\-./=:,@+]*$`)
 
+// A make target: what the Makefile's own targets look like, and nothing else. The
+// value reaches a make command line, so this is the same kind of gate as cmdOK —
+// a narrower one, since a target has no arguments and no path.
+var targetOK = regexp.MustCompile(`^[a-z][a-z0-9-]{0,23}$`)
+
+// asMake reads `make <target>` and answers the target, or "" for anything else.
+// One space, one word: `make -C /elsewhere all` is not a target, and neither is
+// `make` on its own.
+func asMake(v string) string {
+	rest, ok := strings.CutPrefix(v, "make ")
+	if !ok {
+		return ""
+	}
+	rest = strings.TrimSpace(rest)
+	if !targetOK.MatchString(rest) {
+		return ""
+	}
+	return rest
+}
+
 // ValidCustom checks one button and returns it with the label trimmed.
 func ValidCustom(c Custom) (Custom, error) {
 	c.Label = strings.TrimSpace(c.Label)
 	c.Cmd = strings.TrimSpace(c.Cmd)
+	c.Target = strings.TrimSpace(c.Target)
+	// `make <target>` in the command field is a target and not a command. Read
+	// here rather than in the page so a hand-edited file means the same thing, and
+	// so the two cannot drift into different ideas of what was typed.
+	if t := asMake(c.Cmd); t != "" {
+		c.Target, c.Cmd = t, ""
+	}
+	if c.Target != "" {
+		if c.Cmd != "" {
+			return c, fmt.Errorf("a button runs a command or a make target, not both")
+		}
+		if !targetOK.MatchString(c.Target) {
+			return c, fmt.Errorf("a make target is lower-case letters, digits and dashes")
+		}
+	}
 	if c.Label == "" {
 		return c, fmt.Errorf("a button needs a label")
 	}
@@ -120,13 +167,13 @@ func ValidCustom(c Custom) (Custom, error) {
 		}
 	}
 	if c.Cmd == "" {
-		// One kind of button may have no command: a built-in, whose id is a make
-		// target of its own. Everything else without one would be a button that
-		// starts nothing.
-		if c.Builtin() {
+		// Two kinds of button have no command: a built-in, whose id is a make
+		// target of its own, and one that names a target outright. Everything else
+		// without one would be a button that starts nothing.
+		if c.Builtin() || c.Target != "" {
 			return c, nil
 		}
-		return c, fmt.Errorf("a button needs a command")
+		return c, fmt.Errorf("a button needs a command, or `make <target>`")
 	}
 	if len(c.Cmd) > maxCmd {
 		return c, fmt.Errorf("a command is at most %d characters", maxCmd)
@@ -331,6 +378,12 @@ func (b *Buttons) Resolve(preset string) (target, cmd string, err error) {
 	c, ok := b.Find(id)
 	if !ok {
 		return "", "", fmt.Errorf("no such button")
+	}
+	if c.Target != "" {
+		// A target of the owner's own choosing, in the owner's own Makefile. The
+		// same trust as the four — those are targets too — and a narrower value
+		// than a command.
+		return c.Target, "", nil
 	}
 	if c.Cmd != "" {
 		return CustomTarget, c.Cmd, nil
