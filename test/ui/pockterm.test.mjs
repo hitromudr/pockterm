@@ -2029,8 +2029,8 @@ describe('a tab says what its session is doing', () => {
     // its width or hung over the tab beside them.
     assert.ok(plates.offCentre <= 2,
       `the badges are not centred on the tab: ${JSON.stringify(plates)}`);
-    assert.ok(plates.below > 2 && plates.below < plates.height * 0.5,
-      `the badges do not hang a third under the edge: ${JSON.stringify(plates)}`);
+    assert.ok(plates.below >= plates.height * 0.4 && plates.below <= plates.height * 0.6,
+      `the badges do not hang half under the edge: ${JSON.stringify(plates)}`);
     // Each says its own count and nothing else: at this size a glyph in front of
     // the number was the smudge the single plate used to be defended with.
     assert.match(plates.shell.content, /^"?1"?$/, `the shell plate says ${plates.shell.content}`);

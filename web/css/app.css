@@ -114,8 +114,8 @@ html, body {
   padding-top: 8px;
   margin-top: -8px;
   /* And the same again below, for the shield hung past the bottom edge. */
-  padding-bottom: 7px;
-  margin-bottom: -7px;
+  padding-bottom: 9px;
+  margin-bottom: -9px;
 }
 /* A tab carries three answers, and they are three different questions: which
    sessions exist, which one you are in, and what each is doing. So the frame is
@@ -292,11 +292,12 @@ html, body {
   left: 50%;
   bottom: 0;
   gap: 3px;
-  /* Centred on the bottom border and sitting a third of itself below it. Not in
-     a corner: the corner is where the name ends, and the plates were either
-     eating its width or hanging over the tab beside them. The middle of that
-     edge belongs to nothing else. */
-  transform: translate(-50%, 33%);
+  /* Centred on the bottom border and half of itself below it. Not in a corner:
+     the corner is where the name ends, and the plates were either eating its
+     width or hanging over the tab beside them. The middle of that edge belongs
+     to nothing else, and half out is what makes them read as hung on the line
+     rather than as sitting inside the tab. */
+  transform: translate(-50%, 50%);
 }
 #tabs .bg::before, #tabs .bg::after {
   min-width: 14px;
