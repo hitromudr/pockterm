@@ -161,6 +161,94 @@ export function detectQuestion(lines) {
   return { prompt, options: best.opts, cursor: best.pointers.indexOf(true), navigate };
 }
 
+// An offer is not a menu, and until now the page could not tell the difference
+// because it refused to look.
+//
+// A TUI menu is drawn with chrome — a pointer, a box — and that chrome is the
+// whole defence against reading a numbered list in prose as something to press:
+// a digit sent to a program that has no menu goes into whatever it is doing. But
+// an agent that has finished its turn and written "Что делаем? 1. … 2. …" is
+// asking a question too, and answering it from the phone meant typing the digit
+// by hand into a field the thumb has to find first. Reported as the row of
+// buttons not being drawn for exactly that screen.
+//
+// What makes it safe is not the shape of the list but where it is and what
+// happens when it is pressed. Four things have to hold, and each one removes a
+// way to be wrong:
+//
+//   - the agent's own input box is on screen, empty. That is what the digit is
+//     typed into — not into a shell, not into a half-written message.
+//   - the list is inside the agent's last message (below the last `●`).
+//   - that message ends in a question. A list of what was *done* is not an
+//     offer, and the question mark is what the two do not share.
+//   - the numbers run 1,2,3… in order, at least two of them.
+//
+// It answers `digits`, because that is literally what it is: the button types
+// the number and presses Enter, which is what the owner would have done.
+const AGENT_SAID = /^\s*●\s+\S/;
+const TURN_SUMMARY = /^\s*[✻✽✳✢✶*]\s+\w+\s+for\s+/;
+
+export function detectOffer(lines) {
+  const plain = lines.map(stripAnsi);
+  // The input box, and nothing typed into it: the lowest one, since the
+  // transcript above can hold the prompts of messages already sent.
+  let box = -1;
+  for (let i = plain.length - 1; i >= 0; i--) {
+    if (!COMPOSER.test(plain[i])) continue;
+    if (plain[i].replace(COMPOSER, '').trim() !== '') return null;
+    box = i;
+    break;
+  }
+  if (box < 0) return null;
+
+  // The agent's last message: from its ● down to the box.
+  let said = -1;
+  for (let i = box - 1; i >= 0; i--) {
+    if (AGENT_SAID.test(plain[i])) { said = i; break; }
+  }
+  if (said < 0) return null;
+  const block = plain.slice(said, box);
+
+  // It has to end in a question. The turn summary ("✻ Cooked for 19s") and the
+  // rule above the box are chrome, not the last word.
+  let asked = false;
+  for (let i = block.length - 1; i >= 0; i--) {
+    const t = boxGlyphs(block[i]);
+    if (!t || TURN_SUMMARY.test(block[i])) continue;
+    asked = t.endsWith('?');
+    break;
+  }
+  if (!asked) return null;
+
+  // The lowest run of 1,2,3… in it. A line that is not an option continues the
+  // one above — in prose a wrapped line sits at the margin, so the indentation
+  // rule a real menu is read by has nothing to say here.
+  let best = null;
+  let run = null;
+  for (let i = 0; i < block.length; i++) {
+    const m = OPTION.exec(block[i]);
+    if (!m) continue;
+    if (run && m[2] === String(run.opts.length + 1)) {
+      run.opts.push({ key: m[2], label: label(m[3]) });
+      continue;
+    }
+    if (run && run.opts.length >= 2) best = run;
+    run = m[2] === '1' ? { start: i, opts: [{ key: '1', label: label(m[3]) }] } : null;
+  }
+  if (run && run.opts.length >= 2) best = run;
+  if (!best) return null;
+
+  const prompt = label(boxGlyphs(block[0]).replace(/^●\s*/, ''));
+  return { prompt, options: best.opts, cursor: -1, navigate: 'digits', offer: true };
+}
+
+// detectPrompt is the one question the page asks the screen: is there something
+// here to answer? A real menu first — it is the stricter reading and the one
+// that can be driven with arrows — and an offer only when there is no menu.
+export function detectPrompt(lines) {
+  return detectQuestion(lines) || detectOffer(lines);
+}
+
 // answerKeys(menu, want) → { move, commit }: the bytes that walk to the option
 // at index `want`, and the bytes that take it. Null when there is no way to pick
 // it that can be trusted.

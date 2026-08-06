@@ -1,5 +1,5 @@
 import { keyBytes } from './keys.js';
-import { detectQuestion, answerKeys } from './detect.js';
+import { detectPrompt, answerKeys } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from './notify.js';
 import { linkAction } from './link.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
@@ -22,7 +22,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v130';
+const APP_VERSION = 'v131';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3245,7 +3245,7 @@ async function pressAnswer(label, want) {
   // have arrived. A menu is painted a line at a time, so a row built before its
   // `Enter to select · ↑/↓ to navigate` footer landed carries digits, and digits
   // on that menu are answered by whatever is highlighted.
-  const menu = detectQuestion(visibleLines());
+  const menu = detectPrompt(visibleLines());
   const option = menu && menu.options[want];
   if (!option || option.label !== label) {
     report('answer', { want, gone: true, label });
@@ -3264,7 +3264,7 @@ async function pressAnswer(label, want) {
   let cursor = -1;
   while (Date.now() < until) {
     await new Promise((r) => setTimeout(r, POINTER_POLL));
-    const now = detectQuestion(visibleLines());
+    const now = detectPrompt(visibleLines());
     cursor = now ? now.cursor : -1;
     if (cursor === want) break;
   }
@@ -3279,7 +3279,7 @@ async function pressAnswer(label, want) {
 let lastAnswersSig = null;
 function renderAnswers() {
   const lines = visibleLines();
-  const q = scrolledBack ? null : detectQuestion(lines);
+  const q = scrolledBack ? null : detectPrompt(lines);
   // Only rebuild when the detected prompt actually changed; otherwise the
   // buttons flicker (and detach mid-tap) on every terminal update.
   //

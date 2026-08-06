@@ -435,6 +435,31 @@ defect can take here — a wrong answer looks exactly like the right one until y
 read what it did. It also only became reachable when the fix below made those menus
 detectable at all.
 
+**An offer is not a menu, and the page now reads both.** A TUI menu carries
+chrome — a pointer, a box — and that chrome is the whole defence against reading
+a numbered list in prose as something to press. But an agent that has finished
+its turn and written "Что делаем? 1. … 2. …" is asking a question too, and
+answering it from the phone meant finding the field with a thumb and typing the
+digit by hand. Reported as the row of buttons not being drawn for exactly that
+screen.
+
+What makes it safe is not the shape of the list but where it is and what pressing
+it does. `detectOffer` requires four things, and each removes a way to be wrong:
+the agent's own input box is on screen and **empty** — that is what the digit is
+typed into, not a shell and not a half-written message; the list is inside the
+agent's last message (below the last `●`); that message **ends in a question**,
+because a list of what was done is not an offer and the question mark is what the
+two do not share; and the numbers run 1,2,3… in order, at least two of them. The
+button then types the number and presses Enter, which is what the owner would
+have done.
+
+`detectPrompt` asks the strict question first: a real menu can be driven with
+arrows and knows where its pointer is, an offer knows neither. And this lives on
+the page alone — `internal/detect` does not read offers, so the tab's blue and
+the "asks for an answer" notice keep meaning a menu is on screen. An agent that
+ends every second answer with a numbered list would otherwise have a phone
+buzzing about its prose.
+
 **The row is drawn over the terminal, never beside it.** It used to sit in the
 terminal screen's own flex column, so drawing it shrank the terminal — nine rows
 of thirty-five, measured on the stand. tmux redrew the pane that much shorter, the

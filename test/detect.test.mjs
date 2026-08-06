@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { detectQuestion, answerKeys } from '../web/js/detect.js';
+import { detectQuestion, detectOffer, detectPrompt, answerKeys } from '../web/js/detect.js';
 
 // The cases are shared with the Go detector (internal/detect), which drives
 // the Telegram notifications: one screen, one verdict, in both languages.
@@ -106,4 +106,80 @@ test('the real screen that was answered wrongly', () => {
   assert.equal(q.cursor, 0);
   assert.deepEqual(answerKeys(q, 2), { move: DOWN + DOWN, commit: '\r' },
     'the third option is two rows down, and the Enter is a write of its own');
+});
+
+// --- an offer: the agent's own numbered list, with the box empty under it ---
+//
+// Captured off the phone: the agent finished its turn with "Что делаем?" over
+// two numbered paths, and the row of buttons was not drawn — a list in prose
+// carries no chrome, which is the rule that keeps a digit out of a program with
+// no menu. Here the digit goes into the agent's own input box, which is what the
+// owner would have typed.
+const OFFER = [
+  '● История на диске цела — потерян только контекст.',
+  '',
+  '  Два пути:',
+  '',
+  '  1. claude --resume и выбрать сессию d037ae16 —',
+  '  вернётся весь контекст целиком.',
+  '  2. Продолжить здесь: я вытащу из транскрипта',
+  '  цифры по токенам и посчитаю стоимость круга.',
+  '',
+  '  Что делаем?',
+  '✻ Churned for 1m 6s',
+  '───────────────────────────────────',
+  '❯\u00a0',
+  '───────────────────────────────────',
+  '  ctx 5% | dms@ai:~/work $ | Opus 5',
+];
+
+test('a numbered offer in the agent\'s answer is answerable', () => {
+  const q = detectOffer(OFFER);
+  assert.ok(q, 'the offer was not seen');
+  assert.equal(q.navigate, 'digits');
+  assert.equal(q.options.length, 2);
+  assert.equal(q.options[1].key, '2');
+  // Typed, not pressed: the digit and the Enter go together, into the box.
+  assert.deepEqual(answerKeys(q, 1), { move: '', commit: '2\r' });
+});
+
+test('a menu on screen outranks an offer above it', () => {
+  // detectPrompt asks the stricter question first: a real menu can be driven
+  // with arrows and knows where its pointer is, an offer knows neither.
+  const withMenu = OFFER.concat([
+    'Apply this change?',
+    '❯ 1. Yes',
+    '  2. No',
+  ]);
+  const q = detectPrompt(withMenu);
+  assert.equal(q.offer, undefined, 'the offer won over a real menu');
+  assert.deepEqual(q.options.map((o) => o.label), ['Yes', 'No']);
+});
+
+test('a list with something already typed is not an offer', () => {
+  // The digit would be appended to a half-written message and sent with it.
+  const typing = OFFER.slice(0, -3).concat([
+    '❯\u00a0а можно и так',
+    '───────────────────────────────────',
+    '  ctx 5% | dms@ai:~/work $ | Opus 5',
+  ]);
+  assert.equal(detectOffer(typing), null);
+});
+
+test('a list that answers nothing is not an offer', () => {
+  // What was done is not what could be done: the question mark is the whole
+  // difference, and a report of two steps must not grow buttons.
+  const report = OFFER.map((l) => (l.trim() === 'Что делаем?' ? '  Готово.' : l));
+  assert.equal(detectOffer(report), null);
+});
+
+test('a numbered list with no agent and no box is not an offer', () => {
+  // A shell printing a list is the case the chrome rule was written for: there
+  // is nothing here to type a digit into.
+  assert.equal(detectOffer([
+    'Вот что нужно сделать:',
+    '1. Прочитать файл',
+    '2. Добавить проверку',
+    '3. Покрыть тестом',
+  ]), null);
 });

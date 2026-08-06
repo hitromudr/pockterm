@@ -888,9 +888,15 @@ describe("the owner's own session buttons", () => {
     await page.click('#mark-grid button:has-text("🚀")');
     assert.match(await page.textContent('#custom-mark'), /⭐/);
     await page.click('#custom-add');
-    await page.waitForFunction(
-      () => !(document.querySelector('#custom-list li:has-text("Ракета")')?.textContent || '').includes('🚀'),
-      null, { timeout: 5000 }).catch(() => {});
+    // Waited for properly: `li:has-text(…)` is Playwright's own selector engine
+    // and not CSS, so inside the browser it threw — the wait rejected at once,
+    // the catch swallowed it, and the assertion raced the save. It passed while
+    // the box was idle and failed twice in a row once it was busy.
+    await page.waitForFunction(() => {
+      const row = [...document.querySelectorAll('#custom-list li')]
+        .find((e) => (e.textContent || '').includes('Ракета'));
+      return row && !(row.textContent || '').includes('🚀');
+    }, null, { timeout: 15000 });
     assert.match(await page.textContent('#custom-list li:has-text("Ракета")'), /⭐/);
   });
 
