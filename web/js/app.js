@@ -22,7 +22,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v128';
+const APP_VERSION = 'v129';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1698,14 +1698,77 @@ function sendVisible() {
   }
 }
 
+// sendInput is what every deliberate keystroke goes through, and it exists for
+// one thing tmux does silently.
+//
+// A pane that tmux holds in copy-mode discards what is typed into it: printable
+// characters go nowhere and the rest are the mode's own commands. On a laptop
+// that is visible and the way out is `q`. On a phone it is invisible — the page
+// enters copy-mode by its own scroll gesture, and a pane sitting in it at the
+// live end looks exactly like a live one, which is why the way back (⇩) is
+// deliberately not shown then. Reported as the terminal refusing text and a
+// pasted image never arriving, with the cure found by hand: scroll up and come
+// back, which is what ends the mode.
+//
+// So typing ends the mode. It is the one thing here that asks tmux to leave it,
+// and the reason it may is that it is an act, not a guess: somebody is writing
+// to the program *now*. The pane is shared, so a laptop reading history is taken
+// to the end with it — against every keystroke on the phone going nowhere, that
+// is the cheaper loss, and it is written down when it happens.
+//
+// The request goes as a control frame rather than a `q` because the page's
+// picture of the mode is up to a poll old: `q` typed into a pane that has
+// already left the mode is a character in somebody's prompt, while the frame
+// (tmuxcmd.CancelMode) is refused with a message and types nothing. Ordered
+// because the server handles it in the same loop that writes the keystrokes.
+// What tmux last said about the pane: whether it is in a mode at all, and how
+// far back it is scrolled. Two facts and not one — a pane in copy-mode at the
+// live end has nowhere to go back to, which is why the ⇩ is hidden then, and it
+// is exactly the state where a keystroke disappears with nothing on screen
+// saying why.
+let copyMode = false;
+let copyBack = 0;
+
+function leaveCopyMode(why) {
+  // The glide first, and this is the trap the ⇩ button found before typing did:
+  // a flick's inertia goes on sending notches for up to a second after the
+  // finger has left, and those arrive behind the request and put the pane
+  // straight back into the history it was just asked to leave. Typing right
+  // after a swipe is the commonest way to meet it — the browser test does
+  // exactly that, and without this the keystroke lands in a mode again.
+  scroller.stop();
+  dropQueuedWheel();
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'leave-mode' }));
+  }
+  // How often this happens is a fact worth having: it is the page taking a mode
+  // away from every client on the pane.
+  report('leave-mode', { back: copyBack, why });
+  // Optimistic, so a burst of keys asks once; the poll confirms it 400ms later.
+  copyMode = false;
+}
+
+function sendInput(data) {
+  if (copyMode) leaveCopyMode('typing');
+  return send(data);
+}
+
 // Asking is not enough: the committed word arrives in a later task, so the key
 // that ends the input waits for it. Everything about that rule, and why an
 // Enter sent in the same tick overtook the word it was meant to follow, is in
 // ender.js.
-const enders = endingKeys({ send, commit: commitPendingInput });
+const enders = endingKeys({ send: sendInput, commit: commitPendingInput });
+
+// A mouse report is not typing. xterm hands the wheel to the same callback as
+// the keyboard, and while tmux has the mouse on, a scroll arrives here as
+// `\x1b[<64;…M` — read as an act of typing it would cancel the very copy-mode
+// the scroll had just entered, and drop the queued notches with it. The browser
+// test caught that as a wheel that scrolled tmux nowhere.
+const MOUSE_REPORT = /^\x1b\[(<|M)/;
 
 term.onData((d) => {
-  send(d);
+  if (MOUSE_REPORT.test(d)) send(d);
+  else sendInput(d);
   // No commitInput() here. Ending the composition after every single
   // character sounded thorough and was wrong: restartInput moves the caret
   // and reopens the input, so typing turned into jumping around the line.
@@ -1765,7 +1828,7 @@ document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
     // Only the keys that end an input need the keyboard to hand over its word.
     const ends = b.dataset.key === 'enter' || b.dataset.key === 'alt-enter';
     if (ends) enders.press(keyBytes(b.dataset.key));
-    else send(keyBytes(b.dataset.key));
+    else sendInput(keyBytes(b.dataset.key));
     // No focus() here: the press already kept it, and calling it for someone
     // who was only reading would raise the keyboard over the screen.
   });
@@ -2438,7 +2501,7 @@ composerEl.addEventListener('submit', (e) => {
   e.preventDefault();
   const text = promptEl.value;
   if (!text) return;
-  const gone = send(text + '\r');
+  const gone = sendInput(text + '\r');
   report('prompt', { chars: text.length, sent: gone, state: ws ? ws.readyState : -1 });
   if (!gone) {
     // Held, not queued: a message delivered on the next connect would arrive
@@ -3117,13 +3180,16 @@ toBottomBtn.addEventListener('click', () => {
   // put the pane straight back into the history it was just asked to leave —
   // the button then looked like it had done nothing. Found by the browser test
   // under load, where the glide outlives the tap by longer.
-  scroller.stop();
-  dropQueuedWheel();
-  // q leaves tmux copy-mode, which lands on the bottom of the pane.
-  send('q');
+  // The same request typing makes — including stopping the glide, which is
+  // where that rule was learned — and a request rather than a `q` because the
+  // page's picture of the mode is a poll old: a `q` sent to a pane that has
+  // already left the mode is a character in the program.
+  leaveCopyMode('button');
 });
 
 function setCopyMode(inMode, back) {
+  copyMode = !!inMode;
+  copyBack = back | 0;
   const away = !!inMode && back > 0;
   if (away === scrolledBack) return;
   scrolledBack = away;

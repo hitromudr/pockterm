@@ -48,8 +48,13 @@ type Options struct {
 	ListSessions func() ([]tmuxcmd.Session, error)      // current tmux sessions
 	Attach       func(id int64, target string) []string // argv attaching a client to target
 	InMode       func(id int64) (bool, int, error)      // client pane in tmux copy-mode, and how far back it is scrolled; nil disables the poll
-	Presence     Presence                               // notification bookkeeping; nil disables it
-	Notices      *Notices                               // route notifications to attached pages; nil disables it
+	// LeaveMode takes the client's pane out of copy-mode. The page asks for it
+	// when something is typed into a pane tmux is holding in a mode, where every
+	// keystroke is discarded and nothing on screen says so; nil makes the request
+	// a no-op.
+	LeaveMode func(id int64) error
+	Presence  Presence // notification bookkeeping; nil disables it
+	Notices   *Notices // route notifications to attached pages; nil disables it
 	// NotifyMode reports what the owner wants delivered ("off", "pwa",
 	// "pwa+tg") and whether Telegram is configured at all; nil leaves
 	// /api/notify absent and says nothing in the config frame.
@@ -726,6 +731,18 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 				writeMu.Lock()
 				conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"pong"}`))
 				writeMu.Unlock()
+			case "leave-mode":
+				// Typing into a pane in copy-mode goes nowhere, so an act of
+				// typing is what ends the mode — see tmuxcmd.CancelMode. Handled
+				// here, in the same loop that writes the keystrokes, so the mode
+				// is gone before the bytes that asked for it are delivered.
+				if o.LeaveMode != nil {
+					if err := o.LeaveMode(id); err != nil {
+						// Refused when the pane is not in a mode, which is the
+						// common case of a picture a poll out of date.
+						log.Printf("leave-mode: %v", err)
+					}
+				}
 			case "visible":
 				// A backgrounded tab keeps its socket open, so visibility
 				// is what decides whether a notification is redundant.

@@ -228,6 +228,7 @@ func serve() {
 			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 		},
 		InMode:     inMode,
+		LeaveMode:  leaveMode,
 		Presence:   notifier(cfg, notices, pref),
 		Notices:    notices,
 		NotifyMode: func() (string, bool) { return string(pref.Mode()), cfg.Notify() },
@@ -643,6 +644,15 @@ func inMode(id int64) (bool, int, error) {
 	}
 	in, back := tmuxcmd.ParsePaneMode(string(out))
 	return in, back, nil
+}
+
+// leaveMode takes this client's pane out of copy-mode. tmux refuses with a
+// message when the pane is not in one, which is exactly the case a page acting
+// on a picture one poll old runs into — the error is returned and logged, and
+// nothing is typed into the program.
+func leaveMode(id int64) error {
+	argv := tmuxcmd.CancelMode(tmuxcmd.ClientName(id))
+	return exec.Command(argv[0], argv[1:]...).Run()
 }
 
 // listSessions runs `tmux list-sessions`. With no server running tmux

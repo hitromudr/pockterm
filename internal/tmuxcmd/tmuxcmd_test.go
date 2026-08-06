@@ -349,3 +349,20 @@ func TestSetOrderTakesThePlainName(t *testing.T) {
 		t.Error(`set-option -t "=<name>" never lands`)
 	}
 }
+
+func TestCancelModeTypesNothing(t *testing.T) {
+	// The page's picture of the mode is up to a poll old, so the way out must be
+	// harmless when the pane has already left it. A literal "q" is not: it would
+	// be typed into whatever is running. `send-keys -X cancel` is refused with a
+	// message instead.
+	got := CancelMode("pockterm-7")
+	want := []string{"tmux", "send-keys", "-X", "-t", "pockterm-7", "cancel"}
+	if len(got) != len(want) {
+		t.Fatalf("CancelMode = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("CancelMode = %q, want %q", got, want)
+		}
+	}
+}

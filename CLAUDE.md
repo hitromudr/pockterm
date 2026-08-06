@@ -235,6 +235,51 @@ by whether there is history above. Nothing here asks tmux to leave copy-mode:
 the pane is shared, and a page that sent `q` on its own would take the laptop's
 client out of a mode it chose to be in.
 
+## Typing into copy-mode goes nowhere, and nothing on screen says so
+
+tmux discards what is typed into a pane it holds in copy-mode: a printable
+character lands nowhere and the rest are the mode's own commands. On a laptop
+that is visible and the way out is `q`. On a phone it is invisible — the page
+enters copy-mode by its own scroll gesture, and **a pane sitting in copy-mode at
+the live end looks exactly like a live one**, which is why the way back (⇩) is
+deliberately hidden then (see above: scrolled back is not the same as
+copy-mode).
+
+Reported as the terminal refusing text and a pasted image never arriving, with
+the cure found by hand — scroll up and come back, which is what ends the mode.
+The journal had already written down what nothing on screen did: four uploads in
+a minute, each `ok`, each preceded by `{"event":"mode","in":true,"back":0}`. The
+image had been saved every time and the path typed into a pane that was throwing
+it away.
+
+**So typing ends the mode**, and it is the one thing here allowed to. The rule it
+bends was written a release earlier — *nothing asks tmux to leave copy-mode,
+because the pane is shared and a laptop chose that mode* — and what it did not
+weigh is a keystroke that disappears. Typing is an act rather than a guess:
+somebody is writing to the program now. Against every keystroke on the phone
+going nowhere, a laptop being taken to the live end is the cheaper loss, and
+`leave-mode` in the journal says how often it happens.
+
+Three things make it safe rather than lucky:
+
+- **It is a request, not a `q`.** The page's picture of the mode is up to a poll
+  old (400ms), and a `q` sent to a pane that has already left the mode is a
+  character in somebody's prompt. `tmuxcmd.CancelMode` is `send-keys -X cancel`,
+  which tmux refuses with a message when there is no mode — it types nothing.
+  The server handles the frame in the same loop that writes the keystrokes, so
+  the mode is gone before the bytes that asked for it arrive. The ⇩ button uses
+  the same path now, for the same reason.
+- **The glide is stopped first.** A flick's inertia goes on sending notches for
+  up to a second after the finger has left, and those arrive behind the request
+  and put the pane straight back into the history it was just asked to leave.
+  That trap was found by the ⇩ button; typing right after a swipe is the
+  commonest way to meet it, and the browser test does exactly that.
+- **A mouse report is not typing.** xterm hands the wheel to the same `onData`
+  callback as the keyboard, so with tmux's mouse on, a scroll arrives as
+  `\x1b[<64;…M` — read as an act of typing it cancels the very copy-mode the
+  scroll just entered and drops the queued notches with it. Caught by the test
+  that asks whether a wheel scrolled tmux at all.
+
 ## A tab carries three answers, and none of them is the others
 
 Which sessions exist is the row, which one you are in is a **frame**, and what

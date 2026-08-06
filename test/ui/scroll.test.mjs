@@ -243,6 +243,39 @@ describe('a swipe follows the finger', () => {
     assert.doesNotMatch(after, /^1 [1-9]/, `still scrolled back after tapping the way out: ${after}`);
   });
 
+  test('typing into a pane held in copy-mode still reaches the program', async () => {
+    // Reported from the phone as the terminal refusing text and a pasted image
+    // never arriving, cured by hand with "scroll up and come back". The journal
+    // said why: `{"event":"mode","in":true,"back":0}` — tmux was holding the pane
+    // in copy-mode, where printable characters are discarded, and at the live end
+    // the page deliberately shows no way out because there is nothing to go back
+    // to. Every keystroke went nowhere and nothing on screen said so.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    await recordGesture(page);
+    await page.click('#term');
+    for (let i = 1; i <= 40; i++) await page.keyboard.type(`line ${i}\n`);
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('line 40'));
+
+    let y = 200;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y }] });
+    for (let i = 0; i < 12; i++) { y += 30; await move(page, cdp, y); }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
+
+    // No tap on the way out: the point is that typing is the way out. The focus
+    // is put back without one, because a tap on the pane is a mouse event tmux
+    // would read in the mode and this test is about the keys.
+    await page.evaluate(() => document.querySelector('.xterm-helper-textarea')?.focus());
+    await page.keyboard.type('вернись');
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('вернись'),
+      null, { timeout: 10000 });
+    const after = stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_in_mode} #{scroll_position}']).trim();
+    assert.doesNotMatch(after, /^1 [1-9]/, `still in the history after typing: ${after}`);
+  });
+
   test('a gesture the browser takes away does not leave the screen shifted', async () => {
     // Reported as a long swipe being interrupted. The browser can decide
     // mid-gesture that the swipe is its own and stop delivering moves; the page

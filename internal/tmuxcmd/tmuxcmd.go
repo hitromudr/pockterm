@@ -278,6 +278,24 @@ func PaneMode(session string) []string {
 	return []string{"tmux", "display-message", "-p", "-t", session, "#{pane_in_mode} #{scroll_position}"}
 }
 
+// CancelMode returns the argv that takes the pane out of whatever mode it is
+// in, if it is in one.
+//
+// It exists because typing into a pane that tmux holds in copy-mode goes
+// nowhere at all: the keys are the mode's own commands, a printable character
+// is discarded, and the phone has no way to see any of it — a pane in copy-mode
+// at the live end looks exactly like a live pane. Reported as the terminal not
+// taking text and a pasted image never arriving, with the cure found by hand:
+// scroll up and come back, which is what ends the mode.
+//
+// `send-keys -X cancel` rather than a literal `q`: the page's picture of the
+// mode is up to a poll old, and a `q` sent to a pane that has already left it is
+// a character typed into whatever is running. This one is refused by tmux with a
+// message and types nothing.
+func CancelMode(session string) []string {
+	return []string{"tmux", "send-keys", "-X", "-t", session, "cancel"}
+}
+
 // ParsePaneMode reads PaneMode output: whether the pane is in a mode, and how
 // many lines back it is scrolled.
 //
