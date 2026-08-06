@@ -88,6 +88,22 @@ test('an empty field is left alone', () => {
   assert.equal(s.cleared, 0);
 });
 
+test('what was taken away is answerable from outside', () => {
+  // A rule that was never wired and a rule that fires and takes nothing look
+  // the same from a phone, and both look like the defect still being there.
+  // The length is what tells them apart.
+  const taken = [];
+  const s = stand('порт');
+  s.rule = fieldHygiene({
+    empty: () => !s.value,
+    clear: () => { taken.push(s.value.length); s.value = ''; },
+    defer: (fn) => s.queue.push(fn),
+  });
+  s.rule.on('compositionend');
+  s.run();
+  assert.deepEqual(taken, [4]);
+});
+
 test('a burst of edits costs one clear', () => {
   // Every keystroke of a word raises an input event. One deferred clear for the
   // lot of them, or the field is rewritten under the keyboard mid-word.

@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v132';
+const APP_VERSION = 'v133';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -89,7 +89,21 @@ term.open(document.getElementById('term'));
 // being typed, and that is where a typed word came back a second time. Emptied
 // once every edit is over — see js/imefield.js for the recording it is written
 // from.
-keepEmpty(term.textarea);
+//
+// Both lines go to the journal because the question "did this do anything" has
+// three answers and two of them are silent: never wired at all, wired and never
+// fired, wired and taking text away. Only the first clear is reported — one line
+// per session says which of the three, and one line per word typed would be the
+// input log, which is a switch and not a default.
+report('field-guard', { wired: !!term.textarea });
+let saidCleared = false;
+keepEmpty(term.textarea, {
+  onClear: (len) => {
+    if (saidCleared) return;
+    saidCleared = true;
+    report('field-clear', { len, first: true });
+  },
+});
 
 // Keep terminal control keys in the terminal instead of firing the browser
 // (Ctrl+R reload, Ctrl+L address bar, Ctrl+W close, Ctrl+D bookmark). A

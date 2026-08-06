@@ -84,12 +84,20 @@ export function fieldHygiene({ empty, clear, defer = (fn) => setTimeout(fn, 0) }
 //
 // The listeners go on after xterm's own, which is what puts our deferred clear
 // behind the timeout xterm schedules from the same event.
+//
+// `onClear` is how any of this is answerable from the outside. A field that was
+// never found (xterm creating its textarea later than this call, say) and a
+// rule that fires and takes nothing look identical from a phone, and both look
+// exactly like the defect still being there — which is the shape of every
+// question this file exists to settle. The caller reports what it wants; here
+// the only job is to say what happened.
 export function keepEmpty(el, opts = {}) {
+  const { onClear = () => {}, ...rest } = opts;
   if (!el) return () => {};
   const rule = fieldHygiene({
     empty: () => !el.value,
-    clear: () => { el.value = ''; },
-    ...opts,
+    clear: () => { const len = el.value.length; el.value = ''; onClear(len); },
+    ...rest,
   });
   const kinds = ['compositionstart', 'compositionend', 'input'];
   const onEvent = (e) => rule.on(e.type);
