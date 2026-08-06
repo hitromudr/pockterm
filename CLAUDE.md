@@ -142,6 +142,16 @@ The instrument is the reason any of this is written down rather than guessed at.
 the second level writes whatever is typed into the journal of a box that also
 serves git, which is why it is a separate tap and not a default.
 
+**And whether the rule did anything is its own question, with two silent wrong
+answers.** Never wired — xterm's textarea not yet there when `keepEmpty` is
+called, and the guard returns a no-op — and wired but never firing look
+identical from a phone, and both look exactly like the drift still being there.
+`field-guard` says which at load and `field-clear` reports the first clear with
+its length, one line each per session. On the owner's phone, v133:
+`{"wired":true}` and `{"len":6,"first":true}`, with the drift reported as
+improved rather than gone. What is left is unmeasured — the input log was off
+for that run, and the next round starts by turning it on.
+
 ## The bar's Enter waits for the keyboard's word
 
 Gboard holds the word being typed as a composing region, and only the app can
