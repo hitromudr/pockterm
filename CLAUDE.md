@@ -66,7 +66,8 @@ instead of everything typed so far. What was typed came out right. What is
 still true: xterm.js does not clear its hidden textarea while a composition is
 open, so the field accumulates (17 characters of it in the journal), and that
 accumulation is where the drift comes from when you edit the middle of a line.
-The remaining fix is the page's own input field, not another keyboard mode.
+What that accumulation actually does was measured later and has its own section
+below — and the fix turned out to be smaller than the page's own input field.
 
 `setImeMode` is not a fix, it is a lever with the strength picked at runtime.
 The app defaults to `raw`, and the page asks for `text` everywhere — including
@@ -77,9 +78,69 @@ under `ime-mode raw ok:true`. A drifting keyboard is bad and no keyboard is
 worse, so the default undoes the app's own, and it takes effect on reload
 rather than on an install. `?ime=raw` is the gentle variant — the WebView's
 negotiated input type plus "no dictionary" — kept behind a query parameter so
-the next attempt costs a reload instead of an APK release. The drift itself is
-still open: all that is known is that replacing the input type does not cure
-it.
+the next attempt costs a reload instead of an APK release.
+
+**None of that lever exists on the client the owner actually uses.** The phone
+has been a Chrome PWA rather than the Android client since at least 2026-08-05
+(`"native":false` in the `hello` line, which is where to check before explaining
+anything here by the bridge), and without `PockNative` both `setImeMode` and
+`commitInput` return without doing anything at all — `setImeMode` does not even
+reach the journal. So the `⌨` button in the drawer cycles a mode, remembers it,
+and changes nothing, and the Enter held in `ender.js` is waiting on its 90ms
+bound rather than on a commit. Everything above describes the app; the section
+below describes the phone.
+
+## The word came back because the field still had it
+
+The drift was read for two releases as the keyboard corrupting what was typed.
+It is not: **the word is written twice**, and the second copy is the keyboard's
+own, offered because the page left the word where the keyboard could find it.
+
+Measured on the owner's phone (Chrome PWA, Gboard, 2026-08-06) with the input
+log at `chars`, typing `порт`, a space, then a backspace:
+
+```
+compositionend        "порт"   field="порт"   ← sent, and the field is not cleared
+insertText " "                 field="порт "
+deleteContentBackward          field="порт"
+compositionstart      ""       field="порт"   ← the keyboard re-opens over it
+insertCompositionText "порт"   field="порт"   ← sent a SECOND time
+```
+
+and the same block again for every further space-and-backspace: three presses,
+three copies. That is what `❯ орарь орарл` on the screenshot was — one word,
+typed once, sent twice, the second time in the shape the keyboard preferred.
+Nothing is corrupted anywhere; the residue in the field *is* the defect, because
+what a keyboard finds in a field is what it takes for the word being written now.
+
+**The same phone in its other mood opens no composition at all.** Half a minute
+of ordinary tapping in the same recording: 83 keyups, zero composition events —
+the letters arrive as key events and never touch the field — and twelve
+`insertText` events, every one of them a space, the field growing 4 → 16 and
+never shrinking. Different route, same residue. So the rule is about the field
+rather than about compositions, and it is why the fix is not another keyboard
+mode: two moods would need two.
+
+`fieldHygiene` in `web/js/imefield.js` empties the field once an edit is over,
+and the two bounds are the whole of it. **Never while a composition is open** —
+what is in the field then is being written. **Never in the same task as the
+event** — xterm reads the field on a `setTimeout(0)` scheduled from
+`compositionend`, so a clear that ran first would send an empty string, and
+sending nothing is worse than sending twice. Nothing here reads, replaces or
+sends anything; the one operation is emptying a field the keyboard has finished
+with, which is what keeps it from becoming a fifth author in the buffer that
+"One owner for typing" in `app.js` exists to prevent.
+
+**The stand cannot produce a single event above**, and that is stated in the
+header of `js/inputdiag.js` for the same reason: desktop Chromium has no IME. So
+the rule is tested against an injected field and an injected clock, and the
+phone is the judge. What the browser tests do cover is the other half — that
+typing still reaches the pty with the clear wired in.
+
+The instrument is the reason any of this is written down rather than guessed at.
+`🔍 Input log` in the drawer, `on` for shapes and `chars` for the text as well;
+the second level writes whatever is typed into the journal of a box that also
+serves git, which is why it is a separate tap and not a default.
 
 ## The bar's Enter waits for the keyboard's word
 

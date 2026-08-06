@@ -6,6 +6,7 @@ import { pickImage, carriesFiles, firstImage } from './paste.js';
 import { snapshotText } from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
+import { keepEmpty } from './imefield.js';
 import { Scroller, movedWholeScreen } from './scroll.js';
 import { staleNotice } from './update.js';
 import { endingKeys } from './ender.js';
@@ -22,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v131';
+const APP_VERSION = 'v132';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -83,6 +84,12 @@ const term = new Terminal({ fontSize, scrollback: 5000, theme: { background: '#0
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
 term.open(document.getElementById('term'));
+
+// What xterm leaves in its own field is what the keyboard reads as the word
+// being typed, and that is where a typed word came back a second time. Emptied
+// once every edit is over — see js/imefield.js for the recording it is written
+// from.
+keepEmpty(term.textarea);
 
 // Keep terminal control keys in the terminal instead of firing the browser
 // (Ctrl+R reload, Ctrl+L address bar, Ctrl+W close, Ctrl+D bookmark). A
