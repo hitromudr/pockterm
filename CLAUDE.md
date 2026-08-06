@@ -619,6 +619,28 @@ words appear in the line an agent prints when a turn ends ("Cogitated for 2m 23s
 about now — that one is skipped by its wording, and output scrolled above the last
 few lines is out of range by position.
 
+**And the top edge says who is running for it.** The plates below are what the
+agent left running — a shell, a monitor. A subagent is not that: it is another
+agent, with its own turn, and the session is waiting on it. Claude Code lists
+them under its status lines (`● main`, then a `◯` per subagent with its type and
+what it was given), and the tab carries **one head per agent on its top edge**,
+right-aligned with the name and hanging half above the line — the mirror of the
+plates hanging half below.
+
+No number on them, and that is the point of drawing heads at all: two heads are
+seen where a `2` has to be read. Four is the cap, because a tab 34px tall is not
+a bar chart. What they claim is what the agent's own list claims — an agent that
+has finished but not been collected is still on that list, so the honest sentence
+is "the session lists this many", not "this many are running". `detect.ReadAgents`
+needs the block's own `● main` above the circles: a list in prose is not a list of
+agents, and the tab must not grow heads over an answer that happens to use `◯`.
+
+**The block is footer, and counting it as content cost the plates their line.**
+It sits *below* the status lines and is as tall as the session has subagents, so
+with three of them the line saying "1 shell, 2 monitors" fell out of the footer's
+four-line window and the plates went away while the shell was still running.
+`ReadBackground` steps over the block instead of counting it.
+
 **The drawer says all of it too, in the strip's own colours.** It is the list you
 open to see what else is running, and it was the one surface that could not answer
 that: a row said what a session *is* — its button, its folder, its age — and nothing

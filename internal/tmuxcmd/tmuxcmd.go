@@ -53,6 +53,8 @@ type Session struct {
 	// same answer, and the second one is why a tab is worth looking at.
 	Shells   int `json:"shells,omitempty"`
 	Monitors int `json:"monitors,omitempty"`
+	// Agents is how many subagents the session lists; drawn as one head each.
+	Agents int `json:"agents,omitempty"`
 	// Which button started this session — a preset's name, or "custom:<id>" for
 	// one of the owner's own. tmux carries it as a session option the Makefile
 	// stamps at creation (see KindOption), so it survives a rename and this

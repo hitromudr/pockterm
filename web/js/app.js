@@ -22,7 +22,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v129';
+const APP_VERSION = 'v130';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -180,7 +180,7 @@ async function loadSessions() {
     b.innerHTML = '<span class="line"><span class="kind"></span>' +
       `<span class="name">${escapeHtml(s.name)}</span></span>` +
       `<span class="meta">${escapeHtml(meta.join(' · '))}</span>` +
-      '<span class="bg"></span>';
+      '<span class="bg"></span><span class="agents"></span>';
     b.addEventListener('click', () => attach(s.name));
     li.appendChild(b);
 
@@ -222,6 +222,11 @@ async function loadSessions() {
 // under the finger. `data-bg` counts the plates rather than the processes; it is
 // the room the corner has to reserve.
 const BG_PLATES = [['sh', 'shells'], ['mon', 'monitors']];
+// One head per subagent, and no number on it — the count is the row of heads.
+// A number would have to be read; two heads are seen. Capped because the strip
+// is 34px tall and a tab is not a bar chart: past this it says "several".
+const AGENT_HEAD = '🤖';
+const AGENT_HEADS_MAX = 4;
 function paintBackground(b, s) {
   const box = b.querySelector('.bg');
   if (!box) return;
@@ -232,6 +237,14 @@ function paintBackground(b, s) {
   }
   if (plates) b.dataset.bg = String(plates);
   else delete b.dataset.bg;
+  // The subagents, on the opposite edge: a shell or a monitor is something the
+  // agent left running, a subagent is another agent — different question, other
+  // side of the tab.
+  const heads = b.querySelector('.agents');
+  if (!heads) return;
+  const n = Math.min(s.agents || 0, AGENT_HEADS_MAX);
+  heads.textContent = AGENT_HEAD.repeat(n);
+  heads.title = n ? `${s.agents} subagent(s)` : '';
 }
 
 // paintRows puts the state on the rows the drawer already has.
@@ -1170,6 +1183,12 @@ async function renderTabs() {
       const bgBox = document.createElement('span');
       bgBox.className = 'bg';
       b.appendChild(bgBox);
+      // The other corner: the heads of the subagents. Empty until there are any,
+      // and painted rather than rebuilt for the same reason as everything else
+      // on a tab — the button must not be taken out from under a finger.
+      const heads = document.createElement('span');
+      heads.className = 'agents';
+      b.appendChild(heads);
       b.dataset.session = s.name;
       b.style.animationDelay = workingPhase(s.name);
       keepsTerminalFocus(b);

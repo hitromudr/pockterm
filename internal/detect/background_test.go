@@ -78,3 +78,61 @@ func TestReadBackgroundEmptyPane(t *testing.T) {
 		t.Fatalf("got %+v, want nothing claimed", got)
 	}
 }
+
+// The block as the agent draws it, captured off a real pane at 51 columns with
+// three subagents on it. The circle is U+25EF, and the `● main` above them is
+// what tells the block from a stray glyph in output.
+func TestReadAgentsCountsTheAgentsList(t *testing.T) {
+	pane := []string{
+		"● Bash(ls -la)",
+		"  ⎿  done",
+		"  ctx 54% | dms@ai:~/work/pockterm (main) $ | Op…",
+		"  ⏵⏵ bypass permissions on · 2 shells · ← for ag…",
+		"  ● main",
+		"  ◯ general-purpose  Count fi… 11s · ↓ 49.3k tokens",
+		"  ◯ general-purpose  Probe ag…  7s · ↓ 48.9k tokens",
+		"  ◯ general-purpose  Probe ag…  9s · ↓ 49.2k tokens",
+	}
+	if got := ReadAgents(pane); got != 3 {
+		t.Errorf("ReadAgents = %d, want 3", got)
+	}
+	// The same pane with the block gone says nothing.
+	if got := ReadAgents(pane[:4]); got != 0 {
+		t.Errorf("ReadAgents without the block = %d, want 0", got)
+	}
+}
+
+func TestReadAgentsNeedsTheBlocksOwnHead(t *testing.T) {
+	// A circle in output is not an agent. Without `● main` above them there is
+	// no list, and a pane full of prose must not grow heads on its tab.
+	loose := []string{
+		"● Разобрал варианты:",
+		"  ◯ первый",
+		"  ◯ второй",
+	}
+	if got := ReadAgents(loose); got != 0 {
+		t.Errorf("ReadAgents = %d on a list in prose, want 0", got)
+	}
+	if got := ReadAgents(nil); got != 0 {
+		t.Errorf("ReadAgents(nil) = %d, want 0", got)
+	}
+}
+
+func TestReadBackgroundStepsOverTheAgentsBlock(t *testing.T) {
+	// The block is footer too, and it is as tall as the session has subagents.
+	// Counted against the window, three of them pushed the line that says what is
+	// running out of range — the plates went away while the shell was still there.
+	pane := []string{
+		"● Bash(make check)",
+		"  ctx 54% | dms@ai:~/work/pockterm (main) $ | Op…",
+		"  ⏵⏵ bypass permissions on · 1 shell, 2 monitors ·",
+		"  ● main",
+		"  ◯ general-purpose  Один   11s",
+		"  ◯ general-purpose  Второй  7s",
+		"  ◯ general-purpose  Третий  9s",
+	}
+	got := ReadBackground(pane)
+	if got.Shells != 1 || got.Monitors != 2 {
+		t.Errorf("ReadBackground = %+v, want 1 shell and 2 monitors", got)
+	}
+}

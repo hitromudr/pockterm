@@ -280,7 +280,7 @@ type fakePresence struct {
 	// it, so the list has to carry it.
 	activity map[string]string
 	// What Background reports per session: shells and monitors still running.
-	background map[string][2]int
+	background map[string][3]int
 }
 
 func (p *fakePresence) Activity(s string) string {
@@ -289,11 +289,11 @@ func (p *fakePresence) Activity(s string) string {
 	return p.activity[s]
 }
 
-func (p *fakePresence) Background(s string) (int, int) {
+func (p *fakePresence) Background(s string) (int, int, int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	bg := p.background[s]
-	return bg[0], bg[1]
+	return bg[0], bg[1], bg[2]
 }
 
 func (p *fakePresence) Watch(s string) {
@@ -1402,7 +1402,7 @@ func TestSessionListCarriesBackgroundWork(t *testing.T) {
 	opts := testOptions("")
 	opts.Presence = &fakePresence{
 		activity:   map[string]string{"demo": "done"},
-		background: map[string][2]int{"demo": {1, 2}},
+		background: map[string][3]int{"demo": {1, 2, 3}},
 	}
 	srv := httptest.NewServer(Handler(opts))
 	defer srv.Close()
@@ -1418,6 +1418,10 @@ func TestSessionListCarriesBackgroundWork(t *testing.T) {
 	}
 	if len(got) != 1 || got[0]["shells"] != float64(1) || got[0]["monitors"] != float64(2) {
 		t.Fatalf("sessions = %v", got)
+	}
+	// And the subagents the session lists, which the tab draws a head each for.
+	if got[0]["agents"] != float64(3) {
+		t.Fatalf("agents = %v, want 3 — sessions = %v", got[0]["agents"], got)
 	}
 }
 

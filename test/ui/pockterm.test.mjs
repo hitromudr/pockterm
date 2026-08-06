@@ -2047,6 +2047,48 @@ describe('a tab says what its session is doing', () => {
     assert.ok(/^polygon\(/.test(plates.shell.clip), `not a shield: ${plates.shell.clip}`);
     assert.ok(/^polygon\(/.test(plates.monitor.clip), `not a shield: ${plates.monitor.clip}`);
 
+    // The subagents are the other edge of the same tab: one head each, no number,
+    // and the agent's own list is what they are counted from. Two facts about a
+    // session, two edges — what it left running below, who is running for it
+    // above.
+    stand.tmux(['send-keys', '-t', 'demo', '● main', 'Enter']);
+    stand.tmux(['send-keys', '-t', 'demo', '◯ general-purpose  Разбор  14s', 'Enter']);
+    await page.waitForFunction(
+      () => (document.querySelector('#tabs button[data-session="demo"] .agents')?.textContent || '').length > 0,
+      null, { timeout: 20000 });
+    const heads = await page.evaluate(() => {
+      const b = document.querySelector('#tabs button[data-session="demo"]');
+      const el = b.querySelector('.agents');
+      const r = el.getBoundingClientRect();
+      const tab = b.getBoundingClientRect();
+      const cs = getComputedStyle(b);
+      return {
+        text: el.textContent,
+        font: getComputedStyle(el).fontFamily,
+        above: tab.top - r.top,
+        height: r.height,
+        offText: Math.abs(r.right - (tab.right - parseFloat(cs.paddingRight))),
+        plates: b.querySelector('.bg').dataset.mon,
+      };
+    });
+    // The pane echoes every line twice, so the block lists the agent twice —
+    // which is the point of counting rather than parsing: two lines, two heads.
+    // Counted in code points: a head is a surrogate pair, and `/^🤖+$/` without
+    // the u flag repeats half of one.
+    const drawn = [...heads.text];
+    assert.ok(drawn.length > 0 && drawn.every((c) => c === '🤖'),
+      `the heads are ${JSON.stringify(heads.text)}`);
+    assert.equal(drawn.length, 2, `one head per listed agent: ${heads.text}`);
+    assert.match(heads.font, /Noto Color Emoji/, `the head is drawn in ${heads.font}`);
+    // Hung on the top edge the way the plates hang on the bottom one, and ending
+    // where the name ends, so the tab has one right margin rather than two.
+    assert.ok(heads.above > 2 && heads.above < heads.height, `not on the edge: ${JSON.stringify(heads)}`);
+    assert.ok(heads.offText <= 1.5, `not aligned with the name: ${JSON.stringify(heads)}`);
+    // And the block does not cost the plates their line: it sits below the one
+    // that says what is running, and counting it against the footer's window is
+    // what made them disappear.
+    assert.equal(heads.plates, '2', 'the agents block pushed the plates out of the footer');
+
     // And it goes away when the bottom of the pane stops claiming it: a badge
     // that only ever appeared would say "something is running" about every
     // session that was ever busy.

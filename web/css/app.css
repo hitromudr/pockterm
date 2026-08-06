@@ -271,6 +271,41 @@ html, body {
 }
 /* No plate for a kind with nothing in it: a zero is a claim too. */
 .bg:not([data-sh])::before, .bg:not([data-mon])::after { content: none; }
+/* The subagents, one head each, on the top edge of the tab — the mirror of the
+   plates below it. Two different questions and two different edges: the bottom
+   says what the agent left running, the top says how many other agents are
+   running for it. No number on them, because the point is to be seen rather than
+   read: two heads are two heads.
+
+   Right-aligned with the plates and with the name, so the tab has one right
+   margin rather than three. The heads hang half above the line, exactly as the
+   plates hang half below — the room comes from #tabs' own padding-top, which the
+   question's ! already needed.
+
+   Emoji, so the colour font has to be asked for by name: the page's stack starts
+   at the system UI font, which draws a text glyph and loses the head. Same
+   reason as the marks on the tabs (see .kind below). */
+.agents {
+  position: absolute;
+  pointer-events: none;
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', system-ui, sans-serif;
+  font-variant-emoji: emoji;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+#tabs .agents {
+  right: 12px;
+  top: 0;
+  font-size: 11px;
+  transform: translateY(-50%);
+}
+button.session .agents {
+  right: 8px;
+  top: 6px;
+  font-size: 13px;
+  transform: translateY(-50%);
+}
+
 /* Room for them, and only on the tabs that have one. The plates stand in the
    corner over the padding, and the tab's usual 12px is narrower than one — so
    without this the name ran under it and lost its last letter. The tab grows

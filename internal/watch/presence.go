@@ -40,7 +40,7 @@ func (p Presence) Activity(session string) string { return string(p.Watcher.Acti
 // Background travels with the session list for the same reason Activity does,
 // and is spelled in plain ints for the same reason it is spelled as a string:
 // the server describes its own wire format without importing this package.
-func (p Presence) Background(session string) (shells, monitors int) {
+func (p Presence) Background(session string) (shells, monitors, agents int) {
 	bg := p.Watcher.Background(session)
-	return bg.Shells, bg.Monitors
+	return bg.Shells, bg.Monitors, bg.Agents
 }
