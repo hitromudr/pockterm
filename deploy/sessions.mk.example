@@ -93,6 +93,25 @@ KIND ?=
 # it was started with — measured, after the obvious version of this fix changed
 # nothing. tmux runs the command string through sh, so the words are split there
 # and a quoted command survives unchanged.
+#
+# `$$hold` is why a button that cannot start says so. A command that fails on
+# startup — a binary that is not installed, a typo in a custom button, `claude -c`
+# in a folder with no conversation to continue ("No conversation found to
+# continue", exit 1) — takes its pane with it, tmux closes the session, and on a
+# phone that is a tab appearing and vanishing with nothing anywhere saying why.
+# The message was on screen for the fraction of a second the session existed.
+#
+# So a non-zero exit drops into a shell instead, in the same directory, with the
+# message still above it: the session stays until it is closed, and the pane is
+# live rather than dead, so what is typed into it goes somewhere (a dead pane
+# swallows keystrokes, which is the one failure this project keeps meeting).
+#
+# Bounded by how long the command ran, not by its status alone. `make shell` runs
+# an interactive shell, and `exit` there reports the status of the last command —
+# so a non-zero exit is the ordinary way out of a session somebody worked in, and
+# holding that one would be a session that refuses to close. A start that fails
+# fails at once: ten seconds is far above every failure above and far below any
+# session anyone used.
 define spawn
 p="$(or $(PREFIX),$(or $(2),claude))"; \
 free() { ! tmux ls 2>/dev/null | grep -qE "^$$1:|\(group $$1\)"; }; \
@@ -103,8 +122,10 @@ if systemd-run --user --scope --quiet --collect true >/dev/null 2>&1; then \
 	launch="systemd-run --user --scope --quiet --collect"; \
 fi; \
 clean="env -u PREFIX -u DIR -u KIND -u CMD -u MAKEFLAGS -u MAKELEVEL"; \
+mark='t0=$$(date +%s)'; \
+hold='st=$$?; [ "$$st" = 0 ] && exit 0; [ $$(( $$(date +%s) - $$t0 )) -ge 10 ] && exit "$$st"; printf "\n\033[1;31m[exited %s — the session is held so this can be read]\033[0m\n" "$$st"; exec $${SHELL:-/bin/sh}'; \
 cmd=$(1); \
-$$launch tmux new-session -d -s "$$s" -c "$(DIR)" "$$clean $$cmd"; \
+$$launch tmux new-session -d -s "$$s" -c "$(DIR)" "$$mark; $$clean $$cmd; $$hold"; \
 k="$(or $(KIND),$(3))"; \
 if [ -n "$$k" ]; then tmux set-option -t "$$s" @pockterm-kind "$$k"; fi; \
 echo "started $$s in $(DIR)$${launch:+ (own slice)}"

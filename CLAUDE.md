@@ -1062,6 +1062,41 @@ this binary several times on a working day. Ids are the host's to hand out, so a
 rename keeps the button rather than making a new one, and the page saves **the whole
 list** and draws what came back — never what was just typed.
 
+## A session that could not start took its own reason with it
+
+The endpoint answers 200 and the journal says `started`, because both are true: make
+ran, tmux made the session, and everything this program can see went right. What
+happens next is between the pane and the command it was given, and a command that
+fails on startup — a binary that is not installed, a typo in a custom button,
+`claude -c` in a folder with no conversation to continue — exits within the second.
+The pane goes with it, tmux closes the session, and on a phone that is **a tab that
+appears and vanishes**. The message explaining it was on screen for exactly as long
+as the session existed.
+
+Reported as new sessions no longer opening, and the two halves of the report are the
+two halves of the mechanism: the tab did appear, and what was left afterwards was
+the previous session redrawn, which is `stepBackFrom` doing its job over a session
+that had just died. Nothing in the journal said anything was wrong — `start-session
+ok:true`, then a `watch: question` off the dying screen, then silence. It was found
+by running the same button's command by hand: `No conversation found to continue`,
+exit 1, twice, in two different folders.
+
+So the Makefile holds a pane whose command failed: the message stays on screen and
+the pane **drops into a shell in the same directory**. A live shell rather than a
+dead pane, because what is typed into a dead pane goes nowhere — the failure this
+file keeps meeting — and because the commonest thing to want next is to look at the
+folder and try again.
+
+**Bounded by how long the command ran, not by its status alone.** `make shell` runs
+an interactive shell, and `exit` there reports the status of the last command run in
+it — so a non-zero exit is the ordinary way out of a session somebody worked in, and
+holding that one would be a session that refuses to close. Ten seconds is far above
+every startup failure above and far below any session anyone used.
+
+The recipe lives in two files that must not diverge — `deploy/sessions.mk.example`
+here and the `pockterm_app` role's template in the devops repository — so the fix is
+in both, and on the host it is in force only once that role has been applied.
+
 ## The four buttons are entries in the list, not a menu written into the page
 
 They were a map in Go (`session.Presets`) and four `<button>`s in the HTML, and both

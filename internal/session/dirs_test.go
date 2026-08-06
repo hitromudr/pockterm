@@ -180,13 +180,45 @@ func TestExampleMakefileKeepsMakesVariablesOutOfTheSession(t *testing.T) {
 	// server, which carries the environment it was started with and does not care
 	// what the client's was. The first version of this fix put it in front of tmux
 	// and cleared nothing at all.
-	if !strings.Contains(spawnBody(src), `new-session -d -s "$$s" -c "$(DIR)" "$$clean $$cmd"`) {
+	if !strings.Contains(spawnBody(src), `-c "$(DIR)" "$$mark; $$clean $$cmd; $$hold"`) {
 		t.Error("the cleaning is not part of the command the pane runs")
 	}
 	for _, v := range []string{"DIR", "KIND", "CMD", "MAKEFLAGS", "MAKELEVEL"} {
 		if !strings.Contains(spawnBody(src), "-u "+v) {
 			t.Errorf("%s is left in the session's environment", v)
 		}
+	}
+}
+
+func TestExampleMakefileHoldsASessionThatFailedToStart(t *testing.T) {
+	// A command that fails on startup takes its pane with it and tmux closes the
+	// session — on a phone, a tab that appears and vanishes with nothing anywhere
+	// saying why. Measured on the author's own host: the `continue` button in a
+	// folder with no conversation to continue ("No conversation found to continue",
+	// exit 1) left two sessions dead within seconds and no trace but the watcher
+	// having seen a screen.
+	src, err := os.ReadFile(filepath.Join("..", "..", "deploy", "sessions.mk.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := spawnBody(src)
+	if !strings.Contains(body, "exec $${SHELL:-/bin/sh}") {
+		t.Error("a session whose command failed is not held, so the message goes with it")
+	}
+	// Held into a live shell rather than a dead pane: what is typed into a dead
+	// pane goes nowhere, which is the failure this project keeps meeting.
+	if !strings.Contains(body, `[ "$$st" = 0 ] && exit 0`) {
+		t.Error("a command that exited cleanly should close its session as before")
+	}
+	// Bounded by how long it ran, not by the status alone: `exit` in an interactive
+	// shell reports the last command's status, so a non-zero exit is the ordinary
+	// way out of a session somebody worked in. Holding that one is a session that
+	// refuses to close.
+	if !strings.Contains(body, "$$t0") || !strings.Contains(body, `-ge 10 ] && exit "$$st"`) {
+		t.Error("the hold is not bounded by how long the command ran")
+	}
+	if !strings.Contains(body, "mark='t0=$$(date +%s)'") {
+		t.Error("nothing records when the command started, so the bound reads an empty value")
 	}
 }
 
