@@ -2192,6 +2192,98 @@ describe('the answer buttons and the pane they are read from', () => {
     }
   });
 
+  // What the row puts on the wire, which is where this defect lived: an
+  // arrow-driven menu is answered by walking to the option and pressing Enter,
+  // and sent as one write the Enter is applied against the position the menu had
+  // *before* the arrows. Measured on a real AskUserQuestion at 51 columns — three
+  // arrows alone move the pointer to the fourth option, the same three with the
+  // Enter attached answer the first, and so does a single ↓ with one. Every
+  // button but the first was quietly answering the first, which is this defect's
+  // second visit: it was the digits the first time.
+  //
+  // The frames are read from the page rather than from the pty because the stand's
+  // pane runs `cat` — it echoes what it is sent and moves no pointer, which is
+  // exactly what makes the waiting half testable: the menu only "moves" when the
+  // test redraws it.
+  // Once per page, however many tests ask for it: init scripts accumulate on the
+  // context, so a second wrapper would sit on top of the first and record every
+  // frame twice — which read as an extra arrow on the wire and cost an hour.
+  const recordFrames = () => stand.page.addInitScript(() => {
+    if (window.__sentHooked) return;
+    window.__sentHooked = true;
+    window.__sent = [];
+    const native = WebSocket.prototype.send;
+    WebSocket.prototype.send = function (data) {
+      // Keystrokes are binary; resize and visible are JSON strings.
+      if (typeof data !== 'string') window.__sent.push(new TextDecoder().decode(data));
+      return native.call(this, data);
+    };
+  });
+  // Two options and no more: the stand's pane echoes every line twice — once from
+  // the terminal, once from `cat` — so a third would land after a repeated "1."
+  // and break the run. Two is all the rule needs.
+  const drawMenu = (on) => {
+    for (const l of [
+      'Что делать?',
+      `${on === 0 ? '❯' : ' '} 1. Раз`,
+      `${on === 1 ? '❯' : ' '} 2. Два`,
+      'Enter to select · ↑/↓ to navigate · Esc to cancel',
+    ]) stand.tmux(['send-keys', '-t', 'demo', l, 'Enter']);
+  };
+  // The row and the footer that says how the menu is answered: a menu is painted
+  // a line at a time, and a row drawn before `↑/↓ to navigate` arrived is a row
+  // that thinks digits will do. The page re-reads the screen when a button is
+  // pressed for exactly that reason; here the test waits so it is measuring the
+  // arrow path rather than that race.
+  const answersUp = async () => {
+    await stand.page.waitForFunction(
+      () => document.querySelectorAll('#answers button:not(.esc)').length >= 2,
+      null, { timeout: 20000 });
+    await stand.page.waitForFunction(
+      () => (document.querySelector('.xterm-rows')?.textContent || '').includes('to navigate'),
+      null, { timeout: 20000 });
+    await stand.page.waitForTimeout(300);
+  };
+  const sent = () => stand.page.evaluate(() => window.__sent.join(''));
+
+  test('an answer walks to the option and presses only once the pointer is there', async () => {
+    await recordFrames();
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    drawMenu(0);
+    await answersUp();
+
+    await page.evaluate(() => { window.__sent.length = 0; });
+    await page.locator('#answers button:not(.esc)').nth(1).click();
+    await page.waitForTimeout(250);
+    assert.equal(await sent(), '\x1b[B', `the walk was not sent alone: ${JSON.stringify(await sent())}`);
+
+    // The pane answers as a real menu would: the pointer one row further down.
+    drawMenu(1);
+    await page.waitForFunction(() => window.__sent.join('').includes('\r'), null, { timeout: 5000 });
+    assert.equal(await sent(), '\x1b[B\r', `the Enter is not a write of its own: ${JSON.stringify(await sent())}`);
+  });
+
+  test('a pointer that never arrives is never answered', async () => {
+    await recordFrames();
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    drawMenu(0);
+    await answersUp();
+
+    await page.evaluate(() => { window.__sent.length = 0; });
+    await page.locator('#answers button:not(.esc)').nth(1).click();
+    // Nothing redraws the menu, so the pointer stays where it was. The page gives
+    // up rather than pressing Enter on whatever is highlighted: a wrong answer is
+    // indistinguishable from the right one until you read what it did.
+    await page.waitForTimeout(1600);
+    assert.equal(await sent(), '\x1b[B', `an Enter went out blind: ${JSON.stringify(await sent())}`);
+    assert.match(await page.textContent('#toast'), /did not move/,
+      'nothing said that the answer had not gone');
+  });
+
   test('a list being typed into the input box draws no answer buttons', async () => {
     // Reported from the phone with the message still in the box: a reply that
     // began "1. …" newline "2. …" grew two answer buttons, and pressing one would

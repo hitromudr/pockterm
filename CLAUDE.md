@@ -349,6 +349,35 @@ phase cannot drift apart from it. This is the same detection the answer buttons 
 drawn from (`detect.Question`) — and those exist only for the session on screen,
 while the question you want to know about is usually in the one that is not.
 
+**And the walk and the Enter are two writes, because in one they answer option
+one.** The digits were the first version of this defect and the arrows were its
+fix; the fix had the same outcome for the same reason, one layer down. Sent as a
+single write, `↓↓↓\r` is applied by the menu against the position it had *before*
+the arrows — measured on a real `AskUserQuestion` at 51 columns: three arrows
+alone move the pointer to the fourth option, the same three with the Enter
+attached answer the first, and so does a single `↓` with one. Every button but
+the first had been answering the first. Reported from the phone as "Chat about
+this and Type something do not work", which is what the two options at the bottom
+of that menu look like when they quietly pick the top one.
+
+**And the press reads the screen again instead of trusting the row.** The row is
+drawn from an older scan, and a menu is painted a line at a time: one built before
+its `Enter to select · ↑/↓ to navigate` footer had arrived carries *digits*, which
+on that menu are answered by whatever happens to be highlighted. That window is a
+tenth of a second and it is the same wrong answer as everything else here. Between
+the two scans the pointer can also have moved, or the menu can have been replaced
+altogether — so the press checks that the option it is about to take still has the
+label the button was drawn with, and does nothing if it does not.
+
+`answerKeys` returns the two halves apart (`{move, commit}`) and `pressAnswer` in
+`js/app.js` sends the walk, then **waits until it can see the pointer arrive** —
+the same detector the row itself is drawn from, polled for up to a second — and
+only then the Enter. Waiting on the screen rather than on a timer is what makes
+it safe rather than lucky: a pointer that never arrives means nothing is pressed
+at all, with a line in the journal and a word on screen. Silence is the cheaper
+failure here, and the reason is the one this whole section keeps running into — a
+wrong answer looks exactly like the right one until you read what it did.
+
 **The answer buttons press what the menu says it takes, not a digit.** "Type the
 digit and press Enter" was the rule from the beginning, and it was an assumption
 about every menu that looks like one. It holds for a permission prompt. It is

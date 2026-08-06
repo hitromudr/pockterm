@@ -161,8 +161,24 @@ export function detectQuestion(lines) {
   return { prompt, options: best.opts, cursor: best.pointers.indexOf(true), navigate };
 }
 
-// answerKeys(menu, want) → the bytes that pick the option at index `want`, or
-// null when there is no way to pick it that can be trusted.
+// answerKeys(menu, want) → { move, commit }: the bytes that walk to the option
+// at index `want`, and the bytes that take it. Null when there is no way to pick
+// it that can be trusted.
+//
+// **Two writes, and that is the whole point of the shape.** They used to be one
+// string, and a menu answered with `↓↓↓\r` in a single write answered *option
+// one*: the TUI applies the Enter against the position it had before it has
+// processed the arrows. Measured on a real AskUserQuestion at 51 columns — three
+// arrows alone move the pointer to the fourth option, the same three with the
+// Enter attached answer the first, and even a single `↓\r` does. So every button
+// but the first has been answering option one, which is this defect's second
+// visit: the first time it was the digits (see below), and it looks exactly the
+// same from outside — a wrong answer is indistinguishable from the right one
+// until you read what it did.
+//
+// The caller sends `move`, waits until it can see the pointer arrive, and only
+// then sends `commit`. Waiting on the screen rather than on a timer is what
+// makes it safe: no pointer, no Enter, and nothing is answered by guess.
 //
 // "Type the digit and press Enter" was the rule, and it was an assumption about
 // every menu that looks like one. It holds for a permission prompt, whose digits
@@ -180,9 +196,11 @@ export function detectQuestion(lines) {
 // indistinguishable from the one the owner meant.
 export function answerKeys(menu, want) {
   if (!menu || !menu.options || want < 0 || want >= menu.options.length) return null;
-  if (menu.navigate !== 'arrows') return menu.options[want].key + '\r';
+  // A digit-driven menu has nothing to walk: the digit names the option, so the
+  // pair goes out together and always has.
+  if (menu.navigate !== 'arrows') return { move: '', commit: menu.options[want].key + '\r' };
   const from = menu.cursor;
   if (from < 0) return null;
   const step = want > from ? '\x1b[B' : '\x1b[A';
-  return step.repeat(Math.abs(want - from)) + '\r';
+  return { move: step.repeat(Math.abs(want - from)), commit: '\r' };
 }

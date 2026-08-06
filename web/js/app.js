@@ -22,7 +22,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v127';
+const APP_VERSION = 'v128';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3134,6 +3134,63 @@ function setCopyMode(inMode, back) {
   renderAnswers();
 }
 
+// How long the Enter waits for the pointer it is meant to press, and how often
+// it looks. A menu redraws in a frame or two; a second is a whole eternity of
+// them and still short enough that a tap either does something or says why.
+const POINTER_WAIT = 1000;
+const POINTER_POLL = 60;
+
+// pressAnswer walks the menu to `want` and only then takes it.
+//
+// **The two halves cannot go out together**, which is what made every button but
+// the first answer option one — measured on a real menu, see answerKeys in
+// js/detect.js. An Enter in the same write is applied against the position the
+// menu had before the arrows.
+//
+// So the Enter waits on the screen rather than on a clock: the page presses the
+// arrows, watches the pointer with the very same detector the row is drawn from,
+// and sends the Enter when it can see the option it is about to take. A pointer
+// that never arrives means nothing is pressed at all — a wrong answer here looks
+// exactly like the right one until you read what it did, so silence is the
+// cheaper failure. Both outcomes go to the journal.
+async function pressAnswer(label, want) {
+  // Read the screen again rather than trusting the row: it was drawn from an
+  // older scan, and between the two the pointer can have moved, the menu can
+  // have been replaced — or the line that says how it is answered can simply
+  // have arrived. A menu is painted a line at a time, so a row built before its
+  // `Enter to select · ↑/↓ to navigate` footer landed carries digits, and digits
+  // on that menu are answered by whatever is highlighted.
+  const menu = detectQuestion(visibleLines());
+  const option = menu && menu.options[want];
+  if (!option || option.label !== label) {
+    report('answer', { want, gone: true, label });
+    toast('the menu changed — nothing was answered');
+    return;
+  }
+  const keys = answerKeys(menu, want);
+  if (keys === null) {
+    report('answer', { want, cursor: menu.cursor, navigate: menu.navigate, keys: false });
+    toast('no way to answer this menu — nothing was sent');
+    return;
+  }
+  if (!keys.move) { send(keys.commit); return; }
+  if (!send(keys.move)) { toast('not sent: no connection'); return; }
+  const until = Date.now() + POINTER_WAIT;
+  let cursor = -1;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, POINTER_POLL));
+    const now = detectQuestion(visibleLines());
+    cursor = now ? now.cursor : -1;
+    if (cursor === want) break;
+  }
+  report('answer', { want, from: menu.cursor, cursor, moved: cursor === want, navigate: menu.navigate });
+  if (cursor !== want) {
+    toast('the menu did not move — nothing was answered');
+    return;
+  }
+  send(keys.commit);
+}
+
 let lastAnswersSig = null;
 function renderAnswers() {
   const lines = visibleLines();
@@ -3158,7 +3215,7 @@ function renderAnswers() {
     if (keys === null) continue;
     const b = document.createElement('button');
     b.textContent = `${o.key} · ${o.label}`;
-    b.addEventListener('click', () => { send(keys); term.focus(); });
+    b.addEventListener('click', () => { pressAnswer(o.label, i); term.focus(); });
     answersEl.appendChild(b);
   }
   if (!answersEl.children.length) {
