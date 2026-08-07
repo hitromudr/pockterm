@@ -169,8 +169,12 @@ the field is still the keyboard's.
 at `compositionend`, so the character sitting in the field there has *not* been
 sent yet — clearing it would lose a keystroke, and this file's own rule is that
 sending nothing is worse than sending twice. Whether that character comes out
-duplicated or missing is what one recording at `chars` would say, and it has not
-been made: shapes alone cannot tell a right fourth character from a wrong one.
+duplicated or missing needs a recording at `chars`, and the one made did not
+reproduce it: three compositions, three ends, `слово1 слово2 слово3` typed and
+`слово1 слово2 слово3` arrived, with the space-and-backspace that used to double
+a word in the middle of it. So the restart-without-end is rare — two of eight in
+one run, none in the next — and what it costs is still unmeasured. It is not a
+reason to widen the rule against a keystroke that might simply be lost.
 
 ## The bar's Enter waits for the keyboard's word
 
