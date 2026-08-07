@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v133';
+const APP_VERSION = 'v134';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -947,7 +947,20 @@ function settingsWanted() {
   try { return localStorage.getItem(SETTINGS_KEY) === '1'; } catch (_) { return false; }
 }
 
-settingsToggle.addEventListener('click', () => showSettings(settingsEl.hidden));
+// A pull up from that row opens the panel, which is the other half of the pull
+// down that closes it: the panel slides up out of this very row, so in both
+// directions the gesture says what the animation shows. The handler itself sits
+// with the drawer's other touches below; what belongs here is what it costs. The
+// swipe ends on the toggle, and the click that follows would put the panel
+// straight back — so it is swallowed, exactly as `helpHeld` swallows the click at
+// the end of a held tab. The flag is cleared at the next touchstart rather than
+// waiting for a click that a browser may never send, or a suppressed click would
+// eat the next honest tap instead.
+let settingsSwiped = false;
+settingsToggle.addEventListener('click', () => {
+  if (settingsSwiped) { settingsSwiped = false; return; }
+  showSettings(settingsEl.hidden);
+});
 
 // The drawer, and the two things that are not the same: showing the list, and
 // letting go of the session you are in.
@@ -1014,7 +1027,7 @@ drawerCloseBtn.addEventListener('click', closeDrawer);
 // sideways, and taking that away would make renaming impossible. And with no
 // session attached the drawer is modal — closeDrawer refuses then, which is the
 // same refusal ✕ and the scrim get.
-const DRAWER_SWIPE = 45; // px of leftward travel that means "away"
+const DRAWER_SWIPE = 45; // px of sideways travel that means "away", or "here"
 // And downward inside the settings, which is where that panel goes: it opens
 // upward from the row at the bottom, so pulling it back down is the same
 // statement as tapping the row again. A separate threshold from the drawer's
@@ -1023,6 +1036,8 @@ const SETTINGS_SWIPE = 45;
 let drawerTouch = null;
 screenSessions.addEventListener('touchstart', (e) => {
   drawerTouch = null;
+  // Whatever the last gesture swallowed, it has had its click by now.
+  settingsSwiped = false;
   if (e.touches.length !== 1) return;
   const t = e.touches[0];
   if (t.target instanceof Element && t.target.closest('input, textarea')) return;
@@ -1031,7 +1046,11 @@ screenSessions.addEventListener('touchstart', (e) => {
   // taking a scroll away from a list of buttons would be worse than one more tap.
   const inSettings = t.target instanceof Element && !settingsEl.hidden
     && settingsEl.contains(t.target) && settingsEl.scrollTop <= 0;
-  drawerTouch = { x: t.clientX, y: t.clientY, inSettings };
+  // The row the panel opens out of is the one place a pull up can mean the
+  // panel: everything above it is the session list, which scrolls under the
+  // same finger and must keep doing so.
+  const onToggle = t.target instanceof Element && settingsToggle.contains(t.target);
+  drawerTouch = { x: t.clientX, y: t.clientY, inSettings, onToggle };
 }, { passive: true });
 screenSessions.addEventListener('touchmove', (e) => {
   if (!drawerTouch || e.touches.length !== 1) return;
@@ -1042,6 +1061,13 @@ screenSessions.addEventListener('touchmove', (e) => {
     // The owner's answer, so it is remembered as one: the same act as the toggle,
     // not the collapsing a closing drawer does.
     showSettings(false);
+    return;
+  }
+  if (drawerTouch.onToggle && settingsEl.hidden
+      && dy < -SETTINGS_SWIPE && Math.abs(dy) > Math.abs(dx)) {
+    drawerTouch = null;
+    settingsSwiped = true;
+    showSettings(true);
     return;
   }
   if (dx > -DRAWER_SWIPE || Math.abs(dx) <= Math.abs(dy)) return;
@@ -2117,18 +2143,43 @@ function ownsGesture(target) {
     !target.closest('#composer, #snapshot, header.bar, #answers, #history-list');
 }
 
+// And a swipe to the right brings the drawer, which is the mirror of the swipe
+// that puts it away: the panel lives off the left edge, so pulling rightwards is
+// pulling it out from there. ☰ is at the top of a phone and the thumb is at the
+// bottom, which is the whole reason for it.
+//
+// It rides on the terminal's own gesture rather than beside it, because the two
+// share a finger and only one of them can have it. The scroll is vertical, so the
+// drawer takes the gesture only when it is unmistakably sideways — and takes it
+// whole: `scroller.cancel` ends the swipe the way a browser stealing it does,
+// with no glide, or the terminal would go on scrolling behind an open drawer.
+// Any sub-line shift the first few pixels bought is given back by the settle,
+// which is `cancel`'s existing job.
+let swipeFrom = null;
 gestureArea.addEventListener('touchstart', (e) => {
   // Selection mode gives the drag gesture back to the browser: swiping has
   // to select text there, not scroll.
   scroller.stop();
+  swipeFrom = null;
   if (selectMode || !ownsGesture(e.target)) { touchY = null; return; }
   touchY = e.touches[0].clientY;
+  swipeFrom = { x: e.touches[0].clientX, y: touchY };
   setScrollStep();
   scroller.start(e.timeStamp);
 }, { passive: true });
 gestureArea.addEventListener('touchmove', (e) => {
   if (touchY === null) return;
   const y = e.touches[0].clientY;
+  if (swipeFrom) {
+    const dx = e.touches[0].clientX - swipeFrom.x;
+    if (dx > DRAWER_SWIPE && dx > Math.abs(y - swipeFrom.y)) {
+      swipeFrom = null;
+      touchY = null;
+      scroller.cancel(e.timeStamp, 'drawer');
+      openDrawer();
+      return;
+    }
+  }
   scroller.move(y - touchY, e.timeStamp);
   touchY = y;
 }, { passive: true });
@@ -2139,11 +2190,13 @@ gestureArea.addEventListener('touchmove', (e) => {
 // again until the next touch. `touch-action: none` on the screen is the other
 // half — it asks the browser not to take it in the first place.
 gestureArea.addEventListener('touchcancel', (e) => {
+  swipeFrom = null;
   if (touchY === null) return;
   touchY = null;
   scroller.cancel(e.timeStamp);
 }, { passive: true });
 gestureArea.addEventListener('touchend', (e) => {
+  swipeFrom = null;
   if (touchY === null) return;
   touchY = null;
   scroller.end(e.timeStamp);

@@ -421,6 +421,44 @@ describe('the session list is a drawer', () => {
       null, { timeout: 3000 });
   });
 
+  test('a swipe to the right over the terminal brings it back', async () => {
+    // The mirror of the swipe that puts it away, and it has to share a finger
+    // with the terminal's own gesture: ☰ is at the top edge of a phone and the
+    // thumb is at the bottom, which is the whole reason for the gesture. The
+    // scroll is vertical, so the drawer may only take a swipe that is
+    // unmistakably sideways — a downward drag is the terminal's and stays that
+    // way.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    const cdp = await page.context().newCDPSession(page);
+    const drag = async (dx, dy) => {
+      let [x, y] = [100, 300];
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let i = 0; i < 8; i++) {
+        x += dx / 8;
+        y += dy / 8;
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+
+    await drag(0, 160);
+    await page.waitForTimeout(400);
+    assert.equal(
+      await page.evaluate(() => document.getElementById('screen-sessions').classList.contains('open')),
+      false, 'scrolling the terminal opened the drawer');
+    // That drag scrolled the pane back into its history; the pane is shared, so
+    // leaving it there would be the next test's problem.
+    try { stand.tmux(['send-keys', '-t', 'demo', '-X', 'cancel']); } catch (_) { /* no mode */ }
+
+    await drag(160, 0);
+    await page.waitForFunction(
+      () => document.getElementById('screen-sessions').getBoundingClientRect().x === 0,
+      null, { timeout: 3000 });
+    await page.click('#drawer-close');
+  });
+
   test('closing the tab you are in steps back to the one you came from', async () => {
     // Reported as the interface sticking: closing the session you were in landed
     // on the drawer with other sessions running, and the spot where its tab had

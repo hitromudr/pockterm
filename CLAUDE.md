@@ -1111,6 +1111,15 @@ mostly vertical: the panel scrolls under the same finger, and a list of buttons 
 collapsed while being scrolled would be worse than one more tap. It goes through
 `showSettings`, so it is remembered as the owner's answer.
 
+**A pull up from that row opens it**, which is the same statement in the other
+direction: the panel slides up out of the row, so both gestures say what the
+animation shows. It counts only from the row itself — everything above is the
+session list, which scrolls under the same finger — and the click at the end of
+the swipe is swallowed, or the panel would open and shut in one gesture. That
+suppression is cleared at the next touch rather than by the click it is waiting
+for: a browser that decides a 45px drag was a scroll sends no click at all, and a
+flag left set would eat the next honest tap.
+
 **Collapsing it is not the same as closing it, and for one version it was.** Open
 or closed is remembered (`pt-settings-open`) because for anyone who keeps the text
 size or the keyboard mode within reach it is a preference, not a state — and the
@@ -1324,6 +1333,25 @@ the same thing. It closes once the drag is unmistakably horizontal and past 45px
 nothing follows the finger, because the transition already covers the distance. Two
 drags must not trigger it and both were the reason for the guard: the list scrolls
 vertically under the same finger, and the rename field drags a caret sideways.
+
+**And a swipe to the right over the terminal brings it back.** ☰ is in the header
+at the top edge of a phone and the thumb is at the bottom, so the way in cost a
+reach that the way out did not. The gesture is the mirror of the one that puts the
+drawer away — it lives off the left edge, so pulling rightwards is pulling it out
+from there.
+
+It rides on the terminal's own gesture rather than beside it, because the two
+share a finger and only one of them can have it. The scroll is vertical, so the
+drawer takes the swipe only when it is unmistakably sideways (past `DRAWER_SWIPE`
+and further across than down), and it takes it whole: `scroller.cancel` ends the
+swipe the way a browser stealing it does, with no glide, or the terminal would go
+on scrolling behind an open drawer. Where a swipe was never the terminal's —
+the composer, the frozen copy, the header, the answer row — it is not the
+drawer's either, `ownsGesture` being the one answer to that question.
+
+That cancel is why the gesture report grew a `by`: the journal counts cancelled
+gestures to tell a fact of the platform from a defect, and folding the page's own
+swipes into that number would spoil the very measurement the flag exists for.
 
 **Closing the tab you are in steps back to the one you came from.** It used to land
 on the modal drawer whatever else was running, which was reported as the interface

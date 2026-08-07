@@ -451,6 +451,7 @@ test('a gesture the browser takes away ends cleanly', () => {
   s.cancel(80);
   assert.equal(seen.length, 1, 'the gesture was never reported');
   assert.equal(seen[0].cancelled, true, 'the report does not say the browser took it');
+  assert.equal(seen[0].by, 'browser', 'a cancel with no reason named somebody else');
   assert.equal(seen[0].glided, 0, 'a cancelled gesture threw the screen');
   assert.equal(pending.length, 1, 'a glide was started from a gesture with no end');
 
@@ -462,6 +463,22 @@ test('a gesture the browser takes away ends cleanly', () => {
     for (const fn of fns) fn(at);
   }
   assert.equal(shifts[shifts.length - 1], 0, 'the shift outlived the cancelled gesture');
+});
+
+test('the page taking a gesture is not the browser taking it', () => {
+  // A swipe to the right belongs to the drawer, and it ends the terminal's
+  // gesture through the same door a stolen one does — no end to read a throw
+  // from, and a glide would scroll behind an open drawer. The journal counts
+  // cancelled gestures to tell a platform fact from a defect, so the two have to
+  // be distinguishable there.
+  const seen = [];
+  const s = new Scroller({ notch: () => {}, onGesture: (g) => seen.push(g), raf: () => {} });
+  s.setStep(30);
+  s.start(0);
+  s.move(20, 16);
+  s.cancel(32, 'drawer');
+  assert.equal(seen[0].cancelled, true);
+  assert.equal(seen[0].by, 'drawer', 'the drawer swipe was counted as the browser stealing one');
 });
 
 test('a cancel with no gesture under way is nothing', () => {

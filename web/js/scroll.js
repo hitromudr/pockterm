@@ -124,6 +124,7 @@ export class Scroller {
     this.touching = false;
     this.settling = false;
     this.cancelled = false;
+    this.takenBy = '';
   }
 
   // report closes the books on a gesture: what was sent while the finger was
@@ -137,7 +138,7 @@ export class Scroller {
     this.track(at);
     if (!this.onGesture) return;
     const cancelled = this.cancelled;
-    this.onGesture({
+    const g = {
       notches: this.notches,
       glided: this.glided,
       speed: Math.round(Math.abs(speed) * 100) / 100,
@@ -148,12 +149,17 @@ export class Scroller {
       // however the velocity is measured, and the number says so instead of
       // leaving it to taste.
       idle: this.idle,
-      // Whether the browser took this gesture rather than the finger ending it.
+      // Whether something took this gesture rather than the finger ending it.
       // In the journal because the page cannot tell how often it happens, and
       // how often it happens is the difference between a defect and a fact of
       // the platform.
       cancelled,
-    });
+    };
+    // Which is why `by` goes with it: the page takes a sideways swipe for the
+    // drawer, and counting those as the browser stealing gestures would spoil
+    // the very measurement the flag exists for.
+    if (cancelled) g.by = this.takenBy;
+    this.onGesture(g);
   }
 
   // How many pixels of travel make one notch: the row height times the lines
@@ -294,6 +300,7 @@ export class Scroller {
     this.touching = true;
     this.settling = false;
     this.cancelled = false;
+    this.takenBy = '';
     this.ticking = false;
     this.carry = 0;
     this.speed = 0;
@@ -376,12 +383,18 @@ export class Scroller {
   // being interrupted, because without this the page never learned the gesture
   // was over: the shift stayed where the last touchmove left it and nothing
   // moved again until the next touch.
-  cancel(at) {
+  //
+  // The page takes one too — a swipe to the right is the drawer's, not the
+  // terminal's — and it arrives here for the same reasons: there was no release
+  // to read a throw from, and a glide would go on scrolling behind an open
+  // drawer. `by` is what keeps the two apart in the journal.
+  cancel(at, by = 'browser') {
     if (!this.touching) return;
     this.touching = false;
     this.gliding = false;
     this.speed = 0;
     this.cancelled = true;
+    this.takenBy = by;
     this.report(at, 0);
   }
 
