@@ -121,8 +121,10 @@ export function detectQuestion(lines) {
     const chrome = (CHROME.test(m[1]) || RIGHT_BORDER.test(plain[i]))
       && !COMPOSER.test(plain[i]);
     // Continues the run if this line carries the next number and everything
-    // between it and the previous option belongs to that option.
-    if (run && m[2] === String(run.opts.length + 1)
+    // between it and the previous option belongs to that option. The next
+    // number is counted from the option before it rather than from the length
+    // of the run, because a run no longer has to start at 1 — see below.
+    if (run && Number(m[2]) === Number(run.opts[run.opts.length - 1].key) + 1
         && continues(plain.slice(run.last + 1, i), run.indent)) {
       run.opts.push({ key: m[2], label: label(m[3]) });
       run.pointers.push(POINTER.test(m[1]));
@@ -130,15 +132,27 @@ export function detectQuestion(lines) {
       run.last = i;
       continue;
     }
-    // A number out of turn ends the current run; a "1." starts a new one.
+    // A number out of turn ends the current run, and any number starts a new
+    // one — it does not have to be a 1.
+    //
+    // It had to be, and that lost the menu exactly while it was being used.
+    // AskUserQuestion scrolls its own list to keep the pointer in view, so on a
+    // phone-width pane a walk down to the fourth answer pushes the first two
+    // off the top of the list: what is left on screen is a run beginning at
+    // `3.`, which under the old rule was not a menu at all. Captured off a real
+    // pane — the row of buttons went away at the moment it was tapped, and the
+    // press that followed had nothing to verify against and refused.
+    //
+    // What keeps prose out was never the leading 1. A numbered list in a
+    // sentence carries no pointer and no border, and `chrome` is what a run is
+    // kept on; the indentation rule in `continues` is the other half. Both are
+    // untouched.
     close();
-    if (m[2] === '1') {
-      run = {
-        start: i, last: i, indent: indentOf(plain[i]), chrome,
-        opts: [{ key: '1', label: label(m[3]) }],
-        pointers: [POINTER.test(m[1])],
-      };
-    }
+    run = {
+      start: i, last: i, indent: indentOf(plain[i]), chrome,
+      opts: [{ key: m[2], label: label(m[3]) }],
+      pointers: [POINTER.test(m[1])],
+    };
   }
   close();
   if (!best) return null;

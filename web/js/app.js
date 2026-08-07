@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v134';
+const APP_VERSION = 'v135';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3312,38 +3312,59 @@ const POINTER_POLL = 60;
 // that never arrives means nothing is pressed at all — a wrong answer here looks
 // exactly like the right one until you read what it did, so silence is the
 // cheaper failure. Both outcomes go to the journal.
-async function pressAnswer(label, want) {
+// The option is found by what it says, not by where it sat, and the pointer is
+// watched by the option's own number rather than by its place in the row.
+//
+// A place is not a name here. AskUserQuestion scrolls its own list to keep the
+// pointer in view, so the walk this function sends can push the options above
+// the target off the top of that list: the answer the button was drawn for is
+// still on screen and still the same answer, one or two rows higher. Reading the
+// index alone, both halves then failed — the label at that index was somebody
+// else's, so the press refused before it started, and after a walk that did land
+// the cursor index no longer matched what was asked for. Reported from the phone
+// as the two options at the bottom of a long menu doing nothing at all.
+//
+// `prompt` is what makes matching on a label safe: every AskUserQuestion carries
+// a "Type something." and a "Chat about this", so a label alone would answer a
+// menu that had been replaced by the next one since the row was drawn.
+async function pressAnswer(prompt, label, want) {
   // Read the screen again rather than trusting the row: it was drawn from an
-  // older scan, and between the two the pointer can have moved, the menu can
-  // have been replaced — or the line that says how it is answered can simply
-  // have arrived. A menu is painted a line at a time, so a row built before its
-  // `Enter to select · ↑/↓ to navigate` footer landed carries digits, and digits
-  // on that menu are answered by whatever is highlighted.
+  // older scan, and between the two the pointer can have moved, the list can
+  // have scrolled, the menu can have been replaced — or the line that says how
+  // it is answered can simply have arrived. A menu is painted a line at a time,
+  // so a row built before its `Enter to select · ↑/↓ to navigate` footer landed
+  // carries digits, and digits on that menu are answered by whatever is
+  // highlighted.
   const menu = detectPrompt(visibleLines());
-  const option = menu && menu.options[want];
-  if (!option || option.label !== label) {
+  const at = menu && menu.prompt === prompt
+    ? menu.options.findIndex((o) => o.label === label) : -1;
+  if (at < 0) {
     report('answer', { want, gone: true, label });
     toast('the menu changed — nothing was answered');
     return;
   }
-  const keys = answerKeys(menu, want);
+  const key = menu.options[at].key;
+  const keys = answerKeys(menu, at);
   if (keys === null) {
-    report('answer', { want, cursor: menu.cursor, navigate: menu.navigate, keys: false });
+    report('answer', { want, at, cursor: menu.cursor, navigate: menu.navigate, keys: false });
     toast('no way to answer this menu — nothing was sent');
     return;
   }
   if (!keys.move) { send(keys.commit); return; }
   if (!send(keys.move)) { toast('not sent: no connection'); return; }
   const until = Date.now() + POINTER_WAIT;
-  let cursor = -1;
+  let on = null;
   while (Date.now() < until) {
     await new Promise((r) => setTimeout(r, POINTER_POLL));
     const now = detectPrompt(visibleLines());
-    cursor = now ? now.cursor : -1;
-    if (cursor === want) break;
+    // Which option the pointer is on, by the option's own number: the list can
+    // have scrolled under the walk, and then the index it arrives at is not the
+    // index it was sent to.
+    on = now && now.cursor >= 0 ? now.options[now.cursor].key : null;
+    if (on === key) break;
   }
-  report('answer', { want, from: menu.cursor, cursor, moved: cursor === want, navigate: menu.navigate });
-  if (cursor !== want) {
+  report('answer', { want, at, key, from: menu.cursor, on, moved: on === key, navigate: menu.navigate });
+  if (on !== key) {
     toast('the menu did not move — nothing was answered');
     return;
   }
@@ -3374,7 +3395,7 @@ function renderAnswers() {
     if (keys === null) continue;
     const b = document.createElement('button');
     b.textContent = `${o.key} · ${o.label}`;
-    b.addEventListener('click', () => { pressAnswer(o.label, i); term.focus(); });
+    b.addEventListener('click', () => { pressAnswer(q.prompt, o.label, i); term.focus(); });
     answersEl.appendChild(b);
   }
   if (!answersEl.children.length) {

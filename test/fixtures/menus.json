@@ -350,6 +350,43 @@
         "───────────────────────────────────────────────────"
       ],
       "expect": null
+    },
+    {
+      "name": "AskUserQuestion scrolled past its own first options",
+      "_why": "Captured off a real pane at 51 columns while the pointer sat on the fourth answer: the widget scrolls its own list to keep the pointer in view, so options 1 and 2 are simply not on screen and what is left is a run beginning at 3. The old rule required a run to start at 1, so this screen was not a menu at all — the row of buttons went away at the moment it was tapped, and the press that followed had nothing to verify against.",
+      "lines": [
+        "     тогда проект ведёт переезд: что переносится,",
+        "     что гаснет, в каком порядке.",
+        "  3. Узел флота с другой ролью",
+        "     Новая машина рядом с малиной, но под свою",
+        "     задачу (например вычисления/ollama или",
+        "     хранилище). Роль уточню отдельно.",
+        "❯ 4. Type something.",
+        "───────────────────────────────────────────────────",
+        "  5. Chat about this",
+        "",
+        "Enter to select · Tab/Arrow keys to navigate ·",
+        "ctrl+g to edit in Vim · Esc to cancel"
+      ],
+      "expect": {
+        "prompt": "что гаснет, в каком порядке.",
+        "options": [
+          {
+            "key": "3",
+            "label": "Узел флота с другой ролью"
+          },
+          {
+            "key": "4",
+            "label": "Type something."
+          },
+          {
+            "key": "5",
+            "label": "Chat about this"
+          }
+        ],
+        "cursor": 1,
+        "navigate": "arrows"
+      }
     }
   ]
 }

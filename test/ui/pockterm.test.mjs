@@ -2331,6 +2331,15 @@ describe('the answer buttons and the pane they are read from', () => {
     await stand.page.waitForTimeout(300);
   };
   const sent = () => stand.page.evaluate(() => window.__sent.join(''));
+  // The same drawing, with the numbers given rather than assumed: a menu that has
+  // scrolled its own list shows a run that does not begin at 1.
+  const drawRun = (opts, on) => {
+    for (const l of [
+      'Что делать?',
+      ...opts.map((o, i) => `${on === i ? '❯' : ' '} ${o}`),
+      'Enter to select · ↑/↓ to navigate · Esc to cancel',
+    ]) stand.tmux(['send-keys', '-t', 'demo', l, 'Enter']);
+  };
 
   test('an answer walks to the option and presses only once the pointer is there', async () => {
     await recordFrames();
@@ -2368,6 +2377,37 @@ describe('the answer buttons and the pane they are read from', () => {
     assert.equal(await sent(), '\x1b[B', `an Enter went out blind: ${JSON.stringify(await sent())}`);
     assert.match(await page.textContent('#toast'), /did not move/,
       'nothing said that the answer had not gone');
+  });
+
+  test('a menu that has scrolled past its own first options is still answered', async () => {
+    // AskUserQuestion keeps its pointer in view by scrolling its list, so walking
+    // down a long menu on a phone-width pane pushes the options above the target
+    // off the top of it. Both halves of a press used to read an option by its
+    // place: a run had to begin at "1." to be a menu at all, and the wait after
+    // the walk compared the cursor's index with the index the button was drawn
+    // with. Neither survives the list moving, and together they were reported
+    // from the phone as the two options at the bottom of a long menu doing
+    // nothing — the row went away as it was tapped, and the press then had
+    // nothing to verify against and refused. The real screen is in the shared
+    // fixtures; this is the other half, that the press still lands.
+    await recordFrames();
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    drawRun(['2. Два', '3. Три'], 0);
+    await answersUp();
+
+    await page.evaluate(() => { window.__sent.length = 0; });
+    await page.locator('#answers button:not(.esc)').nth(1).click();
+    await page.waitForTimeout(250);
+    assert.equal(await sent(), '\x1b[B', `the walk was not sent alone: ${JSON.stringify(await sent())}`);
+
+    // And the list scrolls under the walk: what was the second option is now the
+    // first, and the only thing about it that did not change is its number. That
+    // is what the page watches, which is why the Enter goes out at all.
+    drawRun(['3. Три', '4. Четыре'], 0);
+    await page.waitForFunction(() => window.__sent.join('').includes('\r'), null, { timeout: 5000 });
+    assert.equal(await sent(), '\x1b[B\r', `the Enter never went: ${JSON.stringify(await sent())}`);
   });
 
   test('a list being typed into the input box draws no answer buttons', async () => {

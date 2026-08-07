@@ -500,6 +500,37 @@ the first had been answering the first. Reported from the phone as "Chat about
 this and Type something do not work", which is what the two options at the bottom
 of that menu look like when they quietly pick the top one.
 
+**A menu scrolls its own list, and reading an option by its place lost it
+twice.** `AskUserQuestion` keeps its pointer in view by scrolling the options
+under it, so on a pane 51 columns wide walking down to the fourth answer pushes
+the first two off the top of the list. What is left on screen is a run beginning
+at `3.` — and a run had to begin at `1.` to be a menu at all, so there was no
+menu: the row of buttons went away at the moment it was tapped. Then the press
+that followed compared the cursor's index with the index the button carried, and
+after a scroll those are two different rows. Reported from the phone as the two
+options at the bottom of a long menu doing nothing, which is the third visit of
+this defect — the digits, then the Enter glued to the arrows, now the list moving
+under the walk. All three look identical from outside: a button that answers
+nothing, or worse, something else.
+
+So a run may start at any number. **The leading 1 was never what kept prose
+out** — that is the chrome a run is kept on (`❯`, a border) and the indentation
+rule in `continues`, and both are untouched; the number now only has to be one
+past the option before it. And the press follows the option rather than the row:
+it finds it by label in a fresh scan, and watches for the pointer to arrive **by
+the option's own number**, which is the one thing about it that a scroll does not
+change. The prompt is checked too, because every one of these menus carries a
+"Type something." and a "Chat about this" — a label alone would answer the menu
+that had replaced this one.
+
+What a scrolled menu costs is its prompt: the question is off screen with the
+options, so `prompt` is whatever line sits above the run — a fragment of the
+description belonging to the option before. A notification then names the
+fragment. That is worse than the question and much better than the silence it
+replaced, which is a tab painted neutral in front of a screen full of question.
+`test/fixtures/menus.json` carries the real scrolled pane, captured while the
+pointer sat on the fourth answer.
+
 **And the press reads the screen again instead of trusting the row.** The row is
 drawn from an older scan, and a menu is painted a line at a time: one built before
 its `Enter to select · ↑/↓ to navigate` footer had arrived carries *digits*, which

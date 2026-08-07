@@ -86,19 +86,28 @@ func Question(lines []string) *Menu {
 		hasChrome := (chrome.MatchString(m[1]) || rightBorder.MatchString(line)) &&
 			!composerPrompt.MatchString(line)
 		// Continues the run if this line carries the next number and everything
-		// between it and the previous option belongs to that option.
-		if cur != nil && m[2] == strconv.Itoa(len(cur.opts)+1) && continues(plain[cur.last+1:i], cur.indent) {
+		// between it and the previous option belongs to that option. Counted from
+		// the option before it rather than from the length of the run, because a
+		// run no longer has to start at 1 — see below.
+		if cur != nil && m[2] == nextKey(cur.opts) && continues(plain[cur.last+1:i], cur.indent) {
 			cur.opts = append(cur.opts, Option{Key: m[2], Label: label(m[3])})
 			cur.chrome = cur.chrome || hasChrome
 			cur.last = i
 			continue
 		}
-		// A number out of turn ends the current run; a "1." starts a new one.
+		// A number out of turn ends the current run, and any number starts a new
+		// one — it does not have to be a 1.
+		//
+		// It had to be, and that left the tab neutral in front of a screen full of
+		// question. AskUserQuestion scrolls its own list of options to keep the
+		// pointer in view, so on a phone-width pane walking down to the fourth
+		// answer pushes the first two off the top of the list, and what is left on
+		// screen is a run beginning at "3.". What keeps prose out was never the
+		// leading 1: it is the chrome a run is kept on, and the indentation rule in
+		// continues. Both are untouched.
 		closeRun()
-		if m[2] == "1" {
-			cur = &run{start: i, last: i, indent: indentOf(line),
-				opts: []Option{{Key: "1", Label: label(m[3])}}, chrome: hasChrome}
-		}
+		cur = &run{start: i, last: i, indent: indentOf(line),
+			opts: []Option{{Key: m[2], Label: label(m[3])}}, chrome: hasChrome}
 	}
 	closeRun()
 	if best == nil {
@@ -119,6 +128,18 @@ func Question(lines []string) *Menu {
 // label drops the box's right border and its padding.
 func label(s string) string {
 	return strings.TrimSpace(rightBorder.ReplaceAllString(s, ""))
+}
+
+// nextKey is the number that would continue a run: one past the option it ends
+// with. Read off the last option rather than counted from the length, because a
+// run may start anywhere — a menu that has scrolled its own list shows one
+// beginning at "3.".
+func nextKey(opts []Option) string {
+	n, err := strconv.Atoi(opts[len(opts)-1].Key)
+	if err != nil {
+		return ""
+	}
+	return strconv.Itoa(n + 1)
 }
 
 // continues reports whether every line between two options belongs to the
