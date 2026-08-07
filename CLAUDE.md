@@ -148,9 +148,29 @@ called, and the guard returns a no-op — and wired but never firing look
 identical from a phone, and both look exactly like the drift still being there.
 `field-guard` says which at load and `field-clear` reports the first clear with
 its length, one line each per session. On the owner's phone, v133:
-`{"wired":true}` and `{"len":6,"first":true}`, with the drift reported as
-improved rather than gone. What is left is unmeasured — the input log was off
-for that run, and the next round starts by turning it on.
+`{"wired":true}` and `{"len":6,"first":true}`.
+
+**Measured again with the log on, and the defect this was written for is gone.**
+316 events, the field dropped to empty fourteen times, and it never grew past 8
+where the day before it had run to 16 and kept going. The number that decides it
+is the one the word came back from: **eight `compositionstart`, seven of them
+over an empty field**. A keyboard that finds nothing has no previous word to
+offer, and there is no second `insertCompositionText` of a word already sent.
+
+The eighth is what is left, and it is a different animal. Gboard sometimes
+**restarts a composition without ending the one before** — `compositionupdate`
+with `len:0`, no `compositionend`, then a fresh `compositionstart` over the one
+character the previous region had put there, and the next region is appended to
+it rather than replacing it (field 1 → 3 for a two-character update). The rule
+never fires: nothing ended, so by its own bounds a composition is still open and
+the field is still the keyboard's.
+
+**And it must not simply be widened to cover that.** xterm sends a composition
+at `compositionend`, so the character sitting in the field there has *not* been
+sent yet — clearing it would lose a keystroke, and this file's own rule is that
+sending nothing is worse than sending twice. Whether that character comes out
+duplicated or missing is what one recording at `chars` would say, and it has not
+been made: shapes alone cannot tell a right fourth character from a wrong one.
 
 ## The bar's Enter waits for the keyboard's word
 
