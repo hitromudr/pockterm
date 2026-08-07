@@ -525,6 +525,56 @@ describe('the session list is a drawer', () => {
     assert.equal(await page.evaluate(() => localStorage.getItem('pt-settings-open')), '0');
   });
 
+  test('a pull up anywhere in the drawer opens the settings', async () => {
+    // The panel slides up out of the row at the bottom, so a pull up says the
+    // same thing as tapping it — and it counted only from that row, which is one
+    // target at the very bottom of a tall screen. The gesture is wanted from
+    // wherever the thumb is, so the bound is the scroll rather than the place:
+    // here the list is two sessions and has nowhere to go, which is the case that
+    // reads as "anywhere".
+    const { page } = stand;
+    await stand.open();
+    await stand.attach('demo');
+    await stand.openDrawer();
+    // From closed, by state: the toggle toggles.
+    if (await page.evaluate(() => !document.getElementById('settings').hidden)) {
+      await page.click('#settings-toggle');
+    }
+    await page.waitForFunction(() => document.getElementById('settings').hidden, null, { timeout: 5000 });
+    const before = await page.evaluate(() => {
+      const b = document.querySelector('#tabs button.active');
+      return b ? b.textContent : null;
+    });
+
+    // Over the session list, nowhere near the row the panel opens from.
+    const cdp = await page.context().newCDPSession(page);
+    const box = await page.locator('#session-list').boundingBox();
+    const x = Math.round(box.x + box.width / 2);
+    let y = Math.round(box.y + 40);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let i = 0; i < 8; i++) {
+      y -= 12;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+    await page.waitForSelector('#settings:not([hidden])', { timeout: 5000 });
+    // And the click the gesture ends in is not a tap: over the list it lands on a
+    // session, and switching session on the way into the settings is the defect
+    // this swallow exists for.
+    await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => document.getElementById('settings').hidden), false,
+      'the click at the end of the swipe closed what the swipe opened');
+    assert.equal(
+      await page.evaluate(() => {
+        const b = document.querySelector('#tabs button.active');
+        return b ? b.textContent : null;
+      }),
+      before, 'the pull up switched session on its way into the settings');
+    // It is the owner's answer, so it is remembered as one.
+    assert.equal(await page.evaluate(() => localStorage.getItem('pt-settings-open')), '1');
+  });
+
   test('the settings panel comes back the way it was left', async () => {
     // Closing the drawer collapses it, and that used to be the same act as
     // answering "closed": whoever keeps the text size and the keyboard mode

@@ -1142,14 +1142,29 @@ mostly vertical: the panel scrolls under the same finger, and a list of buttons 
 collapsed while being scrolled would be worse than one more tap. It goes through
 `showSettings`, so it is remembered as the owner's answer.
 
-**A pull up from that row opens it**, which is the same statement in the other
-direction: the panel slides up out of the row, so both gestures say what the
-animation shows. It counts only from the row itself — everything above is the
-session list, which scrolls under the same finger — and the click at the end of
-the swipe is swallowed, or the panel would open and shut in one gesture. That
-suppression is cleared at the next touch rather than by the click it is waiting
-for: a browser that decides a 45px drag was a scroll sends no click at all, and a
-flag left set would eat the next honest tap.
+**A pull up anywhere in the drawer opens it**, which is the same statement in the
+other direction: the panel slides up out of the row at the bottom, so both
+gestures say what the animation shows.
+
+It counted only from that row, on the argument that everything above is a list
+that scrolls under the same finger. The row is one target at the very bottom of a
+tall screen, and the gesture is wanted from wherever the thumb happens to be — so
+**the bound is the scroll rather than the place**: whatever is under the finger
+keeps the gesture while it still has somewhere to go down, and the question is
+asked of the ancestors rather than of one list, because the drawer holds several.
+A short list has nowhere to go, which is the common case and the one that reads
+as "anywhere"; a long one is being scrolled, and settings that opened mid-scroll
+would be worse than one more tap.
+
+**The click the gesture ends in is not a tap**, and widening the gesture widened
+that too. From the row it was the row's own click, which would have shut the panel
+the swipe had just opened. From anywhere it lands on whatever the finger came down
+on, and what is in there is sessions — a pull up over the list would open the
+settings and switch session on the way. It is caught on the drawer in the capture
+phase, before it reaches the button it is aimed at, and the suppression is cleared
+at the next touch rather than by the click it is waiting for: a browser that
+decides a 45px drag was a scroll sends no click at all, and a flag left set would
+eat the next honest tap.
 
 **Collapsing it is not the same as closing it, and for one version it was.** Open
 or closed is remembered (`pt-settings-open`) because for anyone who keeps the text

@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v135';
+const APP_VERSION = 'v136';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -957,10 +957,34 @@ function settingsWanted() {
 // waiting for a click that a browser may never send, or a suppressed click would
 // eat the next honest tap instead.
 let settingsSwiped = false;
-settingsToggle.addEventListener('click', () => {
-  if (settingsSwiped) { settingsSwiped = false; return; }
-  showSettings(settingsEl.hidden);
-});
+settingsToggle.addEventListener('click', () => showSettings(settingsEl.hidden));
+
+// Whatever the pull up started on, its click is not a tap.
+//
+// While the gesture only counted from the toggle row, the click to swallow was
+// that row's own — it would have shut the panel the swipe had just opened. From
+// anywhere in the drawer the click lands on whatever the finger came down on,
+// and the things in there are sessions: a pull up over the list would open the
+// settings and switch session on the way. So it is caught on the drawer in the
+// capture phase, before it reaches the button it is aimed at.
+screenSessions.addEventListener('click', (e) => {
+  if (!settingsSwiped) return;
+  settingsSwiped = false;
+  e.stopPropagation();
+  e.preventDefault();
+}, true);
+
+// Whether anything under the finger can still be scrolled downwards. That is
+// what tells a pull up meant for the settings from one meant for a list — and
+// it is asked of the ancestors rather than of the list alone, because the
+// drawer holds several (the sessions, the folders, the buttons of a preset).
+function scrollableDown(el) {
+  for (let n = el; n && n !== screenSessions.parentNode; n = n.parentElement) {
+    if (n.scrollHeight - n.clientHeight > 1
+        && n.scrollTop + n.clientHeight < n.scrollHeight - 1) return true;
+  }
+  return false;
+}
 
 // The drawer, and the two things that are not the same: showing the list, and
 // letting go of the session you are in.
@@ -1046,11 +1070,19 @@ screenSessions.addEventListener('touchstart', (e) => {
   // taking a scroll away from a list of buttons would be worse than one more tap.
   const inSettings = t.target instanceof Element && !settingsEl.hidden
     && settingsEl.contains(t.target) && settingsEl.scrollTop <= 0;
-  // The row the panel opens out of is the one place a pull up can mean the
-  // panel: everything above it is the session list, which scrolls under the
-  // same finger and must keep doing so.
-  const onToggle = t.target instanceof Element && settingsToggle.contains(t.target);
-  drawerTouch = { x: t.clientX, y: t.clientY, inSettings, onToggle };
+  // A pull up anywhere in the drawer opens the panel, and the one thing it must
+  // not take is a scroll. It counted only from the row the panel opens out of,
+  // on the argument that everything above it is a list that scrolls under the
+  // same finger — but that row is one target at the very bottom of a tall
+  // screen, and the gesture is wanted from wherever the thumb happens to be.
+  //
+  // So the bound is the scroll rather than the place: whatever is under the
+  // finger keeps the gesture while it still has somewhere to go down. A short
+  // list has nowhere, which is the common case and the one that reads as
+  // "anywhere"; a long one is being scrolled, and a drawer that opened its
+  // settings mid-scroll would be worse than one more tap.
+  const canOpen = t.target instanceof Element && !scrollableDown(t.target);
+  drawerTouch = { x: t.clientX, y: t.clientY, inSettings, canOpen };
 }, { passive: true });
 screenSessions.addEventListener('touchmove', (e) => {
   if (!drawerTouch || e.touches.length !== 1) return;
@@ -1063,7 +1095,7 @@ screenSessions.addEventListener('touchmove', (e) => {
     showSettings(false);
     return;
   }
-  if (drawerTouch.onToggle && settingsEl.hidden
+  if (drawerTouch.canOpen && settingsEl.hidden
       && dy < -SETTINGS_SWIPE && Math.abs(dy) > Math.abs(dx)) {
     drawerTouch = null;
     settingsSwiped = true;
