@@ -223,11 +223,18 @@ reads would be the one that drifted.
 
 **The phone is still the judge**, because the stand cannot compose — desktop
 Chromium has no IME, which is what `js/inputdiag.js` says in its own header. So
-the decision is unit-tested against an injected field and each Enter writes one
-line to the journal (`ender`) with what was asked, whether a composition was
-open, and how much the field held. "The last word did not go" and "there was
-nothing to wait for" are the same thing from a thumb, and that line is what
-separates them.
+the decision is unit-tested against an injected field, and the device answers
+with a line per Enter (`ender`): what was asked, whether a composition was open,
+and how much the field held. "The last word did not go" and "there was nothing
+to wait for" are the same thing from a thumb, and that line is what separates
+them — measured on the owner's phone dictating, `asked:true composing:true` with
+41, 46 and 67 characters held, which before this could not happen at all without
+the bridge.
+
+It lives **behind `🔍 Input log`**, where everything per-keystroke here lives. It
+was on by default for the one release in which the browser path was being
+judged; a line per Enter is a request per Enter, and that is not the price of
+typing once the answer is known.
 
 ## A message that did not go out is still the owner's
 

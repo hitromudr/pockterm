@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v137';
+const APP_VERSION = 'v138';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1936,12 +1936,19 @@ function commitPendingInput() {
       el.focus();
     },
   });
-  // The phone is the judge of everything in this area and cannot open a
-  // console, so the state at the moment of the Enter goes to the journal: what
-  // was asked, whether a composition was open, and how much the field held.
-  // "The last word did not go" and "there was nothing to wait for" look the
-  // same from a thumb.
-  report('ender', { asked, composing: wasComposing, len: held, native: !!window.PockNative });
+  // Behind the input log rather than on by default, which is where everything
+  // per-keystroke in this area lives: the switch is what the owner turns on to
+  // settle a question about the keyboard, and this is one of those questions.
+  // It stayed on for one release while the browser path was being judged from
+  // the phone — a line per Enter is a request per Enter, and it is not the
+  // price of typing once the answer is known.
+  //
+  // What it says when it is on: what was asked, whether a composition was open,
+  // and how much the field held. "The last word did not go" and "there was
+  // nothing to wait for" look the same from a thumb.
+  if (inputDiag !== 'off') {
+    report('ender', { asked, composing: wasComposing, len: held, native: !!window.PockNative });
+  }
   return asked;
 }
 
