@@ -1529,7 +1529,7 @@ describe('the key bar', () => {
 
   const box = (page, sel) => page.locator(sel).boundingBox();
 
-  test('the bar is laid out as asked: cross on the left, pairs in columns', async () => {
+  test('the bar is laid out as asked: cross in the middle, pairs in columns', async () => {
     await stand.open();
     await stand.attach();
     const { page } = stand;
@@ -1541,8 +1541,8 @@ describe('the key bar', () => {
     const left = await at('[data-key="left"]');
     const right = await at('[data-key="right"]');
     const stop = await at('[data-key="ctrl-c"]');
+    const unfold = await at('[data-key="ctrl-o"]');
     const bs = await at('[data-key="backspace"]');
-    const del = await at('[data-key="delete"]');
     const altEnter = await at('[data-key="alt-enter"]');
     const enter = await at('[data-key="enter"]');
     // Prompt mode has its own Accept; this is about the key bar's.
@@ -1554,20 +1554,25 @@ describe('the key bar', () => {
       assert.ok(a.y < b.y, `${what} are in the wrong order`);
     };
 
-    // Escape holds the top-left corner, the arrows keep their cross beside it.
-    assert.ok(esc.x < up.x && esc.y < down.y, 'escape is not the top-left key');
+    // Escape holds the top-left corner, ^O sits under it, ^C beside it.
+    assert.ok(esc.x < stop.x && esc.y < unfold.y, 'escape is not the top-left key');
+    sameColumn(esc, unfold, 'escape and ^O');
+    assert.ok(Math.abs(esc.y - stop.y) < 2, '^C is not beside escape');
+
+    // The arrows keep their cross, a column to the right of those two.
     sameColumn(up, down, 'up and down');
     assert.ok(left.x < down.x, 'left is not to the left of down');
     assert.ok(right.x > down.x, 'right is not to the right of down');
+    assert.ok(stop.x < up.x && unfold.x < left.x, 'the arrows are not right of Esc and ^C');
 
-    // The pairs, each asked for by name: the two erasers, the two enters, and
-    // accept over the hide toggle.
-    sameColumn(bs, del, 'backspace and forward delete');
+    // The pairs, each asked for by name: backspace over the arrow that ends the
+    // cross, the two enters, and accept over the hide toggle.
+    sameColumn(bs, right, 'backspace and the right arrow');
     sameColumn(altEnter, enter, 'alt+enter and enter');
     sameColumn(accept, hide, 'accept and hide');
 
-    // ^C keeps away from both edges: it is the most expensive misfire here.
-    assert.ok(stop.x > up.x && stop.x < accept.x, '^C drifted to an edge');
+    // The forward delete gave its key to ^O.
+    assert.equal(await page.locator('#keybar [data-key="delete"]').count(), 0);
   });
 
   test('accept is one tap from the key bar', async () => {

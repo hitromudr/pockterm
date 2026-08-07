@@ -14,7 +14,10 @@ const KEYS = {
   // idea of the word being typed, and its Backspace re-commits that word
   // into a terminal that has already moved on.
   backspace: '\x7f',
-  delete: '\x1b[3~',
+  // ^O — what an agent TUI reads as "unfold the output you collapsed". It
+  // took the forward delete's key: erasing forwards needs the arrows and
+  // backspace anyway, and this is a thing no on-screen keyboard offers.
+  'ctrl-o': '\x0f',
   // Numbered menus are how an agent asks a question in the console, and the
   // on-screen keyboard is exactly the layer where Gboard doubles words.
   '1': '1',

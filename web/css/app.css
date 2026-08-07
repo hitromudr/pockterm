@@ -1044,10 +1044,10 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 /* Grid so all keys fit at any width; a flex row overflowed narrow phones
    and hid the rightmost keys (^C, Enter) behind a horizontal scroll.
    Six columns, two rows, and the positions carry meaning: the arrows form
-   their usual cross on the left — up over down, left and right beside it —
-   and delete sits over enter on the right. What used to be empty slots (and
-   the two tabs nobody needs here) now hold the keys an agent conversation
-   actually uses. */
+   their usual cross in the middle — up over down, left and right beside it —
+   Esc and ^C hold the left edge with ^O under them, and the two enters share
+   the column beside accept. What used to be empty slots (and the two tabs
+   nobody needs here) now hold the keys an agent conversation actually uses. */
 #keybar {
   display: grid;
   grid-template-columns: repeat(6, 1fr);

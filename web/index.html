@@ -220,26 +220,28 @@
       <textarea id="prompt" rows="1" placeholder="Message… (▶ to send)"></textarea>
       <button id="send" type="submit" title="Send">&#9654;</button>
     </form>
-    <!-- Two rows, five columns, laid out for a thumb rather than for a
-         keyboard: arrows in their own block on the left with up above down,
-         delete over enter on the right, the rest in between. Tab and
-         Shift+Tab are gone — this bar answers an agent, it does not complete
-         filenames. -->
+    <!-- Two rows, six columns, laid out for a thumb rather than for a
+         keyboard: the arrow cross sits in the middle with up above down, the
+         two ways out of what the agent is doing hold the left edge, enter the
+         right. Tab and Shift+Tab are gone — this bar answers an agent, it does
+         not complete filenames. -->
     <div id="keybar">
       <button data-key="esc">Esc</button>
-      <button data-key="up">&#8593;</button>
       <button data-key="ctrl-c">^C</button>
-      <!-- Deletes without asking the on-screen keyboard; see keys.js. Above
-           forward delete, so the two erasers share a column. -->
+      <button data-key="up">&#8593;</button>
+      <!-- Deletes without asking the on-screen keyboard; see keys.js. -->
       <button data-key="backspace">&#9003;</button>
       <!-- Over Enter: one sends the message, the other adds a line to it. -->
       <button data-key="alt-enter" class="small">Alt&#9166;</button>
       <button data-macro="accept">&#10003;</button>
 
+      <!-- Under Esc, in the corner the forward delete had: the agent unfolds
+           the output it collapsed on ^O, and erasing forwards from a phone is
+           what the arrows and backspace already do. -->
+      <button data-key="ctrl-o">^O</button>
       <button data-key="left">&#8592;</button>
       <button data-key="down">&#8595;</button>
       <button data-key="right">&#8594;</button>
-      <button data-key="delete">&#8998;</button>
       <button data-key="enter">&#9166;</button>
       <button id="hide" title="Hide the bars">&#9662;</button>
     </div>

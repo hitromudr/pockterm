@@ -23,7 +23,7 @@ const WIRE = {
   left: '^[[D',
   'ctrl-c': '^C',
   backspace: '^?',
-  delete: '^[[3~',
+  'ctrl-o': '^O',
   enter: '^M',
   'alt-enter': '^[^M',
 };
@@ -80,8 +80,9 @@ describe('what the key bar puts on the wire', () => {
     await stand.attach('wire');
     const { page } = stand;
 
-    // The order that was reported as mush: type, delete, space, delete again.
-    const order = ['backspace', 'delete', 'backspace', 'left', 'backspace'];
+    // The shape of what was reported as mush: erase, a key that is not an
+    // erase, erase again, move, erase.
+    const order = ['backspace', 'ctrl-o', 'backspace', 'left', 'backspace'];
     const added = await afterPressing(page, order);
     assert.equal(added, order.map((k) => WIRE[k]).join(''), 'the burst did not arrive verbatim');
   });

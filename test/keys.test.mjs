@@ -15,7 +15,9 @@ test('named keys map to escape sequences', () => {
   assert.equal(keyBytes('ctrl-c'), '\x03');
   // DEL: a terminal reads BS (\x08) as "move left", not "erase".
   assert.equal(keyBytes('backspace'), '\x7f');
-  assert.equal(keyBytes('delete'), '\x1b[3~');
+  // ^O: unfold the collapsed output. It replaced the forward delete on the bar.
+  assert.equal(keyBytes('ctrl-o'), '\x0f');
+  assert.equal(keyBytes('delete'), '');
   // Answers to a numbered menu, typed without the on-screen keyboard.
   assert.equal(keyBytes('1'), '1');
   assert.equal(keyBytes('2'), '2');
