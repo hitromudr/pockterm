@@ -243,6 +243,65 @@ describe('a swipe follows the finger', () => {
     assert.doesNotMatch(after, /^1 [1-9]/, `still scrolled back after tapping the way out: ${after}`);
   });
 
+  test('the way back to the end does not bring the keyboard with it', async () => {
+    // Reported from the phone: the ⇩ raised the keyboard over the output it had
+    // just gone back to. Nothing focuses anything on that path — the textarea
+    // keeps the focus from whenever it was last typed into, dismissing a
+    // keyboard does not take it away, and the system puts one back up for a
+    // focused element as soon as the layout moves under it.
+    //
+    // A headless Chromium has no soft keyboard, so what is asserted is the one
+    // lever the page has over it: whether the terminal still holds the focus
+    // when the button has done its work.
+    //
+    // The keyboard is played by the viewport, because that is how the page
+    // measures one — a short viewport is a keyboard up, and the tall one back is
+    // that keyboard dismissed with the textarea still focused, which is the
+    // state the report came from.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    const client = stand.tmux(['list-sessions', '-F', '#{session_name}'])
+      .split('\n').find((n) => n.startsWith('pockterm-'));
+    assert.ok(client, 'the page did not attach through a client session');
+
+    await page.click('#term');
+    for (let i = 1; i <= 40; i++) await page.keyboard.type(`line ${i}\n`);
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('line 40'));
+
+    const tall = await page.evaluate(() => window.visualViewport.height);
+    await page.setViewportSize({ width: 390, height: 420 });
+    // The page's own measurement, taken here rather than trusted: the whole test
+    // rests on it having seen a keyboard, and a viewport that did not shrink
+    // enough would look exactly like a fix that does nothing.
+    await page.waitForFunction(
+      (was) => window.visualViewport.height < was * 0.8, tall, { timeout: 5000 });
+    await page.setViewportSize({ width: 390, height: 780 });
+    await page.waitForFunction(
+      (was) => window.visualViewport.height >= was * 0.8, tall, { timeout: 5000 });
+    assert.ok(
+      await page.evaluate(() => document.activeElement === document.querySelector('.xterm-helper-textarea')),
+      'the terminal lost focus before the button was pressed, so this proves nothing',
+    );
+
+    // Scrolled back, so there is a way back to offer. Through tmux rather than a
+    // finger: what is under test is the tap, and a swipe leaves a glide running
+    // that the tap would also have to cancel.
+    stand.tmux(['copy-mode', '-t', client]);
+    stand.tmux(['send-keys', '-t', client, '-X', '-N', '5', 'scroll-up']);
+    await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
+
+    await page.click('#to-bottom');
+    await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
+    assert.equal(
+      await page.evaluate(() => document.activeElement === document.querySelector('.xterm-helper-textarea')),
+      false,
+      'the terminal still holds the focus, which on Android is the keyboard coming back',
+    );
+    assert.deepEqual(stand.pageErrors, []);
+  });
+
   test('typing into a pane held in copy-mode still reaches the program', async () => {
     // Reported from the phone as the terminal refusing text and a pasted image
     // never arriving, cured by hand with "scroll up and come back". The journal

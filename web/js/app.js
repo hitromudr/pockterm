@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v139';
+const APP_VERSION = 'v140';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1212,11 +1212,9 @@ function attach(name) {
     // dismissed, and the WebView re-shows it for a focused element when the
     // layout moves. That is why it only started after the first tap on the
     // input — before that nothing held focus. So when a soft keyboard is
-    // known to exist and is currently down, the terminal gives up focus.
-    if (sawKeyboard && !keyboardUp && term.textarea && document.activeElement === term.textarea) {
-      term.textarea.blur();
-    }
-    report('switch', { keyboardUp, sawKeyboard });
+    // known to exist and is currently down, the terminal gives up focus —
+    // `releaseTerminalFocus`, which the ⇩ shares for the same reason.
+    report('switch', { keyboardUp, sawKeyboard, blurred: releaseTerminalFocus() });
   });
 }
 
@@ -1827,7 +1825,7 @@ function sendVisible() {
 let copyMode = false;
 let copyBack = 0;
 
-function leaveCopyMode(why) {
+function leaveCopyMode(why, note) {
   // The glide first, and this is the trap the ⇩ button found before typing did:
   // a flick's inertia goes on sending notches for up to a second after the
   // finger has left, and those arrive behind the request and put the pane
@@ -1840,8 +1838,10 @@ function leaveCopyMode(why) {
     ws.send(JSON.stringify({ type: 'leave-mode' }));
   }
   // How often this happens is a fact worth having: it is the page taking a mode
-  // away from every client on the pane.
-  report('leave-mode', { back: copyBack, why });
+  // away from every client on the pane. `note` is whatever the caller had to
+  // decide on the way in — the ⇩ says what it did about the focus, and that is
+  // the one thing that separates "the keyboard came up again" from "it did not".
+  report('leave-mode', { back: copyBack, why, ...note });
   // Optimistic, so a burst of keys asks once; the poll confirms it 400ms later.
   copyMode = false;
 }
@@ -1897,6 +1897,28 @@ term.onData((d) => {
 // the press keeps focus where it is; the click still fires.
 function keepsTerminalFocus(el) {
   el.addEventListener('mousedown', (e) => e.preventDefault());
+}
+
+// The other answer about the same focus: give it up.
+//
+// Focus and the keyboard are two different things on Android. Dismissing the
+// keyboard leaves the terminal's textarea focused, and the system puts one back
+// up for whatever holds focus as soon as the layout moves under it — so a page
+// that is only being read has to hold no focus at all, or the next thing that
+// moves brings the keyboard back over what is being read. Two places met that:
+// a session switch, and the ⇩ that goes back to the live end.
+//
+// Two bounds, and they are why this is not simply a blur. While the keyboard is
+// up, its owner is typing and taking the focus away would close it under them.
+// And on a desktop nothing has ever raised one, where focus is the only thing
+// that makes typing possible at all — `sawKeyboard` tells the two machines
+// apart, and it is learned by watching a keyboard appear rather than guessed
+// from the user agent.
+function releaseTerminalFocus() {
+  if (!sawKeyboard || keyboardUp) return false;
+  if (!term.textarea || document.activeElement !== term.textarea) return false;
+  term.textarea.blur();
+  return true;
 }
 
 // --- key bar ---
@@ -3333,6 +3355,15 @@ let scrolledBack = false;
 const toBottomBtn = document.getElementById('to-bottom');
 keepsTerminalFocus(toBottomBtn);
 toBottomBtn.addEventListener('click', () => {
+  // This button is pressed to read, and on the owner's phone it brought the
+  // keyboard up over what it had just gone back to. Nothing here focuses
+  // anything: the terminal's textarea still holds the focus from whenever it was
+  // last typed into — dismissing a keyboard does not take it away — and the
+  // system puts a keyboard back up for a focused element as soon as the layout
+  // moves, which is exactly what leaving copy-mode makes the pane do. So the
+  // focus is given up first, the same answer a session switch already gives.
+  // Tapping the terminal is still what asks for a keyboard, and still gets one.
+  const blurred = releaseTerminalFocus();
   // The glide first. A flick's inertia goes on sending notches for up to a
   // second after the finger has left, and those would arrive behind the q and
   // put the pane straight back into the history it was just asked to leave —
@@ -3342,7 +3373,7 @@ toBottomBtn.addEventListener('click', () => {
   // where that rule was learned — and a request rather than a `q` because the
   // page's picture of the mode is a poll old: a `q` sent to a pane that has
   // already left the mode is a character in the program.
-  leaveCopyMode('button');
+  leaveCopyMode('button', { blurred, keyboardUp, sawKeyboard });
 });
 
 function setCopyMode(inMode, back) {

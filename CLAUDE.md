@@ -236,6 +236,39 @@ was on by default for the one release in which the browser path was being
 judged; a line per Enter is a request per Enter, and that is not the price of
 typing once the answer is known.
 
+## Holding the focus is asking for the keyboard
+
+Focus and the keyboard are two different things on Android, and the page can
+only touch one of them. Dismissing the keyboard leaves the terminal's textarea
+focused; the system then puts a keyboard back up for whatever holds focus as
+soon as the layout moves under it. So a page that is being read has to hold no
+focus at all — anything else is a keyboard waiting for the next thing that
+moves.
+
+`attach` learned that first: a session switch kept raising the keyboard for
+somebody who had just put it away, and nothing on that path focuses anything.
+The ⇩ that goes back to the live end is the same defect one button along —
+reported as the scroll arrow bringing the keyboard up over the output it had
+just gone back to — because leaving copy-mode is exactly a layout moving.
+
+`releaseTerminalFocus` is the one answer both use, and its two bounds are why it
+is not simply a blur. **While the keyboard is up its owner is typing**, and
+taking the focus away would close it under them. **On a desktop nothing has ever
+raised one**, and there focus is the only thing that makes typing possible at
+all. `sawKeyboard` tells the two machines apart, and it is learned by watching a
+keyboard appear rather than guessed from the user agent — which also means the
+very first time a keyboard is dismissed on a fresh load is outside the rule. The
+way back is unchanged: tapping the terminal is what asks for a keyboard, and it
+still gets one.
+
+**The stand has no soft keyboard, so the test asserts the lever rather than the
+symptom** — whether the textarea still holds the focus after the tap. The
+keyboard is played by the viewport, because that is how the page measures one: a
+short viewport is a keyboard up, and the tall one back is that keyboard
+dismissed with the focus still where it was. `keepsTerminalFocus` on the button
+stays, for the reason the mark picker has it: hiding a focused element hands the
+focus back to whatever had it before, and the ⇩ hides itself a moment later.
+
 ## A message that did not go out is still the owner's
 
 `send()` drops what it is given when the socket is not open, and that is right
