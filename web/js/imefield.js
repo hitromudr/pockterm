@@ -91,9 +91,20 @@ export function fieldHygiene({ empty, clear, defer = (fn) => setTimeout(fn, 0) }
 // exactly like the defect still being there — which is the shape of every
 // question this file exists to settle. The caller reports what it wants; here
 // the only job is to say what happened.
+// The return value carries `isComposing` as well as the unwire, because one
+// other decision on this page needs the same answer: an Enter from the key bar
+// must not overtake a word the keyboard is still holding, and whether it is
+// holding one is exactly what this rule already tracks. Two places watching the
+// same events would be two answers to one question — see commitComposition in
+// js/ender.js for what is done with it.
 export function keepEmpty(el, opts = {}) {
   const { onClear = () => {}, ...rest } = opts;
-  if (!el) return () => {};
+  if (!el) {
+    const off = () => {};
+    off.isComposing = () => false;
+    off.held = () => 0;
+    return off;
+  }
   const rule = fieldHygiene({
     empty: () => !el.value,
     clear: () => { const len = el.value.length; el.value = ''; onClear(len); },
@@ -102,5 +113,11 @@ export function keepEmpty(el, opts = {}) {
   const kinds = ['compositionstart', 'compositionend', 'input'];
   const onEvent = (e) => rule.on(e.type);
   for (const k of kinds) el.addEventListener(k, onEvent);
-  return () => { for (const k of kinds) el.removeEventListener(k, onEvent); };
+  const off = () => { for (const k of kinds) el.removeEventListener(k, onEvent); };
+  off.isComposing = () => rule.isComposing();
+  // What the field is holding, for the journal alone (`held`, not `length`: a
+  // function's own length is read-only and the assignment throws): the phone is the judge of
+  // everything in this file, and a number is what makes it judgeable.
+  off.held = () => el.value.length;
+  return off;
 }

@@ -69,3 +69,39 @@ export function endingKeys({ send, commit, setTimer = setTimeout, clearTimer = c
     get waiting() { return pending !== null; },
   };
 }
+
+// commitComposition decides how — and whether — the keyboard is asked to hand
+// over the word it is holding, before a key that ends an input goes out.
+//
+// **The browser was assumed to have no such problem, and that stopped being
+// true when the phone stopped being the app.** `commitPendingInput` asked the
+// bridge and returned false without one, with a comment saying a real browser
+// does not need it; the ender then took that as "nothing to wait for" and sent
+// the key at once. Since 2026-08-05 the owner's phone is a Chrome PWA with no
+// bridge at all, and Gboard composes in a hidden textarea there exactly as it
+// did in the app — so on the one device this serves, the wait never happened.
+// Reported as the last word not being sent, dictating by voice: dictation is
+// one long composing region, so the word is always still in the field when the
+// Enter goes.
+//
+// A page cannot ask Android to restart the input. It can end a composition the
+// ordinary way: taking the focus off the field makes the keyboard finish the
+// word, which fires `compositionend`, which is what xterm forwards to the pty.
+// Focus goes straight back, so the keyboard stays up. That is `endEdit`.
+//
+// Returning true means only "something was asked for, wait for it" — the
+// waiting, the gap for text arriving in chunks and the bound for text that
+// never arrives are the ender's, and all three already existed. Returning false
+// means there is nothing to wait for and the key goes now, which is the right
+// answer for a field with no composition open: whatever was typed has already
+// been sent as key events.
+//
+// Nothing here reads, replaces or sends what was typed — the same bound the
+// field rule keeps (see js/imefield.js), and for the same reason: the buffer
+// has one owner.
+export function commitComposition({ bridge, composing, endEdit }) {
+  if (bridge()) return true;
+  if (!composing()) return false;
+  endEdit();
+  return true;
+}

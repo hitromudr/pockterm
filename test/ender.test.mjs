@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { endingKeys } from '../web/js/ender.js';
+import { endingKeys, commitComposition } from '../web/js/ender.js';
 
 // A clock that only moves when the test says so: the whole rule is about which
 // of two things goes first, and a real timer would test the machine's mood.
@@ -102,4 +102,70 @@ test('data with no key waiting changes nothing', () => {
   h.keys.sawData();
   h.tick(1000);
   assert.deepEqual(h.sent, []);
+});
+
+// commitComposition: which of the two ways to make the keyboard hand over its
+// word, and whether there is anything to hand over at all.
+//
+// It cannot be tested in the browser — desktop Chromium has no IME, which is
+// what js/inputdiag.js says in its own header — so the field is injected here
+// and the phone is the judge of the rest.
+test('the bridge is preferred, and nothing else is touched when it answers', () => {
+  let ended = 0;
+  const asked = commitComposition({
+    bridge: () => true,
+    composing: () => { throw new Error('the field was consulted over the app'); },
+    endEdit: () => { ended++; },
+  });
+  assert.equal(asked, true);
+  assert.equal(ended, 0, 'the focus was moved though the app had already been asked');
+});
+
+test('with no bridge and a composition open, the field is what ends it', () => {
+  let ended = 0;
+  const asked = commitComposition({
+    bridge: () => false,
+    composing: () => true,
+    endEdit: () => { ended++; },
+  });
+  // True is what makes the ender wait: the word arrives in a later task.
+  assert.equal(asked, true, 'the Enter would have overtaken the word again');
+  assert.equal(ended, 1);
+});
+
+test('with nothing being composed the key goes at once', () => {
+  // The right answer rather than a missing one: what was typed has already
+  // gone as key events, and an Enter that waited for a word nobody is holding
+  // would read as lag on every press.
+  let ended = 0;
+  const asked = commitComposition({
+    bridge: () => false,
+    composing: () => false,
+    endEdit: () => { ended++; },
+  });
+  assert.equal(asked, false);
+  assert.equal(ended, 0, 'the focus was moved with no composition to end');
+});
+
+test('a browser that composes is no longer treated as one that cannot', () => {
+  // The defect itself: the bridge-less path answered false whatever the field
+  // was doing, so the ender sent the key immediately and the last word stayed
+  // in the textarea. Reported dictating by voice, which holds one long
+  // composition — the word is always still there when Enter is pressed.
+  const sent = [];
+  let composing = true;
+  const keys = endingKeys({
+    send: (b) => sent.push(b),
+    commit: () => commitComposition({
+      bridge: () => false,
+      composing: () => composing,
+      endEdit: () => { composing = false; },
+    }),
+    setTimer: () => 1,
+    clearTimer: () => {},
+  });
+  keys.press('\r');
+  assert.deepEqual(sent, [], 'the Enter went out over the word being dictated');
+  keys.sawData();          // the composition ended and its text arrived
+  assert.equal(keys.waiting, true, 'the key stopped waiting before the gap');
 });

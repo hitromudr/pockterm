@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fieldHygiene } from '../web/js/imefield.js';
+import { fieldHygiene, keepEmpty } from '../web/js/imefield.js';
 
 // A field that records what was done to it, and a clock that does not run until
 // it is told to. Between them they are the whole environment this rule needs —
@@ -114,4 +114,36 @@ test('a burst of edits costs one clear', () => {
   assert.equal(s.queue.length, 1);
   s.run();
   assert.equal(s.cleared, 1);
+});
+
+// keepEmpty hands back the answer the key bar needs, because the alternative is
+// a second listener on the same events — two answers to "is a word being
+// composed", and the one the Enter reads would be the one that drifted.
+test('the wiring reports whether a word is being composed, and how much is held', () => {
+  const listeners = {};
+  const el = {
+    value: '',
+    addEventListener(k, fn) { (listeners[k] ||= []).push(fn); },
+    removeEventListener(k, fn) { listeners[k] = (listeners[k] || []).filter((f) => f !== fn); },
+  };
+  const fire = (type) => { for (const fn of listeners[type] || []) fn({ type }); };
+
+  const off = keepEmpty(el, { defer: () => {} });
+  assert.equal(off.isComposing(), false);
+  fire('compositionstart');
+  assert.equal(off.isComposing(), true, 'an open composition was not seen');
+  el.value = 'порт';
+  assert.equal(off.held(), 4);
+  fire('compositionend');
+  assert.equal(off.isComposing(), false);
+  off();
+});
+
+test('a field that was never there answers rather than throwing', () => {
+  // xterm can create its textarea after this call, and the key bar asks on
+  // every Enter: a guard that threw there would take the Enter with it.
+  const off = keepEmpty(null);
+  assert.equal(off.isComposing(), false);
+  assert.equal(off.held(), 0);
+  off();
 });

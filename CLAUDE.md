@@ -196,6 +196,39 @@ The bridge cannot say whether anything was composing — `commitInput` returns
 the answer. `test/ui/bytes.test.mjs` proves the order on the wire: a real
 keystroke delivered right after the tap lands before the `^M`.
 
+**And a browser was assumed not to need any of it, which stopped being true when
+the phone stopped being the app.** `commitPendingInput` asked the bridge and
+answered `false` without one, saying so in its own comment; the ender reads
+`false` as "nothing to wait for" and sends the key at once. So on a Chrome PWA —
+which is what the owner's phone has been since 2026-08-05 — the wait never
+happened at all, and the 90ms bound above never applied. Reported as the last
+word not being sent, **dictating by voice**: dictation is one long composing
+region, so the word is always still in the field when the Enter goes. Typing by
+thumb hides it, because a word ends often enough that the field is usually empty
+at the moment anyone presses Enter.
+
+A page cannot ask Android to restart the input. It can end a composition the
+ordinary way: taking the focus off the field makes the keyboard finish the word
+and fire `compositionend`, which is what xterm forwards to the pty; focus goes
+straight back, so the keyboard stays up. `commitComposition` in `js/ender.js` is
+the choice between the two, and it answers **false when nothing is being
+composed** — that is the right answer rather than a missing one, since what was
+typed has already gone as key events, and an Enter that waited for a word nobody
+holds would read as lag on every press.
+
+Whether a word is being composed is asked of the field rule (`keepEmpty` in
+`js/imefield.js` hands back `isComposing`), not of a second listener on the same
+events: two listeners are two answers to one question, and the one the Enter
+reads would be the one that drifted.
+
+**The phone is still the judge**, because the stand cannot compose — desktop
+Chromium has no IME, which is what `js/inputdiag.js` says in its own header. So
+the decision is unit-tested against an injected field and each Enter writes one
+line to the journal (`ender`) with what was asked, whether a composition was
+open, and how much the field held. "The last word did not go" and "there was
+nothing to wait for" are the same thing from a thumb, and that line is what
+separates them.
+
 ## A message that did not go out is still the owner's
 
 `send()` drops what it is given when the socket is not open, and that is right

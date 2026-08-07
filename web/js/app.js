@@ -9,7 +9,7 @@ import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
 import { Scroller, movedWholeScreen } from './scroll.js';
 import { staleNotice } from './update.js';
-import { endingKeys } from './ender.js';
+import { endingKeys, commitComposition } from './ender.js';
 import { pushHistory, previewOf } from './compose.js';
 import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, MARKS, CUSTOM_MARK } from './kinds.js';
 import { dropIndex } from './carry.js';
@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v136';
+const APP_VERSION = 'v137';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -97,7 +97,7 @@ term.open(document.getElementById('term'));
 // input log, which is a switch and not a default.
 report('field-guard', { wired: !!term.textarea });
 let saidCleared = false;
-keepEmpty(term.textarea, {
+const fieldGuard = keepEmpty(term.textarea, {
   onClear: (len) => {
     if (saidCleared) return;
     saidCleared = true;
@@ -1905,18 +1905,44 @@ function keepsTerminalFocus(el) {
 //
 // Gboard keeps the current word to itself until it decides the word is over,
 // so Enter sent from here arrived before that word and the message went
-// without it. Only the app can end a composition — a page cannot — so this
-// asks it to, and does nothing in a real browser, where there is no such
-// problem. Nothing else on the bar needs it: a key that is not an Enter does
-// not end an input, and meddling with the composition for those is exactly
-// what produced the mess.
+// without it. Nothing else on the bar needs this: a key that is not an Enter
+// does not end an input, and meddling with the composition for those is
+// exactly what produced the mess.
+//
+// Two ways to ask, and for three days there was only the one that this phone
+// does not have. The app can restart the input; a browser cannot, but taking
+// the focus off the field ends the composition just as well — see
+// commitComposition in js/ender.js for why that had to be added and what the
+// bridge-less path costs.
 function commitPendingInput() {
-  try {
-    if (window.PockNative && typeof window.PockNative.commitInput === 'function') {
-      return !!window.PockNative.commitInput();
-    }
-  } catch (_) { /* the key still has to go through */ }
-  return false;
+  // Read before asking: `endEdit` ends the composition, so a state taken
+  // afterwards describes what this call did rather than what it found.
+  const wasComposing = fieldGuard.isComposing();
+  const held = fieldGuard.held();
+  const asked = commitComposition({
+    bridge: () => {
+      try {
+        if (window.PockNative && typeof window.PockNative.commitInput === 'function') {
+          return !!window.PockNative.commitInput();
+        }
+      } catch (_) { /* the key still has to go through */ }
+      return false;
+    },
+    composing: () => fieldGuard.isComposing(),
+    endEdit: () => {
+      const el = term.textarea;
+      if (!el) return;
+      el.blur();
+      el.focus();
+    },
+  });
+  // The phone is the judge of everything in this area and cannot open a
+  // console, so the state at the moment of the Enter goes to the journal: what
+  // was asked, whether a composition was open, and how much the field held.
+  // "The last word did not go" and "there was nothing to wait for" look the
+  // same from a thumb.
+  report('ender', { asked, composing: wasComposing, len: held, native: !!window.PockNative });
+  return asked;
 }
 
 
