@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { endingKeys, commitComposition } from '../web/js/ender.js';
+import { endingKeys, commitComposition, endEditByBlur } from '../web/js/ender.js';
 
 // A clock that only moves when the test says so: the whole rule is about which
 // of two things goes first, and a real timer would test the machine's mood.
@@ -168,4 +168,55 @@ test('a browser that composes is no longer treated as one that cannot', () => {
   assert.deepEqual(sent, [], 'the Enter went out over the word being dictated');
   keys.sawData();          // the composition ended and its text arrived
   assert.equal(keys.waiting, true, 'the key stopped waiting before the gap');
+});
+
+// A field that behaves like xterm's: the blur handler wipes it (that is
+// `_handleTextAreaBlur`, literally `this.textarea.value = ""`), and the read
+// that sends the word to the pty happens a task later, from the timeout
+// `compositionend` schedules.
+function xtermField(value, { wipesOnBlur = true } = {}) {
+  return {
+    value,
+    focused: true,
+    blurs: 0,
+    focuses: 0,
+    blur() { this.blurs++; this.focused = false; if (wipesOnBlur) this.value = ''; },
+    focus() { this.focuses++; this.focused = true; },
+  };
+}
+
+test('the word survives the blur that ends the composition', () => {
+  // The defect measured on the phone: ending the composition by moving the
+  // focus is the only lever a browser has, and it runs xterm's own wipe before
+  // xterm's own read — so the word was not sent late, it was not sent at all.
+  const el = xtermField('край');
+  const restored = endEditByBlur(el);
+  assert.equal(el.value, 'край', 'the field xterm reads a task later was empty');
+  assert.equal(restored, 4, 'the journal would not say the word had been put back');
+  assert.equal(el.blurs, 1, 'the composition was never ended');
+  assert.equal(el.focused, true, 'the keyboard was left without a field to type into');
+});
+
+test('a field nobody wiped is not written to', () => {
+  // The write exists to undo one that happened inside this very call. A browser
+  // or an xterm that keeps the value gets no write at all — the buffer has one
+  // owner, and this is the exception rather than a second author.
+  const el = xtermField('край', { wipesOnBlur: false });
+  let writes = 0;
+  const watched = {
+    get value() { return el.value; },
+    set value(v) { writes++; el.value = v; },
+    blur: () => el.blur(),
+    focus: () => el.focus(),
+  };
+  const restored = endEditByBlur(watched);
+  assert.equal(restored, 0);
+  assert.equal(writes, 0, 'the field was rewritten with what it already held');
+  assert.equal(el.focuses, 1);
+});
+
+test('no field is not an error', () => {
+  // xterm creates its textarea when it opens, and an Enter that threw here
+  // would take the whole key bar with it.
+  assert.equal(endEditByBlur(null), 0);
 });

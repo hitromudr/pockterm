@@ -236,6 +236,45 @@ was on by default for the one release in which the browser path was being
 judged; a line per Enter is a request per Enter, and that is not the price of
 typing once the answer is known.
 
+## The blur that ends the word is the blur that wipes it
+
+Ending the composition by moving the focus is the only lever a browser has, and
+for one release it did not merely delay the word — it **destroyed it**. Reported
+from the phone the way it had been reported before, "the last word is not sent",
+which is why the line that separates the two cases was worth having: the journal
+said the wait had happened this time (`ender asked:true composing:true len:4`,
+2026-08-08), with a `compositionend` carrying the word right above it and no
+data event after it at all. The Enter then went out on its 90ms bound, alone.
+
+Both halves of the mechanism are xterm's own, and a blur runs them in the order
+that loses. `_handleTextAreaBlur` is literally `this.textarea.value = ""`, and
+`compositionend` does not send anything itself — it schedules a `setTimeout(…,
+0)` that reads the field and sends **what is in it then**. So the word was
+ended, wiped and read as nothing: `input.length > 0` is false, and the pty was
+never written to. The two-line `blur(); focus();` was correct about what it
+asked for and blind to what the asking cost.
+
+`endEditByBlur` in `js/ender.js` puts back what xterm wiped inside our own
+call, before the task that reads it runs. It is the one write to that field on
+this page, and it is deliberately **not an edit**: the value goes back to
+exactly what the keyboard left there, nothing is read out of it, and nothing is
+sent from here. The owners are unchanged — xterm still sends, and
+`fieldHygiene`'s deferred clear still empties, which it does after the read
+because it is scheduled from the same `compositionend` (that bound is the one it
+already had). A field a browser did not wipe gets no write at all, and the
+journal carries how much was put back (`restored`), so "the word came back" and
+"there was nothing to put back" are again two different lines.
+
+**And this one the stand can judge**, which everything else in these two
+sections cannot. The composition is faked — desktop Chromium has no IME — but
+only the part that is not under test: the events are dispatched at the real
+field, and the `compositionend` is fired from a **capture-phase** blur listener,
+which is where Chrome fires it and, more to the point, ahead of xterm's own
+listener on the element. Everything after that is the page and xterm unfaked,
+and `test/ui/bytes.test.mjs` reads what reached the pty through `cat -v`.
+Against the two-line version it is `^M`; with the fix, `ab^M`. Checked in that
+order, because a test that passes against the defect is worse than none.
+
 ## Holding the focus is asking for the keyboard
 
 Focus and the keyboard are two different things on Android, and the page can

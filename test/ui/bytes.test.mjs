@@ -195,3 +195,82 @@ describe('an ending key waits for the word', () => {
     assert.equal(added, 'Z^[[C^M', `accept put ${JSON.stringify(added)} on the wire`);
   });
 });
+
+// The same word, on the client the owner actually has: a browser with no
+// bridge, where the only way to end a composition is to move the focus.
+//
+// That path lost the word outright. xterm wipes its own textarea in its blur
+// handler and reads it a task later, from the timeout `compositionend`
+// schedules — so ending the composition by blurring emptied the field before
+// the read, and nothing reached the pty. On the phone: `ender asked:true
+// composing:true len:4`, then silence.
+//
+// Desktop Chromium has no IME, so the stand plays one — but only the part that
+// is not being tested. The composition is dispatched at the field, and the
+// `compositionend` is fired from a capture-phase blur listener, which is what
+// puts it ahead of the listeners on the element itself, exactly where Chrome
+// fires it. Everything after that is the page and xterm, unfaked.
+const FAKE_IME = () => {
+  window.__composing = false;
+  const isField = (el) => el && el.classList && el.classList.contains('xterm-helper-textarea');
+  document.addEventListener('blur', (e) => {
+    if (!window.__composing || !isField(e.target)) return;
+    window.__composing = false;
+    e.target.dispatchEvent(new CompositionEvent('compositionend', { data: e.target.value, bubbles: true }));
+  }, true);
+  window.__compose = (text) => {
+    const el = document.querySelector('.xterm-helper-textarea');
+    if (!el) return null;
+    const before = el.value;
+    el.focus();
+    el.dispatchEvent(new CompositionEvent('compositionstart', { data: '', bubbles: true }));
+    el.value = text;
+    el.dispatchEvent(new CompositionEvent('compositionupdate', { data: text, bubbles: true }));
+    window.__composing = true;
+    return before;
+  };
+};
+
+describe('a word still being composed goes out with the Enter', () => {
+  let stand;
+  before(async () => {
+    // No PockNative here on purpose: this is the browser path, which is what
+    // the owner's phone has been since 2026-08-05.
+    stand = await startStand({ sessions: ['wire'], raw: true });
+    await stand.page.addInitScript(FAKE_IME);
+  });
+  after(async () => { await stand.stop(); });
+
+  const transcript = (page) =>
+    page.evaluate(() => (document.querySelector('.xterm-rows')?.textContent || '').replace(/\s+$/, ''));
+
+  test('the word reaches the pty, and before the newline', async () => {
+    await stand.open();
+    await stand.attach('wire');
+    const { page } = stand;
+    await page.click('#term');
+    await page.waitForTimeout(500);
+
+    const before = await transcript(page);
+    // The field has to start empty, because xterm takes the composition's
+    // start from its length — a residue here would make this measure the field
+    // rule instead (see js/imefield.js).
+    const was = await page.evaluate(() => window.__compose('ab'));
+    assert.equal(was, '', `the field held ${JSON.stringify(was)} before the word`);
+    await page.waitForTimeout(50);
+
+    await page.click('#keybar [data-key="enter"]');
+    await page.waitForTimeout(700);
+    const added = (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+    assert.equal(added, 'ab^M', `the word did not go out whole: ${JSON.stringify(added)}`);
+  });
+
+  test('and the keyboard is left with a field to type into', async () => {
+    // The blur is how the composition ends; the focus goes straight back, or
+    // the keyboard closes under whoever was typing.
+    const { page } = stand;
+    const focused = await page.evaluate(() =>
+      document.activeElement === document.querySelector('.xterm-helper-textarea'));
+    assert.equal(focused, true, 'the terminal lost the focus to its own Enter');
+  });
+});

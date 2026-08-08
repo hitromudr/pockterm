@@ -9,7 +9,7 @@ import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
 import { Scroller, movedWholeScreen } from './scroll.js';
 import { staleNotice } from './update.js';
-import { endingKeys, commitComposition } from './ender.js';
+import { endingKeys, commitComposition, endEditByBlur } from './ender.js';
 import { pushHistory, previewOf } from './compose.js';
 import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, MARKS, CUSTOM_MARK } from './kinds.js';
 import { dropIndex } from './carry.js';
@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v140';
+const APP_VERSION = 'v141';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1941,6 +1941,9 @@ function commitPendingInput() {
   // afterwards describes what this call did rather than what it found.
   const wasComposing = fieldGuard.isComposing();
   const held = fieldGuard.held();
+  // How much of the word xterm wiped on the way out and this put back — see
+  // endEditByBlur. Zero on the bridge path, where no focus is moved at all.
+  let restored = 0;
   const asked = commitComposition({
     bridge: () => {
       try {
@@ -1951,12 +1954,7 @@ function commitPendingInput() {
       return false;
     },
     composing: () => fieldGuard.isComposing(),
-    endEdit: () => {
-      const el = term.textarea;
-      if (!el) return;
-      el.blur();
-      el.focus();
-    },
+    endEdit: () => { restored = endEditByBlur(term.textarea); },
   });
   // Behind the input log rather than on by default, which is where everything
   // per-keystroke in this area lives: the switch is what the owner turns on to
@@ -1969,7 +1967,7 @@ function commitPendingInput() {
   // and how much the field held. "The last word did not go" and "there was
   // nothing to wait for" look the same from a thumb.
   if (inputDiag !== 'off') {
-    report('ender', { asked, composing: wasComposing, len: held, native: !!window.PockNative });
+    report('ender', { asked, composing: wasComposing, len: held, restored, native: !!window.PockNative });
   }
   return asked;
 }

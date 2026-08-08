@@ -105,3 +105,42 @@ export function commitComposition({ bridge, composing, endEdit }) {
   endEdit();
   return true;
 }
+
+// endEditByBlur is that `endEdit` on a real field, and it exists as a function
+// of its own because the obvious two lines lose the word they were written to
+// save.
+//
+// xterm wipes its own textarea when it loses the focus — `_handleTextAreaBlur`
+// is `this.textarea.value = ""` — and it reads that same field a task later:
+// `compositionend` schedules a `setTimeout(…, 0)` which takes what is in the
+// field and sends it to the pty. Both are xterm's, and a blur runs them in the
+// order that empties the field first. So the word was ended, wiped, and then
+// read as nothing: `input.length > 0` is false and **nothing at all reaches the
+// pty**. Measured on the owner's phone (Chrome PWA, Gboard, 2026-08-08, input
+// log at `chars`): `ender asked:true composing:true len:4`, `compositionend`
+// with the word in the field, and no data event after it — the line went with
+// the last word missing entirely, which is the defect this whole file exists
+// for, one layer further down.
+//
+// So what xterm wiped inside our own call is put back, before the task that
+// reads it runs. This is the one write to that field on this page, and it is
+// deliberately not an edit: the value goes back to exactly what the keyboard
+// had left there, nothing is read out of it, and nothing is sent from here —
+// xterm still owns the sending, `fieldHygiene` still owns the emptying (its
+// deferred clear is scheduled from the same `compositionend`, so it runs after
+// the read, which is the bound it already had).
+//
+// Returns how much was put back, for the journal: a field xterm did not wipe
+// (a browser that ends the composition some other way, a future xterm) is left
+// untouched and answers 0.
+export function endEditByBlur(el) {
+  if (!el) return 0;
+  const held = el.value;
+  el.blur();
+  const wiped = held && el.value !== held;
+  if (wiped) el.value = held;
+  // Straight back, so the keyboard stays up: the composition is what was being
+  // ended, not the typing.
+  el.focus();
+  return wiped ? held.length : 0;
+}
