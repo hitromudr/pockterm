@@ -145,15 +145,12 @@
           {
             "key": "4",
             "label": "Type something."
-          },
-          {
-            "key": "5",
-            "label": "Chat about this"
           }
         ],
         "cursor": 0,
         "navigate": "arrows"
-      }
+      },
+      "_why_no_chat": "The arrows do not reach it. Measured on the owner's phone 2026-08-10: a five-button row on this very menu, tapping the last one sent four downs and the pointer came back to option 1 — a ring of four. The rule drawn across the menu is not chrome between options, it is the end of the list the arrows walk, and an option nothing can move to is a button that answers nothing."
     },
     {
       "name": "boxed menu with a description under each option (indent in columns, not bytes)",
@@ -378,15 +375,12 @@
           {
             "key": "4",
             "label": "Type something."
-          },
-          {
-            "key": "5",
-            "label": "Chat about this"
           }
         ],
         "cursor": 1,
         "navigate": "arrows"
-      }
+      },
+      "_why_no_chat": "The arrows do not reach it. Measured on the owner's phone 2026-08-10: a five-button row on this very menu, tapping the last one sent four downs and the pointer came back to option 1 — a ring of four. The rule drawn across the menu is not chrome between options, it is the end of the list the arrows walk, and an option nothing can move to is a button that answers nothing."
     }
   ]
 }

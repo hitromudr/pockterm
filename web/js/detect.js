@@ -39,6 +39,12 @@ function boxGlyphs(s) {
   return s.replace(/[│╭╮╰╯─]/g, '').trim();
 }
 
+// A rule drawn across the menu: horizontal line and nothing else. Deliberately
+// blind to the border glyphs — a box's own top, bottom and sides are chrome
+// around a list, while this is a line through one. See `continues` for what it
+// costs to confuse the two.
+const RULE = /^[\s─]*─{3,}[\s─]*$/;
+
 // Where a line's own text starts, past the chrome drawn down the left edge —
 // the box's border and the pointer at the highlighted option. In columns, not
 // in code units: it is compared across lines written in any language.
@@ -65,6 +71,22 @@ function indentOf(line) {
 // back at the margin.
 function continues(between, indent) {
   for (const line of between) {
+    // A rule across the menu ends the list rather than dividing it.
+    //
+    // It was read as chrome, and that drew a button for the one option the
+    // arrows cannot reach. AskUserQuestion puts `Chat about this` below a rule,
+    // outside the ring the arrows walk: measured on the owner's phone
+    // 2026-08-10 on a five-option menu, tapping the last button sent four downs
+    // and the pointer came back to option 1 — a ring of four, `{"want":4,
+    // "key":"5","from":0,"on":"1","moved":false}` in the journal, twice. The
+    // press then refused, which is the cheap failure and still a button that
+    // answers nothing.
+    //
+    // An empty box row stays chrome: that is a blank line inside a border, and
+    // the options above and below it are one list. What ends the run is a rule
+    // and nothing else on the line — no border glyphs, so `╭──╮` and `│  │` are
+    // not it.
+    if (RULE.test(line)) return false;
     // A rule or an empty box row is chrome, not content.
     if (!boxGlyphs(line)) continue;
     if (OPTION.test(line)) return false;

@@ -25,6 +25,10 @@ var (
 	rightBorder = regexp.MustCompile(`│\s*$`)
 	ansi        = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]")
 	boxGlyphs   = regexp.MustCompile(`[│╭╮╰╯─]`)
+	// A rule drawn across the menu: a horizontal line and nothing else.
+	// Deliberately blind to the border glyphs — a box's own edges are chrome
+	// around a list, while this is a line through one.
+	rule = regexp.MustCompile(`^[\s─]*─{3,}[\s─]*$`)
 )
 
 // Option is one answer: the digit to send and what it says.
@@ -153,9 +157,20 @@ func nextKey(opts []Option) string {
 // be a numbered option — 1, 5, 2 is not a menu whatever the indentation says.
 func continues(between []string, indent int) bool {
 	for _, line := range between {
-		// A rule or an empty box row is chrome, not content: AskUserQuestion
-		// draws one between its answers and the "chat about this" way out, and a
-		// boxed prompt pads its options with "│      │".
+		// A rule across the menu ends the list rather than dividing it.
+		//
+		// AskUserQuestion draws one between its answers and the "chat about
+		// this" way out, and that way out is outside the ring its arrows walk:
+		// measured on the owner's phone 2026-08-10, four downs on a five-option
+		// menu brought the pointer back to option 1. Reading the rule as chrome
+		// made the page offer an option nothing can move to. The page decides
+		// what to draw and this package decides what a notification says, but
+		// both answer "what are the options" and they must not disagree.
+		if rule.MatchString(line) {
+			return false
+		}
+		// An empty box row is still chrome: a boxed prompt pads its options with
+		// "│      │", and the options above and below one are a single list.
 		if strings.TrimSpace(boxGlyphs.ReplaceAllString(line, "")) == "" {
 			continue
 		}

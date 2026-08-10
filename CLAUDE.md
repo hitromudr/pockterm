@@ -738,6 +738,28 @@ is two bytes against a box glyph's three. `test/fixtures/menus.json` carries the
 real screen, captured off the pane rather than typed from memory, and both
 implementations run against it.
 
+**But the rule across the menu is where the list ends, not something between two
+options.** It was swallowed as chrome, which drew a fifth button for the one
+option the arrows cannot reach: `AskUserQuestion` puts `Chat about this` below
+that rule, outside the ring its arrows walk. Measured on the owner's phone
+2026-08-10 on a five-option menu — tapping the last button sent four downs and
+the pointer came back to option **1**, twice: `{"want":4,"key":"5","from":0,
+"on":"1","moved":false}`. A ring of four. So `Chat about this` is not an option
+here, and the row is drawn without it.
+
+Two things this is not. It is **not the press being wrong** — the walk went out,
+the pointer was watched, it never arrived and nothing was sent, which is the
+guard above doing its job and the reason the cost was a toast rather than a wrong
+answer. And it is **not what `Type something.` does**: that one is inside the
+ring, the button presses it correctly, and what follows — the menu closing and
+the tool coming back as cancelled — is what choosing "I will answer in my own
+words" means. It reads like a bug and is the feature.
+
+An empty row inside a border stays chrome (`│      │` pads a boxed prompt, and
+the options either side of it are one list). What ends the run is a horizontal
+line with nothing else on it, which is why `RULE` is deliberately blind to the
+border glyphs.
+
 **And the agent's own input box is not a menu, though it is drawn like one.** It
 carries the very same `❯`, and what sits under that `❯` is whatever is being
 typed: a message beginning "1. …" newline "2. …" drew two answer buttons before it
