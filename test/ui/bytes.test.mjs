@@ -22,7 +22,6 @@ const WIRE = {
   right: '^[[C',
   left: '^[[D',
   'ctrl-c': '^C',
-  backspace: '^?',
   'ctrl-o': '^O',
   enter: '^M',
   'alt-enter': '^[^M',
@@ -80,9 +79,9 @@ describe('what the key bar puts on the wire', () => {
     await stand.attach('wire');
     const { page } = stand;
 
-    // The shape of what was reported as mush: erase, a key that is not an
-    // erase, erase again, move, erase.
-    const order = ['backspace', 'ctrl-o', 'backspace', 'left', 'backspace'];
+    // The shape of what was reported as mush: a key, a move, the same key
+    // again, another move, and the key once more.
+    const order = ['ctrl-o', 'left', 'ctrl-o', 'up', 'ctrl-o'];
     const added = await afterPressing(page, order);
     assert.equal(added, order.map((k) => WIRE[k]).join(''), 'the burst did not arrive verbatim');
   });
@@ -95,14 +94,14 @@ describe('what the key bar puts on the wire', () => {
     const before = await settled(page);
     await page.click('#term');
     await page.keyboard.type('abc');
-    await page.click('#keybar [data-key="backspace"]');
+    await page.click('#keybar [data-key="ctrl-o"]');
     await page.keyboard.type('d');
     await page.click('#keybar [data-key="enter"]');
     await page.waitForTimeout(500);
     const added = (await transcript(page)).slice(before.length);
 
     // Exactly what was pressed: no word reappearing, no key lost.
-    assert.equal(added.replace(/\r?\n/g, ''), 'abc^?d^M', `the wire holds ${JSON.stringify(added)}`);
+    assert.equal(added.replace(/\r?\n/g, ''), 'abc^Od^M', `the wire holds ${JSON.stringify(added)}`);
   });
 
   test('accept sends right-arrow then return, nothing else', async () => {
@@ -272,5 +271,88 @@ describe('a word still being composed goes out with the Enter', () => {
     const focused = await page.evaluate(() =>
       document.activeElement === document.querySelector('.xterm-helper-textarea'));
     assert.equal(focused, true, 'the terminal lost the focus to its own Enter');
+  });
+});
+
+
+// Ctrl as a latch, which is what the bar has instead of a backspace.
+//
+// The on-screen keyboard has a backspace of its own; what it does not have at
+// all is ^R, ^D, ^Z or ^L. So the key that erased gave its place to a modifier:
+// one tap arms it, the next character typed goes as a control code, and the arm
+// is spent. `applyCtrl` in js/keys.js was written for this and sat unused.
+describe('the Ctrl latch', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['wire'], raw: true }); });
+  after(async () => { await stand.stop(); });
+
+  const transcript = (page) =>
+    page.evaluate(() => (document.querySelector('.xterm-rows')?.textContent || '').replace(/\s+$/, ''));
+
+  async function typedAfter(page, steps) {
+    const before = await transcript(page);
+    for (const s of steps) {
+      if (s.click) await page.click(s.click);
+      if (s.type) await page.keyboard.type(s.type);
+      await page.waitForTimeout(120);
+    }
+    await page.waitForTimeout(400);
+    return (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+  }
+
+  test('the next character typed becomes a control code', async () => {
+    await stand.open();
+    await stand.attach('wire');
+    const { page } = stand;
+    await page.click('#term');
+    await page.waitForTimeout(400);
+
+    // ^R rather than ^D: a control code that closes nothing if the session's
+    // stty ever stops being raw, so a failure here is a wrong byte and not a
+    // dead pane.
+    const added = await typedAfter(page, [{ click: '#keybar [data-mod="ctrl"]' }, { type: 'r' }]);
+    assert.equal(added, '^R', `the wire holds ${JSON.stringify(added)}`);
+  });
+
+  test('and only that one: the arm is spent', async () => {
+    // A latch that stayed on would turn a sentence into control codes, which is
+    // the failure worth guarding — it is invisible until something reacts.
+    const { page } = stand;
+    const added = await typedAfter(page, [{ click: '#keybar [data-mod="ctrl"]' }, { type: 'rr' }]);
+    assert.equal(added, '^Rr', `the wire holds ${JSON.stringify(added)}`);
+  });
+
+  test('a second tap disarms it', async () => {
+    const { page } = stand;
+    const added = await typedAfter(page, [
+      { click: '#keybar [data-mod="ctrl"]' },
+      { click: '#keybar [data-mod="ctrl"]' },
+      { type: 'r' },
+    ]);
+    assert.equal(added, 'r', `the wire holds ${JSON.stringify(added)}`);
+  });
+
+  test('the arm shows, so nobody types into a mode they forgot', async () => {
+    const { page } = stand;
+    const armed = () => page.evaluate(() =>
+      document.querySelector('#keybar [data-mod="ctrl"]').classList.contains('on'));
+    await page.click('#keybar [data-mod="ctrl"]');
+    assert.equal(await armed(), true);
+    await page.keyboard.type('r');
+    await page.waitForTimeout(200);
+    assert.equal(await armed(), false, 'the button still looks armed after being spent');
+  });
+
+  test('another bar key spends it rather than being modified', async () => {
+    // The latch is for characters. Esc has its own sequence, and a Ctrl+Esc
+    // that sent something else would be a key nobody asked for — so the arm is
+    // dropped and Esc goes as itself.
+    const { page } = stand;
+    const added = await typedAfter(page, [
+      { click: '#keybar [data-mod="ctrl"]' },
+      { click: '#keybar [data-key="esc"]' },
+      { type: 'r' },
+    ]);
+    assert.equal(added, '^[r', `the wire holds ${JSON.stringify(added)}`);
   });
 });

@@ -229,8 +229,11 @@
       <button data-key="esc">Esc</button>
       <button data-key="ctrl-c">^C</button>
       <button data-key="up">&#8593;</button>
-      <!-- Deletes without asking the on-screen keyboard; see keys.js. -->
-      <button data-key="backspace">&#9003;</button>
+      <!-- Ctrl, as a latch: one tap arms it, the next character typed goes as a
+           control code, the arm is spent. It took the backspace's key because
+           the on-screen keyboard has a backspace of its own and offers no ^R,
+           ^D, ^Z or ^L at all — see applyCtrl in js/keys.js. -->
+      <button data-mod="ctrl" class="small">Ctrl</button>
       <!-- Over Enter: one sends the message, the other adds a line to it. -->
       <button data-key="alt-enter" class="small">Alt&#9166;</button>
       <button data-macro="accept">&#10003;</button>

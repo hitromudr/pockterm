@@ -9,11 +9,6 @@ const KEYS = {
   left: '\x1b[D',
   enter: '\r',
   'ctrl-c': '\x03',
-  // DEL, not BS: that is what a terminal expects from the Backspace key.
-  // This one exists to bypass the Android keyboard — Gboard keeps its own
-  // idea of the word being typed, and its Backspace re-commits that word
-  // into a terminal that has already moved on.
-  backspace: '\x7f',
   // ^O — what an agent TUI reads as "unfold the output you collapsed". It
   // took the forward delete's key: erasing forwards needs the arrows and
   // backspace anyway, and this is a thing no on-screen keyboard offers.
@@ -35,6 +30,12 @@ export function keyBytes(name) {
 
 // Ctrl latch: applied to the next typed character. Latin letters map to
 // control codes 1..26; anything else passes through unchanged.
+//
+// The bar carries this instead of a backspace since 2026-08-12. Erasing is the
+// one thing every on-screen keyboard already does, while ^R, ^D, ^Z and ^L it
+// does not offer at all — and an agent's console asks for them. Anything that is
+// not a Latin letter goes through untouched rather than being refused: a latch
+// that swallowed a character would look like a keystroke lost to the network.
 export function applyCtrl(ch) {
   const code = ch.toLowerCase().charCodeAt(0);
   if (code >= 97 && code <= 122) return String.fromCharCode(code - 96);

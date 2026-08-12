@@ -124,15 +124,26 @@ func Handler(o Options) http.Handler {
 
 // The PWA is served from the same host; foreign origins have no business
 // opening terminal sockets. Non-browser clients send no Origin header.
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true
-		}
-		u, err := url.Parse(origin)
-		return err == nil && u.Host == r.Host
-	},
+var upgrader = websocket.Upgrader{CheckOrigin: originOK}
+
+// originOK compares the page's origin with the host it asked on, and the
+// comparison includes the port — `https://host:8443` is not `host`.
+//
+// That strictness is right and it is also a trap for whoever puts this behind a
+// proxy on a non-standard port. nginx's `$host` drops the port, so a page served
+// on :8443 sent an Origin with the port and a Host without it: every socket
+// refused with 403 while the page itself loaded perfectly. On a phone that is a
+// terminal stuck on "reconnecting…" with the right sessions listed above it —
+// which is how it was reported on 2026-08-10. The fix belongs on the proxy
+// (`proxy_set_header Host $http_host`), so what is fixed here is the silence:
+// see serveWS for the line the journal now carries.
+func originOK(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	return err == nil && u.Host == r.Host
 }
 
 var nextID atomic.Int64
@@ -581,6 +592,19 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 	}
 	if !sessionExists(sessions, target) {
 		http.Error(w, "no such session", http.StatusNotFound)
+		return
+	}
+
+	// Refused here rather than inside the upgrader, because the upgrader's
+	// answer is a bare 403 and this one says why. A socket rejected on origin
+	// looks exactly like a network problem from the page: the terminal shows
+	// "reconnecting…" for ever and nothing anywhere says which of the two it is.
+	// The proxy in front is the usual cause — it is the only thing that can make
+	// Host disagree with the address a browser typed.
+	if !originOK(r) {
+		log.Printf("ws refused: origin %q is not the host it asked on (%q) — a proxy that rewrites Host, or drops its port, is the usual cause",
+			r.Header.Get("Origin"), r.Host)
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 

@@ -13,8 +13,11 @@ test('named keys map to escape sequences', () => {
   assert.equal(keyBytes('left'), '\x1b[D');
   assert.equal(keyBytes('enter'), '\r');
   assert.equal(keyBytes('ctrl-c'), '\x03');
-  // DEL: a terminal reads BS (\x08) as "move left", not "erase".
-  assert.equal(keyBytes('backspace'), '\x7f');
+  // The bar's backspace is gone since 2026-08-12: erasing is what every
+  // on-screen keyboard already does, and its key went to the Ctrl latch, which
+  // no keyboard offers. An unknown name answers with nothing rather than
+  // guessing — the same as `delete` below, which left earlier for ^O.
+  assert.equal(keyBytes('backspace'), '');
   // ^O: unfold the collapsed output. It replaced the forward delete on the bar.
   assert.equal(keyBytes('ctrl-o'), '\x0f');
   assert.equal(keyBytes('delete'), '');

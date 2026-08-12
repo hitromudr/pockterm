@@ -1,4 +1,4 @@
-import { keyBytes } from './keys.js';
+import { keyBytes, applyCtrl } from './keys.js';
 import { detectPrompt, answerKeys } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from './notify.js';
 import { linkAction } from './link.js';
@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v142';
+const APP_VERSION = 'v143';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1864,9 +1864,44 @@ const enders = endingKeys({ send: sendInput, commit: commitPendingInput });
 // test caught that as a wheel that scrolled tmux nowhere.
 const MOUSE_REPORT = /^\x1b\[(<|M)/;
 
+// --- Ctrl, as a latch ---
+//
+// One tap arms it, the next character typed goes as a control code, the arm is
+// spent. It has the key the backspace had: erasing is the one thing every
+// on-screen keyboard does, while ^R, ^D, ^Z and ^L it does not offer at all, and
+// an agent's console asks for them.
+//
+// Spent rather than sticky, and shown while it is armed. A latch left on turns a
+// sentence into control codes, and that is invisible until something reacts to
+// one — by which time what was typed is gone. The button carries `on`, the same
+// class every other lever here lights up with.
+let ctrlArmed = false;
+const ctrlKey = document.querySelector('#keybar [data-mod="ctrl"]');
+
+function armCtrl(on) {
+  ctrlArmed = on;
+  if (ctrlKey) ctrlKey.classList.toggle('on', on);
+}
+
+if (ctrlKey) {
+  keepsTerminalFocus(ctrlKey);
+  ctrlKey.addEventListener('click', () => armCtrl(!ctrlArmed));
+}
+
 term.onData((d) => {
-  if (MOUSE_REPORT.test(d)) send(d);
-  else sendInput(d);
+  // A mouse report is not typing, and it must not spend the arm either: a
+  // scroll between arming Ctrl and typing the letter would otherwise leave the
+  // latch quietly off.
+  if (MOUSE_REPORT.test(d)) { send(d); return; }
+  let out = d;
+  if (ctrlArmed) {
+    armCtrl(false);
+    // One character only. A paste or a composed word arrives as several, and
+    // turning the first of them into a control code would mangle the rest of
+    // what somebody meant to insert.
+    if (d.length === 1) out = applyCtrl(d);
+  }
+  sendInput(out);
   // No commitInput() here. Ending the composition after every single
   // character sounded thorough and was wrong: restartInput moves the caret
   // and reopens the input, so typing turned into jumping around the line.
@@ -1976,6 +2011,10 @@ function commitPendingInput() {
 document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
   keepsTerminalFocus(b);
   b.addEventListener('click', () => {
+    // A bar key is a sequence of its own, not a character to modify: a Ctrl+Esc
+    // that sent something else would be a key nobody asked for. So the arm is
+    // spent here and Esc goes as itself.
+    if (ctrlArmed) armCtrl(false);
     // Only the keys that end an input need the keyboard to hand over its word.
     const ends = b.dataset.key === 'enter' || b.dataset.key === 'alt-enter';
     if (ends) enders.press(keyBytes(b.dataset.key));

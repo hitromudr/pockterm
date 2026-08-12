@@ -1270,33 +1270,15 @@ describe('typing and deleting', () => {
 
   // The reported bug is Android-only: Gboard keeps a composing region and its
   // Backspace re-commits the word into a terminal that has moved on. A desktop
-  // Chromium has no IME to reproduce that with. What these two do check is
-  // that the plain paths are sound — if either of them duplicated text, the
-  // keyboard would not be the only suspect.
+  // Chromium has no IME to reproduce that with. What is checked here is that the
+  // plain path is sound — if typing duplicated text, the keyboard would not be
+  // the only suspect.
+  //
+  // The bar's own backspace was the other half of this and is gone: the
+  // on-screen keyboard has one of its own, and the key went to the Ctrl latch,
+  // which no on-screen keyboard offers. What that latch puts on the wire is
+  // test/ui/bytes.test.mjs.
   const line = () => document.querySelector('.xterm-rows')?.textContent || '';
-
-  test('the key bar delete removes exactly one character', async () => {
-    await stand.open();
-    await stand.attach();
-    const { page } = stand;
-
-    await page.click('#term');
-    await page.keyboard.type('hello');
-    await page.waitForFunction(() => (document.querySelector('.xterm-rows')?.textContent || '').includes('hello'));
-
-    await page.click('button[data-key="backspace"]');
-    await page.waitForFunction(
-      () => {
-        const t = document.querySelector('.xterm-rows')?.textContent || '';
-        return t.includes('hell') && !t.includes('hello');
-      },
-      null,
-      { timeout: 5000 },
-    );
-
-    const seen = await page.evaluate(line);
-    assert.equal((seen.match(/hell/g) || []).length, 1, `screen holds ${JSON.stringify(seen.slice(0, 80))}`);
-  });
 
   test('the keyboard delete does not duplicate the word', async () => {
     await stand.open();
@@ -1542,7 +1524,7 @@ describe('the key bar', () => {
     const right = await at('[data-key="right"]');
     const stop = await at('[data-key="ctrl-c"]');
     const unfold = await at('[data-key="ctrl-o"]');
-    const bs = await at('[data-key="backspace"]');
+    const ctrl = await at('[data-mod="ctrl"]');
     const altEnter = await at('[data-key="alt-enter"]');
     const enter = await at('[data-key="enter"]');
     // Prompt mode has its own Accept; this is about the key bar's.
@@ -1565,14 +1547,17 @@ describe('the key bar', () => {
     assert.ok(right.x > down.x, 'right is not to the right of down');
     assert.ok(stop.x < up.x && unfold.x < left.x, 'the arrows are not right of Esc and ^C');
 
-    // The pairs, each asked for by name: backspace over the arrow that ends the
-    // cross, the two enters, and accept over the hide toggle.
-    sameColumn(bs, right, 'backspace and the right arrow');
+    // The pairs, each asked for by name: Ctrl over the arrow that ends the
+    // cross — it took the backspace's place, the keyboard having one of its own
+    // and no ^R at all — the two enters, and accept over the hide toggle.
+    sameColumn(ctrl, right, 'Ctrl and the right arrow');
     sameColumn(altEnter, enter, 'alt+enter and enter');
     sameColumn(accept, hide, 'accept and hide');
 
-    // The forward delete gave its key to ^O.
+    // The forward delete gave its key to ^O, and the backspace gave its own to
+    // Ctrl: neither is a key this bar carries any more.
     assert.equal(await page.locator('#keybar [data-key="delete"]').count(), 0);
+    assert.equal(await page.locator('#keybar [data-key="backspace"]').count(), 0);
   });
 
   test('accept is one tap from the key bar', async () => {

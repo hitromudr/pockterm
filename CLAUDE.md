@@ -176,6 +176,37 @@ a word in the middle of it. So the restart-without-end is rare — two of eight 
 one run, none in the next — and what it costs is still unmeasured. It is not a
 reason to widen the rule against a keystroke that might simply be lost.
 
+## The bar carries what the keyboard cannot
+
+Every key on the bar has to earn its cell against the same question: does the
+on-screen keyboard already do this? Erasing does, so the backspace left on
+2026-08-12 and its key went to **Ctrl as a latch** — one tap arms it, the next
+character typed goes as a control code, the arm is spent. `^R`, `^D`, `^Z`, `^L`
+are what an agent's console asks for and what no on-screen keyboard offers at
+all; `applyCtrl` in `js/keys.js` had been written for this and sat unused.
+
+Three properties, and each is a way it could have gone wrong quietly.
+
+**Spent, not sticky, and visible while armed.** A latch left on turns a sentence
+into control codes, and nothing on screen reacts until one of them means
+something — by which time what was typed is gone. The button lights up with the
+same `on` class every other lever here uses, and the browser test asserts the
+class goes out again when the arm is used.
+
+**One character only.** A paste and a composed word arrive as several, and
+turning the first into a control code would mangle the rest of what somebody
+meant to insert.
+
+**A mouse report neither is typing nor spends the arm.** xterm hands the wheel to
+the same callback as the keyboard, so a scroll between arming Ctrl and typing the
+letter would otherwise leave the latch quietly off — the same trap that once made
+a wheel cancel copy-mode.
+
+And another bar key **spends** the arm rather than being modified by it: those
+keys are sequences of their own, and a Ctrl+Esc that sent something else would be
+a key nobody asked for. `test/ui/bytes.test.mjs` reads all of it off the wire
+through `cat -v`, including `^[r` for exactly that case.
+
 ## The bar's Enter waits for the keyboard's word
 
 Gboard holds the word being typed as a composing region, and only the app can
