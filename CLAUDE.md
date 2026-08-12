@@ -185,7 +185,29 @@ character typed goes as a control code, the arm is spent. `^R`, `^D`, `^Z`, `^L`
 are what an agent's console asks for and what no on-screen keyboard offers at
 all; `applyCtrl` in `js/keys.js` had been written for this and sat unused.
 
-Three properties, and each is a way it could have gone wrong quietly.
+**And the modifier alone was the wrong answer, which the phone said within the
+hour.** Reported as "Ctrl, letter — and out comes text, with Ctrl still lit", and
+the input log explains it: Gboard composes, so xterm is handed a **whole word**
+when the composition closes. Measured 2026-08-12 — `compositionend` with len 3,
+5, 7, 8, 9 and only twice len 1. There is no keystroke to modify: the character
+is not an event, it is part of a word that arrives later, after whatever else was
+typed. A latch that waits for one character waits for something this keyboard
+does not send.
+
+So Ctrl also opens **a pad of the control keys themselves** (`#ctrlpad`), which
+asks the keyboard for nothing at all: `^A ^E ^K ^U ^W ^R ^L ^D ^Z ^P`, one tap
+each, and it closes on use — a pad left open covers the output it was opened
+over. It is `position: absolute` over the terminal's last rows for the reason the
+answer row is: a panel in the flow shortens the pane, tmux redraws to the new
+height, and what the page reads changes under it. A browser test asserts the row
+count does not move when it opens.
+
+The two share one state. Arming shows the pad *and* latches the next typed
+character — the pad is what a phone uses, the latch is what a keyboard on a
+laptop uses, and they must not be able to disagree about whether Ctrl is on.
+
+Three properties of the latch, and each is a way it could have gone wrong
+quietly.
 
 **Spent, not sticky, and visible while armed.** A latch left on turns a sentence
 into control codes, and nothing on screen reacts until one of them means

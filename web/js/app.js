@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v143';
+const APP_VERSION = 'v144';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1877,15 +1877,40 @@ const MOUSE_REPORT = /^\x1b\[(<|M)/;
 // class every other lever here lights up with.
 let ctrlArmed = false;
 const ctrlKey = document.querySelector('#keybar [data-mod="ctrl"]');
+const ctrlPad = document.getElementById('ctrlpad');
 
+// One state, two ways to use it. Arming shows the pad of control keys and also
+// latches the next typed character — the pad is what a phone uses, the latch is
+// what a keyboard uses, and they must not be able to disagree about whether Ctrl
+// is on.
+//
+// The pad exists because a modifier cannot work here at all. Gboard composes, so
+// xterm is handed a whole word when the composition closes and there is no
+// keystroke to modify: measured 2026-08-12 on the owner's phone, `compositionend`
+// with len 3, 5, 7, 8, 9 and only twice len 1 — and even that one arrives only
+// once the keyboard decides the word is over, which is after whatever else was
+// typed. The pad asks the keyboard for nothing.
 function armCtrl(on) {
   ctrlArmed = on;
   if (ctrlKey) ctrlKey.classList.toggle('on', on);
+  if (ctrlPad) ctrlPad.hidden = !on;
 }
 
 if (ctrlKey) {
   keepsTerminalFocus(ctrlKey);
   ctrlKey.addEventListener('click', () => armCtrl(!ctrlArmed));
+}
+
+if (ctrlPad) {
+  ctrlPad.querySelectorAll('button[data-ctrl]').forEach((b) => {
+    keepsTerminalFocus(b);
+    b.addEventListener('click', () => {
+      sendInput(applyCtrl(b.dataset.ctrl));
+      // Closed on use: a pad left open covers the output it was opened over, and
+      // the next control key is one tap on Ctrl away.
+      armCtrl(false);
+    });
+  });
 }
 
 term.onData((d) => {
@@ -2264,7 +2289,7 @@ const gestureArea = document.getElementById('screen-term');
 // than scroll the terminal underneath.
 function ownsGesture(target) {
   return !(target instanceof Element) ||
-    !target.closest('#composer, #snapshot, header.bar, #answers, #history-list');
+    !target.closest('#composer, #snapshot, header.bar, #answers, #ctrlpad, #history-list');
 }
 
 // And a swipe to the right brings the drawer, which is the mirror of the swipe

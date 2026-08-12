@@ -190,6 +190,25 @@
            blinking. A row whose own presence decides whether it should be there
            cannot be in the flow. -->
       <div id="answers" hidden></div>
+      <!-- The control keys themselves, opened by Ctrl on the bar.
+           A modifier was the first answer and this phone cannot give one: Gboard
+           composes, so xterm is handed a whole word when the composition closes,
+           and there is no keystroke to modify. Measured 2026-08-12 —
+           `compositionend` with len 3, 5, 7, 8, 9. The pad needs no keystroke at
+           all. Over the terminal and never beside it, like the answer row: a
+           panel in the flow shortens the pane and tmux redraws under the page. -->
+      <div id="ctrlpad" hidden>
+        <button data-ctrl="a">^A</button>
+        <button data-ctrl="e">^E</button>
+        <button data-ctrl="k">^K</button>
+        <button data-ctrl="u">^U</button>
+        <button data-ctrl="w">^W</button>
+        <button data-ctrl="r">^R</button>
+        <button data-ctrl="l">^L</button>
+        <button data-ctrl="d">^D</button>
+        <button data-ctrl="z">^Z</button>
+        <button data-ctrl="p">^P</button>
+      </div>
       <!-- What was sent from the composer before. Over the terminal and never
            beside it, for the same reason the answer row is: a list in the flow
            shortens the pane, tmux redraws, and what the page is reading changes

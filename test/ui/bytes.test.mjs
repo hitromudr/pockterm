@@ -332,6 +332,55 @@ describe('the Ctrl latch', () => {
     assert.equal(added, 'r', `the wire holds ${JSON.stringify(added)}`);
   });
 
+  test('the pad is what a phone actually uses', async () => {
+    // The latch above modifies a character as it is typed, and on this phone
+    // there is no such moment: Gboard composes, so xterm is handed a whole word
+    // when the composition closes — measured 2026-08-12, `compositionend` with
+    // len 3, 5, 7, 8, 9 and only twice len 1. A modifier cannot modify a
+    // keystroke that is not an event. So Ctrl also opens a pad of the control
+    // keys themselves, where the keyboard plays no part.
+    const { page } = stand;
+    await page.click('#term');
+    await page.waitForTimeout(300);
+
+    const before = await transcript(page);
+    await page.click('#keybar [data-mod="ctrl"]');
+    await page.waitForSelector('#ctrlpad', { state: 'visible' });
+    await page.click('#ctrlpad [data-ctrl="r"]');
+    await page.waitForTimeout(400);
+    const added = (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+    assert.equal(added, '^R', `the wire holds ${JSON.stringify(added)}`);
+
+    // And it closes on use: a pad left open covers the output it was opened over.
+    await page.waitForSelector('#ctrlpad', { state: 'hidden' });
+  });
+
+  test('a second tap on Ctrl closes the pad and sends nothing', async () => {
+    const { page } = stand;
+    const before = await transcript(page);
+    await page.click('#keybar [data-mod="ctrl"]');
+    await page.waitForSelector('#ctrlpad', { state: 'visible' });
+    await page.click('#keybar [data-mod="ctrl"]');
+    await page.waitForSelector('#ctrlpad', { state: 'hidden' });
+    await page.waitForTimeout(300);
+    const added = (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+    assert.equal(added, '', `the wire holds ${JSON.stringify(added)}`);
+  });
+
+  test('showing the pad does not shorten the pane', async () => {
+    // The same rule the answer row learned the hard way: a panel in the flow
+    // shrinks the terminal, tmux redraws to the new height, and what the page
+    // reads changes under it. Absolute, over the last rows.
+    const { page } = stand;
+    const rows = () => page.evaluate(() => document.querySelectorAll('.xterm-rows > div').length);
+    const was = await rows();
+    await page.click('#keybar [data-mod="ctrl"]');
+    await page.waitForSelector('#ctrlpad', { state: 'visible' });
+    await page.waitForTimeout(400);
+    assert.equal(await rows(), was, 'the pad changed the terminal height');
+    await page.click('#keybar [data-mod="ctrl"]');
+  });
+
   test('the arm shows, so nobody types into a mode they forgot', async () => {
     const { page } = stand;
     const armed = () => page.evaluate(() =>

@@ -1079,6 +1079,32 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    and the pane keeps every row: what the buttons cover is the text they repeat.
    The grid is untouched either way, so both detectors — this page's and the
    watcher's, which reads the same pane — still see the whole menu. */
+/* The control-key pad. Same placement rule as #answers — absolute, opaque, over
+   the terminal's last rows — because a panel in the flow makes tmux redraw to a
+   shorter pane. A grid rather than a column: these are keys, not sentences. */
+#ctrlpad {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  padding: 6px;
+  background: var(--bar);
+  border-top: 1px solid #2a3345;
+}
+#ctrlpad button {
+  padding: 12px 0;
+  font-size: 15px;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 6px;
+}
+#ctrlpad button:active { background: var(--accent); color: #0b0e14; }
+
 #answers {
   position: absolute;
   left: 0;
@@ -1291,7 +1317,33 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 @media (orientation: landscape) and (max-height: 520px) {
   #keybar { grid-template-columns: repeat(11, 1fr); }
   #keybar button { padding: 6px 0; font-size: 13px; }
-  #answers { max-height: 55vh; }
+  /* The control-key pad. Same placement rule as #answers — absolute, opaque, over
+   the terminal's last rows — because a panel in the flow makes tmux redraw to a
+   shorter pane. A grid rather than a column: these are keys, not sentences. */
+#ctrlpad {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  padding: 6px;
+  background: var(--bar);
+  border-top: 1px solid #2a3345;
+}
+#ctrlpad button {
+  padding: 12px 0;
+  font-size: 15px;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 6px;
+}
+#ctrlpad button:active { background: var(--accent); color: #0b0e14; }
+
+#answers { max-height: 55vh; }
   #answers button { padding: 8px 10px; }
   #composer { padding-top: 4px; }
   #composer textarea { max-height: 30vh; }
