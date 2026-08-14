@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,6 +34,32 @@ func testOptions(token string) Options {
 		},
 		Static: http.NotFoundHandler(),
 	}
+}
+
+// safeBuffer collects log output written from the server's own goroutines.
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *safeBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *safeBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// captureLog points the standard logger at w and returns the undo.
+func captureLog(w io.Writer) func() {
+	prev := log.Writer()
+	flags := log.Flags()
+	log.SetOutput(w)
+	return func() { log.SetOutput(prev); log.SetFlags(flags) }
 }
 
 func testServer(t *testing.T, token string) *httptest.Server {
@@ -1557,4 +1585,98 @@ func TestOrderingIsAbsentWithoutIt(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
+}
+
+// The Origin check, and the one thing that was missing from it: a reason.
+//
+// A socket refused on origin looks exactly like a network problem from the page —
+// the terminal shows "reconnecting…" for ever and nothing anywhere says which of
+// the two it is. That cost half an hour on 2026-08-10: the page loaded, the
+// sessions listed, every socket answered 403, and the journal was silent. The
+// cause was in front of the server rather than in it — nginx's `$host` drops the
+// port, so a page served on :8443 sent an Origin carrying it and a Host without
+// — but a server that cannot say what it refused makes the proxy indistinguishable
+// from the network.
+func TestOriginOK(t *testing.T) {
+	cases := []struct {
+		name, origin, host string
+		want               bool
+	}{
+		// Non-browser clients send no Origin at all, and they are not the threat
+		// this check exists for.
+		{"no origin", "", "cc.example", true},
+		{"same host", "https://cc.example", "cc.example", true},
+		{"same host and port", "https://cc.example:8443", "cc.example:8443", true},
+		// The one that mattered: strictly speaking a different host, and behind a
+		// proxy that drops the port it is the *only* shape a legitimate page has.
+		{"port only on the origin", "https://cc.example:8443", "cc.example", false},
+		{"port only on the host", "https://cc.example", "cc.example:8443", false},
+		{"a foreign page", "https://evil.example", "cc.example", false},
+		{"junk", "://", "cc.example", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/ws?session=demo", nil)
+			r.Host = c.host
+			if c.origin != "" {
+				r.Header.Set("Origin", c.origin)
+			}
+			if got := originOK(r); got != c.want {
+				t.Fatalf("originOK(origin=%q, host=%q) = %v, want %v", c.origin, c.host, got, c.want)
+			}
+		})
+	}
+}
+
+func TestWSRefusedOnOriginSaysWhatItRefused(t *testing.T) {
+	var logged safeBuffer
+	restore := captureLog(&logged)
+	defer restore()
+
+	srv := testServer(t, "")
+	// A browser's own Origin, and a Host as a proxy on a non-standard port would
+	// forward it. Dialed against the test server, so everything from the mux
+	// inwards is the real path.
+	// The host the dialer will send, with a different port on the Origin — which
+	// is exactly the shape a proxy that drops the port produces. Built rather than
+	// concatenated: "https://" + addr + ":8443" is not a URL with a different
+	// port, it is a broken URL, and a test that refuses one of those proves
+	// nothing about this check.
+	host, _, err := net.SplitHostPort(srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("cannot read the test server's address: %v", err)
+	}
+	h := http.Header{}
+	h.Set("Origin", "https://"+net.JoinHostPort(host, "8443"))
+	_, resp, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), h)
+	if err == nil || resp == nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 for a mismatched origin, got err=%v resp=%v", err, resp)
+	}
+
+	line := logged.String()
+	if !strings.Contains(line, "ws refused") {
+		t.Fatalf("the journal says nothing about the refusal: %q", line)
+	}
+	// Both values, because the pair is the diagnosis: which of them carries the
+	// port says whether the proxy or the page is wrong.
+	if !strings.Contains(line, ":8443") {
+		t.Fatalf("the line does not name the origin it refused: %q", line)
+	}
+	if !strings.Contains(line, "proxy") {
+		t.Fatalf("the line does not point at the usual cause: %q", line)
+	}
+}
+
+func TestWSAcceptsAnOriginThatMatches(t *testing.T) {
+	// The other half: the check must not be a wall. Same server, Origin equal to
+	// the Host the dialer sends, and the socket opens.
+	srv := testServer(t, "")
+	h := http.Header{}
+	h.Set("Origin", "http://"+srv.Listener.Addr().String())
+	c, resp, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), h)
+	if err != nil {
+		t.Fatalf("a matching origin was refused: err=%v resp=%v", err, resp)
+	}
+	defer c.Close()
+	readBinaryUntil(t, c, "ready")
 }
