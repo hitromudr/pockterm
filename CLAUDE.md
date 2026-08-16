@@ -425,6 +425,22 @@ tearing down a socket because Android slowed the clock is worse than the freeze 
 fixes. A pocketed phone keeps its socket, and `visibilitychange` asks the question the
 moment it comes back, which is also when the answer is most often "gone".
 
+**And the reconnect a close armed is the other half of the same rule.** `onclose`
+fires a timer; anything that opens a socket before it fires — a tab tapped, the
+watchdog, the restore on load — leaves that timer to open a **second** one on top
+of the one now in hand. Every deploy makes the race: a restart drops every socket
+at once, and the page is reattached by hand within the second the backoff is
+armed for. Reported after two deploys in an evening as everything on screen being
+drawn twice — output lines, the agent's own prompt, tmux's status bar doubled —
+which reads as a message having been sent again. Nothing is: the page writes
+keystrokes to the newest socket and reads frames from **both**, so what doubles is
+the picture. `dropSocket` is now the one way a socket is let go, it clears the
+pending timer with the handlers, and `connect` calls it first — one page, one
+socket, by construction rather than by every caller remembering. The browser test
+makes the race rather than waiting for one: it closes the page's socket from
+outside and taps a tab inside the second, then counts open sockets in the page and
+clients at `/api/presence`. Against the old code it is two.
+
 **Discarding a socket means both its handlers, and onclose is the one that matters.**
 Closing a socket fires it, and `onclose` schedules a reconnect of its own — so the
 first version of this watchdog left the page with two sockets on the session, then

@@ -155,6 +155,69 @@ describe('a socket that has stopped delivering', () => {
     });
     assert.equal(clients, 1, 'the page left more than one socket attached');
   });
+
+  test('a reconnect armed by a close does not open a socket beside the one in hand', async () => {
+    // Reported from the phone after two deploys in an evening as everything on
+    // screen being drawn twice — output lines, the agent's own prompt, tmux's
+    // status bar — which reads as the message having been sent again.
+    //
+    // Nothing was sent twice. A restart drops every socket at once, onclose arms
+    // a reconnect, and anything that opens a socket before that timer fires — a
+    // tab tapped, the watchdog — leaves it to open a second one on top. The page
+    // then writes keystrokes to the newest and reads frames from **both**, so
+    // what doubles is the picture.
+    //
+    // The race is made rather than waited for: the page's own socket is closed
+    // from here (which is what a restart looks like from in there), and the tab is
+    // tapped inside the second the backoff is armed for.
+    const { page } = stand;
+    await page.addInitScript(() => {
+      // Every socket the page opens, kept so the test can close one the way the
+      // network does and count what is left open afterwards.
+      window.__sockets = [];
+      const Real = window.WebSocket;
+      const Spy = function (...args) {
+        const s = new Real(...args);
+        window.__sockets.push(s);
+        return s;
+      };
+      Spy.prototype = Real.prototype;
+      for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) Spy[k] = Real[k];
+      window.WebSocket = Spy;
+    });
+    await stand.open();
+    await stand.attach('demo');
+    await page.waitForFunction(() => window.__sockets?.some((s) => s.readyState === WebSocket.OPEN));
+
+    // The drop. `retry` is 1000ms at this point (a socket that opened resets it),
+    // so what follows has to happen inside that second.
+    await page.evaluate(() => {
+      for (const s of window.__sockets) if (s.readyState === WebSocket.OPEN) s.close();
+    });
+    await stand.attach('demo');
+
+    // Long enough for the armed reconnect to have fired, and for a socket it
+    // opened to have reached the server.
+    await page.waitForTimeout(2500);
+
+    const open = await page.evaluate(() => window.__sockets.filter((s) => s.readyState === WebSocket.OPEN).length);
+    assert.equal(open, 1, `the page holds ${open} open sockets`);
+    // And the server's own count, because a socket the page has forgotten is
+    // still a client tmux is drawing for.
+    const clients = await page.evaluate(async () => {
+      const res = await fetch('/api/presence');
+      return res.ok ? (await res.json()).clients : -1;
+    });
+    assert.equal(clients, 1, `the server sees ${clients} clients for one page`);
+
+    // And it still works: one socket that carries typing is the point of having
+    // exactly one.
+    await page.click('#term');
+    await page.keyboard.type('one socket');
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('one socket'),
+      null, { timeout: 20000 });
+  });
 });
 
 describe('the order of the tabs', () => {

@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v147';
+const APP_VERSION = 'v148';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1115,7 +1115,7 @@ for (const end of ['touchend', 'touchcancel']) {
 // terminal goes away with it and the drawer is all there is. That is where the
 // page starts, and where closing the last session lands.
 function showSessions() {
-  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  dropSocket();
   current = null;
   try { sessionStorage.removeItem('pt-session'); } catch (_) {}
   screenTerm.hidden = true;
@@ -1185,8 +1185,10 @@ function attach(name) {
   // take focus (see keepsTerminalFocus), so whatever state the switch found
   // simply stays.
   // Close any current socket first (switching tabs) so its output stops
-  // writing into the terminal we're about to reuse for another session.
-  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  // writing into the terminal we're about to reuse for another session — and
+  // with it any reconnect a close armed, which would otherwise open a second
+  // socket on the session just left.
+  dropSocket();
   rememberVisit(current);
   forget(name); // it is where you are now, not somewhere to go back to
   current = name;
@@ -1641,8 +1643,44 @@ function tickState() {
 document.addEventListener('visibilitychange', () => pollTabs(true));
 
 // --- websocket to the attached session ---
+// The pending reconnect. It is held rather than fired and forgotten, because a
+// timer nobody can cancel is a socket nobody asked for: onclose arms it, and
+// anything that opens a socket in the meantime — a tab tapped, the watchdog —
+// leaves it to fire on top of the one now in hand.
+let reconnectTimer = null;
+
+// dropSocket is the one way this page lets a socket go, and both halves matter.
+//
+// **Its handlers first, onclose above all.** Closing a socket fires it, and
+// onclose schedules a reconnect of its own; that is what left the page with two
+// sockets and then four, each writing every frame into the same terminal —
+// reported as the terminal tripling, and now as lines and status bars drawn
+// twice after a deploy dropped everyone's socket at once.
+//
+// **And the pending reconnect with it.** A close arms a timer; a switch or the
+// watchdog then opens a socket before it fires, and the timer opens a second one
+// beside it. The page writes keystrokes to the newest and reads frames from
+// both, so what doubles is the picture rather than the typing — which is why it
+// reads as the session repeating itself rather than as anything being sent
+// twice.
+function dropSocket() {
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (!ws) return;
+  const dead = ws;
+  ws = null;
+  dead.onmessage = null;
+  dead.onclose = null;
+  try { dead.close(); } catch (_) { /* already gone */ }
+}
+
 function connect() {
   if (!current) return;
+  // One page, one socket, by construction rather than by every caller
+  // remembering: whatever is in hand goes before another is opened.
+  dropSocket();
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
   // The size travels in the address, not in the first message after it.
   //
@@ -1686,7 +1724,10 @@ function connect() {
     if (!current) return; // left for the list on purpose
     statusEl.textContent = 'reconnecting…';
     statusEl.hidden = false;
-    setTimeout(() => { if (current) connect(); }, retry);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (current) connect();
+    }, retry);
     retry = Math.min(retry * 2, 15000);
   };
 }
@@ -1725,16 +1766,11 @@ function checkLink() {
   report('socket-stalled', { silentMs: Date.now() - lastRx, session: current || '' });
   retry = 1000;
   pingSent = 0;
-  const dead = ws;
-  ws = null;
-  // Both handlers, and onclose is the one that matters: closing a socket fires it,
-  // and it schedules a reconnect of its own on top of the one below. That left two
-  // sockets on the session, then four — every frame written into the same terminal
-  // by each of them, which is what "терминал затроил" was. Same shape as every
-  // other deliberate close on this page (showSessions, attach).
-  dead.onmessage = null;
-  dead.onclose = null;
-  try { dead.close(); } catch (_) { /* already gone */ }
+  // Through the one place that lets a socket go: its handlers are cleared before
+  // the close, or onclose would schedule a reconnect on top of the one below, and
+  // any reconnect already armed goes with it. Two copies of this rule drifted
+  // once already.
+  dropSocket();
   statusEl.textContent = 'reconnecting…';
   statusEl.hidden = false;
   if (current) connect();
