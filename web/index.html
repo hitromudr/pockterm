@@ -268,16 +268,23 @@
       <button id="hide" title="Hide the bars">&#9662;</button>
     </div>
     <input id="pick-file" type="file" accept="image/*" hidden>
-    <!-- A screen at a time through the history, above the way back and on
-         screen with it: a swipe moves by what a thumb covers, so reading back
-         through a long output was a handful of lines and a glide per go.
-         Secondary colours, because the way out of the history is the one
+    <!-- The pager and the way back: one stack in the corner a thumb reaches.
+         A swipe moves by what a thumb covers, so reading back through a long
+         output was a handful of lines and a glide per go.
+
+         ⇞ is on screen always, because it is how you get into the history in
+         the first place — a button that appears only once you are already
+         there cannot be what took you. The other two are about a screen that
+         is somewhere in the history and come and go with it; the stack is
+         column-reverse, so ⇞ drops to the bottom of it when it is alone.
+
+         Secondary colours on the pager: the way out of the history is the one
          action here that ends something. -->
-    <button id="page-up" title="A page back" hidden>&#8670;</button>
-    <button id="page-down" title="A page forward" hidden>&#8671;</button>
-    <!-- Shown while the pane is scrolled back: tapping it returns to the live
-         end of the output. -->
-    <button id="to-bottom" title="Back to the end" hidden>&#8615;</button>
+    <div id="pager">
+      <button id="to-bottom" title="Back to the end" hidden>&#8615;</button>
+      <button id="page-down" title="A page forward" hidden>&#8671;</button>
+      <button id="page-up" title="A page back">&#8670;</button>
+    </div>
     <!-- The only thing left on screen when everything is hidden. -->
     <button id="show-bars" title="Show the bars" hidden>&#9652;</button>
     <div id="modebar">

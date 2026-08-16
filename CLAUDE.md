@@ -498,8 +498,15 @@ client out of a mode it chose to be in.
 **And what the ⇩ is on screen with is a pager**: `⇞` and `⇟` above it, a screen
 at a time. The swipe was the only way through the scrollback and it moves by what
 a thumb covers — reading back through a long output is a handful of lines and a
-glide per go, with nothing to aim at. They come and go with the ⇩ itself, all
-three being about a screen that is somewhere in the history.
+glide per go, with nothing to aim at.
+
+**⇞ is on screen at the live end too, and that is what makes it a way in.** It
+came and went with the ⇩ for one release, which meant the only way to reach the
+pager was the swipe it exists to replace: a button that appears once the pane is
+already scrolled back cannot be what took it there. ⇟ and the ⇩ stay tied to
+having history above, there being nothing below the live end to page to. The
+three are one stack (`#pager`, `column-reverse`), so the one that is always there
+is the one nearest the thumb and the column closes over the two that are not.
 
 They send **the wheel the swipe already sends**, not tmux's own `page-up`, and
 that is what makes them need no state of their own: a notch enters copy-mode by
@@ -1839,6 +1846,42 @@ here.
 prints the binding with the format unexpanded and that output is all this server
 knows: `ParseWheelLines` falls back to 5 on anything non-numeric. tmux would
 scroll one row while the page compensated for five.
+
+## A touch belongs to the element it started on, and xterm replaces that element
+
+Reported from the browser as the scroll jumping and refusing to go more than a
+screen or two back: some swipes covered a screen and a half, the next one moved
+two lines, and there was no pattern to which. The pattern is **where the finger
+landed**.
+
+Every touch event after `touchstart` is delivered to the node the gesture started
+on, whatever is under the finger later — and a node taken out of the document has
+no ancestors left to bubble to, so those events reach nothing at all. xterm's DOM
+renderer rebuilds a row's spans on every write (the same fact the frozen copy in
+`#snapshot` exists for, one layer up). So a swipe that started on drawn text was
+over at the first redraw tmux answered with: one move delivered, two lines
+scrolled, and the rest of the hand's travel dispatched into a detached span. A
+swipe that started past the end of a short line hit the row's own `div`, which
+xterm keeps and reuses, and ran to the end.
+
+Measured on the stand, six identical swipes: the first delivered 10 moves of 10
+and scrolled 50 lines, every one after it delivered 1 and scrolled 2, and
+`target.isConnected` was `false` for each of those. That is also why the defect
+gets worse the further back you are — the deeper into history, the more of the
+screen is text and the fewer places there are to land that survive.
+
+`.xterm-rows { pointer-events: none }` is the fix: the rows take no hits and the
+finger lands on `.xterm-screen`, which xterm creates once and keeps. Nothing is
+lost — xterm's own mouse handling listens on that element and works from
+coordinates, and selection here is made from the frozen copy rather than from the
+live rows.
+
+**What it is not** is anything about tmux, which is where two earlier readings of
+this went. tmux holds the copy-mode position as an offset from the *bottom* of the
+history, so a pane that is still producing output does drag a reader forward — measured, and real — but the session this was
+reported from had a stopped agent and a silent pane. And the page was sending its
+notches: the journal shows 33 to 66 per gesture. The gesture was being cut off
+before it became notches at all, which is visible from neither end.
 
 ## What the shift under the finger does not cover
 

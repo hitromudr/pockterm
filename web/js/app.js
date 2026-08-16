@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v145';
+const APP_VERSION = 'v146';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3438,12 +3438,16 @@ toBottomBtn.addEventListener('click', () => {
   leaveCopyMode('button', { blurred, keyboardUp, sawKeyboard });
 });
 
-// A screen at a time through the history, above the way back and on screen with
-// it.
+// A screen at a time through the history, in the stack the way back is in.
 //
 // The swipe is the only way through the scrollback there was, and it moves by
 // what a thumb covers: reading back through a long output is a handful of lines
 // and a glide per go, with nothing to aim at. These two are the pager's step.
+//
+// ⇞ is on screen at the live end as well, and that is the whole of what makes it
+// a way in: a button that appeared only once the pane was already scrolled back
+// could not be what took it there. ⇟ and the ⇩ are about a screen that is
+// somewhere in the history, so they come and go with it.
 //
 // They ride on the wheel the swipe already sends rather than asking tmux for its
 // own `page-up`, and that is the whole reason they need no new state: a wheel
@@ -3503,10 +3507,8 @@ function setCopyMode(inMode, back) {
   if (away === scrolledBack) return;
   scrolledBack = away;
   toBottomBtn.hidden = !away;
-  // The pager comes and goes with the way back: all three are about a screen
-  // that is somewhere in the history, and a page button at the live end would
-  // scroll into a history nobody asked to see.
-  pageUpBtn.hidden = !away;
+  // ⇟ goes with the ⇩: at the live end there is nothing below to page to. ⇞ is
+  // never hidden — it is the way in, and the stack closes over the two that are.
   pageDownBtn.hidden = !away;
   // Both numbers, not the conclusion: if the button lingers again, the journal
   // has to say whether tmux was in a mode and where it thought it was.

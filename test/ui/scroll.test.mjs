@@ -243,6 +243,87 @@ describe('a swipe follows the finger', () => {
     assert.doesNotMatch(after, /^1 [1-9]/, `still scrolled back after tapping the way out: ${after}`);
   });
 
+  test('a swipe that starts on drawn text scrolls as far as any other', async () => {
+    // Reported from the browser as the scroll jumping and refusing to go more
+    // than a screen or two back. It is where the finger lands: every touch event
+    // after the first goes to the node the gesture started on, xterm rebuilds a
+    // row's spans on every write, and a detached span has no ancestors to bubble
+    // to — so a swipe that began on text was over at the first redraw tmux
+    // answered with, two lines in. A swipe that began past the end of a short
+    // line hit the row's own div, which xterm keeps, and ran to the end.
+    //
+    // That is why the screen full of text is the case worth testing: it is the
+    // one a phone meets deep in the history, where every row is covered.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    const client = stand.tmux(['list-sessions', '-F', '#{session_name}'])
+      .split('\n').find((n) => n.startsWith('pockterm-'));
+    assert.ok(client, 'the page did not attach through a client session');
+
+    // Lines wide enough to cover the whole row: what is under the finger has to
+    // be text, or this measures the case that always worked.
+    await page.click('#term');
+    const wide = '='.repeat(70);
+    for (let i = 1; i <= 40; i++) await page.keyboard.type(`${wide} ${i}\n`);
+    await page.waitForFunction((w) => document.querySelector('.xterm-rows')?.textContent?.includes(`${w} 40`),
+      wide, { timeout: 15000 });
+
+    const start = 260;
+    const covered = await page.evaluate(({ x, y }) => {
+      const row = [...document.querySelectorAll('.xterm-rows > div')].find((r) => {
+        const b = r.getBoundingClientRect();
+        return y >= b.top && y < b.bottom;
+      });
+      if (!row) return null;
+      // Geometry rather than elementFromPoint: with the fix in place the rows
+      // take no hits at all, and the question here is what is drawn there.
+      return [...row.children].some((s) => {
+        const b = s.getBoundingClientRect();
+        return x >= b.left && x < b.right;
+      });
+    }, { x: X, y: start });
+    assert.ok(covered, 'the finger is not over drawn text, so this proves nothing');
+
+    const at = () => Number(stand.tmux(['display-message', '-p', '-t', client, '#{scroll_position}']).trim() || 0);
+    const row = await page.evaluate(() => {
+      const el = document.querySelector('.xterm-rows > div');
+      return el ? el.getBoundingClientRect().height : 0;
+    });
+    assert.ok(row > 4, `a row measures nothing sensible: ${row}`);
+
+    let y = start;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y }] });
+    y += 24; // Chromium's own slop, well above the page's
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: X, y }] });
+    let travel = 0;
+    for (let i = 0; i < 10; i++) {
+      y += 30;
+      travel += 30;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: X, y }] });
+      // Delivery is not waited for: with the defect it never comes, and a test
+      // that times out says less than one that says how far the pane went.
+      await page.waitForTimeout(30);
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+    // The finger's travel in rows is the floor: the page may send more (the
+    // glide) and tmux may move more per notch, but a swipe cannot honestly move
+    // less than half of what the hand covered. With the gesture dying at the
+    // first redraw it is two lines of twenty.
+    const rows = travel / row;
+    let moved = 0;
+    for (let i = 0; i < 40 && moved < rows / 2; i++) {
+      moved = at();
+      await page.waitForTimeout(100);
+    }
+    assert.ok(moved >= rows / 2,
+      `${travel}px of finger over ${row.toFixed(1)}px rows scrolled ${moved} lines, not ${Math.round(rows / 2)}`);
+    stand.tmux(['send-keys', '-t', 'demo', '-X', 'cancel']);
+    assert.deepEqual(stand.pageErrors, []);
+  });
+
   test('a page moves a screenful and skips nothing', async () => {
     // The swipe covers what a thumb covers, so reading back through a long
     // output was a handful of lines and a glide per go. These two move by the
@@ -267,14 +348,16 @@ describe('a swipe follows the finger', () => {
       await page.keyboard.type(Array.from({ length: 10 }, (_, k) => `line ${i + k}\n`).join(''));
     }
     await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('line 120'));
-    assert.ok(await page.locator('#page-up').isHidden(), 'the pager is up at the live end');
+    // ⇞ is the way into the history, so it is on screen before anything is
+    // scrolled; the other two are about a screen that is already back there.
+    assert.ok(await page.locator('#page-up').isVisible(), 'the way into the history is not offered at the live end');
+    assert.ok(await page.locator('#page-down').isHidden(), 'a page forward is offered with nothing ahead');
+    assert.ok(await page.locator('#to-bottom').isHidden(), 'the way back is offered from the live end');
 
-    // Scrolled back by a little: the pager comes and goes with the way back, and
-    // a page up from here has room above it. Through tmux rather than a finger,
-    // because a swipe leaves a glide the tap would also have to cancel.
-    stand.tmux(['copy-mode', '-t', client]);
-    stand.tmux(['send-keys', '-t', client, '-X', '-N', '5', 'scroll-up']);
-    await page.waitForSelector('#page-up:not([hidden])', { timeout: 5000 });
+    // And it takes the pane there by itself: no swipe first, which is the whole
+    // reason it is on screen at all.
+    await page.click('#page-up');
+    await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
 
     const rows = Number(/x(\d+)$/.exec(await page.locator('#term').getAttribute('data-size'))?.[1] || 0);
     assert.ok(rows > 8, `the page reports no sensible size: ${rows}`);

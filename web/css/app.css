@@ -964,6 +964,26 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    selection is made, and the tab strip scrolls sideways. */
 #screen-term { touch-action: none; }
 #composer, #snapshot, header.bar { touch-action: auto; }
+/* A touch belongs to the element it started on, and xterm replaces that element
+   under it.
+   Every event after `touchstart` is delivered to the node the finger landed on,
+   whatever is under it later — and a node taken out of the document has no
+   ancestors left to bubble to, so those events reach nothing at all. The DOM
+   renderer rebuilds a row's spans on every write (the same fact the frozen copy
+   above exists for), so a swipe that started on drawn text died at the first
+   redraw tmux answered with: one move delivered, two lines scrolled, and the
+   rest of the finger's travel dispatched into a detached span.
+   Measured on the stand: a swipe onto a row's own div delivers 10 moves of 10
+   and scrolls 50 lines, the same swipe onto a span delivers 1 and scrolls 2.
+   Which of the two you get is where the finger happens to land, and the further
+   back into history you are the more of the screen is text — reported from the
+   browser as the scroll jumping and refusing to go more than a screen or two
+   back.
+   So the rows take no hits and the finger lands on `.xterm-screen`, which xterm
+   creates once and keeps. Nothing is lost: xterm's own mouse handling listens on
+   that element and works from coordinates, and selection here is made from the
+   frozen copy rather than from the live rows. */
+.xterm-rows { pointer-events: none; }
 /* Selection mode selects from a frozen copy of the screen laid over the
    terminal, not from the terminal itself.
    Two reasons, and lifting xterm's user-select:none fixed neither: the DOM
@@ -1016,11 +1036,22 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #screen-term.panels-hidden #modebar { display: none !important; }
 /* The three round buttons of the history: a page back, a page forward, and the
    way out to the live end. One stack in the corner a thumb reaches, 8px apart
-   so a 44px target cannot be hit by aiming at its neighbour. */
-#to-bottom, #page-up, #page-down {
+   so a 44px target cannot be hit by aiming at its neighbour.
+
+   A stack rather than three fixed offsets, and column-reverse rather than a
+   plain column: ⇞ is on screen at the live end and the other two are not, so
+   the one that is always there has to be the one nearest the thumb — hidden
+   is `display: none`, and the flex column closes over it. */
+#pager {
   position: absolute;
   right: 10px;
+  bottom: calc(64px + env(safe-area-inset-bottom));
   z-index: 12;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+}
+#pager button {
   width: 44px;
   height: 44px;
   border: none;
@@ -1028,7 +1059,6 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   font-size: 18px;
 }
 #to-bottom {
-  bottom: calc(64px + env(safe-area-inset-bottom));
   color: #0b0e14;
   background: var(--accent);
   opacity: 0.9;
@@ -1036,13 +1066,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 /* Paging moves the view; the ⇩ leaves the history altogether. Only one of the
    three ends anything, so only one of them is the accent — three filled circles
    in a column say the three are equals. */
-#page-down {
-  bottom: calc(116px + env(safe-area-inset-bottom));
-  color: var(--fg);
-  background: #232a38cc;
-}
-#page-up {
-  bottom: calc(168px + env(safe-area-inset-bottom));
+#page-up, #page-down {
   color: var(--fg);
   background: #232a38cc;
 }
