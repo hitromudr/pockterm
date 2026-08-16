@@ -23,7 +23,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v144';
+const APP_VERSION = 'v145';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3438,6 +3438,64 @@ toBottomBtn.addEventListener('click', () => {
   leaveCopyMode('button', { blurred, keyboardUp, sawKeyboard });
 });
 
+// A screen at a time through the history, above the way back and on screen with
+// it.
+//
+// The swipe is the only way through the scrollback there was, and it moves by
+// what a thumb covers: reading back through a long output is a handful of lines
+// and a glide per go, with nothing to aim at. These two are the pager's step.
+//
+// They ride on the wheel the swipe already sends rather than asking tmux for its
+// own `page-up`, and that is the whole reason they need no new state: a wheel
+// notch enters copy-mode by itself, and a scroll down that reaches the live end
+// leaves it — which is what takes all three buttons off screen at the bottom. A
+// copy-mode command would do neither, and one sent to a pane that has left the
+// mode is a character in somebody's prompt.
+const pageUpBtn = document.getElementById('page-up');
+const pageDownBtn = document.getElementById('page-down');
+keepsTerminalFocus(pageUpBtn);
+keepsTerminalFocus(pageDownBtn);
+
+// Two rows of overlap, so a page reads on from what the last one ended with
+// rather than from the line after it.
+const PAGE_OVERLAP = 2;
+
+// How many notches make a page: the rows on screen less that overlap, over what
+// tmux moves per notch.
+//
+// Rounded down and never below one. Down, because the remainder is overlap and
+// rounding up skips the rows between two pages — a line nobody knows they have
+// not read is the one failure here that says nothing about itself. And the step
+// is tmux's own (`wheelLines`, asked of the running server), so a stock host
+// pages in fives and the owner's in ones.
+function pageNotches() {
+  const rows = Math.max(1, (term.rows | 0) - PAGE_OVERLAP);
+  return Math.max(1, Math.floor(rows / Math.max(1, wheelLines)));
+}
+
+function pageBy(dir) {
+  // The glide first, which is the trap the ⇩ found and typing met again: a
+  // flick's inertia goes on sending notches for up to a second after the finger
+  // has left, and those arrive behind the page and move it once more. A page is
+  // a deliberate step, so it ends the throw it was aimed over.
+  scroller.stop();
+  dropQueuedWheel();
+  // Pressed to read, and on this phone a focused textarea is a keyboard waiting
+  // for the layout to move — which a page down reaching the live end makes the
+  // pane do, since that is tmux leaving copy-mode. The same answer the ⇩ gives.
+  const blurred = releaseTerminalFocus();
+  const notches = pageNotches();
+  const btnCode = dir > 0 ? 64 : 65; // 64 = towards history
+  for (let i = 0; i < notches; i++) sendWheel(btnCode);
+  // What it was asked to move and what it had to work with. A page that reads
+  // as too short or too long is one of `rows` and `lines` being wrong, and
+  // neither is visible from a phone.
+  report('page', { dir, notches, rows: term.rows, lines: wheelLines, blurred });
+}
+
+pageUpBtn.addEventListener('click', () => pageBy(1));
+pageDownBtn.addEventListener('click', () => pageBy(-1));
+
 function setCopyMode(inMode, back) {
   copyMode = !!inMode;
   copyBack = back | 0;
@@ -3445,6 +3503,11 @@ function setCopyMode(inMode, back) {
   if (away === scrolledBack) return;
   scrolledBack = away;
   toBottomBtn.hidden = !away;
+  // The pager comes and goes with the way back: all three are about a screen
+  // that is somewhere in the history, and a page button at the live end would
+  // scroll into a history nobody asked to see.
+  pageUpBtn.hidden = !away;
+  pageDownBtn.hidden = !away;
   // Both numbers, not the conclusion: if the button lingers again, the journal
   // has to say whether tmux was in a mode and where it thought it was.
   report('mode', { in: !!inMode, back, shown: away });

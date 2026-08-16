@@ -1014,19 +1014,37 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #screen-term.panels-hidden #quickbar,
 #screen-term.panels-hidden #selbar,
 #screen-term.panels-hidden #modebar { display: none !important; }
-#to-bottom {
+/* The three round buttons of the history: a page back, a page forward, and the
+   way out to the live end. One stack in the corner a thumb reaches, 8px apart
+   so a 44px target cannot be hit by aiming at its neighbour. */
+#to-bottom, #page-up, #page-down {
   position: absolute;
   right: 10px;
-  bottom: calc(64px + env(safe-area-inset-bottom));
   z-index: 12;
   width: 44px;
   height: 44px;
   border: none;
   border-radius: 22px;
   font-size: 18px;
+}
+#to-bottom {
+  bottom: calc(64px + env(safe-area-inset-bottom));
   color: #0b0e14;
   background: var(--accent);
   opacity: 0.9;
+}
+/* Paging moves the view; the ⇩ leaves the history altogether. Only one of the
+   three ends anything, so only one of them is the accent — three filled circles
+   in a column say the three are equals. */
+#page-down {
+  bottom: calc(116px + env(safe-area-inset-bottom));
+  color: var(--fg);
+  background: #232a38cc;
+}
+#page-up {
+  bottom: calc(168px + env(safe-area-inset-bottom));
+  color: var(--fg);
+  background: #232a38cc;
 }
 #show-bars {
   position: absolute;

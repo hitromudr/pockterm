@@ -243,6 +243,73 @@ describe('a swipe follows the finger', () => {
     assert.doesNotMatch(after, /^1 [1-9]/, `still scrolled back after tapping the way out: ${after}`);
   });
 
+  test('a page moves a screenful and skips nothing', async () => {
+    // The swipe covers what a thumb covers, so reading back through a long
+    // output was a handful of lines and a glide per go. These two move by the
+    // screen — and the whole of what they must get right is the size of that
+    // step: short is a button that does not feel like a page, long is lines
+    // nobody knows they have not read.
+    //
+    // Read off tmux rather than off the page: what is under test is where the
+    // pane ended up, and the page's own picture of that is a poll old.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    const client = stand.tmux(['list-sessions', '-F', '#{session_name}'])
+      .split('\n').find((n) => n.startsWith('pockterm-'));
+    assert.ok(client, 'the page did not attach through a client session');
+
+    // More than two screens of history, because a page that runs into the top
+    // of it is clamped and would measure short through no fault of the page.
+    await page.click('#term');
+    for (let i = 1; i <= 120; i += 10) {
+      await page.keyboard.type(Array.from({ length: 10 }, (_, k) => `line ${i + k}\n`).join(''));
+    }
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('line 120'));
+    assert.ok(await page.locator('#page-up').isHidden(), 'the pager is up at the live end');
+
+    // Scrolled back by a little: the pager comes and goes with the way back, and
+    // a page up from here has room above it. Through tmux rather than a finger,
+    // because a swipe leaves a glide the tap would also have to cancel.
+    stand.tmux(['copy-mode', '-t', client]);
+    stand.tmux(['send-keys', '-t', client, '-X', '-N', '5', 'scroll-up']);
+    await page.waitForSelector('#page-up:not([hidden])', { timeout: 5000 });
+
+    const rows = Number(/x(\d+)$/.exec(await page.locator('#term').getAttribute('data-size'))?.[1] || 0);
+    assert.ok(rows > 8, `the page reports no sensible size: ${rows}`);
+    const at = () => Number(stand.tmux(['display-message', '-p', '-t', client, '#{scroll_position}']).trim());
+    // The batch goes out on the next frame and tmux answers over the socket, so
+    // the move is waited for rather than read once.
+    const until = async (want, what) => {
+      for (let i = 0; i < 50; i++) {
+        const v = at();
+        if (want(v)) return v;
+        await page.waitForTimeout(100);
+      }
+      assert.fail(`${what}: the pane sat at ${at()}`);
+    };
+
+    const before = at();
+    assert.ok(before > 0, `the pane is not scrolled back: ${before}`);
+    await page.click('#page-up');
+    const back = await until((v) => v !== before, 'a page back moved nothing');
+    const moved = back - before;
+    // Both bounds are the decision this button is: at least half a screen or it
+    // is not a page, and never more than a screen or the lines in between are
+    // skipped. The step tmux moves per notch is its own (five on a stock server,
+    // one on the owner's host), so the exact number is not asserted — what has
+    // to hold is that a page of it lands inside a screen.
+    assert.ok(moved >= rows / 2, `a page back moved ${moved} lines of a ${rows}-row screen`);
+    assert.ok(moved <= rows, `a page back moved ${moved} lines and skipped past a ${rows}-row screen`);
+
+    // And forward by exactly what it went back: nothing here is a gesture, so
+    // there is no residue to round and the two are the same number of notches.
+    await page.click('#page-down');
+    await until((v) => v === before, `a page forward did not undo the page back (${moved} lines)`);
+    assert.deepEqual(stand.pageErrors, []);
+  });
+
   test('the way back to the end does not bring the keyboard with it', async () => {
     // Reported from the phone: the ⇩ raised the keyboard over the output it had
     // just gone back to. Nothing focuses anything on that path — the textarea

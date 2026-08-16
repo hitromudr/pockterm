@@ -495,6 +495,43 @@ by whether there is history above. Nothing here asks tmux to leave copy-mode:
 the pane is shared, and a page that sent `q` on its own would take the laptop's
 client out of a mode it chose to be in.
 
+**And what the ⇩ is on screen with is a pager**: `⇞` and `⇟` above it, a screen
+at a time. The swipe was the only way through the scrollback and it moves by what
+a thumb covers — reading back through a long output is a handful of lines and a
+glide per go, with nothing to aim at. They come and go with the ⇩ itself, all
+three being about a screen that is somewhere in the history.
+
+They send **the wheel the swipe already sends**, not tmux's own `page-up`, and
+that is what makes them need no state of their own: a notch enters copy-mode by
+itself, and a scroll down reaching the live end leaves it — which is what takes
+the three buttons off screen at the bottom. A copy-mode command would do neither,
+and one sent to a pane that has already left the mode is a character in somebody's
+prompt (see below, where the ⇩ and typing both had to be requests rather than a
+`q`).
+
+The size of the step is the whole of what this has to get right, and it is
+`floor((rows - 2) / wheelLines)` notches — **rounded down, and the remainder is
+overlap**. Rounding up skips the lines between two pages, and a line nobody knows
+they have not read is the one failure here that says nothing about itself. The
+two rows kept back are what the next page reads on from. Neither number is
+assumed: the rows are the page's own, and the lines per notch are what the server
+asked tmux for (see "the wheel step is a tmux setting" — one on the owner's host,
+five on a stock server, so the same button is one notch there and thirty-odd
+here).
+
+Two things they inherit rather than reimplement, and both are traps this file has
+met before. The glide is stopped first, because a flick's inertia goes on sending
+notches for up to a second after the finger has left and those would arrive behind
+the page and move it again. And the focus is given up (`releaseTerminalFocus`),
+because a page down that reaches the live end takes the pane out of copy-mode —
+a layout moving under a focused textarea, which on Android is the keyboard coming
+back over what was being read.
+
+The browser test asserts the bounds rather than the formula: a page moves at
+least half a screen — less is not a page — and never more than one, which is the
+same statement as skipping nothing. Forward then has to undo back exactly, there
+being no gesture in it and so no residue to round.
+
 ## Typing into copy-mode goes nowhere, and nothing on screen says so
 
 tmux discards what is typed into a pane it holds in copy-mode: a printable
