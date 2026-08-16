@@ -13,6 +13,7 @@ import { endingKeys, commitComposition, endEditByBlur } from './ender.js';
 import { pushHistory, previewOf } from './compose.js';
 import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, MARKS, CUSTOM_MARK } from './kinds.js';
 import { dropIndex } from './carry.js';
+import { thumb as thumbAt, backAt } from './bar.js';
 import { installDecision, installText, isIOS } from './install.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
@@ -23,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v146';
+const APP_VERSION = 'v147';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1200,6 +1201,11 @@ function attach(name) {
   document.getElementById('answers').hidden = true;
   lastAnswersSig = null;
   scrolledBack = false; // the new socket reports the pane's state on connect
+  // And so does the scrollbar: a bar left drawn from the last session's history
+  // would point at a place in output this pane never produced.
+  copyBack = 0;
+  copyHist = 0;
+  barEl.hidden = true;
   renderTabs();
   // The strip is on screen now, so its colours have to keep up with the panes.
   pollTabs(true);
@@ -1749,7 +1755,7 @@ document.addEventListener('visibilitychange', () => {
 function onControl(raw) {
   let c = null;
   try { c = JSON.parse(raw); } catch (_) { return; }
-  if (c && c.type === 'mode') setCopyMode(!!c.in, c.back | 0);
+  if (c && c.type === 'mode') setCopyMode(!!c.in, c.back | 0, c.hist | 0);
   if (c && c.type === 'notify') show(noticeFrom(c));
   // What tmux does per wheel notch, asked of tmux rather than assumed: the
   // swipe follows the finger only if the page knows the size of a step.
@@ -1824,6 +1830,10 @@ function sendVisible() {
 // saying why.
 let copyMode = false;
 let copyBack = 0;
+// How many lines of history the pane has. It is a fact about the pane rather
+// than about the mode — tmux answers it out of copy-mode too — which is what
+// lets the scrollbar be on screen before anything has been scrolled.
+let copyHist = 0;
 
 function leaveCopyMode(why, note) {
   // The glide first, and this is the trap the ⇩ button found before typing did:
@@ -2066,8 +2076,16 @@ document.getElementById('font-inc').addEventListener('click', () => setFont(font
 // Tapping the terminal returns keyboard focus to it (so typing goes in).
 // Not in selection mode: focusing drops the browser's text selection, which
 // is exactly what the user is in the middle of making.
-document.getElementById('term').addEventListener('click', () => {
+document.getElementById('term').addEventListener('click', (e) => {
   if (selectMode) return;
+  // A control drawn over the terminal is not the terminal. The pager and the
+  // scrollbar live inside this box — that is how they stay above the bars
+  // whatever the bars are doing — so their clicks arrive here, and this handler
+  // would hand the focus straight back to the very thing they just took it
+  // from. On Android that is the keyboard coming up over the output somebody
+  // pressed ⇩ to get back to. Caught as an assertion failure by the browser
+  // test that exists for exactly that report.
+  if (e.target instanceof Element && e.target.closest('#pager, #scrollbar')) return;
   term.focus();
   refit();
 });
@@ -2289,7 +2307,7 @@ const gestureArea = document.getElementById('screen-term');
 // than scroll the terminal underneath.
 function ownsGesture(target) {
   return !(target instanceof Element) ||
-    !target.closest('#composer, #snapshot, header.bar, #answers, #ctrlpad, #history-list');
+    !target.closest('#composer, #snapshot, header.bar, #answers, #ctrlpad, #history-list, #scrollbar');
 }
 
 // And a swipe to the right brings the drawer, which is the mirror of the swipe
@@ -3500,9 +3518,147 @@ function pageBy(dir) {
 pageUpBtn.addEventListener('click', () => pageBy(1));
 pageDownBtn.addEventListener('click', () => pageBy(-1));
 
-function setCopyMode(inMode, back) {
+// --- the scrollbar ---
+//
+// Where in the output the pane is, and the way to anywhere else in it. The swipe
+// and the pager both move by a step and neither says how much there is; crossing
+// a long history with either is a lot of steps taken blind.
+//
+// It asks for a **place**, not a movement (`scroll-to`), and the server works out
+// the difference against a reading taken there and then. The page's own picture
+// of the position is up to a poll old, and a delta applied to a pane that has
+// moved since — a second client on it, the page's own glide — lands somewhere
+// nobody asked for. The server also turns it into one tmux command with a count
+// rather than the hundreds of wheel notches a drag across the screen would be.
+const barEl = document.getElementById('scrollbar');
+const thumbEl = document.getElementById('scroll-thumb');
+
+// How often a drag may ask for a new place. Every ask is a tmux read plus a
+// scroll, and a finger produces moves at the refresh rate — this is what keeps a
+// drag from being sixty of them a second, without making it feel posted.
+const DRAG_ASK = 90; // milliseconds
+
+// Where the finger has put the thumb, while it is holding it. The bar is drawn
+// from this rather than from the poll for as long as the drag lasts: the answer
+// is up to 400ms away, and a thumb that snapped back to where tmux last said it
+// was would be a bar fighting the hand.
+let dragging = null;
+let lastAsk = 0;
+let askTimer = null;
+let pendingBack = -1;
+
+// The track is the terminal's own height rather than the bar's own, and that is
+// not a shortcut: a `hidden` element measures zero, so a bar asked how tall it is
+// while it is not on screen answers nothing — and a bar that only appears once it
+// has a height would never get one. The two are the same box by construction
+// (`#scrollbar` is `top: 0; bottom: 0` inside `#term`).
+function trackHeight() {
+  const box = document.getElementById('term');
+  return box ? box.clientHeight : 0;
+}
+
+function paintScrollbar() {
+  if (!barEl) return;
+  if (dragging) return; // the finger owns it
+  const t = thumbAt({ hist: copyHist, rows: term.rows, back: copyBack, track: trackHeight() });
+  if (!t) {
+    barEl.hidden = true;
+    return;
+  }
+  barEl.hidden = false;
+  thumbEl.style.height = `${t.height}px`;
+  thumbEl.style.top = `${t.top}px`;
+}
+
+// A drag asks for places while it lasts, and the last one has to arrive: a
+// throttle that drops the final move leaves the pane one ask short of where the
+// finger let go, which is the one position anybody chose deliberately.
+function askScrollTo(back) {
+  pendingBack = back;
+  const now = performance.now();
+  const wait = Math.max(0, DRAG_ASK - (now - lastAsk));
+  if (askTimer !== null) return;
+  askTimer = setTimeout(() => {
+    askTimer = null;
+    lastAsk = performance.now();
+    const want = pendingBack;
+    pendingBack = -1;
+    if (want < 0) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'scroll-to', back: want }));
+    }
+  }, wait);
+}
+
+function thumbTravel() {
+  const t = thumbAt({ hist: copyHist, rows: term.rows, back: copyBack, track: trackHeight() });
+  return t || { height: 0, top: 0, span: 0 };
+}
+
+// Pointer events rather than the touch handlers the rest of this page uses, and
+// for the defect the rows met: a touch is delivered to the node it started on,
+// so anything that redraws under the finger takes the gesture with it.
+// `setPointerCapture` says outright that this element owns the drag until it is
+// let go — which is also what makes a finger sliding off the 18px track keep
+// dragging instead of stopping at the edge. One set of handlers covers the
+// laptop's mouse with it.
+barEl.addEventListener('pointerdown', (e) => {
+  const t = thumbTravel();
+  if (!t.span) return;
+  const box = barEl.getBoundingClientRect();
+  const onThumb = e.clientY >= box.top + t.top && e.clientY < box.top + t.top + t.height;
+  // Grabbed by the thumb: the offset is kept, or the thumb would jump its own
+  // half-height under the hand at the first move. Tapped on the rail: it is a
+  // request to go there, so the thumb centres on the finger.
+  const grab = onThumb ? e.clientY - box.top - t.top : t.height / 2;
+  dragging = { grab, height: t.height, span: t.span, id: e.pointerId };
+  barEl.classList.add('held');
+  try { barEl.setPointerCapture(e.pointerId); } catch (_) {}
+  // Pressed to read: the same answer the ⇩ and the pager give, since a drag to
+  // the live end takes the pane out of copy-mode and the layout moves under
+  // whatever holds the focus.
+  releaseTerminalFocus();
+  dragTo(e.clientY);
+  e.preventDefault();
+});
+
+barEl.addEventListener('pointermove', (e) => {
+  if (!dragging || e.pointerId !== dragging.id) return;
+  dragTo(e.clientY);
+});
+
+for (const kind of ['pointerup', 'pointercancel']) {
+  barEl.addEventListener(kind, (e) => {
+    if (!dragging || e.pointerId !== dragging.id) return;
+    const back = dragTo(e.clientY);
+    dragging = null;
+    barEl.classList.remove('held');
+    report('scrollbar', { back, hist: copyHist, rows: term.rows, cancelled: kind === 'pointercancel' });
+    // What the poll says next is the truth again, and it is 400ms away — until
+    // then the thumb stays where it was let go rather than snapping back.
+  });
+}
+
+// dragTo puts the thumb where the finger is and asks for the place that means.
+function dragTo(clientY) {
+  const box = barEl.getBoundingClientRect();
+  const top = Math.max(0, Math.min(dragging.span, clientY - box.top - dragging.grab));
+  thumbEl.style.height = `${dragging.height}px`;
+  thumbEl.style.top = `${top}px`;
+  const back = backAt({ top, span: dragging.span, hist: copyHist });
+  askScrollTo(back);
+  return back;
+}
+
+function setCopyMode(inMode, back, hist) {
   copyMode = !!inMode;
   copyBack = back | 0;
+  copyHist = hist | 0;
+  // The bar is drawn from both numbers and moves whenever either does — which
+  // includes the history growing under a pane that is printing, and that is a
+  // frame every poll. Painting is cheap; the journal line below is not, and it
+  // is deliberately left where it was.
+  paintScrollbar();
   const away = !!inMode && back > 0;
   if (away === scrolledBack) return;
   scrolledBack = away;
@@ -3664,6 +3820,9 @@ function fitNow() {
   // says it too, and the size is the first thing to know when a redraw arrives
   // wrapped against a width nobody here chose.
   box.dataset.size = `${term.cols}x${term.rows}`;
+  // The bar is drawn against the rows on screen and the height of its own track,
+  // and a fit changes both — a keyboard coming up is the common one.
+  paintScrollbar();
   return true;
 }
 

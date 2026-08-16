@@ -47,14 +47,14 @@ func TestRealTmuxCopyMode(t *testing.T) {
 			base := tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 			return append([]string{"tmux", "-L", sock}, base[1:]...)
 		},
-		InMode: func(id int64) (bool, int, error) {
+		InMode: func(id int64) (bool, int, int, error) {
 			argv := tmuxcmd.PaneMode(tmuxcmd.ClientName(id))
 			out, err := tmuxL(sock, argv[1:]...).Output()
 			if err != nil {
-				return false, 0, err
+				return false, 0, 0, err
 			}
-			in, back := tmuxcmd.ParsePaneMode(string(out))
-			return in, back, nil
+			in, back, hist := tmuxcmd.ParsePaneMode(string(out))
+			return in, back, hist, nil
 		},
 		Static: http.NotFoundHandler(),
 	}))

@@ -10,6 +10,11 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   `tmux` on the host.
 - **Real terminal.** xterm.js over a WebSocket-to-PTY bridge, plus a key
   bar (Esc, Tab, arrows, Ctrl latch) for mobile keyboards.
+- **History under the thumb.** A swipe scrolls tmux's history, `⇞`/`⇟` move a
+  screen at a time, and the bar down the right says where in the output you are
+  — drag it to go anywhere. It is drawn over the terminal rather than beside it:
+  in the flow it would narrow the pane, tmux would redraw to the new width, and
+  the page would be reading a screen its own scrollbar reflowed.
 - **List and attach.** pockterm lists running tmux sessions and attaches
   to the one you pick. It never **creates** sessions — you start those on
   the server yourself.

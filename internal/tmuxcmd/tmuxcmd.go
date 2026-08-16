@@ -266,18 +266,57 @@ func CapturePane(session string) []string {
 	return []string{"tmux", "capture-pane", "-p", "-t", session}
 }
 
-// PaneMode returns the argv reporting two things about the current pane of
+// PaneMode returns the argv reporting three things about the current pane of
 // session: whether it is in a tmux mode — copy-mode, which is what a touch
-// swipe enters to scroll the history — and how far back it is scrolled.
+// swipe enters to scroll the history — how far back it is scrolled, and how
+// many lines of history there are to be scrolled through.
 //
-// Both, because the page needs a different question answered than tmux asks
-// itself. While the pane shows history, the numbered lines on screen belong to
-// the past and answering them would send digits to whatever is running now; but
-// a pane sitting in copy-mode at the live end shows the present, and the way
-// back to it is nowhere. The button offering that way back is the thing that
-// was left on screen with nothing behind it.
+// The first two, because the page needs a different question answered than tmux
+// asks itself. While the pane shows history, the numbered lines on screen belong
+// to the past and answering them would send digits to whatever is running now;
+// but a pane sitting in copy-mode at the live end shows the present, and the way
+// back to it is nowhere. The button offering that way back is the thing that was
+// left on screen with nothing behind it.
+//
+// The third is what a scrollbar is drawn from: a position without a total says
+// nothing about where in the output it is. tmux answers it whether or not the
+// pane is in a mode, which is what lets the bar be on screen before anything has
+// been scrolled.
+//
+// Comma-separated rather than by spaces, because the middle field is empty for a
+// pane that is not in a mode — `strings.Fields` on "0  181" gives two fields and
+// reads the history size as the scroll position.
 func PaneMode(session string) []string {
-	return []string{"tmux", "display-message", "-p", "-t", session, "#{pane_in_mode} #{scroll_position}"}
+	return []string{"tmux", "display-message", "-p", "-t", session,
+		"#{pane_in_mode},#{scroll_position},#{history_size}"}
+}
+
+// ScrollHistory returns the argv moving the pane's copy-mode view by lines:
+// positive is back into the history, negative is forward towards the live end.
+//
+// One command rather than a batch of wheel notches, which is how the swipe and
+// the pager move: a scrollbar dragged the length of the screen asks for hundreds
+// of lines at once, and hundreds of mouse reports are hundreds of key bindings
+// for tmux to run. `-N` is the same count the wheel binding uses, applied once.
+//
+// `copy-mode -e` first, because `send-keys -X` needs a mode to send to and the
+// bar is on screen before there is one. It is a no-op on a pane already in
+// copy-mode — measured: a pane scrolled back 30 lines is still at 30 after it —
+// so the two can always travel together. The `-e` is what makes a drag to the
+// very bottom leave the mode, the same way a wheel scroll to the live end does.
+//
+// Both directions are bounded by tmux itself: past the top it clamps at the
+// history size, past the bottom it leaves the mode. Neither needs guarding here.
+func ScrollHistory(session string, lines int) []string {
+	dir := "scroll-up"
+	if lines < 0 {
+		dir = "scroll-down"
+		lines = -lines
+	}
+	return []string{
+		"tmux", "copy-mode", "-e", "-t", session,
+		";", "send-keys", "-t", session, "-X", "-N", strconv.Itoa(lines), dir,
+	}
 }
 
 // CancelMode returns the argv that takes the pane out of whatever mode it is
@@ -298,23 +337,33 @@ func CancelMode(session string) []string {
 	return []string{"tmux", "send-keys", "-X", "-t", session, "cancel"}
 }
 
-// ParsePaneMode reads PaneMode output: whether the pane is in a mode, and how
-// many lines back it is scrolled.
+// ParsePaneMode reads PaneMode output: whether the pane is in a mode, how many
+// lines back it is scrolled, and how many lines of history the pane has.
 //
 // Only a bare "1" in the first field means in-mode; empty output or an error
 // message (dead server, session gone) does not. The position is empty for a
 // pane that is not in a mode, and tmux prints it as 0 at the live end.
-func ParsePaneMode(out string) (inMode bool, scrollBack int) {
-	fields := strings.Fields(out)
-	if len(fields) == 0 || fields[0] != "1" {
-		return false, 0
-	}
-	if len(fields) > 1 {
-		if n, err := strconv.Atoi(fields[1]); err == nil && n > 0 {
-			scrollBack = n
+//
+// The history size is read whatever the mode says, because it is true of the
+// pane rather than of the mode — a bar can only be drawn before the first scroll
+// if the total is known before it. An error message has no commas in it and
+// yields nothing, which is the honest answer for a pane nobody could ask about.
+func ParsePaneMode(out string) (inMode bool, scrollBack, history int) {
+	fields := strings.Split(strings.TrimSpace(out), ",")
+	number := func(i int) int {
+		if i >= len(fields) {
+			return 0
 		}
+		if n, err := strconv.Atoi(strings.TrimSpace(fields[i])); err == nil && n > 0 {
+			return n
+		}
+		return 0
 	}
-	return true, scrollBack
+	history = number(2)
+	if len(fields) == 0 || strings.TrimSpace(fields[0]) != "1" {
+		return false, 0, history
+	}
+	return true, number(1), history
 }
 
 // Attach returns the argv attaching a web client to its own grouped

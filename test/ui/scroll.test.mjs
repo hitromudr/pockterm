@@ -393,6 +393,85 @@ describe('a swipe follows the finger', () => {
     assert.deepEqual(stand.pageErrors, []);
   });
 
+  test('the bar says where in the output the pane is, and takes it anywhere', async () => {
+    // The swipe and the pager move by a step and neither says how much there is
+    // or how far through it you are. This one is drawn from both numbers tmux
+    // has — the position and the history size — and asks for a place rather than
+    // a movement, so a drag across the screen is one tmux command instead of
+    // several hundred wheel notches.
+    //
+    // Driven with the mouse: the handlers are pointer events, which is one set
+    // for a finger and a laptop both, and a mouse drag is the same path.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    const client = stand.tmux(['list-sessions', '-F', '#{session_name}'])
+      .split('\n').find((n) => n.startsWith('pockterm-'));
+    assert.ok(client, 'the page did not attach through a client session');
+
+    await page.click('#term');
+    for (let i = 1; i <= 100; i += 10) {
+      await page.keyboard.type(Array.from({ length: 10 }, (_, k) => `bar line ${i + k}\n`).join(''));
+    }
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('bar line 100'));
+
+    // The bar appears once tmux has said there is history, which is the poll
+    // after the first line scrolled off.
+    await page.waitForSelector('#scrollbar:not([hidden])', { timeout: 5000 });
+    const state = () => stand.tmux(['display-message', '-p', '-t', client,
+      '#{pane_in_mode},#{scroll_position},#{history_size}']).trim().split(',');
+    const hist = Number(state()[2]);
+    assert.ok(hist > 40, `not enough history to drag through: ${hist}`);
+
+    const track = await page.locator('#scrollbar').boundingBox();
+    const at = () => page.locator('#scroll-thumb').boundingBox();
+    const bottom = await at();
+    // At the live end the thumb stands at the bottom of its travel: that is the
+    // claim the bar makes about where the pane is, and it is the one thing a
+    // reader checks against the screen.
+    assert.ok(bottom.y + bottom.height >= track.y + track.height - 3,
+      `at the live end the thumb sits ${Math.round(track.y + track.height - bottom.y - bottom.height)}px above the bottom`);
+    // And it covers the screen's share of the whole output rather than the
+    // track: a thumb as tall as the bar says everything is on screen.
+    assert.ok(bottom.height < track.height * 0.9,
+      `the thumb covers the whole track (${bottom.height} of ${track.height}) with ${hist} lines behind`);
+
+    // Dragged to the top: the oldest line kept.
+    const x = track.x + track.width / 2;
+    await page.mouse.move(x, bottom.y + bottom.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(x, track.y + 1, { steps: 12 });
+    await page.mouse.up();
+    let pos = 0;
+    for (let i = 0; i < 40; i++) {
+      pos = Number(state()[1] || 0);
+      if (pos >= hist * 0.8) break;
+      await page.waitForTimeout(100);
+    }
+    assert.ok(pos >= hist * 0.8, `dragged to the top of ${hist} lines of history and landed at ${pos}`);
+
+    // And back down to the live end, which is what leaves copy-mode: the same
+    // thing a scroll down to the end does, and the reason the server asks for
+    // the mode with -e.
+    const top = await at();
+    await page.mouse.move(x, top.y + top.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(x, track.y + track.height - 1, { steps: 12 });
+    await page.mouse.up();
+    let mode = '1';
+    for (let i = 0; i < 40; i++) {
+      const [m, p] = state();
+      mode = m;
+      if (m !== '1' || Number(p || 0) === 0) break;
+      await page.waitForTimeout(100);
+    }
+    const [endMode, endPos] = state();
+    assert.ok(endMode !== '1' || Number(endPos || 0) === 0,
+      `dragged to the bottom and the pane is still ${endPos} lines back`);
+    assert.deepEqual(stand.pageErrors, []);
+  });
+
   test('the way back to the end does not bring the keyboard with it', async () => {
     // Reported from the phone: the ⇩ raised the keyboard over the output it had
     // just gone back to. Nothing focuses anything on that path — the textarea

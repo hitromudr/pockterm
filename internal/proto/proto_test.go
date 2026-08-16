@@ -32,11 +32,24 @@ func TestParseVisible(t *testing.T) {
 	}
 }
 
+func TestParseScrollTo(t *testing.T) {
+	// The scrollbar was dragged: a place in the history, counted back from the
+	// live end, which 0 is.
+	c, err := Parse([]byte(`{"type":"scroll-to","back":420}`))
+	if err != nil || c.Type != "scroll-to" || c.Back != 420 {
+		t.Fatalf("scroll-to: %+v, %v", c, err)
+	}
+	if c, err := Parse([]byte(`{"type":"scroll-to","back":0}`)); err != nil || c.Back != 0 {
+		t.Fatalf("the live end is a place too: %+v, %v", c, err)
+	}
+}
+
 func TestRejects(t *testing.T) {
 	for _, bad := range []string{
 		`{"type":"resize","cols":0,"rows":24}`,
 		`{"type":"resize","cols":80,"rows":-1}`,
 		`{"type":"exec","cmd":"rm"}`,
+		`{"type":"scroll-to","back":-5}`,
 		`not json`,
 	} {
 		if _, err := Parse([]byte(bad)); err == nil {

@@ -1034,6 +1034,40 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #screen-term.panels-hidden #quickbar,
 #screen-term.panels-hidden #selbar,
 #screen-term.panels-hidden #modebar { display: none !important; }
+/* The scrollbar: where in the output the pane is, and the way to anywhere else.
+   Over the terminal rather than beside it — a bar in the flow narrows the pane,
+   tmux redraws to the new width, and the page ends up reading a screen its own
+   scrollbar reflowed.
+
+   Two widths, and that is the whole design: the rail is 4px because it stands
+   over output that has to stay readable, and the track it is drawn in is 18px
+   because it is dragged with a thumb. Wider would take the right edge of the
+   screen away from the swipe, which is where a right-handed thumb starts one. */
+#scrollbar {
+  position: absolute;
+  /* The full height of the terminal, with nothing taken off either end: the
+     track is measured off #term rather than off this element, because a bar
+     that is `hidden` measures zero and would then never have the height it
+     needs to decide it should be shown. */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  z-index: 7;
+  /* The rail, painted in the middle of the target rather than across it. */
+  background: linear-gradient(to right, transparent 7px, #ffffff14 7px, #ffffff14 11px, transparent 11px);
+}
+#scroll-thumb {
+  position: absolute;
+  right: 6px;
+  width: 6px;
+  border-radius: 3px;
+  background: #7aa2f7cc;
+}
+/* Held: the same accent at full strength. There is no hover on a phone and the
+   thumb is under the finger holding it, so what this is for is the moment of
+   grabbing — the bar says it took the gesture. */
+#scrollbar.held #scroll-thumb { background: var(--accent); }
 /* The three round buttons of the history: a page back, a page forward, and the
    way out to the live end. One stack in the corner a thumb reaches, 8px apart
    so a 44px target cannot be hit by aiming at its neighbour.
@@ -1044,8 +1078,15 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    is `display: none`, and the flex column closes over it. */
 #pager {
   position: absolute;
-  right: 10px;
-  bottom: calc(64px + env(safe-area-inset-bottom));
+  /* Clear of the scrollbar's 18px track rather than the 10px every other
+     floating button uses: they overlap in the corner a thumb reaches for both,
+     and the buttons are the ones on top. */
+  right: 22px;
+  /* Inside #term, so the bottom of the stack is the bottom of the terminal
+     rather than a guess about how tall the bars below it are. That guess was
+     64px and it covered the key bar's ▾ and the composer's ▶ once ⇞ was on
+     screen permanently. */
+  bottom: 10px;
   z-index: 12;
   display: flex;
   flex-direction: column-reverse;
@@ -1072,7 +1113,9 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 }
 #show-bars {
   position: absolute;
-  right: 10px;
+  /* Left of the pager: with every bar hidden the terminal reaches the bottom of
+     the screen, so the two would otherwise stand in the same corner. */
+  right: 76px;
   bottom: calc(10px + env(safe-area-inset-bottom));
   z-index: 12;
   width: 44px;

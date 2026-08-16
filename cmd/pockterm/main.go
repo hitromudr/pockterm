@@ -229,6 +229,7 @@ func serve() {
 		},
 		InMode:     inMode,
 		LeaveMode:  leaveMode,
+		ScrollTo:   scrollTo,
 		Presence:   notifier(cfg, notices, pref),
 		Notices:    notices,
 		NotifyMode: func() (string, bool) { return string(pref.Mode()), cfg.Notify() },
@@ -633,17 +634,43 @@ func capturePane(session string) (string, error) {
 }
 
 // inMode asks tmux whether the client's own grouped session is showing
-// copy-mode (the browser scrolled back into history) and how far back it is
-// scrolled. The client session is the one to ask: its current window is what
-// that browser tab displays.
-func inMode(id int64) (bool, int, error) {
+// copy-mode (the browser scrolled back into history), how far back it is
+// scrolled, and how much history there is behind it. The client session is the
+// one to ask: its current window is what that browser tab displays.
+func inMode(id int64) (bool, int, int, error) {
 	argv := tmuxcmd.PaneMode(tmuxcmd.ClientName(id))
 	out, err := exec.Command(argv[0], argv[1:]...).Output()
 	if err != nil {
-		return false, 0, err
+		return false, 0, 0, err
 	}
-	in, back := tmuxcmd.ParsePaneMode(string(out))
-	return in, back, nil
+	in, back, hist := tmuxcmd.ParsePaneMode(string(out))
+	return in, back, hist, nil
+}
+
+// scrollTo puts this client's pane at back lines from the live end.
+//
+// The delta is worked out here rather than in the page, and against a reading
+// taken now: the page asks for a place ("put me 400 lines back"), because its
+// own picture of where the pane is can be a poll old and a delta computed from
+// a stale position lands somewhere else. A pane that has scrolled under the
+// finger — a second client on the shared pane, the page's own glide — is then
+// simply corrected by the next drag rather than compounded.
+func scrollTo(id int64, back int) error {
+	session := tmuxcmd.ClientName(id)
+	argv := tmuxcmd.PaneMode(session)
+	out, err := exec.Command(argv[0], argv[1:]...).Output()
+	if err != nil {
+		return err
+	}
+	_, at, hist := tmuxcmd.ParsePaneMode(string(out))
+	if back > hist {
+		back = hist
+	}
+	if back == at {
+		return nil
+	}
+	argv = tmuxcmd.ScrollHistory(session, back-at)
+	return exec.Command(argv[0], argv[1:]...).Run()
 }
 
 // leaveMode takes this client's pane out of copy-mode. tmux refuses with a

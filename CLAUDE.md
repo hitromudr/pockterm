@@ -508,6 +508,20 @@ having history above, there being nothing below the live end to page to. The
 three are one stack (`#pager`, `column-reverse`), so the one that is always there
 is the one nearest the thumb and the column closes over the two that are not.
 
+**The stack lives inside `#term`, and being permanent is what forced that.** It
+was pinned 64px above the bottom of the viewport, which is a guess about how tall
+the bars are — harmless while the only button there appeared during a scroll, and
+a button sitting on the key bar's own ▾ and the composer's ▶ once ⇞ was on screen
+always. Three browser tests caught it as a click nothing could reach. The
+terminal's box ends where the bars begin, whatever the bars are doing, so the
+stack is bottom-right *of it*.
+
+That brought one thing with it: a tap on the pager or the bar now arrives at
+`#term`'s own click handler, whose job is to hand the focus back to the terminal —
+which on Android is the keyboard coming up over the output ⇩ was just pressed to
+get back to. Both are excluded there by name. A control drawn over the terminal is
+not the terminal.
+
 They send **the wheel the swipe already sends**, not tmux's own `page-up`, and
 that is what makes them need no state of their own: a notch enters copy-mode by
 itself, and a scroll down reaching the live end leaves it — which is what takes
@@ -538,6 +552,56 @@ The browser test asserts the bounds rather than the formula: a page moves at
 least half a screen — less is not a page — and never more than one, which is the
 same statement as skipping nothing. Forward then has to undo back exactly, there
 being no gesture in it and so no residue to round.
+
+## The bar says where in the output you are, which no step can
+
+The swipe and the pager both move by a step. Neither says how much there is
+behind the screen or how far through it you are, and crossing a long history with
+either is a lot of steps taken blind. `#scrollbar` is the answer to that question:
+the thumb covers the screen's share of the whole scrollback, the top of the track
+is the oldest line kept and the bottom is the live end.
+
+**It asks for a place, not a movement.** `{"type":"scroll-to","back":N}` names
+where to be, and the server works the difference out against a reading taken
+there and then — the page's own picture of the position is up to a poll old, and
+a delta applied to a pane that has moved since (a second client on it, the page's
+own glide) lands somewhere nobody asked for. That is also what keeps a drag from
+being several hundred wheel notches: `tmuxcmd.ScrollHistory` is one `send-keys -X
+-N <count>`, with `copy-mode -e` in front of it because `-X` needs a mode to send
+to and the bar is on screen before there is one. The `-e` is what makes a drag to
+the very bottom leave the history, the same way a scroll to the live end does.
+
+**Both numbers come from tmux, and the second one is new.** `PaneMode` now reports
+`#{history_size}` beside the mode and the position, and the mode frame carries it
+— comma-separated, because the middle field is empty out of a mode and
+`strings.Fields` on `0  800` gives two fields and reads the history size as the
+position. tmux answers the size out of a mode as well, which is what lets the bar
+be drawn before the first scroll.
+
+The cost of carrying it is that the mode frame now changes whenever the pane
+prints, not only when somebody scrolls — a small frame per poll on a busy pane.
+That is the point rather than the price: a bar drawn against the total it had a
+minute ago is wrong by everything printed since. The journal line stays where it
+was, on the state the page *shows* changing, or a printing pane would write one
+every 400ms.
+
+**A hidden element measures zero, and the first version deadlocked on it.** The
+track was read off the bar itself, the bar starts `hidden`, so it had no height,
+so it was never shown, so it never had a height. It is measured off `#term` now,
+which is the same box by construction (`top: 0; bottom: 0` inside it).
+
+**Pointer events, not touch** — the one place on this page that uses them, and for
+the defect the rows met above: a touch is delivered to the node it started on, so
+anything redrawing under the finger takes the gesture with it. `setPointerCapture`
+says outright that the bar owns the drag until it is let go, which is also what
+lets a finger slide off an 18px track and go on dragging. One set of handlers
+covers the laptop's mouse with it.
+
+Two widths and that is the whole design: the rail is 4px because it stands over
+output that has to stay readable, the target is 18px because it is dragged with a
+thumb. The floating buttons moved from `right: 10px` to `22px` to clear it —
+they are on top where the two overlap, and the corner is where a thumb reaches
+for both.
 
 ## Typing into copy-mode goes nowhere, and nothing on screen says so
 

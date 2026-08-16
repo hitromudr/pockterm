@@ -67,31 +67,59 @@ func TestCapturePaneArgv(t *testing.T) {
 
 func TestPaneModeArgv(t *testing.T) {
 	got := PaneMode("pockterm-7")
-	want := []string{"tmux", "display-message", "-p", "-t", "pockterm-7", "#{pane_in_mode} #{scroll_position}"}
+	want := []string{"tmux", "display-message", "-p", "-t", "pockterm-7",
+		"#{pane_in_mode},#{scroll_position},#{history_size}"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v", got)
 	}
 }
 
 func TestParsePaneMode(t *testing.T) {
-	// Scrolled back: both numbers say so, and how far.
-	if in, back := ParsePaneMode("1 30\n"); !in || back != 30 {
-		t.Fatalf("in = %v, back = %d, want true and 30", in, back)
+	// Scrolled back: all three numbers say so, and how far through what.
+	if in, back, hist := ParsePaneMode("1,30,800\n"); !in || back != 30 || hist != 800 {
+		t.Fatalf("in = %v, back = %d, hist = %d, want true, 30, 800", in, back, hist)
 	}
 	// In copy-mode at the live end. This is the case the button used to be
 	// shown for: tmux is in a mode, and there is nowhere to come back from.
-	if in, back := ParsePaneMode("1 0\n"); !in || back != 0 {
+	if in, back, _ := ParsePaneMode("1,0,800\n"); !in || back != 0 {
 		t.Fatalf("in = %v, back = %d, want true and 0", in, back)
 	}
 	// A mode with no position at all (not copy-mode) is still a mode.
-	if in, back := ParsePaneMode("1 \n"); !in || back != 0 {
+	if in, back, _ := ParsePaneMode("1,,800\n"); !in || back != 0 {
 		t.Fatalf("in = %v, back = %d, want true and 0", in, back)
 	}
-	// Not in a mode, and the failure cases: no such session, dead server.
-	for _, out := range []string{"0 \n", "0", "", "can't find session: pockterm-7\n"} {
-		if in, back := ParsePaneMode(out); in || back != 0 {
-			t.Fatalf("%q wrongly read as in-mode %v/%d", out, in, back)
+	// Not in a mode — and the history is still the pane's, which is what lets a
+	// scrollbar be drawn before anything has been scrolled. The empty middle
+	// field is the whole reason this is not split on spaces: "0  800" read by
+	// fields is two of them, and the history size becomes the position.
+	if in, back, hist := ParsePaneMode("0,,800\n"); in || back != 0 || hist != 800 {
+		t.Fatalf("out of mode: in = %v, back = %d, hist = %d, want false, 0, 800", in, back, hist)
+	}
+	// The failure cases: no such session, dead server, nothing at all.
+	for _, out := range []string{"0", "", "can't find session: pockterm-7\n"} {
+		if in, back, hist := ParsePaneMode(out); in || back != 0 || hist != 0 {
+			t.Fatalf("%q wrongly read as %v/%d/%d", out, in, back, hist)
 		}
+	}
+}
+
+func TestScrollHistoryArgv(t *testing.T) {
+	// Back into the history, and forward again — one command with a count,
+	// rather than a count of wheel notches for tmux to bind one at a time.
+	back := ScrollHistory("pockterm-7", 120)
+	want := []string{"tmux", "copy-mode", "-e", "-t", "pockterm-7",
+		";", "send-keys", "-t", "pockterm-7", "-X", "-N", "120", "scroll-up"}
+	if !reflect.DeepEqual(back, want) {
+		t.Fatalf("back: got %v", back)
+	}
+	fwd := ScrollHistory("pockterm-7", -5)
+	if fwd[len(fwd)-1] != "scroll-down" || fwd[len(fwd)-2] != "5" {
+		t.Fatalf("forward: got %v", fwd)
+	}
+	// The mode is asked for first because `send-keys -X` has nothing to send to
+	// without one, and the bar is on screen before the first scroll.
+	if back[1] != "copy-mode" || back[2] != "-e" {
+		t.Fatalf("no copy-mode -e in front: %v", back)
 	}
 }
 

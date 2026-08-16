@@ -231,7 +231,11 @@ func TestCopyModeReported(t *testing.T) {
 	opts := testOptions("")
 	var inMode atomic.Bool
 	var back atomic.Int64
-	opts.InMode = func(id int64) (bool, int, error) { return inMode.Load(), int(back.Load()), nil }
+	var hist atomic.Int64
+	hist.Store(800)
+	opts.InMode = func(id int64) (bool, int, int, error) {
+		return inMode.Load(), int(back.Load()), int(hist.Load()), nil
+	}
 	srv := httptest.NewServer(Handler(opts))
 	defer srv.Close()
 
@@ -256,6 +260,11 @@ func TestCopyModeReported(t *testing.T) {
 	waitMode(t, c, true, 0)
 	inMode.Store(false)
 	waitMode(t, c, false, 0)
+	// The history size travels with them, and it changes on its own while the
+	// pane prints: a scrollbar drawn against the total it had a minute ago is
+	// wrong by everything printed since. Nothing else about the pane moved here.
+	hist.Store(1200)
+	waitHist(t, c, 1200)
 }
 
 // waitMode reads until a mode frame with the wanted state arrives.
@@ -279,6 +288,31 @@ func waitMode(t *testing.T, c *websocket.Conn, want bool, wantBack int) {
 			continue
 		}
 		if f.In == want && f.Back == wantBack {
+			return
+		}
+	}
+}
+
+// waitHist reads until a mode frame carrying the wanted history size arrives.
+func waitHist(t *testing.T, c *websocket.Conn, want int) {
+	t.Helper()
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("waiting for hist=%d: %v", want, err)
+		}
+		if mt != websocket.TextMessage {
+			continue
+		}
+		var f struct {
+			Type string `json:"type"`
+			Hist int    `json:"hist"`
+		}
+		if err := json.Unmarshal(data, &f); err != nil || f.Type != "mode" {
+			continue
+		}
+		if f.Hist == want {
 			return
 		}
 	}

@@ -47,14 +47,28 @@ type Options struct {
 	Token        string                                 // "" disables token auth (loopback-only deployments)
 	ListSessions func() ([]tmuxcmd.Session, error)      // current tmux sessions
 	Attach       func(id int64, target string) []string // argv attaching a client to target
-	InMode       func(id int64) (bool, int, error)      // client pane in tmux copy-mode, and how far back it is scrolled; nil disables the poll
+	// InMode reports the client pane's copy-mode state: whether it is in one,
+	// how far back it is scrolled, and how many lines of history there are to
+	// scroll through. The last is what a scrollbar is drawn from — a position
+	// with no total says nothing about where in the output it is — and tmux
+	// answers it out of a mode as well, which is what lets the bar be on screen
+	// before the first scroll. nil disables the poll.
+	InMode func(id int64) (inMode bool, back, history int, err error)
 	// LeaveMode takes the client's pane out of copy-mode. The page asks for it
 	// when something is typed into a pane tmux is holding in a mode, where every
 	// keystroke is discarded and nothing on screen says so; nil makes the request
 	// a no-op.
 	LeaveMode func(id int64) error
-	Presence  Presence // notification bookkeeping; nil disables it
-	Notices   *Notices // route notifications to attached pages; nil disables it
+	// ScrollTo puts the client's pane at a given number of lines back from the
+	// live end. The page asks for it when the scrollbar is dragged: a drag
+	// crosses the whole history at once, and asking for that in wheel notches is
+	// hundreds of key bindings for tmux to run one at a time. An absolute
+	// position rather than a delta, because the page's picture of where the pane
+	// is can be a poll old and a delta applied to the wrong place lands
+	// somewhere nobody asked for. nil makes the request a no-op.
+	ScrollTo func(id int64, back int) error
+	Presence Presence // notification bookkeeping; nil disables it
+	Notices  *Notices // route notifications to attached pages; nil disables it
 	// NotifyMode reports what the owner wants delivered ("off", "pwa",
 	// "pwa+tg") and whether Telegram is configured at all; nil leaves
 	// /api/notify absent and says nothing in the config frame.
@@ -705,7 +719,7 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 	if o.InMode != nil {
 		done := make(chan struct{})
 		defer close(done)
-		go pollMode(conn, &writeMu, func() (bool, int, error) { return o.InMode(id) }, done)
+		go pollMode(conn, &writeMu, func() (bool, int, int, error) { return o.InMode(id) }, done)
 	}
 
 	// PTY → WS. On PTY EOF (client killed, tmux server gone) close the
@@ -767,6 +781,16 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 						log.Printf("leave-mode: %v", err)
 					}
 				}
+			case "scroll-to":
+				// The scrollbar was dragged. Handled here for the same reason
+				// leave-mode is: this loop is the one that writes the keystrokes,
+				// so a scroll asked for by a finger cannot overtake or be
+				// overtaken by what is typed next.
+				if o.ScrollTo != nil {
+					if err := o.ScrollTo(id, c.Back); err != nil {
+						log.Printf("scroll-to: %v", err)
+					}
+				}
 			case "visible":
 				// A backgrounded tab keeps its socket open, so visibility
 				// is what decides whether a notification is redundant.
@@ -787,6 +811,9 @@ type modeFrame struct {
 	// end has nowhere to go back to, and the button offering it was left on
 	// screen with nothing behind it.
 	Back int `json:"back"`
+	// How many lines of history the pane has. The scrollbar needs both numbers:
+	// how far back it is and how far back it could go.
+	Hist int `json:"hist"`
 }
 
 // pollMode reports the pane's copy-mode state to the client until done is
@@ -828,25 +855,31 @@ func dimension(v string, fallback uint16) uint16 {
 	return uint16(n)
 }
 
-func pollMode(conn *websocket.Conn, writeMu *sync.Mutex, in func() (bool, int, error), done <-chan struct{}) {
+func pollMode(conn *websocket.Conn, writeMu *sync.Mutex, in func() (bool, int, int, error), done <-chan struct{}) {
 	ticker := time.NewTicker(modePoll)
 	defer ticker.Stop()
-	last, lastBack, known := false, 0, false
+	last, lastBack, lastHist, known := false, 0, 0, false
 	for {
 		select {
 		case <-done:
 			return
 		case <-ticker.C:
-			cur, back, err := in()
+			cur, back, hist, err := in()
 			if err != nil {
 				continue
 			}
-			if known && cur == last && back == lastBack {
+			// The history grows with every line the pane prints, so this now
+			// changes while output flows and not only when somebody scrolls.
+			// That is the point — a bar drawn against a stale total is wrong by
+			// however much has been printed since — and it costs one small frame
+			// per poll on a busy pane. The page does not write a journal line
+			// for it: what it records is the state it *shows* changing.
+			if known && cur == last && back == lastBack && hist == lastHist {
 				continue
 			}
-			last, lastBack, known = cur, back, true
+			last, lastBack, lastHist, known = cur, back, hist, true
 			writeMu.Lock()
-			err = conn.WriteJSON(modeFrame{Type: "mode", In: cur, Back: back})
+			err = conn.WriteJSON(modeFrame{Type: "mode", In: cur, Back: back, Hist: hist})
 			writeMu.Unlock()
 			if err != nil {
 				return
