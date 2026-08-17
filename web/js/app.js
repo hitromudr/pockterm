@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v152';
+const APP_VERSION = 'v153';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -2194,7 +2194,7 @@ document.getElementById('term').addEventListener('click', (e) => {
   // keyboard on it — brought one up on every key. Only the menu's own text field
   // asks for a keyboard, and it asks for itself (see openForTyping).
   if (e.target instanceof Element
-    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad')) return;
+    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad, #corner-menu')) return;
   term.focus();
   refit();
 });
@@ -3612,16 +3612,43 @@ keepsTerminalFocus(pageDownBtn);
 // them reachable at all — ⇞ is the way *into* the history, and a button that only
 // came back once you were already scrolled back could not be what took you there.
 // A pointerdown rather than a touch, so a laptop's mouse says the same thing.
+// And what the fade frees is a corner a thumb is already in, so ☰ takes it:
+// the way to the session list otherwise lives in the header, which is the top
+// edge of a 6-inch phone and the one reach this screen still costs. It stands in
+// the slot the way back to the live end stands in, on the same timer, and the
+// header's own steps aside while it is there — one lever in one place at a time,
+// with the same handler, because two handlers would drift.
 const PAGER_IDLE = 3000;
 const pagerEl = document.getElementById('pager');
+const cornerMenuBtn = document.getElementById('corner-menu');
+const backBtn = document.getElementById('back');
 let pagerTimer = null;
-function wakePager() {
+function showPager(on) {
   if (!pagerEl) return;
-  pagerEl.classList.remove('idle');
-  clearTimeout(pagerTimer);
-  pagerTimer = setTimeout(() => pagerEl.classList.add('idle'), PAGER_IDLE);
+  pagerEl.classList.toggle('idle', !on);
+  if (cornerMenuBtn) cornerMenuBtn.hidden = on;
+  if (backBtn) backBtn.classList.toggle('stepped-aside', !on);
+  // The corner button is one more thing drawn over the pane's last rows, so the
+  // stack has to clear whichever of them is the taller.
+  liftFloaters();
 }
-termBox.addEventListener('pointerdown', wakePager, { passive: true });
+function wakePager() {
+  showPager(true);
+  clearTimeout(pagerTimer);
+  pagerTimer = setTimeout(() => showPager(false), PAGER_IDLE);
+}
+// A tap on ☰ is not a gesture about the history: waking the stack from here would
+// take the button out from under the finger between the press and the click, and
+// the drawer would never open. Same rule as `#term`'s own click handler — a
+// control drawn over the terminal is not the terminal.
+termBox.addEventListener('pointerdown', (e) => {
+  if (e.target instanceof Element && e.target.closest('#corner-menu')) return;
+  wakePager();
+}, { passive: true });
+if (cornerMenuBtn) {
+  keepsTerminalFocus(cornerMenuBtn);
+  cornerMenuBtn.addEventListener('click', toggleDrawer);
+}
 wakePager();
 
 // Two rows of overlap, so a page reads on from what the last one ended with
@@ -4124,6 +4151,13 @@ function measureKeyboard() {
   tallestSeen.set(w, Math.max(tallestSeen.get(w) || 0, h));
   keyboardUp = h < tallestSeen.get(w) * 0.8;
   if (keyboardUp) sawKeyboard = true;
+  // Published for the same reason the grid is published on `#term`: this is the
+  // answer three rules here turn on — whether the focus may be given up, whether
+  // the control pad is drawn at all — and from outside it is invisible. The
+  // browser's own viewport number is not the same fact: a shrink the page never
+  // got an event for is a keyboard it never saw, and that is exactly what made
+  // the ⇩'s focus test fail about one run in three while nothing was wrong.
+  document.documentElement.dataset.kb = keyboardUp ? '1' : '0';
 }
 measureKeyboard();
 if (window.visualViewport) {

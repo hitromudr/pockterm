@@ -265,12 +265,21 @@ export async function startStand({
   page.on('pageerror', (e) => { pageErrors.push(String(e)); consoleErrors.push(String(e)); });
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
 
+  // ☰ is in one place at a time, and which place depends on the clock: in the
+  // header while the pager stack is up, and in the corner that stack frees a few
+  // seconds after the last scrolling. A test that hard-codes `#back` is a test
+  // that passes or fails on how long the lines above it took to type.
+  async function tapMenu() {
+    const corner = await page.locator('#corner-menu').isVisible();
+    await page.click(corner ? '#corner-menu' : '#back');
+  }
+
   // The session list is a drawer over the terminal, and every helper that clicks
   // a session needs it open. By state, never by toggling ☰.
   async function openDrawer() {
     const open = await page.evaluate(
       () => document.getElementById('screen-sessions').classList.contains('open'));
-    if (!open) await page.click('#back');
+    if (!open) await tapMenu();
     await page.waitForFunction(
       () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
       null, { timeout: 5000 },
@@ -310,6 +319,7 @@ export async function startStand({
     openDrawer,
     openSettings,
     shutDrawer,
+    tapMenu,
     // The private tmux server this stand created. Exposed so a test can ask
     // tmux what state the page put it in: what the page shows and what tmux
     // actually thinks are two different facts, and the interesting bugs live

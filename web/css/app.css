@@ -1107,6 +1107,29 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   opacity: 0;
   pointer-events: none;
 }
+/* The corner the faded stack leaves, and the same slot the way back to the live
+   end sits in: `#pager` is column-reverse, so its first item is the one against
+   the bottom. Same offsets, so the two cannot be a pixel apart — and the same
+   lift over the answer row, since this is a button in the same corner and the
+   row is what put the pager up there. */
+#corner-menu {
+  position: absolute;
+  right: 22px;
+  bottom: calc(10px + var(--over-h, 0px));
+  z-index: 12;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 22px;
+  font-size: 18px;
+}
+/* The header's ☰ steps aside rather than being taken out of the row: the strip
+   scrolls sideways and is read along, and a button leaving the flow every time
+   something is scrolled would shift every tab under the eye. */
+#screen-term header.bar #back.stepped-aside { visibility: hidden; }
 #pager button {
   width: 44px;
   height: 44px;

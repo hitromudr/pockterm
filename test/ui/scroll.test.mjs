@@ -247,6 +247,50 @@ describe('a swipe follows the finger', () => {
     assert.equal(await css('pointerEvents'), 'auto');
   });
 
+  test('the menu steps into the corner the pager leaves', async () => {
+    // Asked for from the phone: what the fade frees is the corner a thumb is
+    // already in, and ☰ otherwise lives in the header — the top edge of a 6-inch
+    // phone, and the one reach this screen still costs. So it stands in the slot
+    // the way back to the live end stands in, on the same timer, and the header's
+    // own steps aside while it is there: one lever, one place at a time.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    const shown = (sel) => page.locator(sel).isVisible();
+    const box = async (sel) => {
+      const r = await page.locator(sel).boundingBox();
+      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+    };
+
+    // A finger on the pane is one of the things that wakes the stack, so this is
+    // also the state the swap has to come back to.
+    await page.click('#term');
+    assert.equal(await shown('#corner-menu'), false, 'both the stack and ☰ want the same corner');
+    assert.equal(await shown('#back'), true, 'the header lost its ☰ while the stack was up');
+    const strip = await box('#tabs');
+
+    await page.waitForFunction(
+      () => document.getElementById('pager').classList.contains('idle'), null, { timeout: 8000 });
+    assert.equal(await shown('#corner-menu'), true, 'nothing took the corner the stack left');
+    assert.equal(await shown('#back'), false, 'both ☰ are on screen at once');
+    // Exactly the pager's own slot: ⇞ is what occupies it while it is alone there.
+    assert.deepEqual(await box('#corner-menu'), await box('#page-up'),
+      'the menu did not land where the way back stands');
+    // And the strip stayed where it was. The header keeps the room rather than
+    // closing over it, or every tab would shift under the eye whenever something
+    // is scrolled — the row is read along, and it scrolls sideways already.
+    assert.deepEqual(await box('#tabs'), strip, 'the tab strip moved when ☰ left the header');
+
+    // The tap opens the list, which is not free: it is a pointerdown on the pane,
+    // and waking the stack from there would take the button out from under the
+    // finger between the press and the click.
+    await page.click('#corner-menu');
+    await page.waitForFunction(
+      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      null, { timeout: 5000 });
+    await stand.shutDrawer();
+  });
+
   test('a swipe into history offers the way back', async () => {
     // The same button through the real path: a finger, the page's own notches,
     // and whatever tmux makes of them.
@@ -533,16 +577,17 @@ describe('a swipe follows the finger', () => {
     for (let i = 1; i <= 40; i++) await page.keyboard.type(`line ${i}\n`);
     await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('line 40'));
 
-    const tall = await page.evaluate(() => window.visualViewport.height);
     await page.setViewportSize({ width: 390, height: 420 });
-    // The page's own measurement, taken here rather than trusted: the whole test
-    // rests on it having seen a keyboard, and a viewport that did not shrink
-    // enough would look exactly like a fix that does nothing.
-    await page.waitForFunction(
-      (was) => window.visualViewport.height < was * 0.8, tall, { timeout: 5000 });
+    // The page's own answer, not the browser's number. The whole test rests on
+    // the page having *seen* a keyboard, and the viewport reads short the instant
+    // it is resized — before the event that tells the page about it. Restored a
+    // moment later, the two resizes coalesce into one, the page never sees a short
+    // viewport at all, and `releaseTerminalFocus` then declines for a reason that
+    // has nothing to do with what is under test: this failed about one run in
+    // three, on an assertion about the ⇩, with nothing wrong.
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '1', null, { timeout: 5000 });
     await page.setViewportSize({ width: 390, height: 780 });
-    await page.waitForFunction(
-      (was) => window.visualViewport.height >= was * 0.8, tall, { timeout: 5000 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '0', null, { timeout: 5000 });
     assert.ok(
       await page.evaluate(() => document.activeElement === document.querySelector('.xterm-helper-textarea')),
       'the terminal lost focus before the button was pressed, so this proves nothing',

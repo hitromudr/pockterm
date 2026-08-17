@@ -404,6 +404,17 @@ dismissed with the focus still where it was. `keepsTerminalFocus` on the button
 stays, for the reason the mark picker has it: hiding a focused element hands the
 focus back to whatever had it before, and the ⇩ hides itself a moment later.
 
+**What the page decided is published** (`data-kb` on the root element, written by
+`measureKeyboard`), and the tests wait on that rather than on the viewport's own
+number. The two are not the same fact: a viewport reads short the instant it is
+resized, while the page learns of it only when the event arrives — so a shrink and
+a restore in quick succession coalesce into one, the page never sees a keyboard at
+all, and `releaseTerminalFocus` then declines for a reason that has nothing to do
+with what is under test. That was a failure about one run in three, on an
+assertion about the ⇩, with nothing wrong. It is a diagnostic first, like
+`data-size` beside it: whether this page thinks a keyboard is up decides three
+rules here and was invisible from outside.
+
 ## A message that did not go out is still the owner's
 
 `send()` drops what it is given when the socket is not open, and that is right
@@ -589,6 +600,28 @@ would never go idle at all.
 half that is not decoration — an invisible 44px circle over the answer row's Esc
 is the same defect as a visible one over it, only harder to report. What you
 cannot see, you must not be able to press; what is under it is what a tap gets.
+
+**And ☰ takes the corner the fade frees.** The way to the session list otherwise
+lives in the header, which is the top edge of a 6-inch phone and the one reach
+this screen still costs — the swipe from the left edge was the first answer to
+that, and this is the second. It stands in the slot the way back to the live end
+stands in (`#pager` is `column-reverse`, so that is the item against the bottom),
+on the same timer, and the header's own **steps aside** while it is there: one
+lever in one place at a time, with the same handler, because two handlers would
+drift. The header keeps the room (`visibility`, not `display`) — the strip is read
+along and scrolls sideways already, and a button leaving that row every time
+something is scrolled would shift every tab under the eye.
+
+**A tap on it must not wake the stack**, which is the one way this could be built
+so that it never works: the button is inside `#term`, a press on the pane is what
+wakes the pager, and waking it hides ☰ — between the press and the click, so the
+drawer never opens. It is excluded there by name, the same rule as `#term`'s own
+click handler. The browser test opens the drawer from that button, and with the
+exclusion removed it times out.
+
+Everything in the tests that opens the drawer goes through `stand.tapMenu()`,
+which asks which ☰ is on screen. A test that hard-codes `#back` is a test that
+passes or fails on how long the lines above it took to type.
 
 **The stack lives inside `#term`, and being permanent is what forced that.** It
 was pinned 64px above the bottom of the viewport, which is a guess about how tall

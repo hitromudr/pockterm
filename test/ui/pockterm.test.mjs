@@ -376,7 +376,7 @@ describe('the session list is a drawer', () => {
     await page.keyboard.type('still here');
     await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('still here'));
 
-    await page.click('#back');
+    await stand.tapMenu();
     // On the geometry, not the class: the drawer slides, so it is on screen a
     // fifth of a second after it is told to be.
     await page.waitForFunction(
@@ -410,8 +410,12 @@ describe('the session list is a drawer', () => {
       return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
     }, id);
 
+    // A finger on the pane first: ☰ steps into the corner the pager frees a few
+    // seconds after the last scrolling, and what this test compares is the
+    // chevron against the hamburger *in the header*.
+    await page.click('#term');
     const hamburger = await box('back');
-    await page.click('#back');
+    await stand.tapMenu();
     // Exactly 0, not "within a pixel". This assertion compares rounded boxes, and
     // the drawer slides in on a transform: caught mid-animation at x = -0.6 the
     // chevron measures 9.4 and rounds to 9 against the hamburger's 10 — the test
@@ -428,7 +432,7 @@ describe('the session list is a drawer', () => {
     await stand.attach('demo');
     const { page } = stand;
 
-    await page.click('#back');
+    await stand.tapMenu();
     await page.waitForFunction(
       () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
       null, { timeout: 3000 },
@@ -437,7 +441,7 @@ describe('the session list is a drawer', () => {
     await page.mouse.click(380, 400);
     await page.waitForFunction(() => !document.getElementById('screen-sessions').classList.contains('open'));
 
-    await page.click('#back');
+    await stand.tapMenu();
     await page.click('button.session:has-text("other")');
     await page.waitForFunction(() => !document.getElementById('screen-sessions').classList.contains('open'));
     // The strip follows the switch.
@@ -470,7 +474,7 @@ describe('the session list is a drawer', () => {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     };
 
-    await page.click('#back');
+    await stand.tapMenu();
     await open();
     await drag(0, 160);
     await page.waitForTimeout(400);
@@ -532,7 +536,7 @@ describe('the session list is a drawer', () => {
     await stand.attach('demo');
     await stand.attach('other');
 
-    await page.click('#back');
+    await stand.tapMenu();
     await page.waitForFunction(
       () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
       null, { timeout: 3000 });
@@ -1211,7 +1215,7 @@ describe('closing the last session there is', () => {
     await stand.open();
     const { page } = stand;
     await stand.attach('only');
-    await page.click('#back');
+    await stand.tapMenu();
     await page.waitForFunction(
       () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
       null, { timeout: 3000 });
@@ -1242,7 +1246,7 @@ describe('closing the last session there is', () => {
     const name = (await page.locator('#session-list li').last().locator('.name').textContent()).trim();
     await page.click(`button.session:has-text("${name}")`);
     await page.waitForSelector('#screen-term:not([hidden])');
-    await page.click('#back');
+    await stand.tapMenu();
     await page.waitForFunction(
       () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
       null, { timeout: 3000 });
@@ -1456,7 +1460,7 @@ describe('starting and renaming sessions', () => {
     await page.waitForFunction(() => document.querySelectorAll('#tabs button').length >= 2, null, { timeout: 5000 });
     const tabs = await page.locator('#tabs button').count();
 
-    await page.click('#back');
+    await stand.tapMenu();
     await page.waitForFunction(
       () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
       null, { timeout: 3000 });

@@ -428,11 +428,11 @@ describe('the Ctrl latch', () => {
     // than assumed — a viewport that did not shrink enough would look exactly like a
     // fix that does nothing.
     const { page } = stand;
-    const tall = await page.evaluate(() => window.visualViewport.height);
     await page.setViewportSize({ width: 390, height: 420 });
-    await page.waitForFunction(
-      (was) => window.visualViewport.height < was * 0.8, tall, { timeout: 5000 });
-    await page.waitForTimeout(300);
+    // Waited for on the page's own state (`data-kb`), not on the viewport number:
+    // the number is short the instant the viewport is resized, and the page only
+    // knows about it when the event arrives.
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '1', null, { timeout: 5000 });
 
     const added = await typedAfter(page, [{ click: '#keybar [data-mod="ctrl"]' }, { type: 'к' }]);
     assert.equal(await page.locator('#ctrlpad').isVisible(), false,
@@ -440,7 +440,6 @@ describe('the Ctrl latch', () => {
     assert.equal(added, '^R', `the wire holds ${JSON.stringify(added)}`);
 
     await page.setViewportSize({ width: 390, height: 780 });
-    await page.waitForFunction(
-      (was) => window.visualViewport.height >= was * 0.8, tall, { timeout: 5000 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '0', null, { timeout: 5000 });
   });
 });

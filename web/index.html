@@ -249,6 +249,16 @@
         <button id="page-down" title="A page forward" hidden>&#8671;</button>
         <button id="page-up" title="A page back">&#8670;</button>
       </div>
+      <!-- The way to the session list, in the corner the pager leaves empty.
+           ☰ lives in the header, which is the top edge of a 6-inch phone and the
+           one reach this screen still costs — the swipe from the left was the
+           first answer to that. The stack now fades a few seconds after the last
+           scrolling, and what it frees is the corner a thumb is already in. So
+           the button stands exactly where the way back to the live end stands,
+           on the same timer, and the header's own ☰ steps aside while it is
+           there: one lever, one place at a time, and the same handler as the
+           header's — two would drift. -->
+      <button id="corner-menu" title="All sessions" hidden>&#9776;</button>
     </div>
     <!-- Quick macros for prompt mode. No plain Enter here: the composer's ▶
          sends, and the key bar owns Esc and ^C — one key, one place. -->
