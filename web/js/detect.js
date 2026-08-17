@@ -41,6 +41,19 @@ const COMPOSER = /^[ \t]*\u276f\u00a0/;
 // the page's job is to reach it and hand over the keyboard.
 const TYPE_FIELD = /^Type something\.?$/;
 
+// The checkbox a question that takes several answers draws after the number:
+// `1. [ ] Label`, and `[✔]` once that answer has been chosen. Captured off a
+// real AskUserQuestion at 51 columns on 2026-08-17 — the pane is in the shared
+// fixtures — where Enter on an option *toggles* the box and the list stays up,
+// with a `Submit` entry of its own under the last answer.
+//
+// It is taken off the label because the label is what everything else here
+// compares: the menu's own field is recognised by its words, a press finds its
+// option by them, and a notification reads them out. A box in front of them made
+// `[ ] Type something` stop being the field — which is the refusal reported the
+// day before, back in a shape nothing was watching for.
+const CHECKBOX = /^\[(.?)\]\s+/;
+
 function stripAnsi(s) {
   // xterm's translateToString already yields plain text; strip escapes
   // anyway so the parser also works on raw captures.
@@ -56,11 +69,17 @@ function boxGlyphs(s) {
   return s.replace(/[│╭╮╰╯─]/g, '').trim();
 }
 
-// One option, read off a matched line: the key it carries, what it says, and
-// whether it is the field above rather than an answer.
+// One option, read off a matched line: the key it carries, what it says,
+// whether it is the field above rather than an answer, and — on a question that
+// takes several answers — whether its box is ticked. `checked` is absent rather
+// than false on a menu that has no boxes, which is how the page tells a question
+// whose answers are toggled from one that is answered outright.
 function option(m) {
-  const text = label(m[3]);
-  return { key: m[2], label: text, input: TYPE_FIELD.test(text) };
+  let text = label(m[3]);
+  const box = CHECKBOX.exec(text);
+  if (!box) return { key: m[2], label: text, input: TYPE_FIELD.test(text) };
+  text = text.slice(box[0].length);
+  return { key: m[2], label: text, input: TYPE_FIELD.test(text), checked: box[1].trim() !== '' };
 }
 
 // A rule drawn across the menu: horizontal line and nothing else. Deliberately
@@ -93,7 +112,17 @@ function indentOf(line) {
 // defence against reading prose as a menu: an option's continuation is set past
 // the column its number sits in, while a numbered list in prose has its text
 // back at the margin.
-function continues(between, indent) {
+//
+// `flush` is that rule's one exception, and it is measured rather than argued.
+// A question that takes several answers draws its descriptions at the very column
+// its numbers sit in — captured off a real pane, where `  2. [ ] …` and the three
+// lines describing option 1 all start at column 2. Under the strict rule the run
+// broke at the first option, so the menu carried no buttons, no blue tab and no
+// notification: reported from the phone as the buttons having disappeared. The
+// checkbox is what buys the exception. It is a widget rather than prose, and a
+// paragraph at the margin is still not a description — `<` keeps that case, which
+// is what the fixture with a paragraph under a pointer holds this to.
+function continues(between, indent, flush) {
   for (const line of between) {
     // A rule across the menu ends the list rather than dividing it.
     //
@@ -114,7 +143,7 @@ function continues(between, indent) {
     // A rule or an empty box row is chrome, not content.
     if (!boxGlyphs(line)) continue;
     if (OPTION.test(line)) return false;
-    if (indentOf(line) <= indent) return false;
+    if (flush ? indentOf(line) < indent : indentOf(line) <= indent) return false;
   }
   return true;
 }
@@ -171,10 +200,14 @@ export function detectQuestion(lines) {
     // number is counted from the option before it rather than from the length
     // of the run, because a run no longer has to start at 1 — see below.
     if (run && Number(m[2]) === Number(run.opts[run.opts.length - 1].key) + 1
-        && continues(plain.slice(run.last + 1, i), run.indent)) {
-      run.opts.push(option(m));
+        && continues(plain.slice(run.last + 1, i), run.indent, run.flush)) {
+      const o = option(m);
+      run.opts.push(o);
       run.pointers.push(POINTER.test(m[1]));
       run.chrome = run.chrome || chrome;
+      // Asked of the option the gap opens under, not of the run: what is allowed
+      // between two options is a fact about the one above them.
+      run.flush = o.checked !== undefined;
       run.last = i;
       continue;
     }
@@ -194,9 +227,11 @@ export function detectQuestion(lines) {
     // kept on; the indentation rule in `continues` is the other half. Both are
     // untouched.
     close();
+    const first = option(m);
     run = {
       start: i, last: i, indent: indentOf(plain[i]), chrome,
-      opts: [option(m)],
+      flush: first.checked !== undefined,
+      opts: [first],
       pointers: [POINTER.test(m[1])],
     };
   }

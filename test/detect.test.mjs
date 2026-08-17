@@ -38,6 +38,15 @@ for (const c of fixtures.cases) {
       c.expect.input === undefined ? -1 : c.expect.input,
       'which option is the text field',
     );
+    // And which boxes are ticked, on a question that takes several answers. The
+    // key is absent on every other screen here, which is the claim itself: a menu
+    // with no checkboxes is answered outright, and one with them is toggled — the
+    // page draws the two differently because pressing them does different things.
+    assert.deepEqual(
+      got.options.map((o) => o.checked),
+      c.expect.checked === undefined ? got.options.map(() => undefined) : c.expect.checked,
+      'which boxes are ticked',
+    );
   });
 }
 

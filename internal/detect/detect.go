@@ -29,6 +29,12 @@ var (
 	// Deliberately blind to the border glyphs — a box's own edges are chrome
 	// around a list, while this is a line through one.
 	rule = regexp.MustCompile(`^[\s─]*─{3,}[\s─]*$`)
+	// The checkbox a question that takes several answers draws after the
+	// number: "1. [ ] Label", and "[✔]" once it has been chosen. Captured off a
+	// real pane at 51 columns 2026-08-17 and shared with the fixtures. It comes
+	// off the label because the label is what a notification reads out, and
+	// because the page recognises the menu's own text field by its words.
+	checkbox = regexp.MustCompile(`^\[(.?)\]\s+`)
 )
 
 // Option is one answer: the digit to send and what it says.
@@ -63,8 +69,9 @@ func Question(lines []string) *Menu {
 
 	type run struct {
 		start  int
-		last   int // where the last option was found; the gap is measured from it
-		indent int // the column the numbers sit in, which continuations sit past
+		last   int  // where the last option was found; the gap is measured from it
+		indent int  // the column the numbers sit in, which continuations sit past
+		flush  bool // ...unless the option carries a checkbox; see continues
 		opts   []Option
 		chrome bool
 	}
@@ -93,9 +100,13 @@ func Question(lines []string) *Menu {
 		// between it and the previous option belongs to that option. Counted from
 		// the option before it rather than from the length of the run, because a
 		// run no longer has to start at 1 — see below.
-		if cur != nil && m[2] == nextKey(cur.opts) && continues(plain[cur.last+1:i], cur.indent) {
-			cur.opts = append(cur.opts, Option{Key: m[2], Label: label(m[3])})
+		if cur != nil && m[2] == nextKey(cur.opts) && continues(plain[cur.last+1:i], cur.indent, cur.flush) {
+			text, boxed := unbox(label(m[3]))
+			cur.opts = append(cur.opts, Option{Key: m[2], Label: text})
 			cur.chrome = cur.chrome || hasChrome
+			// Asked of the option the gap opens under, not of the run: what may
+			// stand between two options is a fact about the one above them.
+			cur.flush = boxed
 			cur.last = i
 			continue
 		}
@@ -110,8 +121,9 @@ func Question(lines []string) *Menu {
 		// leading 1: it is the chrome a run is kept on, and the indentation rule in
 		// continues. Both are untouched.
 		closeRun()
-		cur = &run{start: i, last: i, indent: indentOf(line),
-			opts: []Option{{Key: m[2], Label: label(m[3])}}, chrome: hasChrome}
+		text, boxed := unbox(label(m[3]))
+		cur = &run{start: i, last: i, indent: indentOf(line), flush: boxed,
+			opts: []Option{{Key: m[2], Label: text}}, chrome: hasChrome}
 	}
 	closeRun()
 	if best == nil {
@@ -132,6 +144,17 @@ func Question(lines []string) *Menu {
 // label drops the box's right border and its padding.
 func label(s string) string {
 	return strings.TrimSpace(rightBorder.ReplaceAllString(s, ""))
+}
+
+// unbox takes the checkbox off a multi-answer option and says whether there was
+// one. The state inside it is not read here: this package renders notifications,
+// and "asks for an answer" is the same sentence whichever boxes are ticked.
+func unbox(s string) (string, bool) {
+	m := checkbox.FindString(s)
+	if m == "" {
+		return s, false
+	}
+	return s[len(m):], true
 }
 
 // nextKey is the number that would continue a run: one past the option it ends
@@ -155,7 +178,16 @@ func nextKey(opts []Option) string {
 // past the column its number sits in, while a numbered list in prose has its
 // text back at the margin. That, and each line the run swallows must not itself
 // be a numbered option — 1, 5, 2 is not a menu whatever the indentation says.
-func continues(between []string, indent int) bool {
+//
+// flush is that rule's one exception, and it is measured rather than argued. A
+// question that takes several answers draws its descriptions at the very column
+// its numbers sit in — captured off a real pane at 51 columns, where the option
+// lines and the three lines describing the one above them all start at column 2.
+// Under the strict rule the run broke at the first option, so such a menu drew no
+// buttons on the phone, left its tab neutral and raised no notification. The
+// checkbox is what buys the exception: it is a widget rather than prose, and a
+// paragraph back at the margin is still not a description.
+func continues(between []string, indent int, flush bool) bool {
 	for _, line := range between {
 		// A rule across the menu ends the list rather than dividing it.
 		//
@@ -177,7 +209,7 @@ func continues(between []string, indent int) bool {
 		if option.MatchString(line) {
 			return false
 		}
-		if indentOf(line) <= indent {
+		if in := indentOf(line); in < indent || (in == indent && !flush) {
 			return false
 		}
 	}

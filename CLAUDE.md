@@ -567,6 +567,29 @@ having history above, there being nothing below the live end to page to. The
 three are one stack (`#pager`, `column-reverse`), so the one that is always there
 is the one nearest the thumb and the column closes over the two that are not.
 
+**And it is permanent only while something is being scrolled.** Three circles in
+the corner of a screen that is being read are chrome for a control nobody is
+using, which is the bill that came with ⇞ being on screen always. So the stack
+fades `PAGER_IDLE` after the last scrolling and comes back with the next
+(`wakePager`), asked for from the phone — the only place that corner is paid for.
+
+That is a real trade against the paragraph above, and what keeps it honest is
+**what counts as the next scrolling**: every way this pane can move — the wheel
+the swipe and the buttons both send, the scrollbar's own request, the position
+changing under a second client — *and a finger arriving on the pane at all*. A
+pointerdown rather than a touch, so a laptop's mouse says the same thing. Without
+that last one ⇞ would have stopped being a way in, since a stack that came back
+only once you were already scrolled back cannot be what took you there.
+
+The position is what wakes it, not the frame: the mode frame carries the history
+size now, so a pane that is merely printing sends one every poll and the stack
+would never go idle at all.
+
+**Faded, and untouchable while faded** (`pointer-events: none`), which is the
+half that is not decoration — an invisible 44px circle over the answer row's Esc
+is the same defect as a visible one over it, only harder to report. What you
+cannot see, you must not be able to press; what is under it is what a tap gets.
+
 **The stack lives inside `#term`, and being permanent is what forced that.** It
 was pinned 64px above the bottom of the viewport, which is a guess about how tall
 the bars are — harmless while the only button there appeared during a scroll, and
@@ -580,6 +603,18 @@ That brought one thing with it: a tap on the pager or the bar now arrives at
 which on Android is the keyboard coming up over the output ⇩ was just pressed to
 get back to. Both are excluded there by name. A control drawn over the terminal is
 not the terminal.
+
+**And its corner is somebody else's corner.** The answer row and the control pad
+are drawn over the pane's last rows for their own reasons, so a 44px circle 10px
+off the bottom sat on the row's `Esc` and on the pad's last key — reported as Esc
+not answering, and caught here by a browser test that could not click it at all.
+It is the same "button nothing can reach" as the 64px guess above, one layer along,
+and the answer is the measurement rather than another number: `liftFloaters`
+publishes the height of whatever overlay is on screen and the stack stands that
+much higher (`--over-h`). The row is as tall as the menu it was drawn from — up to
+45vh of options — so nothing fixed would have covered it. The scrollbar still takes
+its 18px off the right edge of the row's full-width buttons, which is a rail rather
+than a target and has not been reported.
 
 They send **the wheel the swipe already sends**, not tmux's own `page-up`, and
 that is what makes them need no state of their own: a notch enters copy-mode by
@@ -1037,6 +1072,81 @@ suites need it and two copies of a fake IME would drift into two different brows
 but it is dispatched at xterm's own field, and what is asserted is the page's own
 geometry. Both halves: gone while composing, back when the word ends. A row that
 never came back would read from a phone as the buttons having disappeared for good.
+
+**And only that field asks for a keyboard — the answers must not.** Reported from
+the phone the day after: a tap on any button of the row brought the keyboard up
+over the menu it was answering. Two paths did it and either was enough on its own.
+The handler called `term.focus()` after every press, which is a rule this file
+wrote down once already for the key bar ("no focus() here: the press already kept
+it"). And the row lives *inside* `#term`, whose own click handler hands the focus
+back to the terminal for anything not named there as a control drawn over it — the
+pager and the scrollbar were named, the answer row and the control pad were not,
+and the pad is the one that exists for a screen with **no** keyboard on it.
+
+So a button takes no focus at all (`keepsTerminalFocus`, the same one every other
+button here uses), which is also what leaves the keyboard *up* for whoever is
+typing into the menu's field. What it must not do is grab it.
+
+**The field's own button has to ask from inside the touch.** Android gives a
+keyboard to a focus that happens inside the gesture and to no other, so the focus
+`pressAnswer` took once the pointer had arrived — a couple of polls later — raised
+nothing at all; that it worked before was the blanket `term.focus()` doing it by
+accident, for every button alike. `openForTyping` is called from the click now, on
+the option the button was drawn for, and the walk happens behind an already-open
+keyboard. A menu that changed in between then costs a keyboard nobody wanted,
+which is the cheaper of the two: the alternative is the one button that is *about*
+typing opening nothing.
+
+The stand has no soft keyboard, so the test asserts the lever rather than the
+symptom — whether the terminal's field ends up holding the focus — which is the
+same measurement the ⇩ and the tab strip are covered by. Both halves: an answer and
+Esc leave it alone, the field takes it. Checked against each path separately, since
+either one alone reproduces the report.
+
+## A question that takes several answers is toggled, not answered
+
+`AskUserQuestion` has a second shape, and the page could not see it at all: the
+one that takes several answers draws a checkbox after every number (`1. [ ] …`,
+`[✔]` once chosen), a `Submit` entry of its own under the last option, and — this
+is what hid it — **its descriptions at the very column the numbers sit in**.
+Reported from the phone as the buttons having disappeared, in front of a menu six
+options long.
+
+Nothing was wrong with the page. `continues` requires an option's continuation to
+be set *past* the column of its number, which is the whole defence against reading
+a numbered list in prose as something to press, and it is exactly true of the
+single-answer variant (descriptions indented under the label). Here the run broke
+at the first option, so there was no menu: no buttons, no blue tab, no
+notification.
+
+The checkbox is what buys the exception (`flush` in both detectors): it is a
+widget rather than prose, and a paragraph back at the margin is still not a
+description — the fixture with one under a pointer holds this to `<` rather than
+`<=`. Both implementations changed, because a notification and a row of buttons
+disagreeing about what is on screen is the thing the shared fixtures exist to
+prevent.
+
+**The box comes off the label**, and that is not cosmetic: the label is what
+everything here compares. `[ ] Type something` is not `Type something`, so the
+menu's own field stopped being recognised as one — which is yesterday's refusal
+back in a shape nothing was watching for. The state travels beside the label
+(`checked`, absent rather than false when a menu has no boxes) and the button
+carries it as `☐`/`☑`, because **Enter on one of these toggles it**: measured off
+the owner's own answering session, `[ ]` became `[✔]` and the list stayed up. A row
+of buttons that all looked like answers would say the tap had answered the
+question, when what it did was one tick of several.
+
+What has **no** button is `Submit`. It is the list's own unnumbered entry, and
+choosing it leads to an ordinary two-option menu (`Ready to submit your answers?`)
+that this already reads. Where it sits in the ring the arrows walk is unmeasured,
+and this file has paid for a guess about that ring once already — so the ticks come
+from the row and the Submit from `↓` and `⏎` on the key bar, until there is a
+capture that settles it.
+
+Both panes are in `test/fixtures/menus.json`, captured off a real one at 51
+columns rather than typed from memory: the fresh menu, and the same question
+part-answered — two boxes ticked, the pointer moved, and the list scrolled past its
+own first option, which is three of this file's earlier lessons in one screen.
 
 An empty row inside a border stays chrome (`│      │` pads a boxed prompt, and
 the options either side of it are one list). What ends the run is a horizontal

@@ -1668,6 +1668,9 @@ describe('the key bar', () => {
       el.hidden = false; // stand-in for the server frame
     });
     assert.ok(await page.locator('#to-bottom').isVisible());
+    // A finger on the pane, because the stack fades a few seconds after the last
+    // scrolling and this test scrolled nothing — it puts the button up by hand.
+    await page.click('#term');
     await page.click('#to-bottom');
   });
 
@@ -2554,6 +2557,101 @@ describe('the answer buttons and the pane they are read from', () => {
     // otherwise distinguish "the field is ready" from "the tap did nothing".
     assert.match(await page.textContent('#toast'), /type the answer/,
       'nothing said the field was open');
+  });
+
+  test('only the menu\'s field asks for a keyboard; the answers leave it alone', async () => {
+    // Reported from the phone: a tap on any button of the row brought the keyboard
+    // up over the menu it was answering. Two paths did it and each was enough on
+    // its own — the handler called term.focus() after every press, and the row is
+    // drawn inside #term, whose own click handler hands the focus back to the
+    // terminal for anything that is not named as a control drawn over it.
+    //
+    // The stand has no soft keyboard, so what is asserted is the lever: whether
+    // the terminal's field ends up holding the focus. That is the same measurement
+    // the ⇩ and the tab strip are covered by.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    drawRun(['1. Раз', '2. Type something.'], 0);
+    await answersUp();
+    const focused = () => page.evaluate(() => document.activeElement && document.activeElement.tagName);
+
+    // Nobody is typing: an answer must leave it that way.
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.locator('#answers button:not(.esc):not(.typing)').first().click();
+    await page.waitForTimeout(300);
+    assert.notEqual(await focused(), 'TEXTAREA', 'an answer grabbed focus and would raise the keyboard');
+
+    // And the one option that is answered by typing does open it — from inside the
+    // tap, because a focus taken after the walk is out of the gesture and raises
+    // nothing on the device this is for.
+    await page.locator('#answers button.typing').click();
+    await page.waitForTimeout(300);
+    assert.equal(await focused(), 'TEXTAREA', 'the field button opened nothing to type into');
+
+    // Esc is not an answer either, and it was the other button calling focus().
+    // A real tap, which is also what proves it is reachable at all — the pager's
+    // ⇞ is a 44px circle in the very corner this button aligns itself to, and
+    // until it was lifted this click timed out on the circle intercepting it.
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.locator('#answers button.esc').click();
+    await page.waitForTimeout(300);
+    assert.notEqual(await focused(), 'TEXTAREA', 'Esc grabbed focus and would raise the keyboard');
+  });
+
+  test('a question that takes several answers is drawn as the boxes it toggles', async () => {
+    // Reported from the phone 2026-08-17 as the buttons having disappeared, and
+    // the pane behind it was this: an AskUserQuestion with several answers draws
+    // a checkbox after every number and sets its descriptions at the very column
+    // the numbers sit in — captured off a real one, and in the shared fixtures.
+    // The indentation rule then broke the run at the first option, so there was no
+    // menu at all: no buttons, no blue tab, no notification.
+    //
+    // Here through the real page rather than the parser, because the page reads
+    // its lines out of xterm and a terminal that folded those columns differently
+    // would leave the fix true in the unit tests and absent on the phone.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    for (const l of [
+      'Что делаем?',
+      '❯ 1. [ ] Раз',
+      '  Описание первого пункта, у той же колонки.',
+      '  2. [✔] Два',
+      'Enter to select · ↑/↓ to navigate · Esc to cancel',
+    ]) stand.tmux(['send-keys', '-t', 'demo', l, 'Enter']);
+    await answersUp();
+
+    // And the box is on the button, because pressing it toggles rather than
+    // answers: measured on a real menu, Enter turns `[ ]` into `[✔]` and the list
+    // stays up. A row of buttons that all looked like answers would say the tap
+    // had answered the question.
+    assert.deepEqual(
+      await page.locator('#answers button:not(.esc)').allTextContents(),
+      ['1 · ☐ Раз', '2 · ☑ Два'],
+    );
+  });
+
+  test('the pager stands clear of the row instead of sitting on it', async () => {
+    // Both live inside #term — the pager so that it stays above the bars whatever
+    // the bars are doing, the row so that drawing it takes no rows from the pane —
+    // and they were given the same corner. The row's Esc aligns itself to the
+    // right edge and ⇞ is a 44px circle 10px above the bottom, so the circle sat
+    // on it: a button nothing can reach, which is the defect three earlier tests
+    // in this file were written for.
+    //
+    // The geometry is the assertion rather than the offset, because the row is as
+    // tall as the menu it was drawn from and a fixed number is the guess that put
+    // the pager on the key bar's ▾ once already.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    drawRun(['1. Раз', '2. Два'], 0);
+    await answersUp();
+    const row = await page.locator('#answers').boundingBox();
+    const up = await page.locator('#page-up').boundingBox();
+    assert.ok(up.y + up.height <= row.y + 1,
+      `⇞ overlaps the answer row: ${JSON.stringify({ pager: up, row })}`);
   });
 
   test('the row steps out from under the word being typed', async () => {

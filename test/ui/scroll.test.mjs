@@ -216,6 +216,37 @@ describe('a swipe follows the finger', () => {
     assert.deepEqual(stand.pageErrors, []);
   });
 
+  test('the pager fades when nothing is being scrolled, and a finger brings it back', async () => {
+    // Asked for from the phone: three circles in the corner of a screen being
+    // read are chrome for a control nobody is using, and this stack became
+    // permanent when ⇞ did. So it goes a few seconds after the last scrolling.
+    //
+    // What brings it back is every way the pane can move — the wheel the swipe
+    // and the buttons both send, the scrollbar's request, the position changing
+    // under a second client — and a finger arriving on the pane, which is the
+    // half that keeps ⇞ a way *into* the history: a stack that only came back
+    // once you were already scrolled back could not be what took you there.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    const idle = () => page.evaluate(() => document.getElementById('pager').classList.contains('idle'));
+    const css = (prop) => page.evaluate(
+      (p) => getComputedStyle(document.getElementById('pager'))[p], prop);
+
+    await page.waitForFunction(
+      () => document.getElementById('pager').classList.contains('idle'), null, { timeout: 8000 });
+    // Untouchable while faded, which is not decoration: an invisible 44px circle
+    // over the answer row's Esc is the same defect as a visible one over it, only
+    // harder to report. What is under it is what a tap gets.
+    assert.equal(await css('pointerEvents'), 'none');
+    await page.waitForTimeout(400); // the fade itself
+    assert.equal(await css('opacity'), '0');
+
+    await page.click('#term');
+    assert.equal(await idle(), false, 'a finger on the pane did not bring the stack back');
+    assert.equal(await css('pointerEvents'), 'auto');
+  });
+
   test('a swipe into history offers the way back', async () => {
     // The same button through the real path: a finger, the page's own notches,
     // and whatever tmux makes of them.
@@ -355,7 +386,10 @@ describe('a swipe follows the finger', () => {
     assert.ok(await page.locator('#to-bottom').isHidden(), 'the way back is offered from the live end');
 
     // And it takes the pane there by itself: no swipe first, which is the whole
-    // reason it is on screen at all.
+    // reason it is on screen at all. A finger on the pane, though — the stack
+    // fades out a few seconds after the last scrolling, and typing a hundred
+    // lines is not scrolling.
+    await page.click('#term');
     await page.click('#page-up');
     await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
 

@@ -1085,12 +1085,27 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   /* Inside #term, so the bottom of the stack is the bottom of the terminal
      rather than a guess about how tall the bars below it are. That guess was
      64px and it covered the key bar's ▾ and the composer's ▶ once ⇞ was on
-     screen permanently. */
-  bottom: 10px;
+     screen permanently.
+
+     And above whatever is drawn over the pane's last rows: the answer row aligns
+     its Esc to this very corner and the control pad puts a key in it, so a 44px
+     circle sat on both. The height is measured and published by the page
+     (liftFloaters), the row being as tall as the menu it was drawn from. */
+  bottom: calc(10px + var(--over-h, 0px));
   z-index: 12;
   display: flex;
   flex-direction: column-reverse;
   gap: 8px;
+  /* Away a few seconds after the last scrolling, back with the next one (see
+     wakePager). Faded rather than removed, so the corner does not jump and the
+     stack does not have to be laid out again; untouchable while faded, because an
+     invisible button over the answer row's Esc is the same defect as a visible
+     one, only harder to report. */
+  transition: opacity 0.25s ease;
+}
+#pager.idle {
+  opacity: 0;
+  pointer-events: none;
 }
 #pager button {
   width: 44px;

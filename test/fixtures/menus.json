@@ -383,6 +383,129 @@
         "input": 1
       },
       "_why_no_chat": "The arrows do not reach it. Measured on the owner's phone 2026-08-10: a five-button row on this very menu, tapping the last one sent four downs and the pointer came back to option 1 — a ring of four. The rule drawn across the menu is not chrome between options, it is the end of the list the arrows walk, and an option nothing can move to is a button that answers nothing."
+    },
+    {
+      "name": "AskUserQuestion with several answers: checkboxes, descriptions flush with the numbers",
+      "lines": [
+        "←  ☐ Объём  ✔ Submit  →",
+        "",
+        "Кнопки пропали на многовыборном меню (чекбоксы +",
+        "Submit) — такого экрана у нас нет ни в фикстурах,",
+        "ни в детекторе. Что делать в этом же заходе?",
+        "",
+        "❯ 1. [ ] Починить детект многовыбора",
+        "  Снять настоящий рендер такого меню, добавить в",
+        "  fixtures/menus.json и научить detectQuestion его",
+        "  читать (обе реализации — JS и Go).",
+        "  2. [ ] «Type something» в многовыборе",
+        "  Там подпись «[ ] Type something» — TYPE_FIELD её",
+        "  не узнаёт, значит кнопка над полем снова отправит",
+        "  отказ. Расширить правило.",
+        "  3. [ ] Пейджер закрывает Esc",
+        "  Круглая кнопка ⇞ (44px, z-index 12) лежит поверх",
+        "  правого угла ряда ответов — по Esc пальцем не",
+        "  попасть. Развести их.",
+        "  4. [ ] Только клавиатура, остальное потом",
+        "  Выкатить готовую правку про клавиатуру, а",
+        "  найденное записать и разобрать отдельно.",
+        "  5. [ ] Type something",
+        "     Submit",
+        "───────────────────────────────────────────────────",
+        "  6. Chat about this",
+        "",
+        "Enter to select · ↑/↓ to navigate · Esc to cancel",
+        ""
+      ],
+      "expect": {
+        "prompt": "ни в детекторе. Что делать в этом же заходе?",
+        "options": [
+          {
+            "key": "1",
+            "label": "Починить детект многовыбора"
+          },
+          {
+            "key": "2",
+            "label": "«Type something» в многовыборе"
+          },
+          {
+            "key": "3",
+            "label": "Пейджер закрывает Esc"
+          },
+          {
+            "key": "4",
+            "label": "Только клавиатура, остальное потом"
+          },
+          {
+            "key": "5",
+            "label": "Type something"
+          }
+        ],
+        "cursor": 0,
+        "navigate": "arrows",
+        "input": 4,
+        "checked": [
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      }
+    },
+    {
+      "name": "the same question part-answered: two boxes ticked and the list scrolled",
+      "lines": [
+        "  fixtures/menus.json и научить detectQuestion его",
+        "  читать (обе реализации — JS и Go).",
+        "  2. [✔] «Type something» в многовыборе",
+        "  Там подпись «[ ] Type something» — TYPE_FIELD её",
+        "  не узнаёт, значит кнопка над полем снова отправит",
+        "  отказ. Расширить правило.",
+        "❯ 3. [✔] Пейджер закрывает Esc",
+        "  Круглая кнопка ⇞ (44px, z-index 12) лежит поверх",
+        "  правого угла ряда ответов — по Esc пальцем не",
+        "  попасть. Развести их.",
+        "  4. [ ] Только клавиатура, остальное потом",
+        "  Выкатить готовую правку про клавиатуру, а",
+        "  найденное записать и разобрать отдельно.",
+        "  5. [ ] Type something",
+        "     Submit",
+        "───────────────────────────────────────────────────",
+        "  6. Chat about this",
+        "",
+        "Enter to select · ↑/↓ to navigate · Esc to cancel",
+        ""
+      ],
+      "expect": {
+        "prompt": "читать (обе реализации — JS и Go).",
+        "options": [
+          {
+            "key": "2",
+            "label": "«Type something» в многовыборе"
+          },
+          {
+            "key": "3",
+            "label": "Пейджер закрывает Esc"
+          },
+          {
+            "key": "4",
+            "label": "Только клавиатура, остальное потом"
+          },
+          {
+            "key": "5",
+            "label": "Type something"
+          }
+        ],
+        "cursor": 1,
+        "navigate": "arrows",
+        "input": 3,
+        "checked": [
+          true,
+          true,
+          false,
+          false
+        ]
+      }
     }
   ]
 }

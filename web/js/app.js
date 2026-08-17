@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v151';
+const APP_VERSION = 'v152';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -84,7 +84,12 @@ try { fontSize = parseInt(localStorage.getItem('pt-font'), 10) || 14; } catch (_
 const term = new Terminal({ fontSize, scrollback: 5000, theme: { background: '#0b0e14' } });
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
-term.open(document.getElementById('term'));
+// The terminal's own box. Everything drawn over the pane lives inside it — the
+// pager, the scrollbar, the answer row, the control pad — so that they stand above
+// the bars whatever the bars are doing, and so what they cover is the text they
+// repeat rather than rows taken from tmux.
+const termBox = document.getElementById('term');
+term.open(termBox);
 
 // What xterm leaves in its own field is what the keyboard reads as the word
 // being typed, and that is where a typed word came back a second time. Emptied
@@ -1964,6 +1969,7 @@ function armCtrl(on) {
   ctrlArmed = on;
   if (ctrlKey) ctrlKey.classList.toggle('on', on);
   if (ctrlPad) ctrlPad.hidden = !on || keyboardUp;
+  liftFloaters();
   // A word in flight is not what the modifier was pressed for. Ended here, it goes
   // as the typing it is, and the next letter arrives in a field of its own — where
   // a residue would make it one character of several and spend the arm on nothing.
@@ -2181,7 +2187,14 @@ document.getElementById('term').addEventListener('click', (e) => {
   // from. On Android that is the keyboard coming up over the output somebody
   // pressed ⇩ to get back to. Caught as an assertion failure by the browser
   // test that exists for exactly that report.
-  if (e.target instanceof Element && e.target.closest('#pager, #scrollbar')) return;
+  //
+  // The answer row and the control pad are inside this box for the same reason
+  // and were not named here: tapping an answer raised the keyboard over the very
+  // menu being answered, and the pad — which exists for a screen with no
+  // keyboard on it — brought one up on every key. Only the menu's own text field
+  // asks for a keyboard, and it asks for itself (see openForTyping).
+  if (e.target instanceof Element
+    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad')) return;
   term.focus();
   refit();
 });
@@ -2202,6 +2215,10 @@ let wheelPending = 0;
 let wheelFlush = null;
 
 function sendWheel(btn) {
+  // Every scroll this page makes goes through here — the swipe, its glide, and
+  // the pager's own buttons — so this is the one place the stack has to be told
+  // that scrolling is happening.
+  wakePager();
   const dir = btn === 64 ? 1 : -1;
   // A reversal mid-swipe must not cancel out silently: flush what is queued
   // before turning around.
@@ -3525,6 +3542,9 @@ document.getElementById('update-now').addEventListener('click', () => {
 // present. What matters here is whether there is history above, which is the
 // second number in the mode frame.
 let scrolledBack = false;
+// The position the stack was last woken for. -1 rather than 0, so the first frame
+// of a live pane is not a movement.
+let copyBackShown = -1;
 // Scrolled back into history, the way out was a tmux key nobody has on a
 // phone. This button is the way back to the live end of the output, and it is
 // on screen exactly while there is somewhere to come back from.
@@ -3573,6 +3593,36 @@ const pageUpBtn = document.getElementById('page-up');
 const pageDownBtn = document.getElementById('page-down');
 keepsTerminalFocus(pageUpBtn);
 keepsTerminalFocus(pageDownBtn);
+
+// They go away a few seconds after the last scrolling, and the next one brings
+// them back.
+//
+// Three circles in the corner of a screen that is being read are chrome for a
+// control nobody is using, and this stack became permanent when ⇞ did. Asked for
+// from the phone, which is the only place the cost of them is paid.
+//
+// **Faded, and untouchable while faded.** `pointer-events: none` is the half that
+// is not decoration: an invisible 44px circle over the answer row's Esc is the
+// same defect as a visible one over it, only harder to report — what you cannot
+// see, you must not be able to press, and what is under it is what a tap gets.
+//
+// What wakes them is every way this pane can move: the wheel the swipe and the
+// pager both send, the scrollbar's own request, and the position changing under a
+// second client. **And a finger arriving on the pane**, because that is what makes
+// them reachable at all — ⇞ is the way *into* the history, and a button that only
+// came back once you were already scrolled back could not be what took you there.
+// A pointerdown rather than a touch, so a laptop's mouse says the same thing.
+const PAGER_IDLE = 3000;
+const pagerEl = document.getElementById('pager');
+let pagerTimer = null;
+function wakePager() {
+  if (!pagerEl) return;
+  pagerEl.classList.remove('idle');
+  clearTimeout(pagerTimer);
+  pagerTimer = setTimeout(() => pagerEl.classList.add('idle'), PAGER_IDLE);
+}
+termBox.addEventListener('pointerdown', wakePager, { passive: true });
+wakePager();
 
 // Two rows of overlap, so a page reads on from what the last one ended with
 // rather than from the line after it.
@@ -3670,6 +3720,7 @@ function paintScrollbar() {
 // throttle that drops the final move leaves the pane one ask short of where the
 // finger let go, which is the one position anybody chose deliberately.
 function askScrollTo(back) {
+  wakePager();
   pendingBack = back;
   const now = performance.now();
   const wait = Math.max(0, DRAG_ASK - (now - lastAsk));
@@ -3756,6 +3807,13 @@ function setCopyMode(inMode, back, hist) {
   // is deliberately left where it was.
   paintScrollbar();
   const away = !!inMode && back > 0;
+  // The pane moved, whoever moved it — this page, a second client, or tmux
+  // itself — so the buttons are worth looking at again. Asked of the position
+  // rather than of the frame: the mode frame now carries the history size, so a
+  // pane that is merely printing sends one every poll and the stack would never
+  // go idle. Before the early return below, which only fires when the *shown*
+  // state is unchanged.
+  if (back !== copyBackShown) { copyBackShown = back; wakePager(); }
   if (away === scrolledBack) return;
   scrolledBack = away;
   toBottomBtn.hidden = !away;
@@ -3833,7 +3891,7 @@ async function pressAnswer(prompt, label, want) {
   // the pointer is already on it there is nothing to send at all.
   const typing = !keys.commit;
   if (!keys.move) {
-    if (typing) { report('answer', { want, at, key, typing: true, walked: false }); openForTyping(); return; }
+    if (typing) { report('answer', { want, at, key, typing: true, walked: false }); return; }
     send(keys.commit);
     return;
   }
@@ -3856,16 +3914,25 @@ async function pressAnswer(prompt, label, want) {
     toast('the menu did not move — nothing was answered');
     return;
   }
-  if (typing) { openForTyping(); return; }
+  // Nothing to press: the keyboard was handed over at the tap, and the pointer
+  // has now arrived on the field it was handed over for.
+  if (typing) return;
   send(keys.commit);
 }
 
-// The pointer is on the menu's own text field and nothing has been pressed: from
-// here the question is answered by what gets typed, so the last thing the button
-// does is put the keyboard where that can happen. The composer when it is on
-// screen — an ordinary field, which is what dictation and suggestions want, and
-// its ▶ sends the text with the Enter behind it — and the terminal otherwise,
-// where the on-screen keyboard types into the pane and the bar's ⏎ ends it.
+// The one place on this row that raises a keyboard, and the only option that has
+// any business doing so: the question is answered by what gets typed into the
+// menu's own field, so the button puts the keyboard where that can happen. The
+// composer when it is on screen — an ordinary field, which is what dictation and
+// suggestions want, and its ▶ sends the text with the Enter behind it — and the
+// terminal otherwise, where the on-screen keyboard types into the pane and the
+// bar's ⏎ ends it.
+//
+// Called from the click itself rather than after the walk: Android gives a
+// keyboard to a focus that is inside the touch and to no other, so a focus taken
+// once the pointer has arrived — a couple of polls later — raises nothing at all.
+// So the keyboard opens first and the walk happens behind it; a walk that does
+// not land says so in a toast of its own, over this one.
 //
 // The bar it finds is the bar it uses. Switching to the composer here would
 // rewrite a remembered choice (`pt-bar`) as a side effect of answering a
@@ -3890,6 +3957,25 @@ function openForTyping() {
 let answersDrawn = false;
 function paintAnswers() {
   answersEl.hidden = !answersDrawn || fieldGuard.isComposing();
+  liftFloaters();
+}
+
+// The round buttons stand clear of whatever is drawn over the pane's last rows.
+//
+// The pager lives inside #term — that is what keeps it above the bars whatever
+// the bars are doing — and its corner is the corner the answer row's Esc aligns
+// itself to and the control pad's last key sits in. A 44px circle over both:
+// reported as Esc not answering, and caught here by a browser test that could not
+// click it. "A button nothing can reach" is the same defect three earlier tests in
+// this file were written for, one layer along.
+//
+// Measured rather than guessed at, because the row is as tall as the menu it was
+// drawn from — up to 45vh of options — and a fixed offset is exactly the guess
+// that put the pager on the key bar's own ▾ once before.
+function liftFloaters() {
+  const over = [answersEl, ctrlPad].filter((e) => e && !e.hidden);
+  const h = over.reduce((m, e) => Math.max(m, e.offsetHeight), 0);
+  termBox.style.setProperty('--over-h', `${h}px`);
 }
 
 let lastAnswersSig = null;
@@ -3915,13 +4001,36 @@ function renderAnswers() {
     // the owner meant.
     if (keys === null) continue;
     const b = document.createElement('button');
-    b.textContent = `${o.key} · ${o.label}`;
+    // A question that takes several answers is toggled rather than answered:
+    // measured on a real one, Enter on an option turns `[ ]` into `[✔]` and the
+    // list stays up, with a `Submit` entry of its own under the last answer. So
+    // the button carries the box it is about to flip — a row of buttons that all
+    // look like answers would say the tap had answered the question, and what it
+    // actually did is one tick out of several.
+    const box = o.checked === undefined ? '' : (o.checked ? '☑ ' : '☐ ');
+    b.textContent = `${o.key} · ${box}${o.label}`;
     // Not drawn as an answer, because it is not one: it opens the menu's field
     // and the answer is then typed. Its own words say so — "Type something." is
     // the placeholder the widget put there — and the outline is what keeps a
     // thumb from reading it as the last of the answers above it.
     if (o.input) b.classList.add('typing');
-    b.addEventListener('click', () => { pressAnswer(q.prompt, o.label, i); term.focus(); });
+    // The tap takes no focus of its own: whoever is typing into the menu's field
+    // has the keyboard up, and a button that grabs focus closes it under them.
+    keepsTerminalFocus(b);
+    b.addEventListener('click', () => {
+      // Only the field asks for a keyboard, and it has to ask from inside the
+      // touch — a focus taken after an await is out of the gesture and Android
+      // raises nothing for it. So it is decided here, from the option this button
+      // was drawn for, rather than in pressAnswer where the same question is
+      // answered again after the walk. Reported from the phone as every button on
+      // the row bringing the keyboard up over the menu it was answering.
+      //
+      // A menu that changed between the row and the press then costs a keyboard
+      // nobody wanted, which is the cheaper of the two: the alternative is the
+      // one button that is *about* typing not opening anything.
+      if (o.input) openForTyping();
+      pressAnswer(q.prompt, o.label, i);
+    });
     answersEl.appendChild(b);
   }
   if (!answersEl.children.length) {
@@ -3935,7 +4044,8 @@ function renderAnswers() {
   const esc = document.createElement('button');
   esc.className = 'esc';
   esc.textContent = 'Esc';
-  esc.addEventListener('click', () => { send('\x1b'); term.focus(); });
+  keepsTerminalFocus(esc);
+  esc.addEventListener('click', () => { send('\x1b'); });
   answersEl.appendChild(esc);
   answersDrawn = true;
   paintAnswers();
