@@ -46,7 +46,14 @@
 // empty() answers whether the field is already empty (then there is nothing to
 // do, and writing to a field needlessly is one more thing the keyboard can
 // react to). clear() empties it. defer() runs a callback in a later task.
-export function fieldHygiene({ empty, clear, defer = (fn) => setTimeout(fn, 0) }) {
+//
+// onCompose is called whenever a composition opens or closes, and it exists so
+// that one listener answers that question for the whole page: what is being
+// composed is drawn by xterm at the cursor, and anything the page draws over the
+// pane's own rows sits on top of it — see paintAnswers in js/app.js. A second
+// listener on these events would be a second answer to the one question this
+// rule already tracks.
+export function fieldHygiene({ empty, clear, defer = (fn) => setTimeout(fn, 0), onCompose = () => {} }) {
   let composing = false;
   let scheduled = false;
 
@@ -68,8 +75,8 @@ export function fieldHygiene({ empty, clear, defer = (fn) => setTimeout(fn, 0) }
     // on takes the event name and nothing else: what an edit did is the
     // keyboard's business, and this rule is only about what it left behind.
     on(kind) {
-      if (kind === 'compositionstart') { composing = true; return; }
-      if (kind === 'compositionend') { composing = false; later(); return; }
+      if (kind === 'compositionstart') { composing = true; onCompose(true); return; }
+      if (kind === 'compositionend') { composing = false; onCompose(false); later(); return; }
       if (kind === 'input' && !composing) later();
     },
     // For the tests and for the diagnostics: whether a composition is open.

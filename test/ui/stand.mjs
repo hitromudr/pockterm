@@ -66,6 +66,37 @@ function assertPrivateTmux(socket, dir, env) {
   }
 }
 
+// An IME for a browser that has none, as an init script: desktop Chromium never
+// composes, so the events are dispatched at xterm's real field and everything
+// downstream of them is the page unfaked. `window.__compose(text)` opens a
+// composition and puts the text in the field, returning what the field held
+// before; a blur ends it, from a capture-phase listener, which is where Chrome
+// fires `compositionend` and — more to the point — ahead of xterm's own listener
+// on the element.
+//
+// It lives here rather than in one suite because two suites need it and two
+// copies of a fake IME would drift into two different browsers.
+export const FAKE_IME = () => {
+  window.__composing = false;
+  const isField = (el) => el && el.classList && el.classList.contains('xterm-helper-textarea');
+  document.addEventListener('blur', (e) => {
+    if (!window.__composing || !isField(e.target)) return;
+    window.__composing = false;
+    e.target.dispatchEvent(new CompositionEvent('compositionend', { data: e.target.value, bubbles: true }));
+  }, true);
+  window.__compose = (text) => {
+    const el = document.querySelector('.xterm-helper-textarea');
+    if (!el) return null;
+    const before = el.value;
+    el.focus();
+    el.dispatchEvent(new CompositionEvent('compositionstart', { data: '', bubbles: true }));
+    el.value = text;
+    el.dispatchEvent(new CompositionEvent('compositionupdate', { data: text, bubbles: true }));
+    window.__composing = true;
+    return before;
+  };
+};
+
 // raw:true starts the session under `stty raw -echo; cat -v` instead of a
 // shell. Then the screen is a transcript of the bytes that reached the pty —
 // escape sequences and control characters shown as ^[ and ^? — so a test can

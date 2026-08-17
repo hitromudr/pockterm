@@ -969,7 +969,31 @@ there is the cheap failure; the refusal above is the loud one.
 `test/ui/pockterm.test.mjs` reads it off the wire like the rest of that block —
 the walk goes out, the pane redraws with the pointer on the field, and the
 assertion is that **no `\r` follows**. Checked against the defect first: with the
-Enter put back it fails with `"[B\r"`.
+Enter put back, it fails on that byte.
+
+**And the row cannot stay where the answer is being typed.** Reported within the
+hour of the fix above, from the phone, typing into the field the button had just
+opened: the word came out over three of the buttons. Nothing is mispositioned.
+xterm draws what is being composed at the cursor, *inside the pane*, and when a
+menu's own text field has the keyboard the cursor is in the very rows `#answers` is
+drawn over. The row is absolute over the pane's last rows for a reason that has not
+changed — a row in the flow shortens the pane, tmux redraws, and the menu it was
+drawn from scrolls out of the grid — so what moves is the row's visibility: off
+screen while a composition is open, back when it is over.
+
+Whether a word is being composed is asked of the field rule (`fieldHygiene`'s
+`onCompose`, beside the `isComposing` the held Enter already reads), not of a second
+listener on the same events: two listeners are two answers, and the one that drifts
+is the one that decides. `paintAnswers` is then the only owner of `hidden`, with
+`answersDrawn` saying whether there is a row at all — a row hidden because a word is
+being written has to come back, and one that was never drawn must not.
+
+**The stand can judge this one**, unlike most of what is written about the IME here.
+The composition is faked — `FAKE_IME` in `test/ui/stand.mjs`, moved there because two
+suites need it and two copies of a fake IME would drift into two different browsers —
+but it is dispatched at xterm's own field, and what is asserted is the page's own
+geometry. Both halves: gone while composing, back when the word ends. A row that
+never came back would read from a phone as the buttons having disappeared for good.
 
 An empty row inside a border stays chrome (`│      │` pads a boxed prompt, and
 the options either side of it are one list). What ends the run is a horizontal

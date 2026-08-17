@@ -12,7 +12,7 @@
 // what it claims, in any order, and nothing extra.
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { startStand } from './stand.mjs';
+import { startStand, FAKE_IME } from './stand.mjs';
 
 // How `cat -v` renders what the bar sends.
 const WIRE = {
@@ -205,30 +205,10 @@ describe('an ending key waits for the word', () => {
 // composing:true len:4`, then silence.
 //
 // Desktop Chromium has no IME, so the stand plays one — but only the part that
-// is not being tested. The composition is dispatched at the field, and the
-// `compositionend` is fired from a capture-phase blur listener, which is what
-// puts it ahead of the listeners on the element itself, exactly where Chrome
+// is not being tested. `FAKE_IME` in stand.mjs dispatches the composition at the
+// field and fires `compositionend` from a capture-phase blur listener, which is
+// what puts it ahead of the listeners on the element itself, exactly where Chrome
 // fires it. Everything after that is the page and xterm, unfaked.
-const FAKE_IME = () => {
-  window.__composing = false;
-  const isField = (el) => el && el.classList && el.classList.contains('xterm-helper-textarea');
-  document.addEventListener('blur', (e) => {
-    if (!window.__composing || !isField(e.target)) return;
-    window.__composing = false;
-    e.target.dispatchEvent(new CompositionEvent('compositionend', { data: e.target.value, bubbles: true }));
-  }, true);
-  window.__compose = (text) => {
-    const el = document.querySelector('.xterm-helper-textarea');
-    if (!el) return null;
-    const before = el.value;
-    el.focus();
-    el.dispatchEvent(new CompositionEvent('compositionstart', { data: '', bubbles: true }));
-    el.value = text;
-    el.dispatchEvent(new CompositionEvent('compositionupdate', { data: text, bubbles: true }));
-    window.__composing = true;
-    return before;
-  };
-};
 
 describe('a word still being composed goes out with the Enter', () => {
   let stand;

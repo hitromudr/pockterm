@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v149';
+const APP_VERSION = 'v150';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -104,6 +104,12 @@ const fieldGuard = keepEmpty(term.textarea, {
     saidCleared = true;
     report('field-clear', { len, first: true });
   },
+  // A row of buttons must not sit under the word being typed. xterm draws what is
+  // being composed at the cursor, inside the pane, and the answer row is drawn
+  // over the pane's last rows — which is exactly where the cursor is when a menu's
+  // own text field has the keyboard. Reported from the phone as the text coming
+  // out crooked while typing into "Type something.": one word over three buttons.
+  onCompose: () => paintAnswers(),
 });
 
 // Keep terminal control keys in the terminal instead of firing the browser
@@ -1200,7 +1206,9 @@ function attach(name) {
   // A frozen screen belongs to the session it was frozen from.
   if (selectMode) setSelectMode(false);
   term.reset();
-  document.getElementById('answers').hidden = true;
+  // The row belongs to the session being left, and so does whether it was drawn.
+  answersDrawn = false;
+  paintAnswers();
   lastAnswersSig = null;
   scrolledBack = false; // the new socket reports the pane's state on connect
   // And so does the scrollbar: a bar left drawn from the last session's history
@@ -3820,6 +3828,18 @@ function openForTyping() {
   toast('type the answer, then ⏎');
 }
 
+// Whether there is a row to show at all, as opposed to whether it is on screen
+// now. The two are different questions and one function answers the second: a row
+// hidden because a word is being composed must come back when the word is over,
+// and a row that was never drawn must not.
+//
+// The composing state is asked of the field rule rather than kept here — one
+// listener, one answer (js/imefield.js).
+let answersDrawn = false;
+function paintAnswers() {
+  answersEl.hidden = !answersDrawn || fieldGuard.isComposing();
+}
+
 let lastAnswersSig = null;
 function renderAnswers() {
   const lines = visibleLines();
@@ -3834,7 +3854,7 @@ function renderAnswers() {
   if (sig === lastAnswersSig) return;
   lastAnswersSig = sig;
   answersEl.innerHTML = '';
-  if (!q) { answersEl.hidden = true; return; }
+  if (!q) { answersDrawn = false; paintAnswers(); return; }
   for (let i = 0; i < q.options.length; i++) {
     const o = q.options[i];
     const keys = answerKeys(q, i);
@@ -3856,7 +3876,8 @@ function renderAnswers() {
     // Says so, since there is no console on the phone and the row simply not
     // being there is the same thing on screen as no question at all.
     report('answers', { drawn: 0, navigate: q.navigate, cursor: q.cursor, options: q.options.length });
-    answersEl.hidden = true;
+    answersDrawn = false;
+    paintAnswers();
     return;
   }
   const esc = document.createElement('button');
@@ -3864,7 +3885,8 @@ function renderAnswers() {
   esc.textContent = 'Esc';
   esc.addEventListener('click', () => { send('\x1b'); term.focus(); });
   answersEl.appendChild(esc);
-  answersEl.hidden = false;
+  answersDrawn = true;
+  paintAnswers();
 }
 
 // Throttle scans: xterm's write callback can fire many times per second.

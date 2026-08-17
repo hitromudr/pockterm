@@ -11,12 +11,14 @@ function stand(initial = '') {
     value: initial,
     cleared: 0,
     queue: [],
+    composed: [],
     run() { const q = s.queue; s.queue = []; for (const fn of q) fn(); },
   };
   s.rule = fieldHygiene({
     empty: () => !s.value,
     clear: () => { s.value = ''; s.cleared++; },
     defer: (fn) => s.queue.push(fn),
+    onCompose: (open) => s.composed.push(open),
   });
   return s;
 }
@@ -32,6 +34,23 @@ test('the word left behind after a composition is taken away', () => {
   s.run();
   assert.equal(s.value, '');
   assert.equal(s.cleared, 1);
+});
+
+test('a composition opening and closing is told to whoever asked', () => {
+  // One listener answers this for the whole page: what is being composed is drawn
+  // by xterm at the cursor, and the answer row is drawn over the pane's own last
+  // rows — so the row steps aside while a word is being written there. A second
+  // listener on these events would be a second answer to the question this rule
+  // already tracks.
+  const s = stand();
+  s.rule.on('compositionstart');
+  s.rule.on('input');
+  assert.deepEqual(s.composed, [true], 'an edit inside a composition is not a composition starting');
+  s.rule.on('compositionend');
+  assert.deepEqual(s.composed, [true, false]);
+  // And an edit with nothing being composed says nothing at all.
+  s.rule.on('input');
+  assert.deepEqual(s.composed, [true, false]);
 });
 
 test('nothing is taken while a composition is open', () => {

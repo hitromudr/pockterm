@@ -4,7 +4,7 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
-import { startStand } from './stand.mjs';
+import { startStand, FAKE_IME } from './stand.mjs';
 import { readFileSync } from 'node:fs';
 
 // A one-pixel PNG, base64 — the smallest thing the server will accept.
@@ -2343,7 +2343,12 @@ describe('a tab says what its session is doing', () => {
 
 describe('the answer buttons and the pane they are read from', () => {
   let stand;
-  before(async () => { stand = await startStand({ sessions: ['demo'] }); });
+  before(async () => {
+    stand = await startStand({ sessions: ['demo'] });
+    // For the one case below that needs a keyboard that composes. Desktop
+    // Chromium never does; the events are dispatched at xterm's own field.
+    await stand.page.addInitScript(FAKE_IME);
+  });
   after(async () => { await stand.stop(); });
 
   test('showing them takes no rows away from the pane', async () => {
@@ -2549,6 +2554,37 @@ describe('the answer buttons and the pane they are read from', () => {
     // otherwise distinguish "the field is ready" from "the tap did nothing".
     assert.match(await page.textContent('#toast'), /type the answer/,
       'nothing said the field was open');
+  });
+
+  test('the row steps out from under the word being typed', async () => {
+    // Reported from the phone 2026-08-17, typing into the field the button above
+    // opens: the word came out over three of the buttons. xterm draws what is
+    // being composed at the cursor, inside the pane — and when a menu's own text
+    // field has the keyboard, the cursor is in the rows the answer row covers.
+    //
+    // So the row is off screen while a word is being written there, and back when
+    // it is over. Both halves are asserted, because a row that never came back
+    // would read from the phone as the buttons having gone away for good.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    drawRun(['1. Раз', '2. Два'], 0);
+    await page.waitForFunction(
+      () => document.querySelectorAll('#answers button').length >= 2, null, { timeout: 15000 });
+    assert.equal(await page.locator('#answers').isVisible(), true, 'the row was not there to begin with');
+
+    const was = await page.evaluate(() => window.__compose('получится'));
+    assert.equal(was, '', `the field held ${JSON.stringify(was)} before the word`);
+    await page.waitForTimeout(150);
+    assert.equal(await page.locator('#answers').isVisible(), false,
+      'the buttons stayed under the word being composed');
+
+    // The word ends the way a browser ends one — the focus moving — and the row
+    // is a row of answers to a question still on screen.
+    await page.evaluate(() => document.querySelector('.xterm-helper-textarea').blur());
+    await page.waitForTimeout(150);
+    assert.equal(await page.locator('#answers').isVisible(), true,
+      'the row did not come back when the word was over');
   });
 
   test('a list being typed into the input box draws no answer buttons', async () => {
