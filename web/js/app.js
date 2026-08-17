@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v153';
+const APP_VERSION = 'v154';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -2086,11 +2086,20 @@ function keepsTerminalFocus(el) {
 // that makes typing possible at all — `sawKeyboard` tells the two machines
 // apart, and it is learned by watching a keyboard appear rather than guessed
 // from the user agent.
-function releaseTerminalFocus() {
+// The two bounds are the whole of it, so they live in one place and the element
+// is the argument: the terminal's own field for the buttons that are pressed to
+// read, and the pressed button itself where the browser gave it the focus despite
+// `keepsTerminalFocus` — the answer row rebuilds a frame later, and removing a
+// focused element hands the focus back to whatever had it before, which is the
+// terminal, which is the keyboard.
+function releaseFocus(el) {
   if (!sawKeyboard || keyboardUp) return false;
-  if (!term.textarea || document.activeElement !== term.textarea) return false;
-  term.textarea.blur();
+  if (!el || document.activeElement !== el) return false;
+  el.blur();
   return true;
+}
+function releaseTerminalFocus() {
+  return releaseFocus(term.textarea);
 }
 
 // --- key bar ---
@@ -3966,12 +3975,30 @@ async function pressAnswer(prompt, label, want) {
 // question, which is the mistake the settings panel made once already.
 function openForTyping() {
   if (!composerEl.hidden) {
-    promptEl.focus();
+    askKeyboard(promptEl);
     toast('type the answer and send it with ▶');
     return;
   }
-  term.focus();
+  askKeyboard(term.textarea) || term.focus();
   toast('type the answer, then ⏎');
+}
+
+// Asking for a keyboard is not the same as asking for the focus. Android raises
+// one when an element *takes* the focus, so focusing what is already focused
+// raises nothing — and the terminal's field usually is already focused, since it
+// keeps the focus from whenever it was last typed into. Given up and taken again
+// inside the same touch, or the one button on this row that is about typing opens
+// nothing on the one device it is for.
+//
+// The blur is safe here for the reason the row is: `paintAnswers` takes the row
+// off screen while a word is being composed, so there is no composition for a
+// blur to end and no word for xterm to wipe on the way out (see endEditByBlur for
+// what that costs when there is).
+function askKeyboard(el) {
+  if (!el) return false;
+  if (document.activeElement === el) el.blur();
+  el.focus();
+  return true;
 }
 
 // Whether there is a row to show at all, as opposed to whether it is on screen
@@ -4055,7 +4082,16 @@ function renderAnswers() {
       // A menu that changed between the row and the press then costs a keyboard
       // nobody wanted, which is the cheaper of the two: the alternative is the
       // one button that is *about* typing not opening anything.
-      if (o.input) openForTyping();
+      if (o.input) { openForTyping(); pressAnswer(q.prompt, o.label, i); return; }
+      // And every other button gives the focus up rather than merely not taking
+      // it. Taking none was not enough, reported from the phone against the
+      // release that fixed the taking: the terminal's field keeps the focus from
+      // whenever it was last typed into — dismissing a keyboard does not take it
+      // away — and Android raises one for whatever holds the focus the moment the
+      // layout moves under it. Answering a menu moves it by definition. The same
+      // answer the ⇩ and a session switch give, with the same two bounds.
+      releaseTerminalFocus();
+      releaseFocus(b);
       pressAnswer(q.prompt, o.label, i);
     });
     answersEl.appendChild(b);
@@ -4072,7 +4108,11 @@ function renderAnswers() {
   esc.className = 'esc';
   esc.textContent = 'Esc';
   keepsTerminalFocus(esc);
-  esc.addEventListener('click', () => { send('\x1b'); });
+  esc.addEventListener('click', () => {
+    releaseTerminalFocus();
+    releaseFocus(esc);
+    send('\x1b');
+  });
   answersEl.appendChild(esc);
   answersDrawn = true;
   paintAnswers();

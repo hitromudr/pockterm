@@ -2589,9 +2589,24 @@ describe('the answer buttons and the pane they are read from', () => {
     // And the one option that is answered by typing does open it — from inside the
     // tap, because a focus taken after the walk is out of the gesture and raises
     // nothing on the device this is for.
+    await page.evaluate(() => {
+      window.__ptFocus = 0;
+      document.querySelector('.xterm-helper-textarea')
+        .addEventListener('focus', () => { window.__ptFocus += 1; });
+    });
+    const asked = () => page.evaluate(() => window.__ptFocus | 0);
     await page.locator('#answers button.typing').click();
     await page.waitForTimeout(300);
     assert.equal(await focused(), 'TEXTAREA', 'the field button opened nothing to type into');
+    assert.equal(await asked(), 1, 'the field was never focused');
+
+    // Asked again with the field already holding the focus, which is the ordinary
+    // state on a phone: it keeps the focus from whenever it was last typed into.
+    // A focus that is already there raises no keyboard on Android, so the button
+    // has to give it up and take it again inside the same touch.
+    await page.locator('#answers button.typing').click();
+    await page.waitForTimeout(300);
+    assert.equal(await asked(), 2, 'the second tap asked for a keyboard that was already focused');
 
     // Esc is not an answer either, and it was the other button calling focus().
     // A real tap, which is also what proves it is reachable at all — the pager's
@@ -2601,6 +2616,42 @@ describe('the answer buttons and the pane they are read from', () => {
     await page.locator('#answers button.esc').click();
     await page.waitForTimeout(300);
     assert.notEqual(await focused(), 'TEXTAREA', 'Esc grabbed focus and would raise the keyboard');
+  });
+
+  test('answering gives the focus up, it is not enough to leave it alone', async () => {
+    // Reported from the phone against the release that stopped the row *taking*
+    // the focus, which was only half of it. On Android the terminal's field keeps
+    // the focus from whenever it was last typed into — dismissing a keyboard does
+    // not take it away — and the system raises one for whatever holds the focus as
+    // soon as the layout moves under it. Answering a menu moves it by definition.
+    // The same answer the ⇩ and a session switch already give.
+    //
+    // The keyboard is played by the viewport, because that is how the page
+    // measures one, and it is waited for on the page's own `data-kb`: the viewport
+    // reads short the instant it is resized, while the page learns of it when the
+    // event arrives, and a page that never saw a keyboard is outside this rule.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    drawRun(['1. Раз', '2. Два'], 0);
+    await answersUp();
+
+    const holdsFocus = () => page.evaluate(
+      () => document.activeElement === document.querySelector('.xterm-helper-textarea'));
+    await page.click('#term');
+    await page.setViewportSize({ width: 390, height: 420 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '1', null, { timeout: 5000 });
+    await page.setViewportSize({ width: 390, height: 780 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '0', null, { timeout: 5000 });
+    await page.waitForFunction(
+      () => document.querySelectorAll('#answers button:not(.esc)').length >= 2, null, { timeout: 15000 });
+    assert.equal(await holdsFocus(), true,
+      'the field had already lost the focus, so this proves nothing');
+
+    await page.locator('#answers button:not(.esc):not(.typing)').first().click();
+    await page.waitForTimeout(300);
+    assert.equal(await holdsFocus(), false,
+      'the terminal kept the focus, which on Android is the keyboard coming back');
   });
 
   test('a question that takes several answers is drawn as the boxes it toggles', async () => {

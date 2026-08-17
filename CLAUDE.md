@@ -1130,11 +1130,34 @@ keyboard. A menu that changed in between then costs a keyboard nobody wanted,
 which is the cheaper of the two: the alternative is the one button that is *about*
 typing opening nothing.
 
+**Taking no focus was half of it, and the phone said so against the release that
+fixed the taking.** The terminal's field keeps the focus from whenever it was last
+typed into — dismissing a keyboard does not take it away — and Android raises one
+for whatever holds the focus as soon as the layout moves under it. Answering a
+menu moves the layout by definition. So an answer *gives the focus up*
+(`releaseTerminalFocus`), which is the answer the ⇩ and a session switch already
+gave, with the same two bounds; the pressed button is released too, since a
+browser that ignores `keepsTerminalFocus` leaves the focus on a button the row
+rebuilds away a frame later, and removing a focused element hands the focus back
+to whatever had it before — the terminal, which is the keyboard. `releaseFocus`
+holds the two bounds in one place and takes the element.
+
+**And the field's button has to ask for a keyboard, not for the focus.** Android
+raises one when an element *takes* the focus, so focusing what is already focused
+raises nothing at all — and on a phone the terminal's field is usually already
+focused, for the same reason as above. `askKeyboard` gives it up and takes it
+again inside the same touch. Its blur is safe here only because the row is off
+screen while a word is being composed: there is no composition to end and no word
+for xterm to wipe on the way out.
+
 The stand has no soft keyboard, so the test asserts the lever rather than the
 symptom — whether the terminal's field ends up holding the focus — which is the
-same measurement the ⇩ and the tab strip are covered by. Both halves: an answer and
-Esc leave it alone, the field takes it. Checked against each path separately, since
-either one alone reproduces the report.
+same measurement the ⇩ and the tab strip are covered by. Three halves of it now:
+an answer and Esc leave it alone from nothing, an answer gives it up when typing
+left it there (the keyboard played by the viewport, waited for on `data-kb`), and
+the field takes it — counted as focus *events*, because taking a focus that is
+already held is exactly the case that raises nothing. Each was checked against its
+own defect, since any one of them alone reproduces the report.
 
 ## A question that takes several answers is toggled, not answered
 
