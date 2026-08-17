@@ -1096,40 +1096,32 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   display: flex;
   flex-direction: column-reverse;
   gap: 8px;
-  /* Away a few seconds after the last scrolling, back with the next one (see
-     wakePager). Faded rather than removed, so the corner does not jump and the
-     stack does not have to be laid out again; untouchable while faded, because an
-     invisible button over the answer row's Esc is the same defect as a visible
-     one, only harder to report. */
-  transition: opacity 0.25s ease;
 }
-#pager.idle {
-  opacity: 0;
-  pointer-events: none;
-}
-/* The corner the faded stack leaves, and the same slot the way back to the live
-   end sits in: `#pager` is column-reverse, so its first item is the one against
-   the bottom. Same offsets, so the two cannot be a pixel apart — and the same
-   lift over the answer row, since this is a button in the same corner and the
-   row is what put the pager up there. */
-#corner-menu {
-  position: absolute;
-  right: 22px;
-  bottom: calc(10px + var(--over-h, 0px));
-  z-index: 12;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  color: var(--fg);
-  background: #232a38;
-  border: none;
-  border-radius: 22px;
-  font-size: 18px;
-}
-/* The header's ☰ steps aside rather than being taken out of the row: the strip
-   scrolls sideways and is read along, and a button leaving the flow every time
-   something is scrolled would shift every tab under the eye. */
-#screen-term header.bar #back.stepped-aside { visibility: hidden; }
+/* Away a few seconds after the last scrolling, back with the next one (see
+   wakePager). Faded rather than removed, so the corner does not jump and the
+   stack does not have to be laid out again; untouchable while faded, because an
+   invisible button over the answer row's Esc is the same defect as a visible one,
+   only harder to report.
+   On the buttons and not on the stack, because one of them does not fade: ☰ keeps
+   the corner whatever the scrolling is doing, and the paging buttons come and go
+   above it. */
+/* Nothing floats over a frozen copy: the pager and the rail are both about a pane
+   that is not moving here, and what they would do is take the drags the copy
+   window needs — see setSelectMode. */
+#term.selecting #pager, #term.selecting #scrollbar { display: none; }
+#pager button { transition: opacity 0.25s ease; }
+#pager.idle button:not(#corner-menu) { opacity: 0; }
+/* Untouchable while faded, and the room they keep is untouchable with them: a
+   column of invisible buttons that still swallowed taps would take them from the
+   pane underneath, which is where the finger was aiming. ☰ takes its own back. */
+#pager.idle { pointer-events: none; }
+#pager.idle #corner-menu { pointer-events: auto; }
+/* ☰ is the item against the bottom — `#pager` is column-reverse, so that is its
+   first child — and it is there permanently: asked for from the phone after a
+   release in which it traded places with the stack. It is a button of the stack's
+   own size and shape, so it inherits the rules below; only the colour says it is
+   not one of the three. */
+#corner-menu { background: #232a38; color: var(--fg); }
 #pager button {
   width: 44px;
   height: 44px;

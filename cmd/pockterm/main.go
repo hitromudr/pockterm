@@ -230,6 +230,7 @@ func serve() {
 		InMode:     inMode,
 		LeaveMode:  leaveMode,
 		ScrollTo:   scrollTo,
+		Capture:    capture,
 		Presence:   notifier(cfg, notices, pref),
 		Notices:    notices,
 		NotifyMode: func() (string, bool) { return string(pref.Mode()), cfg.Notify() },
@@ -671,6 +672,22 @@ func scrollTo(id int64, back int) error {
 	}
 	argv = tmuxcmd.ScrollHistory(session, back-at)
 	return exec.Command(argv[0], argv[1:]...).Run()
+}
+
+// capture reads this client's pane — the history behind the screen as well as
+// the screen — for the frozen copy text is selected from on a phone.
+//
+// It is read here rather than in the page because the page has nothing to read:
+// tmux repaints its pane instead of letting lines scroll off it, so the terminal
+// in the browser sits at the top of an empty buffer however much output has gone
+// past. The copy window was one screen tall and could not be scrolled at all.
+func capture(id int64, lines int) (string, error) {
+	argv := tmuxcmd.CaptureHistory(tmuxcmd.ClientName(id), lines)
+	out, err := exec.Command(argv[0], argv[1:]...).Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
 
 // leaveMode takes this client's pane out of copy-mode. tmux refuses with a

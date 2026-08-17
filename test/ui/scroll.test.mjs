@@ -230,64 +230,68 @@ describe('a swipe follows the finger', () => {
     await stand.attach();
     const { page } = stand;
     const idle = () => page.evaluate(() => document.getElementById('pager').classList.contains('idle'));
-    const css = (prop) => page.evaluate(
-      (p) => getComputedStyle(document.getElementById('pager'))[p], prop);
+    const css = (sel, prop) => page.evaluate(
+      ([s, p]) => getComputedStyle(document.querySelector(s))[p], [sel, prop]);
 
     await page.waitForFunction(
       () => document.getElementById('pager').classList.contains('idle'), null, { timeout: 8000 });
     // Untouchable while faded, which is not decoration: an invisible 44px circle
     // over the answer row's Esc is the same defect as a visible one over it, only
-    // harder to report. What is under it is what a tap gets.
-    assert.equal(await css('pointerEvents'), 'none');
+    // harder to report. What is under it is what a tap gets. The stack is what
+    // goes untouchable; ☰ stands in it permanently and takes its own back.
+    assert.equal(await css('#pager', 'pointerEvents'), 'none');
     await page.waitForTimeout(400); // the fade itself
-    assert.equal(await css('opacity'), '0');
+    assert.equal(await css('#page-up', 'opacity'), '0');
 
     await page.click('#term');
     assert.equal(await idle(), false, 'a finger on the pane did not bring the stack back');
-    assert.equal(await css('pointerEvents'), 'auto');
+    assert.equal(await css('#pager', 'pointerEvents'), 'auto');
   });
 
-  test('the menu steps into the corner the pager leaves', async () => {
-    // Asked for from the phone: what the fade frees is the corner a thumb is
-    // already in, and ☰ otherwise lives in the header — the top edge of a 6-inch
-    // phone, and the one reach this screen still costs. So it stands in the slot
-    // the way back to the live end stands in, on the same timer, and the header's
-    // own steps aside while it is there: one lever, one place at a time.
+  test('the menu keeps the corner whatever the pager is doing', async () => {
+    // Asked for from the phone: the corner is where a thumb already is, and ☰
+    // otherwise lives in the header — the top edge of a 6-inch phone, and the one
+    // reach this screen still costs. For one release it traded places with the
+    // stack, appearing as the stack faded and stepping back into the header as it
+    // woke; a navigation control that moves on a timer is one you have to find
+    // twice, so it stays put and the paging buttons fade above it.
     await stand.open();
     await stand.attach();
     const { page } = stand;
-    const shown = (sel) => page.locator(sel).isVisible();
+    const css = (sel, prop) => page.evaluate(
+      ([s, p]) => getComputedStyle(document.querySelector(s))[p], [sel, prop]);
     const box = async (sel) => {
       const r = await page.locator(sel).boundingBox();
       return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
     };
 
-    // A finger on the pane is one of the things that wakes the stack, so this is
-    // also the state the swap has to come back to.
+    // A finger on the pane is one of the things that wakes the stack.
     await page.click('#term');
-    assert.equal(await shown('#corner-menu'), false, 'both the stack and ☰ want the same corner');
-    assert.equal(await shown('#back'), true, 'the header lost its ☰ while the stack was up');
-    const strip = await box('#tabs');
+    const menu = await box('#corner-menu');
+    const up = await box('#page-up');
+    assert.equal(menu.x, up.x, 'the corner is two columns rather than one');
+    assert.ok(up.y + up.h <= menu.y, `the way into the history is not above ☰: ${JSON.stringify({ menu, up })}`);
 
     await page.waitForFunction(
       () => document.getElementById('pager').classList.contains('idle'), null, { timeout: 8000 });
-    assert.equal(await shown('#corner-menu'), true, 'nothing took the corner the stack left');
-    assert.equal(await shown('#back'), false, 'both ☰ are on screen at once');
-    // Exactly the pager's own slot: ⇞ is what occupies it while it is alone there.
-    assert.deepEqual(await box('#corner-menu'), await box('#page-up'),
-      'the menu did not land where the way back stands');
-    // And the strip stayed where it was. The header keeps the room rather than
-    // closing over it, or every tab would shift under the eye whenever something
-    // is scrolled — the row is read along, and it scrolls sideways already.
-    assert.deepEqual(await box('#tabs'), strip, 'the tab strip moved when ☰ left the header');
+    await page.waitForTimeout(400); // the fade itself
+    assert.equal(await css('#page-up', 'opacity'), '0', 'the paging buttons stayed');
+    assert.equal(await css('#corner-menu', 'opacity'), '1', '☰ faded with the stack it stands in');
+    assert.deepEqual(await box('#corner-menu'), menu, '☰ moved when the stack faded');
+    // Untouchable is the stack, not the button in it: the room the faded buttons
+    // keep must not swallow taps aimed at the pane, and ☰ must still take its own.
+    assert.equal(await css('#pager', 'pointerEvents'), 'none');
+    assert.equal(await css('#corner-menu', 'pointerEvents'), 'auto');
 
-    // The tap opens the list, which is not free: it is a pointerdown on the pane,
-    // and waking the stack from there would take the button out from under the
-    // finger between the press and the click.
+    // It opens the list, and the tap does not wake the stack it stands in: the
+    // way to the sessions is not a request for the way through the output.
     await page.click('#corner-menu');
     await page.waitForFunction(
       () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
       null, { timeout: 5000 });
+    assert.equal(await page.evaluate(
+      () => document.getElementById('pager').classList.contains('idle')), true,
+    'reaching for the list brought the paging buttons back');
     await stand.shutDrawer();
   });
 

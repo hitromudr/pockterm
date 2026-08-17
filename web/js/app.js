@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v154';
+const APP_VERSION = 'v156';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1809,6 +1809,8 @@ function onControl(raw) {
   try { c = JSON.parse(raw); } catch (_) { return; }
   if (c && c.type === 'mode') setCopyMode(!!c.in, c.back | 0, c.hist | 0);
   if (c && c.type === 'notify') show(noticeFrom(c));
+  // What is behind the screen, for the copy window that asked for it.
+  if (c && c.type === 'capture') tookCapture(c.text);
   // What tmux does per wheel notch, asked of tmux rather than assumed: the
   // swipe follows the finger only if the page knows the size of a step.
   if (c && c.type === 'config' && c.wheelLines > 0) { wheelLines = c.wheelLines; setScrollStep(); }
@@ -2948,11 +2950,28 @@ function dropSelection() {
 function setSelectMode(on) {
   selectMode = on;
   dropSelection();
+  // The floating controls stand down while the copy is frozen. Both are drawn
+  // above it (the stack at z-index 12, the rail at 7) and both are about a pane
+  // that is not moving: what they would do here is take the drags meant for the
+  // copy window — the corner and an 18px strip down its right edge — from the one
+  // gesture this mode has.
+  termBox.classList.toggle('selecting', on);
   if (on) {
+    // The screen first, so the mode opens on the frame it was asked for, and the
+    // history behind it when the host answers: a copy window that appeared only
+    // after a round trip would read as a button that does nothing.
     snapshotEl.textContent = snapshotText(visibleLines());
     snapshotEl.style.fontSize = `${fontSize}px`;
   }
   snapshotEl.hidden = !on;
+  // Opened at the end, which is the screen the mode was entered from: what is
+  // wanted is usually in front of you, and everything before it is a drag away
+  // once it arrives. A hidden element has no layout to scroll, so this is after
+  // the line above and not before it — the same trap the scrollbar's track met.
+  if (on) {
+    snapshotEl.scrollTop = snapshotEl.scrollHeight;
+    askCapture();
+  }
   if (!on) closePasteTarget();
   renderBars();
   if (on) {
@@ -2964,6 +2983,41 @@ function setSelectMode(on) {
     term.focus();
   }
 }
+// Ask the host for what is behind the screen, and put it in the copy window when
+// it arrives.
+//
+// The page has no history of its own to freeze: tmux repaints its pane rather
+// than letting lines scroll off it, so the terminal here sits at the top of an
+// empty buffer however much output has gone past — measured on the stand,
+// `viewportY` is 0 after eighty lines. That is why the copy window was exactly as
+// tall as its own box and could not be scrolled at all, which is how it was
+// reported.
+// A text frame, like every other control here: `send` encodes to binary, which
+// is the keystroke path — asking for a capture through it would type the request
+// into the pane.
+function askCapture() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  captureWanted = true;
+  ws.send(JSON.stringify({ type: 'capture', lines: SNAPSHOT_LINES }));
+  return true;
+}
+
+// Whether a copy window is still waiting for one. An answer that arrives after
+// the mode was left belongs to nothing, and one that arrives after a second
+// request would otherwise overwrite the newer screen with the older text.
+let captureWanted = false;
+
+function tookCapture(text) {
+  if (!captureWanted || !selectMode) return false;
+  captureWanted = false;
+  const lines = String(text == null ? '' : text).split('\n');
+  // The screen is already at the end of what came back, so this replaces rather
+  // than appends — and the view stays where it was put, at the bottom.
+  snapshotEl.textContent = snapshotText(lines);
+  snapshotEl.scrollTop = snapshotEl.scrollHeight;
+  return true;
+}
+
 for (const b of document.querySelectorAll('#modebar button, #modebar label, #settings button, #show-bars')) {
   keepsTerminalFocus(b);
 }
@@ -3271,6 +3325,11 @@ function visibleLines() {
   }
   return lines;
 }
+
+// How far back the frozen copy asks to reach. A cap on how tall a <pre> a phone
+// is asked to lay out and select inside, not on what tmux keeps; the server
+// clamps it again (proto.CaptureMax).
+const SNAPSHOT_LINES = 2000;
 
 // --- notifications while the page is open ---------------------------------
 // One watcher decides for both channels: the server messages Telegram for a
@@ -3621,35 +3680,37 @@ keepsTerminalFocus(pageDownBtn);
 // them reachable at all — ⇞ is the way *into* the history, and a button that only
 // came back once you were already scrolled back could not be what took you there.
 // A pointerdown rather than a touch, so a laptop's mouse says the same thing.
-// And what the fade frees is a corner a thumb is already in, so ☰ takes it:
-// the way to the session list otherwise lives in the header, which is the top
-// edge of a 6-inch phone and the one reach this screen still costs. It stands in
-// the slot the way back to the live end stands in, on the same timer, and the
-// header's own steps aside while it is there — one lever in one place at a time,
-// with the same handler, because two handlers would drift.
+//
+// **☰ keeps the corner, and the paging buttons fade above it.**
+//
+// The way to the session list also lives in the header, which is the top edge of
+// a 6-inch phone and the one reach this screen still costs — the swipe from the
+// left edge was the first answer to that. For one release it traded places with
+// the stack, appearing in the corner as the stack faded and stepping back into
+// the header as it woke; asked for from the phone to stay put instead, which is
+// also the calmer rule: a navigation control that moves on a timer is one you
+// have to find twice. It is the stack's first child, so `column-reverse` keeps it
+// against the bottom whatever else is shown, and it does not fade with the rest.
 const PAGER_IDLE = 3000;
 const pagerEl = document.getElementById('pager');
 const cornerMenuBtn = document.getElementById('corner-menu');
-const backBtn = document.getElementById('back');
 let pagerTimer = null;
 function showPager(on) {
   if (!pagerEl) return;
   pagerEl.classList.toggle('idle', !on);
-  if (cornerMenuBtn) cornerMenuBtn.hidden = on;
-  if (backBtn) backBtn.classList.toggle('stepped-aside', !on);
-  // The corner button is one more thing drawn over the pane's last rows, so the
-  // stack has to clear whichever of them is the taller.
-  liftFloaters();
 }
 function wakePager() {
   showPager(true);
   clearTimeout(pagerTimer);
   pagerTimer = setTimeout(() => showPager(false), PAGER_IDLE);
 }
-// A tap on ☰ is not a gesture about the history: waking the stack from here would
-// take the button out from under the finger between the press and the click, and
-// the drawer would never open. Same rule as `#term`'s own click handler — a
-// control drawn over the terminal is not the terminal.
+// A tap on ☰ is not a gesture about the history, so it does not wake the stack —
+// the way to the session list is not a request for the way through the output.
+// Same rule as `#term`'s own click handler: a control drawn over the terminal is
+// not the terminal. It was load-bearing while ☰ and the stack traded places (the
+// wake took the button out from under the finger between the press and the click,
+// and the drawer never opened); now it is what keeps three paging buttons from
+// appearing every time somebody reaches for the list.
 termBox.addEventListener('pointerdown', (e) => {
   if (e.target instanceof Element && e.target.closest('#corner-menu')) return;
   wakePager();

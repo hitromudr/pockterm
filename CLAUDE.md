@@ -2235,6 +2235,47 @@ reported from had a stopped agent and a silent pane. And the page was sending it
 notches: the journal shows 33 to 66 per gesture. The gesture was being cut off
 before it became notches at all, which is visible from neither end.
 
+## The copy window had nothing to scroll, because the page has no history
+
+Selection mode lays a frozen copy of the screen over the terminal, and for as
+long as it existed that copy was the screen and nothing else — so it was exactly
+as tall as its own box. Measured on the stand: `scrollHeight` equal to
+`clientHeight` after eighty lines of output, and `scrollTop = 9999` leaving it at
+0. Reported from the phone as the copy window not scrolling, which is precisely
+what it did.
+
+**The obvious fix reads xterm's own scrollback, and there is none.** The terminal
+here is created with `scrollback: 5000` and it stays empty: tmux owns the history
+and repaints its pane rather than letting lines scroll off it, so the browser's
+buffer sits at the top with `viewportY` at 0 however much has gone past. That was
+measured before it was believed — the first version of this fix read the buffer,
+and the copy window came out one screen tall exactly as before.
+
+So it is asked of the host (`tmuxcmd.CaptureHistory`, `capture-pane -p -S -N`),
+over the socket the page already has rather than an endpoint of its own: the
+session is the one this socket is attached to, so there is no name to pass and no
+second way in to guard. The count is clamped on both sides (`proto.CaptureMax`) —
+a nonsense number is answered with the screen rather than with an error, because
+what answers this frame is text on a phone with no console.
+
+**The mode opens on the frame it was asked for.** The screen is frozen at once and
+the history replaces it a round trip later, with the view pinned at the bottom
+where the mode was entered from; a copy window that appeared only after the answer
+would read as a button that does nothing, and a host that cannot answer costs
+nothing but the scrollback. The answer is dropped unless a copy window is still
+waiting for it (`captureWanted`), or one arriving late would overwrite a newer
+screen with older text.
+
+**And nothing floats over a frozen copy.** The pager stack and the scrollbar are
+drawn above it — z-index 12 and 7 against the snapshot's 6 — and both are about a
+pane that is not moving here, so what they did was take drags from the one gesture
+this mode has: the corner, and an 18px strip down the right edge. They are gone
+while it is up.
+
+The control frame goes out as **text**. `send` encodes to binary, which is the
+keystroke path, so the first version of this asked for the capture by typing
+`{"type":"capture","lines":2000}` into the pane.
+
 ## What the shift under the finger does not cover
 
 The page shifts the drawn rows to follow the finger between whole lines

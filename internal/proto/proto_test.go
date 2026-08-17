@@ -44,6 +44,23 @@ func TestParseScrollTo(t *testing.T) {
 	}
 }
 
+func TestParseCapture(t *testing.T) {
+	// What the frozen copy asks for: how far behind the screen to reach.
+	c, err := Parse([]byte(`{"type":"capture","lines":2000}`))
+	if err != nil || c.Type != "capture" || c.Lines != 2000 {
+		t.Fatalf("capture: %+v, %v", c, err)
+	}
+	// Clamped rather than refused, both ways. What answers this frame is text on
+	// a phone with no console: a copy window holding the screen it was opened on
+	// is a poorer answer than a long one, and no answer at all is the poorest.
+	if c, err := Parse([]byte(`{"type":"capture","lines":-5}`)); err != nil || c.Lines != 0 {
+		t.Fatalf("negative: %+v, %v", c, err)
+	}
+	if c, err := Parse([]byte(`{"type":"capture","lines":9999999}`)); err != nil || c.Lines != CaptureMax {
+		t.Fatalf("above the cap: %+v, %v", c, err)
+	}
+}
+
 func TestRejects(t *testing.T) {
 	for _, bad := range []string{
 		`{"type":"resize","cols":0,"rows":24}`,

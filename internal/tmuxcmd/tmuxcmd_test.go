@@ -65,6 +65,24 @@ func TestCapturePaneArgv(t *testing.T) {
 	}
 }
 
+func TestCaptureHistoryArgv(t *testing.T) {
+	// What the frozen copy on a phone is filled from: the history behind the
+	// screen as well as the screen. `-S` counts back from the top of the visible
+	// pane, so the count goes out negative; the end is left at the default, which
+	// is the bottom of that pane.
+	got := CaptureHistory("pockterm-7", 2000)
+	want := []string{"tmux", "capture-pane", "-p", "-S", "-2000", "-t", "pockterm-7"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v", got)
+	}
+	// A nonsense count is the screen alone rather than a command tmux refuses:
+	// what answers this frame is text on a phone, and no text is the worse answer.
+	if got := CaptureHistory("pockterm-7", -5); !reflect.DeepEqual(
+		got, []string{"tmux", "capture-pane", "-p", "-S", "-0", "-t", "pockterm-7"}) {
+		t.Fatalf("negative: got %v", got)
+	}
+}
+
 func TestPaneModeArgv(t *testing.T) {
 	got := PaneMode("pockterm-7")
 	want := []string{"tmux", "display-message", "-p", "-t", "pockterm-7",

@@ -266,6 +266,28 @@ func CapturePane(session string) []string {
 	return []string{"tmux", "capture-pane", "-p", "-t", session}
 }
 
+// CaptureHistory returns the argv printing the pane's last lines of history
+// together with the screen itself — what the page freezes when text is being
+// selected on a phone.
+//
+// It exists because the page has no history of its own to freeze. tmux keeps the
+// scrollback and repaints the pane rather than letting lines scroll off it, so
+// the terminal in the browser sits at the top of an empty buffer however much
+// output has gone past: measured on the stand, `viewportY` is 0 after eighty
+// lines. The copy window was therefore exactly one screen tall and could not be
+// scrolled at all, which is what was reported.
+//
+// The count is a cap on how tall a <pre> a phone is asked to lay out and select
+// inside, not on what tmux remembers. Negative in tmux's own terms — `-S` counts
+// back from the top of the visible pane — and the end is left at the default,
+// which is the bottom of that pane.
+func CaptureHistory(session string, lines int) []string {
+	if lines < 0 {
+		lines = 0
+	}
+	return []string{"tmux", "capture-pane", "-p", "-S", "-" + strconv.Itoa(lines), "-t", session}
+}
+
 // PaneMode returns the argv reporting three things about the current pane of
 // session: whether it is in a tmux mode — copy-mode, which is what a touch
 // swipe enters to scroll the history — how far back it is scrolled, and how

@@ -265,13 +265,12 @@ export async function startStand({
   page.on('pageerror', (e) => { pageErrors.push(String(e)); consoleErrors.push(String(e)); });
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
 
-  // ☰ is in one place at a time, and which place depends on the clock: in the
-  // header while the pager stack is up, and in the corner that stack frees a few
-  // seconds after the last scrolling. A test that hard-codes `#back` is a test
-  // that passes or fails on how long the lines above it took to type.
+  // ☰ is in two places on the terminal screen — the header, and the corner of the
+  // pane where a thumb is. The header's is what these tests use, since it is the
+  // one that pairs with the drawer's own ❮; the corner has a test of its own.
   async function tapMenu() {
-    const corner = await page.locator('#corner-menu').isVisible();
-    await page.click(corner ? '#corner-menu' : '#back');
+    const header = await page.locator('#back').isVisible();
+    await page.click(header ? '#back' : '#corner-menu');
   }
 
   // The session list is a drawer over the terminal, and every helper that clicks

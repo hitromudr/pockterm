@@ -410,10 +410,6 @@ describe('the session list is a drawer', () => {
       return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
     }, id);
 
-    // A finger on the pane first: ☰ steps into the corner the pager frees a few
-    // seconds after the last scrolling, and what this test compares is the
-    // chevron against the hamburger *in the header*.
-    await page.click('#term');
     const hamburger = await box('back');
     await stand.tapMenu();
     // Exactly 0, not "within a pixel". This assertion compares rounded boxes, and
@@ -1260,6 +1256,60 @@ describe('selection and the clipboard', () => {
   let stand;
   before(async () => { stand = await startStand(); });
   after(async () => { await stand.stop(); });
+
+  test('the frozen copy holds more than the screen, and scrolls through it', async () => {
+    // Reported from the phone as the copy window not scrolling, which is exactly
+    // what it did: the frozen copy was the visible screen and nothing else, so it
+    // was as tall as its own box — measured on the stand, `scrollHeight` equal to
+    // `clientHeight` — and the mode could only ever copy what was already in front
+    // of you. It holds what this page has drawn now, ending at the screen it was
+    // entered from.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#term');
+    for (let i = 1; i <= 80; i++) await page.keyboard.type(`line ${i} of the output\n`);
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('line 80 of the output'));
+    // The first lines are off the top of the screen, which is the whole point:
+    // they are what the old copy window could not reach.
+    assert.equal(
+      await page.evaluate(() => document.querySelector('.xterm-rows').textContent.includes('line 2 of the output')),
+      false, 'the screen still holds the early lines, so this proves nothing');
+
+    await page.click('#select');
+    await page.waitForSelector('#snapshot:not([hidden])');
+    // The screen is frozen at once and the history behind it arrives a round trip
+    // later — the mode opening only after that would read as a button that does
+    // nothing. So the wait is for the answer, not for the mode.
+    await page.waitForFunction(() => {
+      const s = document.getElementById('snapshot');
+      return s.scrollHeight > s.clientHeight;
+    }, null, { timeout: 5000 });
+    const pre = await page.evaluate(() => {
+      const s = document.getElementById('snapshot');
+      return {
+        over: s.scrollHeight > s.clientHeight,
+        atEnd: s.scrollHeight - s.clientHeight - s.scrollTop < 2,
+        early: s.textContent.includes('line 2 of the output'),
+        last: s.textContent.includes('line 80 of the output'),
+      };
+    });
+    assert.equal(pre.over, true, 'the copy window is still exactly as tall as its own box');
+    assert.equal(pre.early, true, 'what scrolled off the screen is not in the copy');
+    assert.equal(pre.last, true, 'the screen it was entered from is not in the copy');
+    // Opened at the end, where the mode was entered from: what is wanted is
+    // usually in front of you, and everything before it is a drag away.
+    assert.equal(pre.atEnd, true, 'the copy window opened somewhere in the middle of the history');
+
+    // And nothing floats over it: both would take drags from the one gesture this
+    // mode has — the stack in the corner, the rail down the right edge.
+    assert.equal(await page.locator('#pager').isHidden(), true, 'the pager stayed over the frozen copy');
+    assert.equal(await page.locator('#scrollbar').isHidden(), true, 'the rail stayed over the frozen copy');
+    await page.click('#sel-done');
+    await page.waitForSelector('#snapshot', { state: 'hidden' });
+  });
 
   test('copy puts the selection in the clipboard and lets go of the screen', async () => {
     await stand.open();

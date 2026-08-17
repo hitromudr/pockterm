@@ -67,6 +67,13 @@ type Options struct {
 	// is can be a poll old and a delta applied to the wrong place lands
 	// somewhere nobody asked for. nil makes the request a no-op.
 	ScrollTo func(id int64, back int) error
+	// Capture reads the client pane's history together with its screen. It is
+	// what selection mode freezes, and it has to come from here because the page
+	// has none of its own: tmux repaints the pane instead of letting lines scroll
+	// off it, so the browser's terminal sits at the top of an empty buffer however
+	// much output has gone past. nil leaves the copy window holding the screen it
+	// was opened on, which is what it held before.
+	Capture  func(id int64, lines int) (string, error)
 	Presence Presence // notification bookkeeping; nil disables it
 	Notices  *Notices // route notifications to attached pages; nil disables it
 	// NotifyMode reports what the owner wants delivered ("off", "pwa",
@@ -791,6 +798,26 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 						log.Printf("scroll-to: %v", err)
 					}
 				}
+			case "capture":
+				// The frozen copy selection mode shows. Answered on this socket
+				// rather than over an endpoint of its own: the session is the one
+				// this socket is attached to, so there is no name to pass and no
+				// second way in to guard.
+				if o.Capture != nil {
+					text, err := o.Capture(id, c.Lines)
+					if err != nil {
+						log.Printf("capture: %v", err)
+						break
+					}
+					frame, err := json.Marshal(captureFrame{Type: "capture", Text: text})
+					if err != nil {
+						log.Printf("capture: %v", err)
+						break
+					}
+					writeMu.Lock()
+					conn.WriteMessage(websocket.TextMessage, frame)
+					writeMu.Unlock()
+				}
 			case "visible":
 				// A backgrounded tab keeps its socket open, so visibility
 				// is what decides whether a notification is redundant.
@@ -800,6 +827,15 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// captureFrame carries the pane's history and screen to the page that asked for
+// it — the text selection mode freezes. One frame, one answer: the page keeps
+// showing the screen it froze until this arrives, so a host that cannot answer
+// costs nothing but the scrollback.
+type captureFrame struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 // modeFrame is the server→client notification about the pane's mode.
