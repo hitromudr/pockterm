@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared cases for the menu detector. Both implementations run against this file — web/js/detect.js (answer buttons) and internal/detect (Telegram notifications) — so the two cannot drift apart unnoticed. `navigate` and `cursor` are read by web/js/detect.js only: they say how a menu takes an answer and where its pointer is, which is what the answer buttons press. internal/detect renders notifications and presses nothing, so its decoder ignores both.",
+  "_comment": "Shared cases for the menu detector. Both implementations run against this file — web/js/detect.js (answer buttons) and internal/detect (Telegram notifications) — so the two cannot drift apart unnoticed. `navigate`, `cursor` and `input` are read by web/js/detect.js only: they say how a menu takes an answer, where its pointer is, and which of the options is the menu's own text field rather than an answer — which is what the answer buttons press, and what one of them deliberately does not press. internal/detect renders notifications and presses nothing, so its decoder ignores all three.",
   "cases": [
     {
       "name": "claude permission prompt",
@@ -148,7 +148,8 @@
           }
         ],
         "cursor": 0,
-        "navigate": "arrows"
+        "navigate": "arrows",
+        "input": 3
       },
       "_why_no_chat": "The arrows do not reach it. Measured on the owner's phone 2026-08-10: a five-button row on this very menu, tapping the last one sent four downs and the pointer came back to option 1 — a ring of four. The rule drawn across the menu is not chrome between options, it is the end of the list the arrows walk, and an option nothing can move to is a button that answers nothing."
     },
@@ -378,7 +379,8 @@
           }
         ],
         "cursor": 1,
-        "navigate": "arrows"
+        "navigate": "arrows",
+        "input": 1
       },
       "_why_no_chat": "The arrows do not reach it. Measured on the owner's phone 2026-08-10: a five-button row on this very menu, tapping the last one sent four downs and the pointer came back to option 1 — a ring of four. The rule drawn across the menu is not chrome between options, it is the end of the list the arrows walk, and an option nothing can move to is a button that answers nothing."
     }

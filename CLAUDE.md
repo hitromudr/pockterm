@@ -924,13 +924,52 @@ the pointer came back to option **1**, twice: `{"want":4,"key":"5","from":0,
 "on":"1","moved":false}`. A ring of four. So `Chat about this` is not an option
 here, and the row is drawn without it.
 
-Two things this is not. It is **not the press being wrong** — the walk went out,
-the pointer was watched, it never arrived and nothing was sent, which is the
-guard above doing its job and the reason the cost was a toast rather than a wrong
-answer. And it is **not what `Type something.` does**: that one is inside the
-ring, the button presses it correctly, and what follows — the menu closing and
-the tool coming back as cancelled — is what choosing "I will answer in my own
-words" means. It reads like a bug and is the feature.
+It is **not the press being wrong** — the walk went out, the pointer was watched,
+it never arrived and nothing was sent, which is the guard above doing its job and
+the reason the cost was a toast rather than a wrong answer.
+
+## `Type something.` is a field, not an answer, and an Enter on it is a refusal
+
+The same menu's other odd entry was read here for two releases as a feature: the
+button presses it correctly, the menu closes, the tool comes back cancelled, and
+that was written down as what choosing "I will answer in my own words" means.
+Reported again from the phone 2026-08-17 — *the button sends a refusal, `user
+declined to answer`* — and the reading was simply wrong.
+
+That line is **not an option**. `AskUserQuestion` puts a text input in its own
+list, and what the pane shows on that row is its **placeholder**:
+`{type:"input",value:"__other__",label:"Other",placeholder:"Type something."}` in
+Claude Code 2.1.233, with `Type something` (no dot) when the question takes
+several answers. Selecting it hands the keyboard to that field; Enter submits
+whatever has been typed into it, and **at the moment a button is tapped the field
+is empty** — an empty `__other__` reaches the agent as "User declined to answer
+questions". Nothing was broken in the press: the journal has
+`{"want":3,"key":"4","on":"4","moved":true}` from that very tap. The answer it
+gave was the honest consequence of pressing a field nobody had typed into.
+
+So this is the one option with **no commit**: `answerKeys` returns the walk and an
+empty string, `pressAnswer` stops when the pointer arrives, and `openForTyping`
+puts the keyboard where the answer can be written — the composer when that bar is
+on screen (an ordinary field, which is what dictation wants, and its `▶` sends the
+text with the Enter behind it), the terminal otherwise. The bar it finds is the bar
+it uses: switching to the composer here would rewrite a remembered choice
+(`pt-bar`) as a side effect of answering a question, which the settings panel
+already got wrong once. The button is drawn outlined rather than filled, because it
+is not an answer and a thumb reads a row of identical buttons as a row of answers.
+
+Two bounds, and each is a way this could go quietly wrong again. **The label is
+matched whole** (`TYPE_FIELD`) — a vocabulary rule, which this file otherwise
+avoids, and there is no shape to read instead: the field is drawn exactly like an
+option. So an answer that merely talks about typing something keeps its button.
+And **a menu that has not yet said how it is answered gets no button for the
+field**: digits are the assumption made when the footer has not arrived, and a
+digit cannot put the pointer on the field without taking what is under it. Silence
+there is the cheap failure; the refusal above is the loud one.
+
+`test/ui/pockterm.test.mjs` reads it off the wire like the rest of that block —
+the walk goes out, the pane redraws with the pointer on the field, and the
+assertion is that **no `\r` follows**. Checked against the defect first: with the
+Enter put back it fails with `"[B\r"`.
 
 An empty row inside a border stays chrome (`│      │` pads a boxed prompt, and
 the options either side of it are one list). What ends the run is a horizontal

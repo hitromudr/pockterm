@@ -29,6 +29,15 @@ for (const c of fixtures.cases) {
     // screen, and a second file of screens would drift from this one.
     assert.equal(got.navigate, c.expect.navigate, 'how it is answered');
     assert.equal(got.cursor, c.expect.cursor, 'where the pointer is');
+    // Which option is the menu's own text field, if any. Read off the same
+    // screens as the rest because it is a fact about them: the line is shaped
+    // like an answer and is a placeholder waiting to be typed into, and an Enter
+    // over it comes back to the agent as a refusal.
+    assert.equal(
+      got.options.findIndex((o) => o.input),
+      c.expect.input === undefined ? -1 : c.expect.input,
+      'which option is the text field',
+    );
   });
 }
 
@@ -106,6 +115,65 @@ test('the real screen that was answered wrongly', () => {
   assert.equal(q.cursor, 0);
   assert.deepEqual(answerKeys(q, 2), { move: DOWN + DOWN, commit: '\r' },
     'the third option is two rows down, and the Enter is a write of its own');
+});
+
+// --- the menu's own text field is not an answer -----------------------------
+//
+// Reported from the phone 2026-08-17: the "Type something." button came back as
+// "User declined to answer questions". That line is not an option, it is the
+// placeholder of a text input the widget puts in the list, and an Enter over the
+// empty field submits nothing at all — which the agent is told is a refusal. So
+// the keys reach it and take nothing, and the page hands the keyboard over.
+const FIELD = [
+  'Как назвать сессию?',
+  '',
+  '❯ 1. По папке',
+  '  2. Type something.',
+  '',
+  'Enter to select · ↑/↓ to navigate · Esc to cancel',
+];
+
+test('the text field is read as one, and it is walked to but never taken', () => {
+  const q = detectQuestion(FIELD);
+  assert.equal(q.options[0].input, false, 'an ordinary answer read as the field');
+  assert.equal(q.options[1].input, true, 'the field read as an ordinary answer');
+  const keys = answerKeys(q, 1);
+  assert.deepEqual(keys, { move: DOWN, commit: '' });
+  // The whole of the defect in one assertion: no Enter goes out for this option,
+  // from either half of the pair.
+  assert.ok(!(keys.move + keys.commit).includes('\r'), 'an Enter over the empty field');
+  // The pointer already on it leaves nothing to send at all.
+  const on = { navigate: 'arrows', cursor: 1, options: q.options };
+  assert.deepEqual(answerKeys(on, 1), { move: '', commit: '' });
+  // And the answers beside it are untouched.
+  assert.deepEqual(answerKeys(on, 0), { move: UP, commit: '\r' });
+});
+
+test('the multiSelect placeholder has no dot, and is the same field', () => {
+  // `Type something` when the question takes several answers, `Type something.`
+  // when it takes one — both are literals in the widget.
+  const q = detectQuestion(FIELD.map((l) => l.replace('Type something.', 'Type something')));
+  assert.equal(q.options[1].input, true);
+  assert.equal(answerKeys(q, 1).commit, '');
+});
+
+test('a menu that has not said how it is answered draws no button for the field', () => {
+  // Digits are the assumption made when a menu says nothing about its keys, and a
+  // digit cannot put the pointer on the field without taking what is under it. A
+  // menu painted a line at a time is read that way for a frame or two, and there
+  // the silence is the cheap failure — the loud one is the refusal above.
+  const q = detectQuestion(FIELD.filter((l) => !l.includes('to navigate')));
+  assert.equal(q.navigate, 'digits');
+  assert.equal(answerKeys(q, 1), null);
+  assert.deepEqual(answerKeys(q, 0), { move: '', commit: '1\r' }, 'the answers still answer');
+});
+
+test('an option that merely mentions the placeholder is still an answer', () => {
+  // The label is matched whole: this is a vocabulary rule, and a menu whose
+  // answer happens to talk about typing something must not lose its button.
+  const q = detectQuestion(FIELD.map((l) => l.replace('Type something.', 'Type something. Or do not.')));
+  assert.equal(q.options[1].input, false);
+  assert.deepEqual(answerKeys(q, 1), { move: DOWN, commit: '\r' });
 });
 
 // --- an offer: the agent's own numbered list, with the box empty under it ---

@@ -27,6 +27,11 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   say) is recognised by its pointer and box rather than by any numbering,
   so a numbered list in prose produces no buttons. While the pane is
   scrolled back into history (copy-mode) the buttons stay hidden.
+  The `Type something.` row is not an answer but the menu's own text field:
+  its button is drawn outlined, walks the pointer onto the field and hands
+  over the keyboard without pressing anything. An Enter over the empty field
+  reaches the agent as a refusal to answer, which is what "the button sends a
+  cancel" was.
 - **Clipboard exchange.** The ✂ button turns on selection mode: swiping
   stops scrolling, the text selects natively, and Copy / Paste move it to
   the device clipboard and back into the terminal.

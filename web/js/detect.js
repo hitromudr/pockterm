@@ -24,6 +24,23 @@ const RIGHT_BORDER = /│\s*$/;
 // v2.1.222 off both panes — see internal/detect/composer.go, which has to agree.
 const COMPOSER = /^[ \t]*\u276f\u00a0/;
 
+// The menu's own text field, offered as one of the options — and not an answer
+// at all. AskUserQuestion puts a text input in the list, and what the pane shows
+// on that line is its *placeholder*, so it is shaped exactly like an option:
+// `  4. Type something.`, or `Type something` without the dot when the question
+// takes several answers. Both are literals in the widget
+// (`{type:"input",value:"__other__",placeholder:…}` in Claude Code 2.1.233), which
+// is why they are matched as words here — there is no shape to read instead.
+//
+// Pressing Enter on it submits what has been typed into the field, and at the
+// moment a button is tapped the field is empty: an empty `__other__` reaches the
+// agent as "User declined to answer questions". Reported from the phone
+// 2026-08-17 as the button sending a refusal, and this corrects the earlier
+// reading of the same event — that choosing it *means* "I will answer in my own
+// words". It does not mean anything; it is a field waiting to be typed into, and
+// the page's job is to reach it and hand over the keyboard.
+const TYPE_FIELD = /^Type something\.?$/;
+
 function stripAnsi(s) {
   // xterm's translateToString already yields plain text; strip escapes
   // anyway so the parser also works on raw captures.
@@ -37,6 +54,13 @@ function label(text) {
 
 function boxGlyphs(s) {
   return s.replace(/[│╭╮╰╯─]/g, '').trim();
+}
+
+// One option, read off a matched line: the key it carries, what it says, and
+// whether it is the field above rather than an answer.
+function option(m) {
+  const text = label(m[3]);
+  return { key: m[2], label: text, input: TYPE_FIELD.test(text) };
 }
 
 // A rule drawn across the menu: horizontal line and nothing else. Deliberately
@@ -148,7 +172,7 @@ export function detectQuestion(lines) {
     // of the run, because a run no longer has to start at 1 — see below.
     if (run && Number(m[2]) === Number(run.opts[run.opts.length - 1].key) + 1
         && continues(plain.slice(run.last + 1, i), run.indent)) {
-      run.opts.push({ key: m[2], label: label(m[3]) });
+      run.opts.push(option(m));
       run.pointers.push(POINTER.test(m[1]));
       run.chrome = run.chrome || chrome;
       run.last = i;
@@ -172,7 +196,7 @@ export function detectQuestion(lines) {
     close();
     run = {
       start: i, last: i, indent: indentOf(plain[i]), chrome,
-      opts: [{ key: m[2], label: label(m[3]) }],
+      opts: [option(m)],
       pointers: [POINTER.test(m[1])],
     };
   }
@@ -285,9 +309,21 @@ export function detectPrompt(lines) {
   return detectQuestion(lines) || detectOffer(lines);
 }
 
+// How many arrows reach the option at `want` from where the pointer is, or null
+// when there is nothing to count from: a menu with no pointer on screen cannot be
+// walked, and a guess gives an answer indistinguishable from the one that was
+// meant.
+function walkTo(menu, want) {
+  const from = menu.cursor;
+  if (from < 0) return null;
+  const step = want > from ? '\x1b[B' : '\x1b[A';
+  return step.repeat(Math.abs(want - from));
+}
+
 // answerKeys(menu, want) → { move, commit }: the bytes that walk to the option
 // at index `want`, and the bytes that take it. Null when there is no way to pick
-// it that can be trusted.
+// it that can be trusted, and an empty `commit` when the option is not something
+// to take at all — the menu's own text field, which is answered by typing.
 //
 // **Two writes, and that is the whole point of the shape.** They used to be one
 // string, and a menu answered with `↓↓↓\r` in a single write answered *option
@@ -318,13 +354,28 @@ export function detectPrompt(lines) {
 // a menu already navigated on screen sits somewhere else. No pointer, no count —
 // and then no button, because a button that guesses gives an answer
 // indistinguishable from the one the owner meant.
+//
+// **The field is reached and not pressed**, which is the one option here with no
+// commit. An Enter over it is not a wrong answer, it is a refusal: the field is
+// empty at the moment a button is tapped, and what the agent gets back is "User
+// declined to answer questions" — reported from the phone, and see TYPE_FIELD
+// above for why the line looks like an answer in the first place. What answers it
+// is what gets typed into it, so the walk is the whole of what a key can do and
+// the caller hands the keyboard over.
 export function answerKeys(menu, want) {
   if (!menu || !menu.options || want < 0 || want >= menu.options.length) return null;
+  if (menu.options[want].input) {
+    // Digits are what a menu is answered with when it says nothing about its
+    // keys, and a digit cannot put the pointer on the field without taking what
+    // is under it. No button then, rather than one that declines the question —
+    // and the same silence a menu with no pointer already gets.
+    if (menu.navigate !== 'arrows') return null;
+    const move = walkTo(menu, want);
+    return move === null ? null : { move, commit: '' };
+  }
   // A digit-driven menu has nothing to walk: the digit names the option, so the
   // pair goes out together and always has.
   if (menu.navigate !== 'arrows') return { move: '', commit: menu.options[want].key + '\r' };
-  const from = menu.cursor;
-  if (from < 0) return null;
-  const step = want > from ? '\x1b[B' : '\x1b[A';
-  return { move: step.repeat(Math.abs(want - from)), commit: '\r' };
+  const move = walkTo(menu, want);
+  return move === null ? null : { move, commit: '\r' };
 }

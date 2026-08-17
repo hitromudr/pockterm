@@ -1218,6 +1218,14 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   border: none;
   border-radius: 8px;
 }
+/* The menu's own text field, offered as an option. Not an answer, so not drawn as
+   one: pressing it walks the pointer there and hands over the keyboard, and an
+   Enter over it would be a refusal — see answerKeys in js/detect.js. */
+#answers button.typing {
+  color: var(--accent);
+  background: transparent;
+  border: 1px dashed var(--accent);
+}
 #answers button.esc {
   align-self: flex-end;
   width: auto;

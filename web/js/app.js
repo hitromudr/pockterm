@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v148';
+const APP_VERSION = 'v149';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3742,6 +3742,10 @@ const POINTER_POLL = 60;
 // `prompt` is what makes matching on a label safe: every AskUserQuestion carries
 // a "Type something." and a "Chat about this", so a label alone would answer a
 // menu that had been replaced by the next one since the row was drawn.
+//
+// And "Type something." is not answered at all — it is the menu's own text field
+// (see answerKeys in js/detect.js), so the press walks the pointer onto it and
+// stops there, an Enter over the empty field being the refusal that was reported.
 async function pressAnswer(prompt, label, want) {
   // Read the screen again rather than trusting the row: it was drawn from an
   // older scan, and between the two the pointer can have moved, the list can
@@ -3765,7 +3769,14 @@ async function pressAnswer(prompt, label, want) {
     toast('no way to answer this menu — nothing was sent');
     return;
   }
-  if (!keys.move) { send(keys.commit); return; }
+  // Nothing to take: the option is the field, and what answers it is typed. When
+  // the pointer is already on it there is nothing to send at all.
+  const typing = !keys.commit;
+  if (!keys.move) {
+    if (typing) { report('answer', { want, at, key, typing: true, walked: false }); openForTyping(); return; }
+    send(keys.commit);
+    return;
+  }
   if (!send(keys.move)) { toast('not sent: no connection'); return; }
   const until = Date.now() + POINTER_WAIT;
   let on = null;
@@ -3778,12 +3789,35 @@ async function pressAnswer(prompt, label, want) {
     on = now && now.cursor >= 0 ? now.options[now.cursor].key : null;
     if (on === key) break;
   }
-  report('answer', { want, at, key, from: menu.cursor, on, moved: on === key, navigate: menu.navigate });
+  report('answer', {
+    want, at, key, from: menu.cursor, on, moved: on === key, navigate: menu.navigate, typing,
+  });
   if (on !== key) {
     toast('the menu did not move — nothing was answered');
     return;
   }
+  if (typing) { openForTyping(); return; }
   send(keys.commit);
+}
+
+// The pointer is on the menu's own text field and nothing has been pressed: from
+// here the question is answered by what gets typed, so the last thing the button
+// does is put the keyboard where that can happen. The composer when it is on
+// screen — an ordinary field, which is what dictation and suggestions want, and
+// its ▶ sends the text with the Enter behind it — and the terminal otherwise,
+// where the on-screen keyboard types into the pane and the bar's ⏎ ends it.
+//
+// The bar it finds is the bar it uses. Switching to the composer here would
+// rewrite a remembered choice (`pt-bar`) as a side effect of answering a
+// question, which is the mistake the settings panel made once already.
+function openForTyping() {
+  if (!composerEl.hidden) {
+    promptEl.focus();
+    toast('type the answer and send it with ▶');
+    return;
+  }
+  term.focus();
+  toast('type the answer, then ⏎');
 }
 
 let lastAnswersSig = null;
@@ -3810,6 +3844,11 @@ function renderAnswers() {
     if (keys === null) continue;
     const b = document.createElement('button');
     b.textContent = `${o.key} · ${o.label}`;
+    // Not drawn as an answer, because it is not one: it opens the menu's field
+    // and the answer is then typed. Its own words say so — "Type something." is
+    // the placeholder the widget put there — and the outline is what keeps a
+    // thumb from reading it as the last of the answers above it.
+    if (o.input) b.classList.add('typing');
     b.addEventListener('click', () => { pressAnswer(q.prompt, o.label, i); term.focus(); });
     answersEl.appendChild(b);
   }

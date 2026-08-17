@@ -2513,6 +2513,44 @@ describe('the answer buttons and the pane they are read from', () => {
     assert.equal(await sent(), '\x1b[B\r', `the Enter never went: ${JSON.stringify(await sent())}`);
   });
 
+  test("the menu's own text field is walked to and never pressed", async () => {
+    // Reported from the phone 2026-08-17: the "Type something." button came back
+    // as "User declined to answer questions". The line is not an option at all —
+    // it is the placeholder of a text input the widget draws in its list — and an
+    // Enter over the empty field submits nothing, which the agent is told is a
+    // refusal. So the press walks the pointer onto the field and stops there, and
+    // what answers the question is what gets typed next.
+    //
+    // Read off the wire like the rest of this block, because the defect is one
+    // byte: the `\r` that must not follow the walk.
+    await recordFrames();
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    drawRun(['1. Раз', '2. Type something.'], 0);
+    await answersUp();
+    assert.equal(await page.locator('#answers button.typing').count(), 1,
+      'the field is drawn as an answer like the others');
+
+    await page.evaluate(() => { window.__sent.length = 0; });
+    await page.locator('#answers button:not(.esc)').nth(1).click();
+    await page.waitForTimeout(250);
+    assert.equal(await sent(), '\x1b[B', `the walk was not sent alone: ${JSON.stringify(await sent())}`);
+
+    // The pane answers as a real menu would: the pointer on the field. That is
+    // exactly the moment an answer would have its Enter sent, and this one must
+    // not — the wait is longer than POINTER_WAIT, so a press that never comes is
+    // a press that will not come.
+    drawRun(['1. Раз', '2. Type something.'], 1);
+    await page.waitForTimeout(1600);
+    assert.equal(await sent(), '\x1b[B',
+      `an Enter went out over the empty field: ${JSON.stringify(await sent())}`);
+    // And it says what to do instead, there being nothing on screen that would
+    // otherwise distinguish "the field is ready" from "the tap did nothing".
+    assert.match(await page.textContent('#toast'), /type the answer/,
+      'nothing said the field was open');
+  });
+
   test('a list being typed into the input box draws no answer buttons', async () => {
     // Reported from the phone with the message still in the box: a reply that
     // began "1. …" newline "2. …" grew two answer buttons, and pressing one would
