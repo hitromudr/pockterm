@@ -237,8 +237,7 @@ describe('a swipe follows the finger', () => {
       () => document.getElementById('pager').classList.contains('idle'), null, { timeout: 8000 });
     // Untouchable while faded, which is not decoration: an invisible 44px circle
     // over the answer row's Esc is the same defect as a visible one over it, only
-    // harder to report. What is under it is what a tap gets. The stack is what
-    // goes untouchable; ☰ stands in it permanently and takes its own back.
+    // harder to report. What is under it is what a tap gets.
     assert.equal(await css('#pager', 'pointerEvents'), 'none');
     await page.waitForTimeout(400); // the fade itself
     assert.equal(await css('#page-up', 'opacity'), '0');
@@ -248,51 +247,42 @@ describe('a swipe follows the finger', () => {
     assert.equal(await css('#pager', 'pointerEvents'), 'auto');
   });
 
-  test('the menu keeps the corner whatever the pager is doing', async () => {
-    // Asked for from the phone: the corner is where a thumb already is, and ☰
-    // otherwise lives in the header — the top edge of a 6-inch phone, and the one
-    // reach this screen still costs. For one release it traded places with the
-    // stack, appearing as the stack faded and stepping back into the header as it
-    // woke; a navigation control that moves on a timer is one you have to find
-    // twice, so it stays put and the paging buttons fade above it.
+  test('the way back to the bars slides into the corner the pager leaves', async () => {
+    // Asked for from the phone. With every bar hidden ▴ is the only button on
+    // screen, and it stands to the left of the pager only because the pager is
+    // there — so when that stack fades it takes the slot the way back to the live
+    // end stands in, which is the corner a thumb reaches for. It slides back when
+    // a scroll brings the stack up, so the two never share the slot.
     await stand.open();
     await stand.attach();
     const { page } = stand;
-    const css = (sel, prop) => page.evaluate(
-      ([s, p]) => getComputedStyle(document.querySelector(s))[p], [sel, prop]);
-    const box = async (sel) => {
-      const r = await page.locator(sel).boundingBox();
-      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+    const right = async (sel) => {
+      const b = await page.locator(sel).boundingBox();
+      const w = await page.evaluate(() => window.innerWidth);
+      return Math.round(w - (b.x + b.width));
     };
 
-    // A finger on the pane is one of the things that wakes the stack.
+    await page.click('#hide');
+    await page.waitForSelector('#show-bars:not([hidden])');
+    // A finger on the pane is one of the things that wakes the stack, and while it
+    // is up the corner is the stack's.
     await page.click('#term');
-    const menu = await box('#corner-menu');
-    const up = await box('#page-up');
-    assert.equal(menu.x, up.x, 'the corner is two columns rather than one');
-    assert.ok(up.y + up.h <= menu.y, `the way into the history is not above ☰: ${JSON.stringify({ menu, up })}`);
+    const beside = await right('#show-bars');
+    const stack = await right('#page-up');
+    assert.ok(beside > stack, `▴ is not left of the stack: ${JSON.stringify({ beside, stack })}`);
 
     await page.waitForFunction(
       () => document.getElementById('pager').classList.contains('idle'), null, { timeout: 8000 });
-    await page.waitForTimeout(400); // the fade itself
-    assert.equal(await css('#page-up', 'opacity'), '0', 'the paging buttons stayed');
-    assert.equal(await css('#corner-menu', 'opacity'), '1', '☰ faded with the stack it stands in');
-    assert.deepEqual(await box('#corner-menu'), menu, '☰ moved when the stack faded');
-    // Untouchable is the stack, not the button in it: the room the faded buttons
-    // keep must not swallow taps aimed at the pane, and ☰ must still take its own.
-    assert.equal(await css('#pager', 'pointerEvents'), 'none');
-    assert.equal(await css('#corner-menu', 'pointerEvents'), 'auto');
+    await page.waitForTimeout(400); // the slide itself
+    assert.equal(await right('#show-bars'), stack, '▴ did not take the corner the stack left');
 
-    // It opens the list, and the tap does not wake the stack it stands in: the
-    // way to the sessions is not a request for the way through the output.
-    await page.click('#corner-menu');
-    await page.waitForFunction(
-      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
-      null, { timeout: 5000 });
-    assert.equal(await page.evaluate(
-      () => document.getElementById('pager').classList.contains('idle')), true,
-    'reaching for the list brought the paging buttons back');
-    await stand.shutDrawer();
+    // And back out of it when something is scrolled: the stack is what the corner
+    // belongs to while there is scrolling to do.
+    await page.click('#term');
+    await page.waitForTimeout(400);
+    assert.equal(await right('#show-bars'), beside, '▴ stayed in the corner the stack came back to');
+    await page.click('#show-bars');
+    await page.waitForSelector('#keybar:not([hidden])');
   });
 
   test('a swipe into history offers the way back', async () => {

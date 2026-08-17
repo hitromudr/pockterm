@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v156';
+const APP_VERSION = 'v157';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -2205,7 +2205,7 @@ document.getElementById('term').addEventListener('click', (e) => {
   // keyboard on it — brought one up on every key. Only the menu's own text field
   // asks for a keyboard, and it asks for itself (see openForTyping).
   if (e.target instanceof Element
-    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad, #corner-menu')) return;
+    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad')) return;
   term.focus();
   refit();
 });
@@ -3681,44 +3681,26 @@ keepsTerminalFocus(pageDownBtn);
 // came back once you were already scrolled back could not be what took you there.
 // A pointerdown rather than a touch, so a laptop's mouse says the same thing.
 //
-// **☰ keeps the corner, and the paging buttons fade above it.**
-//
-// The way to the session list also lives in the header, which is the top edge of
-// a 6-inch phone and the one reach this screen still costs — the swipe from the
-// left edge was the first answer to that. For one release it traded places with
-// the stack, appearing in the corner as the stack faded and stepping back into
-// the header as it woke; asked for from the phone to stay put instead, which is
-// also the calmer rule: a navigation control that moves on a timer is one you
-// have to find twice. It is the stack's first child, so `column-reverse` keeps it
-// against the bottom whatever else is shown, and it does not fade with the rest.
+// **And ▴ takes the corner they leave.** With every bar hidden it is the only
+// button on screen, and it stands to the left of the stack only because the stack
+// is there — so when the stack fades it slides into that slot, where the way back
+// to the live end stands and where a thumb reaches. Asked for from the phone. It
+// slides back on the same quarter second the fade takes, so the two never share
+// the corner.
 const PAGER_IDLE = 3000;
 const pagerEl = document.getElementById('pager');
-const cornerMenuBtn = document.getElementById('corner-menu');
 let pagerTimer = null;
 function showPager(on) {
   if (!pagerEl) return;
   pagerEl.classList.toggle('idle', !on);
+  if (showBarsBtn) showBarsBtn.classList.toggle('slid', !on);
 }
 function wakePager() {
   showPager(true);
   clearTimeout(pagerTimer);
   pagerTimer = setTimeout(() => showPager(false), PAGER_IDLE);
 }
-// A tap on ☰ is not a gesture about the history, so it does not wake the stack —
-// the way to the session list is not a request for the way through the output.
-// Same rule as `#term`'s own click handler: a control drawn over the terminal is
-// not the terminal. It was load-bearing while ☰ and the stack traded places (the
-// wake took the button out from under the finger between the press and the click,
-// and the drawer never opened); now it is what keeps three paging buttons from
-// appearing every time somebody reaches for the list.
-termBox.addEventListener('pointerdown', (e) => {
-  if (e.target instanceof Element && e.target.closest('#corner-menu')) return;
-  wakePager();
-}, { passive: true });
-if (cornerMenuBtn) {
-  keepsTerminalFocus(cornerMenuBtn);
-  cornerMenuBtn.addEventListener('click', toggleDrawer);
-}
+termBox.addEventListener('pointerdown', wakePager, { passive: true });
 wakePager();
 
 // Two rows of overlap, so a page reads on from what the last one ended with

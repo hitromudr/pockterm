@@ -1110,18 +1110,11 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    window needs — see setSelectMode. */
 #term.selecting #pager, #term.selecting #scrollbar { display: none; }
 #pager button { transition: opacity 0.25s ease; }
-#pager.idle button:not(#corner-menu) { opacity: 0; }
-/* Untouchable while faded, and the room they keep is untouchable with them: a
-   column of invisible buttons that still swallowed taps would take them from the
-   pane underneath, which is where the finger was aiming. ☰ takes its own back. */
+/* Untouchable while faded, and the room the buttons keep is untouchable with
+   them: a column of invisible buttons that still swallowed taps would take them
+   from the pane underneath, which is where the finger was aiming. */
 #pager.idle { pointer-events: none; }
-#pager.idle #corner-menu { pointer-events: auto; }
-/* ☰ is the item against the bottom — `#pager` is column-reverse, so that is its
-   first child — and it is there permanently: asked for from the phone after a
-   release in which it traded places with the stack. It is a button of the stack's
-   own size and shape, so it inherits the rules below; only the colour says it is
-   not one of the three. */
-#corner-menu { background: #232a38; color: var(--fg); }
+#pager.idle button { opacity: 0; }
 #pager button {
   width: 44px;
   height: 44px;
@@ -1147,6 +1140,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
      the screen, so the two would otherwise stand in the same corner. */
   right: 76px;
   bottom: calc(10px + env(safe-area-inset-bottom));
+  transition: right 0.25s ease;
   z-index: 12;
   width: 44px;
   height: 44px;
@@ -1156,6 +1150,12 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   color: var(--fg);
   background: #232a38cc;
 }
+/* And into the corner itself once the pager has faded: it stands to the left of
+   that stack only because the stack is there, and with every bar hidden this is
+   the one button on screen — the corner is where a thumb reaches for it. It slides
+   back when a scroll brings the stack up, on the same quarter second the fade
+   takes, so the two never share the slot. */
+#show-bars.slid { right: 22px; }
 /* Grid so all keys fit at any width; a flex row overflowed narrow phones
    and hid the rightmost keys (^C, Enter) behind a horizontal scroll.
    Six columns, two rows, and the positions carry meaning: the arrows form

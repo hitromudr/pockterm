@@ -601,27 +601,21 @@ half that is not decoration — an invisible 44px circle over the answer row's E
 is the same defect as a visible one over it, only harder to report. What you
 cannot see, you must not be able to press; what is under it is what a tap gets.
 
-**And ☰ takes the corner the fade frees.** The way to the session list otherwise
-lives in the header, which is the top edge of a 6-inch phone and the one reach
-this screen still costs — the swipe from the left edge was the first answer to
-that, and this is the second. It stands in the slot the way back to the live end
-stands in (`#pager` is `column-reverse`, so that is the item against the bottom),
-on the same timer, and the header's own **steps aside** while it is there: one
-lever in one place at a time, with the same handler, because two handlers would
-drift. The header keeps the room (`visibility`, not `display`) — the strip is read
-along and scrolls sideways already, and a button leaving that row every time
-something is scrolled would shift every tab under the eye.
+**And ▴ takes the corner the fade frees.** With every bar hidden that button is
+the only thing on screen, and it sits to the left of the stack (`right: 76px`)
+only because the stack is there — so when the stack fades it slides into the slot
+the way back to the live end stands in, which is the corner a thumb reaches for.
+It slides back on the same quarter second the fade takes, so the two never share
+the slot. `right` rather than a transform, because what moves is a button whose
+position is already stated that way.
 
-**A tap on it must not wake the stack**, which is the one way this could be built
-so that it never works: the button is inside `#term`, a press on the pane is what
-wakes the pager, and waking it hides ☰ — between the press and the click, so the
-drawer never opens. It is excluded there by name, the same rule as `#term`'s own
-click handler. The browser test opens the drawer from that button, and with the
-exclusion removed it times out.
-
-Everything in the tests that opens the drawer goes through `stand.tapMenu()`,
-which asks which ☰ is on screen. A test that hard-codes `#back` is a test that
-passes or fails on how long the lines above it took to type.
+**What went into that corner first was ☰, and that was a misreading** — of
+"кнопку открытия меню сдвигай вправо на место кнопки возврат", where the button
+that opens a menu is this ▴ opening the bars, not the hamburger. It cost a
+release: a second ☰ appeared over the pane, the header's stepped aside on a timer
+to keep them from being two, and `stand.tapMenu()` grew a rule about which one to
+click. All of it is gone. The lesson is the cheap one — the sentence named a
+button by what it does, and there were two buttons it could have meant.
 
 **The stack lives inside `#term`, and being permanent is what forced that.** It
 was pinned 64px above the bottom of the viewport, which is a guess about how tall
