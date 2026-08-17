@@ -28,6 +28,28 @@ export function keyBytes(name) {
   return KEYS[name] ?? '';
 }
 
+// Cyrillic letters by the key they sit on. `Ctrl` + `к` is `^R` because `к` is
+// where `r` is — which is what a terminal on a laptop does with a Russian layout
+// too: there Ctrl is applied one layer down, to the keycode, not to the letter the
+// layout produced.
+//
+// A page cannot do that at the layer below, and it cannot switch the keyboard's
+// language either — there is no API for it in the browser or in Android, the
+// keyboard decides. `setImeMode` picks a *kind* of field (no suggestions, visible
+// password) and says nothing about language, and on the client the owner actually
+// has (a Chrome PWA) it does nothing at all. So the letter arrives Cyrillic and the
+// translation is here, or the latch is a lever that only works after switching
+// layouts by hand — two taps before every `^R`, which is worse than the pad the
+// latch exists beside.
+//
+// ЙЦУКЕН against QWERTY, letters only: `х ъ ж э б ю` sit on brackets and
+// punctuation, which are not control codes here.
+const LAYOUT = {
+  й: 'q', ц: 'w', у: 'e', к: 'r', е: 't', н: 'y', г: 'u', ш: 'i', щ: 'o', з: 'p',
+  ф: 'a', ы: 's', в: 'd', а: 'f', п: 'g', р: 'h', о: 'j', л: 'k', д: 'l',
+  я: 'z', ч: 'x', с: 'c', м: 'v', и: 'b', т: 'n', ь: 'm',
+};
+
 // Ctrl latch: applied to the next typed character. Latin letters map to
 // control codes 1..26; anything else passes through unchanged.
 //
@@ -37,7 +59,8 @@ export function keyBytes(name) {
 // not a Latin letter goes through untouched rather than being refused: a latch
 // that swallowed a character would look like a keystroke lost to the network.
 export function applyCtrl(ch) {
-  const code = ch.toLowerCase().charCodeAt(0);
+  const lower = ch.toLowerCase();
+  const code = (LAYOUT[lower] || lower).charCodeAt(0);
   if (code >= 97 && code <= 122) return String.fromCharCode(code - 96);
   return ch;
 }

@@ -92,6 +92,14 @@ export const FAKE_IME = () => {
     el.dispatchEvent(new CompositionEvent('compositionstart', { data: '', bubbles: true }));
     el.value = text;
     el.dispatchEvent(new CompositionEvent('compositionupdate', { data: text, bubbles: true }));
+    // Chrome fires this one too, and the page reads it: an `input` of type
+    // `insertCompositionText` is how it learns that something was typed while a
+    // composition is open (see the journal of the owner's phone, and onEdit in
+    // js/imefield.js). A fake that left it out would make one rule untestable and
+    // the recording it came from a lie.
+    el.dispatchEvent(new InputEvent('input', {
+      data: text, inputType: 'insertCompositionText', isComposing: true, bubbles: true,
+    }));
     window.__composing = true;
     return before;
   };

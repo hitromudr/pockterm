@@ -39,7 +39,29 @@ test('ctrl latch maps letters to control codes', () => {
   assert.equal(applyCtrl('z'), '\x1a');
 });
 
+test('ctrl latch reads a Cyrillic letter by the key it sits on', () => {
+  // The owner's keyboard is Russian, and a page can switch neither the layout nor
+  // the language — so the letter arrives Cyrillic and this is where it becomes a
+  // control code. By position, which is what a terminal on a laptop does with the
+  // same layout: `^R` is on `к` there too.
+  assert.equal(applyCtrl('к'), '\x12', 'к sits on r');
+  assert.equal(applyCtrl('я'), '\x1a', 'я sits on z');
+  assert.equal(applyCtrl('в'), '\x04', 'в sits on d');
+  assert.equal(applyCtrl('д'), '\x0c', 'д sits on l');
+  assert.equal(applyCtrl('С'), '\x03', 'и в верхнем регистре тоже');
+  // Every key the pad offers has a Cyrillic letter that reaches it, or the latch
+  // would be a lever that does less than the buttons beside it.
+  const pad = ['a', 'e', 'k', 'u', 'w', 'r', 'l', 'd', 'z', 'p'];
+  const cyr = ['ф', 'у', 'л', 'г', 'ц', 'к', 'д', 'в', 'я', 'з'];
+  for (let i = 0; i < pad.length; i++) {
+    assert.equal(applyCtrl(cyr[i]), applyCtrl(pad[i]), `${cyr[i]} is not on ${pad[i]}`);
+  }
+});
+
 test('ctrl latch passes other characters through', () => {
   assert.equal(applyCtrl('1'), '1');
-  assert.equal(applyCtrl('щ'), 'щ');
+  // `ж` sits on `;` and `ё` on a backtick — punctuation is not a control code
+  // here, so they go through untouched rather than being swallowed.
+  assert.equal(applyCtrl('ж'), 'ж');
+  assert.equal(applyCtrl('ё'), 'ё');
 });

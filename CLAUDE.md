@@ -203,8 +203,51 @@ height, and what the page reads changes under it. A browser test asserts the row
 count does not move when it opens.
 
 The two share one state. Arming shows the pad *and* latches the next typed
-character — the pad is what a phone uses, the latch is what a keyboard on a
-laptop uses, and they must not be able to disagree about whether Ctrl is on.
+character, and they must not be able to disagree about whether Ctrl is on.
+
+**And the keyboard can be made to hand the letter over, which is what the pad was
+standing in for.** Asked from the phone with both on screen at once — ten buttons
+covering the output while a real keyboard sat under them: *could the modifier use
+the ordinary keyboard instead of its own?* It can, and the lever was already here.
+A composition can be ended by moving the focus (`endEditByBlur`, written for the
+held Enter), and a composition that has ended is a letter xterm sends at once. So
+with Ctrl armed, the first edit inside a composition is ended a task later
+(`ctrlSawEdit`), the letter arrives at `onData` on its own, and the latch turns it
+into a control code. Arming ends a word already in flight for the same reason: it
+goes as the typing it is, and the next letter arrives in a field of its own, where
+a residue would make it one character of several and spend the arm on nothing.
+
+Which question is asked of the field rule rather than of a listener of its own
+(`fieldHygiene`'s `onEdit`, beside `onCompose` and the `isComposing` the Enter
+reads) — two listeners on these events are two answers, and the one that drifts is
+the one that decides.
+
+**The layout is the other half, and without it the latch is a lever for somebody
+else's keyboard.** The owner's is Russian, and a page can switch neither the layout
+nor the language: there is no API for it in the browser or in Android, the keyboard
+decides. `setImeMode` picks a *kind* of field and says nothing about language, and
+on a Chrome PWA it does nothing at all. So `applyCtrl` reads a Cyrillic letter **by
+the key it sits on** — `к` is where `r` is, so `Ctrl` `к` is `^R`, which is what a
+terminal on a laptop does one layer down, where Ctrl is applied to the keycode
+rather than to the letter the layout produced. Letters only: `х ъ ж э б ю` sit on
+brackets and punctuation, which are not control codes here, and they go through
+untouched rather than being swallowed. A test checks that every key the pad offers
+has a Cyrillic letter reaching it, or the latch would do less than the buttons
+beside it.
+
+**So the pad is now for a screen with no keyboard on it**, which is the case it is
+actually good for: reading back through output with the bars away, `^C` still has to
+be reachable. With a keyboard up the letter comes from there. `keyboardUp` is the
+page's own measurement — the viewport, not focus (see `measureKeyboard`) — so on a
+desktop, where nothing shrinks the viewport, the pad behaves exactly as it did.
+
+**The stand judges all of it, including the composing half.** `FAKE_IME` moved into
+`test/ui/stand.mjs` and now dispatches the `input` event Chrome fires alongside
+`compositionupdate` — the page reads that event, so a fake without it made this rule
+untestable and the recording it came from a lie. `test/ui/bytes.test.mjs` reads the
+wire through `cat -v`: `^R` from a composed `к`, `^R` from a typed `к`, and the pad
+staying away with the viewport shortened. Each was checked against the defect first
+— with `onEdit` unwired the composed letter never reaches the pty at all.
 
 Three properties of the latch, and each is a way it could have gone wrong
 quietly.

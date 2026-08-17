@@ -53,7 +53,15 @@
 // pane's own rows sits on top of it — see paintAnswers in js/app.js. A second
 // listener on these events would be a second answer to the one question this
 // rule already tracks.
-export function fieldHygiene({ empty, clear, defer = (fn) => setTimeout(fn, 0), onCompose = () => {} }) {
+//
+// onEdit is the same arrangement for the other question asked of these events:
+// something has just been typed into the field, and whether a composition is open
+// around it. The Ctrl latch needs it — under a composing keyboard the letter sits
+// in the field and xterm sends nothing until the composition ends, so there is no
+// keystroke to turn into a control code (see armCtrl in js/app.js).
+export function fieldHygiene({
+  empty, clear, defer = (fn) => setTimeout(fn, 0), onCompose = () => {}, onEdit = () => {},
+}) {
   let composing = false;
   let scheduled = false;
 
@@ -77,7 +85,9 @@ export function fieldHygiene({ empty, clear, defer = (fn) => setTimeout(fn, 0), 
     on(kind) {
       if (kind === 'compositionstart') { composing = true; onCompose(true); return; }
       if (kind === 'compositionend') { composing = false; onCompose(false); later(); return; }
-      if (kind === 'input' && !composing) later();
+      if (kind !== 'input') return;
+      onEdit(composing);
+      if (!composing) later();
     },
     // For the tests and for the diagnostics: whether a composition is open.
     isComposing() { return composing; },

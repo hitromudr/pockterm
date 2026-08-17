@@ -244,6 +244,26 @@ describe('a word still being composed goes out with the Enter', () => {
     assert.equal(added, 'ab^M', `the word did not go out whole: ${JSON.stringify(added)}`);
   });
 
+  test('Ctrl with a word being composed: the letter is ended and goes as a code', async () => {
+    // The pad of control keys was written because a modifier had nothing to modify:
+    // Gboard composes, so xterm is handed a whole word when the composition closes,
+    // and the letter is never an event of its own. This is the other answer to the
+    // same fact — arm Ctrl and the page ends the composition itself, with the lever
+    // the held Enter already uses, so the single letter arrives alone and becomes
+    // `^R`. Without it the letter sits in the field until the keyboard decides the
+    // word is over, and the wire stays empty.
+    const { page } = stand;
+    await page.click('#term');
+    await page.waitForTimeout(200);
+    const before = await transcript(page);
+    await page.click('#keybar [data-mod="ctrl"]');
+    const was = await page.evaluate(() => window.__compose('к'));
+    assert.equal(was, '', `the field held ${JSON.stringify(was)} before the letter`);
+    await page.waitForTimeout(700);
+    const added = (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+    assert.equal(added, '^R', `the wire holds ${JSON.stringify(added)}`);
+  });
+
   test('and the keyboard is left with a field to type into', async () => {
     // The blur is how the composition ends; the focus goes straight back, or
     // the keyboard closes under whoever was typing.
@@ -291,6 +311,17 @@ describe('the Ctrl latch', () => {
     // stty ever stops being raw, so a failure here is a wrong byte and not a
     // dead pane.
     const added = await typedAfter(page, [{ click: '#keybar [data-mod="ctrl"]' }, { type: 'r' }]);
+    assert.equal(added, '^R', `the wire holds ${JSON.stringify(added)}`);
+  });
+
+  test('a Cyrillic letter is read by the key it sits on', async () => {
+    // The owner's keyboard is Russian, and a page can switch neither its layout nor
+    // its language — there is no API for either, the keyboard decides. So `Ctrl` and
+    // `к` has to be `^R` here, the way it is in a terminal on a laptop, where Ctrl
+    // is applied to the keycode rather than to the letter the layout produced.
+    // Without the map the byte on the wire is the letter itself.
+    const { page } = stand;
+    const added = await typedAfter(page, [{ click: '#keybar [data-mod="ctrl"]' }, { type: 'к' }]);
     assert.equal(added, '^R', `the wire holds ${JSON.stringify(added)}`);
   });
 
@@ -383,5 +414,33 @@ describe('the Ctrl latch', () => {
       { type: 'r' },
     ]);
     assert.equal(added, '^[r', `the wire holds ${JSON.stringify(added)}`);
+  });
+
+  // Last in this block, because it moves the viewport the others measure in.
+  test('with a keyboard on screen the pad stays away and the letter still works', async () => {
+    // The pad is ten buttons, and it was the whole of the answer while a modifier
+    // could not work at all. With a real keyboard up it is a second keyboard for
+    // keys the first one already has, over the output it covers — reported from the
+    // phone with both on screen at once.
+    //
+    // The keyboard is played by the viewport, because that is how the page measures
+    // one: a short viewport is a keyboard up. Its own measurement is asserted rather
+    // than assumed — a viewport that did not shrink enough would look exactly like a
+    // fix that does nothing.
+    const { page } = stand;
+    const tall = await page.evaluate(() => window.visualViewport.height);
+    await page.setViewportSize({ width: 390, height: 420 });
+    await page.waitForFunction(
+      (was) => window.visualViewport.height < was * 0.8, tall, { timeout: 5000 });
+    await page.waitForTimeout(300);
+
+    const added = await typedAfter(page, [{ click: '#keybar [data-mod="ctrl"]' }, { type: 'к' }]);
+    assert.equal(await page.locator('#ctrlpad').isVisible(), false,
+      'the pad opened over the output with a keyboard already on screen');
+    assert.equal(added, '^R', `the wire holds ${JSON.stringify(added)}`);
+
+    await page.setViewportSize({ width: 390, height: 780 });
+    await page.waitForFunction(
+      (was) => window.visualViewport.height >= was * 0.8, tall, { timeout: 5000 });
   });
 });

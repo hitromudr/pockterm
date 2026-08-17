@@ -12,6 +12,7 @@ function stand(initial = '') {
     cleared: 0,
     queue: [],
     composed: [],
+    edits: [],
     run() { const q = s.queue; s.queue = []; for (const fn of q) fn(); },
   };
   s.rule = fieldHygiene({
@@ -19,6 +20,7 @@ function stand(initial = '') {
     clear: () => { s.value = ''; s.cleared++; },
     defer: (fn) => s.queue.push(fn),
     onCompose: (open) => s.composed.push(open),
+    onEdit: (composing) => s.edits.push(composing),
   });
   return s;
 }
@@ -51,6 +53,28 @@ test('a composition opening and closing is told to whoever asked', () => {
   // And an edit with nothing being composed says nothing at all.
   s.rule.on('input');
   assert.deepEqual(s.composed, [true, false]);
+});
+
+test('an edit says whether a composition was open around it', () => {
+  // The Ctrl latch is what asks: with a composition open, the letter is in the
+  // field and xterm sends nothing until it ends, so there is no keystroke to turn
+  // into a control code. Without one, the letter has already gone as a key event
+  // and there is nothing to do.
+  const s = stand();
+  s.rule.on('compositionstart');
+  s.value = 'к';
+  s.rule.on('input');
+  assert.deepEqual(s.edits, [true]);
+  s.rule.on('compositionend');
+  s.run();
+  s.value = 'к';
+  s.rule.on('input');
+  assert.deepEqual(s.edits, [true, false]);
+  // And the clearing rule is unchanged by the report: the field is emptied for the
+  // edit that had no composition around it, and not for the one that had.
+  s.run();
+  assert.equal(s.value, '');
+  assert.equal(s.cleared, 2);
 });
 
 test('nothing is taken while a composition is open', () => {

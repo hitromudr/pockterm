@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v150';
+const APP_VERSION = 'v151';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -110,6 +110,9 @@ const fieldGuard = keepEmpty(term.textarea, {
   // own text field has the keyboard. Reported from the phone as the text coming
   // out crooked while typing into "Type something.": one word over three buttons.
   onCompose: () => paintAnswers(),
+  // And the other question these events answer: something was typed, with or
+  // without a composition around it. The Ctrl latch is what asks — see armCtrl.
+  onEdit: (composing) => ctrlSawEdit(composing),
 });
 
 // Keep terminal control keys in the terminal instead of firing the browser
@@ -1938,16 +1941,60 @@ const ctrlPad = document.getElementById('ctrlpad');
 // what a keyboard uses, and they must not be able to disagree about whether Ctrl
 // is on.
 //
-// The pad exists because a modifier cannot work here at all. Gboard composes, so
-// xterm is handed a whole word when the composition closes and there is no
-// keystroke to modify: measured 2026-08-12 on the owner's phone, `compositionend`
-// with len 3, 5, 7, 8, 9 and only twice len 1 — and even that one arrives only
-// once the keyboard decides the word is over, which is after whatever else was
-// typed. The pad asks the keyboard for nothing.
+// The pad was written because a modifier could not work here at all. Gboard
+// composes, so xterm is handed a whole word when the composition closes and there
+// is no keystroke to modify: measured 2026-08-12 on the owner's phone,
+// `compositionend` with len 3, 5, 7, 8, 9 and only twice len 1 — and even that one
+// arrives only once the keyboard decides the word is over, which is after whatever
+// else was typed. The pad asks the keyboard for nothing.
+//
+// **The keyboard can be made to hand the letter over, though**, and that is what
+// the held Enter already does for the last word of a line: taking the focus off the
+// field ends the composition, and the letter arrives on its own (`ctrlSawEdit`
+// below). So the modifier works with the ordinary keyboard now, which is what was
+// asked for — ten buttons are a poor keyboard when a real one is on screen.
+//
+// So the pad is for a screen with **no** keyboard on it: reading back through
+// output with the bars away, `^C` still has to be reachable. With a keyboard up the
+// letter comes from there, and a pad over the output would be a second keyboard for
+// ten of the keys the first one already has. `keyboardUp` is the page's own
+// measurement (the viewport, not focus — see measureKeyboard), so on a desktop,
+// where nothing shrinks the viewport, the pad behaves exactly as it did.
 function armCtrl(on) {
   ctrlArmed = on;
   if (ctrlKey) ctrlKey.classList.toggle('on', on);
-  if (ctrlPad) ctrlPad.hidden = !on;
+  if (ctrlPad) ctrlPad.hidden = !on || keyboardUp;
+  // A word in flight is not what the modifier was pressed for. Ended here, it goes
+  // as the typing it is, and the next letter arrives in a field of its own — where
+  // a residue would make it one character of several and spend the arm on nothing.
+  if (on && fieldGuard.isComposing()) {
+    report('ctrl-arm', { held: fieldGuard.held(), restored: endEditByBlur(term.textarea) });
+  }
+}
+
+// Ctrl is armed and the keyboard is composing: the letter is in the field and xterm
+// will not send it until the composition ends, so nothing arrives to modify — which
+// is what "Ctrl, letter, and out comes text, with Ctrl still lit" was. The page ends
+// it with the one lever it has (js/ender.js), and the letter then reaches `onData`
+// on its own, where the latch turns it into the control code.
+//
+// A task later, not inside the event that reported the edit: a blur dispatched from
+// within an input event is the kind of reentrancy this file's history is made of,
+// and the wait costs nothing — xterm reads the field on a timeout of its own anyway.
+// `ctrlEnding` is what keeps a second edit arriving in the meantime from asking
+// twice.
+let ctrlEnding = false;
+function ctrlSawEdit(composing) {
+  if (!ctrlArmed || !composing || ctrlEnding) return;
+  ctrlEnding = true;
+  setTimeout(() => {
+    ctrlEnding = false;
+    // Both can have changed while we waited: the arm spent by a letter that came
+    // as a key event after all, the composition ended by the keyboard itself.
+    if (!ctrlArmed || !fieldGuard.isComposing()) return;
+    const held = fieldGuard.held();
+    report('ctrl-end', { held, restored: endEditByBlur(term.textarea) });
+  }, 0);
 }
 
 if (ctrlKey) {
@@ -1979,6 +2026,11 @@ term.onData((d) => {
     // turning the first of them into a control code would mangle the rest of
     // what somebody meant to insert.
     if (d.length === 1) out = applyCtrl(d);
+    // What the arm was spent on. "Ctrl and a letter came out as text" and "the
+    // letter never arrived" are the same thing from a thumb, and this is the line
+    // that tells them apart — with the length, because a word instead of a letter
+    // is the case the guard above refuses.
+    report('ctrl', { len: d.length, code: out !== d });
   }
   sendInput(out);
   // No commitInput() here. Ending the composition after every single
