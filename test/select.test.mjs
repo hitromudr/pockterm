@@ -568,3 +568,32 @@ test('the whole of it together: a pane paragraph with marks and a wrapped header
   assert.equal(markdownFrom(src, 47),
     '  # Очень длинный заголовок\n\n  **Важная правка,** без которой цифры читаются неверно.');
 });
+
+test('a token the pane cut at its edge is joined with nothing between', () => {
+  // Measured on the elect pane at 47 columns: `. Всё на чистом Python — в песочнице
+  // нет numpy/` filled the row to the edge and `sklearn:` began the next, so the
+  // first version of the join wrote `numpy/ sklearn:`.
+  const a = '  Всё на чистом Python — в песочнице нет numpy/';
+  assert.equal(unwrapFrom(`${a}\n  sklearn:`, a.length + 1),
+    '  Всё на чистом Python — в песочнице нет numpy/sklearn:');
+});
+
+test('a line ending in a slash well short of the edge is a line of its own text', () => {
+  // Two paths listed one per line: not a cut, and gluing them would invent a path.
+  assert.equal(unwrapFrom('  data/\n  scripts/', 47), '  data/ scripts/');
+});
+
+test('a sentence that ends exactly at the edge still gets its space', () => {
+  // `.` and `:` end clauses, so they are not in the set — `в самой` + `проверке.` at
+  // the edge is a wrap between words and reads as one.
+  const a = '  Проверка на живых данных нашла ошибку в самой';
+  assert.equal(unwrapFrom(`${a}\n  проверке.`, a.length),
+    '  Проверка на живых данных нашла ошибку в самой проверке.');
+});
+
+test('the marks this file adds do not count towards the edge', () => {
+  // They were never on screen; counting them would fire the guard on a row that
+  // never reached the edge and glue two words together.
+  const a = '  **жирное** и `код` в конце строки/';
+  assert.equal(unwrapFrom(`${a}\n  дальше`, 60), '  **жирное** и `код` в конце строки/ дальше');
+});

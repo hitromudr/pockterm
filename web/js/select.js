@@ -47,7 +47,7 @@ export function markdownFrom(text, cols = 0) {
   // into `---`, and runs always — an unstyled pane draws both with no colour in
   // them at all.
   const inline = src.includes('\x1b') ? convertInline(headingsFrom(linksFrom(src))) : src;
-  return unwrapFrom(rulesFrom(tablesFrom(inline), cols));
+  return unwrapFrom(rulesFrom(tablesFrom(inline), cols), cols);
 }
 
 // A paragraph is one line in the message and several on the pane, and the copy kept
@@ -67,27 +67,62 @@ export function markdownFrom(text, cols = 0) {
 // follows the `●` the agent's own speech is marked with continues at **the column
 // after the marker** — `●` at 0, its continuation at 2, 941 times in that tape.
 //
-// The one break this cannot put back together is a token wider than the pane, which
-// has to be cut somewhere: the join would put a space inside it. None appeared in the
-// tape — a URL is a link and rejoined as one — and inventing a guard for a shape that
-// has not turned up is how the wrong answers in this file got written.
+// **A token wider than the room left on the line is cut, and then the space belongs
+// nowhere.** The tape carried none of those, so this shipped without a guard and the
+// live panes produced one within the hour: `в песочнице нет numpy/` ended a row at
+// the pane's own edge and `sklearn:` began the next, so the join wrote `numpy/
+// sklearn:`. The renderer breaks after a `/` as well as at a space — that is a
+// break opportunity in anybody's line-breaking algorithm — so where a row ends at
+// the edge on one of those characters and the next begins with a letter, the two
+// halves are joined with **nothing** between them (`cutToken`).
+//
+// The edge is measured on the row as the pane drew it, which means the marks this
+// file adds have to come off the count first: `**` and backticks and a link's
+// brackets are all longer than what was on screen, and only an underestimate is
+// safe — it leaves the guard unfired, which is the old behaviour rather than a glued
+// pair of words.
+//
+// What is still not recoverable is a cut through the middle of a plain word: at the
+// edge, `в самой` + `проверке.` and `InterestParserTe` + `st.kt` look exactly alike,
+// and the pane keeps no evidence of which it was. Measured, not assumed — 42 edge
+// breaks in the tape were all between whole words.
 const MARKER = /^( {0,1})● /;
 // What begins something of its own rather than continuing a sentence.
 const STARTS_BLOCK = /^(#{1,6} |> |\||---|[-*+] |\d+[.)] |[●⎿✻✢✽·⏵◯] |\[[ xX✔]\] )/;
 const OWN_LINE = /^(#{1,6} |---$|\|)/;
 
-export function unwrapFrom(text) {
+export function unwrapFrom(text, cols = 0) {
   const lines = String(text == null ? '' : text).split('\n');
   const out = [];
   for (const line of lines) {
     const prev = out.length ? out[out.length - 1] : null;
     if (prev !== null && joins(prev, line)) {
-      out[out.length - 1] = `${prev.replace(/\s+$/, '')} ${line.trim()}`;
+      const glue = cutToken(prev, line, cols) ? '' : ' ';
+      out[out.length - 1] = `${prev.replace(/\s+$/, '')}${glue}${line.trim()}`;
       continue;
     }
     out.push(line);
   }
   return out.join('\n');
+}
+
+// Where the pane cut a token rather than wrapping between words. The marks come off
+// the count because they were never on screen, and an underestimate only leaves the
+// guard unfired.
+const CUT_TAIL = /[/_=&]$/;
+const drawnLen = (s) => s
+  .replace(/\[([^\]\n]*)\]\([^)\n]*\)/g, '$1')
+  .replace(/\*\*/g, '')
+  .replace(/`/g, '')
+  .replace(/^(\s*)#+ /, '$1')
+  .replace(/\s+$/, '')
+  .length;
+
+function cutToken(prev, line, cols) {
+  if (!cols) return false;
+  if (drawnLen(prev) < cols - 1) return false; // the break was chosen, not forced
+  if (!CUT_TAIL.test(prev.replace(/\s+$/, ''))) return false;
+  return /^[\p{L}\p{N}]/u.test(line.trim());
 }
 
 function indentOf(line) { return /^[ \t]*/.exec(line)[0].length; }
