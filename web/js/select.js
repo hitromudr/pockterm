@@ -46,8 +46,93 @@ export function markdownFrom(text, cols = 0) {
   // turns box tables into Markdown tables and the rules between paragraphs back
   // into `---`, and runs always — an unstyled pane draws both with no colour in
   // them at all.
-  const inline = src.includes('\x1b') ? convertInline(linksFrom(src)) : src;
+  const inline = src.includes('\x1b') ? convertInline(headingsFrom(linksFrom(src))) : src;
   return rulesFrom(tablesFrom(inline), cols);
+}
+
+// `#` is the one header level the pane carries, and it carries it as an underline.
+//
+// Measured on this program's own pane rather than on somebody's report: a tape of
+// `capture-pane -e` sampled every two seconds while an agent printed all three
+// levels, 37800 lines of it, Claude Code 2.1.234.
+//
+//   `# один`     →  `\x1b[1;3;4mодин\x1b[0m`   bold + italic + underline, one span
+//   `## два`     →  `\x1b[1mдва\x1b[0m`        bold, one span for the whole line
+//   `### три`    →  `\x1b[1mтри\x1b[0m …`      bold, and set per word
+//
+// The underline is the whole of the signal and it belongs to `#` alone: `1;3;4` is
+// the only sequence in that tape that turns underlining on, and four live panes
+// carry none at all. So a line whose every visible character is underlined is a
+// first-level header and comes back as one; `##` and `###` are bold and stay
+// `**bold**`, because telling those two from each other — one span against one per
+// word — would be reading a line-breaking decision as a level, and telling either
+// from a bold sentence on a line of its own is not possible at all.
+//
+// Consecutive underlined lines are **one** header: that is a header the pane wrapped,
+// and an agent does not write two `#` lines with no blank line between them. The pane
+// puts a blank line after a header either way, which is what makes the run safe to
+// join.
+export function headingsFrom(text) {
+  const src = String(text == null ? '' : text);
+  if (!src.includes('\x1b')) return src;
+  const lines = src.split('\n');
+  const st = { under: false };
+  const out = [];
+  let run = null; // the header being collected, if the line before was one
+  for (const line of lines) {
+    const marked = underlinedWhole(line, st);
+    if (!marked) {
+      if (run) { out.push(run); run = null; }
+      out.push(line);
+      continue;
+    }
+    if (run) run += ` ${marked.text}`;
+    else run = `${marked.indent}# ${marked.text}`;
+  }
+  if (run) out.push(run);
+  return out.join('\n');
+}
+
+// Whether every visible character of the line was underlined, and the line without
+// its escapes. The state carries across lines: a region opens on one and the pane
+// closes it on the next.
+function underlinedWhole(line, st) {
+  let seen = 0;
+  let under = 0;
+  let at = 0;
+  let m;
+  const re = new RegExp(ESC_ANY.source, 'g');
+  while ((m = re.exec(line)) !== null) {
+    seen += count(line.slice(at, m.index), st, () => { under += 1; });
+    at = m.index + m[0].length;
+    const sgr = /^\x1b\[([0-9;]*)m$/.exec(m[0]);
+    if (sgr) applyUnderline(sgr[1], st);
+  }
+  seen += count(line.slice(at), st, () => { under += 1; });
+  if (!seen || under !== seen) return null;
+  const bare = stripEscapes(line);
+  return { indent: /^[ \t]*/.exec(bare)[0], text: bare.trim() };
+}
+
+// Count the visible, non-space characters of a piece and say how many of them were
+// underlined — the spaces of an underlined line are drawn underlined too, and a
+// trailing pad of them would otherwise decide the answer.
+function count(piece, st, onUnder) {
+  let n = 0;
+  for (const ch of piece) {
+    if (/\s/.test(ch)) continue;
+    n += 1;
+    if (st.under) onUnder();
+  }
+  return n;
+}
+
+function applyUnderline(params, st) {
+  for (const p of (params === '' ? ['0'] : params.split(';'))) {
+    if (p === '0' || p === '') st.under = false;
+    else if (p === '4') st.under = true;
+    else if (p === '24') st.under = false;
+  }
 }
 
 // A thematic break is drawn as a rule, and a copy of the rule is box glyphs.

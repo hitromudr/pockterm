@@ -1565,8 +1565,13 @@ describe('selection and the clipboard', () => {
     const styled = '\x1b[1mважное\x1b[0m \x1b[1mслово\x1b[0m и \x1b[38;5;153mmake\x1b[39m \x1b[38;5;153mcheck\x1b[39m тут';
     stand.tmux(['send-keys', '-t', 'demo', '-l', styled]);
     stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    // And the one header level a pane carries: `#` is drawn bold+italic+underlined
+    // (`1;3;4`), measured off this program's own pane. `##` and `###` are bold and
+    // stay bold, so the underline is the whole of the level.
+    stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[1;3;4mЗаголовок первого уровня\x1b[0m']);
+    stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
     await page.waitForFunction(
-      () => document.querySelector('.xterm-rows')?.textContent?.includes('важное слово и make check тут'),
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('Заголовок первого уровня'),
       null, { timeout: 5000 });
 
     await page.click('#select');
@@ -1577,6 +1582,8 @@ describe('selection and the clipboard', () => {
     // neighbours back into the span they came from.
     assert.ok(shown.includes('**важное слово** и `make check` тут'),
       `the copy window holds ${JSON.stringify(shown.slice(-160))}`);
+    assert.ok(shown.includes('# Заголовок первого уровня'),
+      `the underlined line is not a header: ${JSON.stringify(shown.slice(-200))}`);
     // And no escape sequence reached the text a person selects.
     assert.ok(!shown.includes('\x1b'), 'the escapes are on screen instead of the marks');
 

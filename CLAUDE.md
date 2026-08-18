@@ -1830,20 +1830,40 @@ bare word — reported as the copy losing Markdown. The text was never the messa
 picture of it.
 
 tmux gives the attributes back when asked, so `CaptureHistory` asks (`-e`) and `markdownFrom` in
-`js/select.js` reads two of them into text. **Bold is `**`**, headers included — an agent's `##`
-is drawn bold and nothing else, so bold is as much of it as can honestly be recovered.
+`js/select.js` reads them into text. **Bold is `**`**, and it is what the pane leaves of `##` and
+`###` — see the header note below for the one level that is recoverable and why the other two are
+not.
 
-**The level of a header is not on the pane, and that was measured rather than assumed** — asked
-for, and answered by four live panes and some 5000 lines of scrollback. No underline anywhere:
-`\x1b[4m` occurs **0** times on every one of them. No rule under a heading either — the lone rules
-are the thematic breaks below, 40 columns wide on a pane of 163 and unrelated to the width of the
-text above them. No colour: every fully styled line opens with `1m` or the dim `2m` of a
-`… +8 lines (ctrl+o to expand)` hint, and nothing else. And no hashes — the three literal `##`
-lines that exist are a `print("## …")` inside displayed source and a command's own stdout. What a
-header looks like is `\x1b[1mЧто сделано\x1b[0m`, a whole line bold, and a level cannot be read
-out of that. Recovering it would mean **claiming** one, which is the failure this section keeps
-refusing. (The Bun-packed binary answers nothing here: its JS is compressed, and the box glyphs a
-grep finds in it belong to Bun's own TOML writer.) **And the
+**`#` is the one level the pane carries, and it carries it as an underline** (`headingsFrom`). Four
+live panes said there was no level to be had — `\x1b[4m` occurs **0** times across all of them, no
+rule sits under a heading, no colour marks one, and the only literal `##` lines are a
+`print("## …")` inside displayed source and a command's own stdout. They were wrong in one place,
+and only a pane that had printed an `#` could say so: agents write `##` and `###`.
+
+So the measurement was taken **off this program's own pane** — a tape of `capture-pane -e` sampled
+every two seconds while an agent printed all three levels, 37800 lines of it, Claude Code 2.1.234:
+
+```
+# один     →  \x1b[1;3;4mодин\x1b[0m   bold + italic + underline, one span
+## два     →  \x1b[1mдва\x1b[0m        bold, one span for the whole line
+### три    →  \x1b[1mтри\x1b[0m …      bold, and set per word
+```
+
+`1;3;4` is the only sequence in that tape that turns underlining on, so a line whose every visible
+character is underlined is a first-level header and comes back as one. **`##` and `###` stay
+`**bold**`**: telling those two apart — one span against one per word — would be reading a
+line-breaking decision as a level, and telling either from a bold sentence on a line of its own is
+not possible at all. Claiming a level is the failure this section keeps refusing.
+
+Two bounds. **Only a whole line**, its spaces excluded from the vote — tmux pads a row with
+underlined blanks, and a pad would otherwise decide the answer. And **consecutive underlined lines
+are one header**, which is a header the pane wrapped: an agent does not write two `#` lines with no
+blank between them, and the pane puts a blank line after a header either way. Run against the four
+live panes and the tape — 6700 lines — this created exactly one header, the real one, and touched
+nothing else; the `# pass 240` lines a test suite prints are literal text and stayed literal.
+
+(The Bun-packed binary answers nothing here: its JS is compressed, and the box glyphs a grep finds
+in it belong to Bun's own TOML writer. Two attempts at it were two too many.) **And the
 light blue is a backtick.** That one is a colour rather than a shape, which this file otherwise
 refuses to read a TUI by, and there is no shape to read instead: an inline code span is coloured
 text and nothing more. So it was measured rather than assumed — off four live panes, Claude Code

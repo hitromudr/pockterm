@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { snapshotText, chunks, pickedText, markdownFrom, tablesFrom, rulesFrom } from '../web/js/select.js';
+import { snapshotText, chunks, pickedText, markdownFrom, tablesFrom, rulesFrom, headingsFrom } from '../web/js/select.js';
 
 test('rows become lines', () => {
   assert.equal(snapshotText(['one', 'two']), 'one\ntwo');
@@ -435,4 +435,54 @@ test('a table is still a table, and its borders are not turned into breaks', () 
   // Order matters: the tables pass runs first and eats its own borders.
   const t = ['┌──────┬──────┐', '│ a    │ b    │', '├──────┼──────┤', '│ c    │ d    │', '└──────┴──────┘'].join('\n');
   assert.equal(markdownFrom(t, 163), ['| a | b |', '| --- | --- |', '| c | d |'].join('\n'));
+});
+
+// --- the one header level the pane carries ---------------------------------
+// Measured off this program's own pane, Claude Code 2.1.234: a tape of
+// `capture-pane -e` while an agent printed all three levels.
+//   `# один`  → `\x1b[1;3;4mодин\x1b[0m`   bold + italic + underline
+//   `## два`  → `\x1b[1mдва\x1b[0m`        bold, one span
+//   `### три` → `\x1b[1mтри\x1b[0m …`      bold, per word
+const H1 = (s) => `\x1b[1;3;4m${s}\x1b[0m`;
+
+test('an underlined line is the first-level header it was written as', () => {
+  assert.equal(markdownFrom(`  ${H1('Уровень один')}`), '  # Уровень один');
+});
+
+test('the levels the pane draws as bold stay bold', () => {
+  // `##` comes as one span, `###` per word, and reading that difference as a level
+  // would be reading a line-breaking decision.
+  assert.equal(markdownFrom(`  \x1b[1mУровень два\x1b[0m`), '  **Уровень два**');
+  assert.equal(markdownFrom(`  \x1b[1mУровень\x1b[0m \x1b[1mтри\x1b[0m`), '  **Уровень три**');
+});
+
+test('a header the pane wrapped is one header, not two', () => {
+  assert.equal(headingsFrom(`  ${H1('Очень длинный')}\n  ${H1('заголовок')}`),
+    '  # Очень длинный заголовок');
+});
+
+test('a blank line ends the header, so the next one is its own', () => {
+  assert.equal(headingsFrom(`  ${H1('Первый')}\n\n  ${H1('Второй')}`),
+    '  # Первый\n\n  # Второй');
+});
+
+test('a line only partly underlined is no header', () => {
+  // An underline inside prose — nothing on the owner's panes carries one, and a
+  // header is the whole line or it is not a header.
+  assert.equal(headingsFrom(`  \x1b[4mслово\x1b[24m в строке`), '  \x1b[4mслово\x1b[24m в строке');
+});
+
+test('the underline that opens on one line and closes on the next is followed', () => {
+  // The pane closes a region at the end of a line and opens it again on the next,
+  // and this has to read the state across the break rather than per line.
+  assert.equal(headingsFrom(`\x1b[4mПервая\nВторая\x1b[24m`), '# Первая Вторая');
+});
+
+test('the spaces of an underlined line do not decide it', () => {
+  // A pad of underlined trailing spaces is what tmux gives a full-width row.
+  assert.equal(headingsFrom(`  \x1b[1;3;4mЗаголовок    \x1b[0m`), '  # Заголовок');
+});
+
+test('text with no escapes has no headers to find', () => {
+  assert.equal(headingsFrom('# уже написано так\nи текст'), '# уже написано так\nи текст');
 });
