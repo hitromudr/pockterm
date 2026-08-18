@@ -1120,6 +1120,79 @@ func TestTailIgnoresTheAgentsInputBox(t *testing.T) {
 	}
 }
 
+func TestTailIsNeitherToolOutputNorAFragment(t *testing.T) {
+	// What a tool answered is not the agent speaking — the rule `wrapped` has
+	// ended a sentence by from the beginning, and the fallback did not have.
+	// Measured on the owner's panes 2026-08-18: mesh would have been announced
+	// with "59  loglevel = 4" out of such a block.
+	tools := []string{
+		"● Bash(timeout 200 make mail-rpi5 TO=devops …)",
+		"  ⎿  узел rpi5 принял письмо",
+		"     mail devops rc=0",
+		"     … +3 lines (ctrl+o to expand)",
+	}
+	if got := Tail(tools); got != "" {
+		t.Fatalf("Tail = %q, want nothing worth saying", got)
+	}
+
+	// A turn stopped by hand leaves the same shape, and that one reached the
+	// phone: "⎿  Interrupted· What should Claude do", cut where the pane wrapped.
+	interrupted := []string{
+		"  считаю проходимость по фракциям.",
+		"",
+		"● Bash(rg -n loglevel config)",
+		"  ⎿  Interrupted· What should Claude do",
+		"     instead?",
+	}
+	if got := Tail(interrupted); got != "считаю проходимость по фракциям." {
+		t.Fatalf("Tail = %q, want the last thing the agent said", got)
+	}
+
+	// A long answer whose ● has scrolled off the top of a pane 51 columns wide:
+	// the last line on screen is the last line of a paragraph, and one line of a
+	// paragraph is a fragment. elect would have been announced with
+	// "станет ещё ниже." — true, and it says nothing under that title.
+	scrolled := []string{
+		"  Из недоделанного по СОЗД: у меня карточки",
+		"  только принятых и отклонённых, а есть ещё",
+		"  1 131 законопроект, работа над которыми не",
+		"  завершена.",
+		"",
+		"✻ Brewed for 1m 6s · 2 shells still running",
+	}
+	want := "Из недоделанного по СОЗД: у меня карточки только принятых и отклонённых, " +
+		"а есть ещё 1 131 законопроект, работа над которыми не завершена."
+	if got := Tail(scrolled); got != want {
+		t.Fatalf("Tail = %q,\nwant %q", got, want)
+	}
+
+	// It ends where the paragraph does.
+	two := []string{
+		"  Первый абзац, он выше.",
+		"",
+		"  Второй абзац, и только он —",
+		"  ответ.",
+	}
+	if got := Tail(two); got != "Второй абзац, и только он — ответ." {
+		t.Fatalf("Tail = %q, want the last paragraph alone", got)
+	}
+
+	// The counter is never a body, whichever frame the spinner is on. `·` is both
+	// a box glyph and a frame, so the trim that takes a frame off a boxed line
+	// took the mark that says what this line is: measured on the owner's mesh
+	// pane 2026-08-18, the notice would have read "Nebulizing…".
+	if got := Tail([]string{"· Nebulizing… (thinking with xhigh effort)"}); got != "" {
+		t.Fatalf("Tail = %q, want nothing: that is a turn still running", got)
+	}
+
+	// And a line at the margin is a line of its own: a shell's output, where what
+	// is above belongs to another command rather than to this sentence.
+	shell := []string{"$ make check", "ok  internal/watch"}
+	if got := Tail(shell); got != "ok  internal/watch" {
+		t.Fatalf("Tail = %q on a plain shell", got)
+	}
+}
+
 func TestGreenFadesWhenItStopsBeingNews(t *testing.T) {
 	// "Only now everything is green." Every session tmux has is read from the start
 	// now, so without an expiry anything that had ever run stayed green for good —

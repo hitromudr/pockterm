@@ -1565,6 +1565,27 @@ release) and blanks the echoes above it together with their wrapped continuation
 space after the glyph tells the two apart — non-breaking in the box, ordinary in the echo
 — and neither of them is the agent speaking, so `humanSaid` matches both.
 
+**Nor is what a tool answered, and nor is one line of a paragraph.** Both were
+found by checking the fix above against the live panes rather than by a report.
+`wrapped` has ended a sentence at `⎿` from the beginning — the agent pointing at
+output — and the fallback had no such rule, so it answered `59  loglevel = 4`
+off mesh and `⎿  Interrupted· What should Claude do` off devops, where a turn had
+been stopped by hand. `withoutTheOtherVoices` now blanks those blocks with their
+wrapped lines, beside the input box and the echoes. And on a pane with no `●` the
+last line on screen is the last line of a *paragraph*: elect would have been
+announced with `станет ещё ниже.`, which is true and says nothing. `paragraphAt`
+puts the paragraph back together, **only for text the pane indented** — a line at
+the margin is a shell's output, where what is above belongs to another command.
+The cap is counted in runes now, in both places: 200 bytes of Russian is a
+hundred characters, and `clip`'s own bound is two hundred.
+
+**A frame of the spinner is also a box glyph.** The fallback trims box-drawing
+characters off a line so a boxed sentence reads as text — and `·`, added to the
+spinner set on 2026-08-18, is in that set. Trimmed, `· Nebulizing… (thinking with
+xhigh effort)` no longer looks like a counter to `detect.Live`, and it came out of
+the loop as a body. Chrome is asked of both shapes now: the line as it is, and the
+line with the frame off.
+
 **What is wanted is one switch, and it is the server's.** `watch.Pref` holds `off`, `pwa`
 or `pwa+tg`, `watch.Deliver` turns it into the two booleans the notifier obeys, and the
 page reads and writes it over `/api/notify` — plus `notify` in the config frame, so the

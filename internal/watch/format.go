@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/hitromudr/pockterm/internal/detect"
 )
@@ -107,7 +108,7 @@ var (
 // Heuristic on purpose: this is decoration, and a wrong guess costs a less
 // informative notification, not a wrong one.
 func Tail(lines []string) string {
-	lines = withoutTheHumanSide(lines)
+	lines = withoutTheOtherVoices(lines)
 	for i := len(lines) - 1; i >= 0; i-- {
 		m := agentSaid.FindStringSubmatch(ansi.ReplaceAllString(lines[i], ""))
 		if m == nil {
@@ -121,13 +122,69 @@ func Tail(lines []string) string {
 		return s + wrapped(lines, i)
 	}
 	for i := len(lines) - 1; i >= 0; i-- {
-		s := strings.TrimSpace(strings.Trim(strings.TrimSpace(lines[i]), boxRunes))
-		if s == "" || !hasWord(s) || isChrome(s) {
+		l := ansi.ReplaceAllString(lines[i], "")
+		raw := strings.TrimSpace(l)
+		// The frame comes off a line inside a box, and the question about chrome is
+		// asked of both shapes. Of the trimmed one because that is what is read; of
+		// the whole line because `·` is a box glyph *and* a frame of the agent's own
+		// spinner — `· Nebulizing… (thinking with xhigh effort)` came out of this
+		// loop as the body of a notice, the trim having taken the mark that says
+		// what the line is (measured on the owner's mesh pane 2026-08-18).
+		s := strings.TrimSpace(strings.Trim(raw, boxRunes))
+		if s == "" || !hasWord(s) || isChrome(raw) || isChrome(s) {
 			continue
 		}
-		return s
+		return paragraphAt(lines, i, s)
 	}
 	return ""
+}
+
+// paragraphAt puts back what the pane wrapped above the line the fallback
+// settled on.
+//
+// The fallback answers for a screen with no ● on it, and on an agent's pane that
+// is a long answer whose marker has scrolled off the top — so the last line of it
+// is the last line of a *paragraph*, and one line of a paragraph is a fragment.
+// Measured on the owner's own panes 2026-08-18: elect would have been announced
+// with "станет ещё ниже.", which is true, arrives under a title about a session
+// finishing, and says nothing.
+//
+// **Only for text the pane indented**, which is the shape of a wrapped message
+// (the TUI sets an agent's own lines in from the margin). A line at the margin is
+// a line of its own — a shell's output, where what is above is a different
+// command's, not the rest of this sentence — and it is returned alone, as it
+// always was.
+//
+// It ends where the paragraph does, by the same bounds as `wrapped` one speaker
+// over: a blank line, a different indent, a marked line, or anything already
+// known to be interface. `clip` caps what comes out, so a long paragraph is cut
+// at its end rather than begun in the middle.
+func paragraphAt(lines []string, i int, s string) string {
+	at := indentOf(ansi.ReplaceAllString(lines[i], ""))
+	if at == 0 {
+		return s
+	}
+	start := i
+	for j := i - 1; j >= 0; j-- {
+		l := ansi.ReplaceAllString(lines[j], "")
+		t := strings.TrimSpace(l)
+		if t == "" || !hasWord(t) || isChrome(t) || indentOf(l) != at || agentSaid.MatchString(l) {
+			break
+		}
+		start = j
+	}
+	var b strings.Builder
+	n := 0
+	for j := start; j <= i && n < maxLineLen; j++ {
+		t := strings.TrimSpace(ansi.ReplaceAllString(lines[j], ""))
+		if b.Len() > 0 {
+			b.WriteString(" ")
+			n++
+		}
+		b.WriteString(t)
+		n += utf8.RuneCountInString(t)
+	}
+	return b.String()
 }
 
 // The ❯ the TUI puts on the human's side of the conversation. It marks two
@@ -141,8 +198,23 @@ func Tail(lines []string) string {
 // nothing here needs to know which: neither is the agent speaking.
 var humanSaid = regexp.MustCompile(`^\s*❯(\x{00a0}|\s|$)`)
 
-// withoutTheHumanSide takes the owner's own words out of the pane before
-// anything is read off it for a notification.
+// And the third voice on the pane: what a tool answered, which the TUI opens
+// with ⎿ and indents under it.
+//
+//	● Bash(timeout 200 make mail-rpi5 TO=devops …)
+//	  ⎿  узел rpi5 принял письмо
+//	     mail devops rc=0
+//	     … +3 lines (ctrl+o to expand)
+//
+// `wrapped` has ended a sentence at this glyph from the beginning — the agent
+// pointing at output rather than speaking — and the fallback did not, so it
+// answered with lines out of that block: `59  loglevel = 4` off mesh, and
+// `⎿  Interrupted· What should Claude do` off devops when a turn was stopped by
+// hand. Both measured on the owner's panes 2026-08-18.
+var toolSaid = regexp.MustCompile(`^\s*⎿`)
+
+// withoutTheOtherVoices takes everything that is not the agent speaking out of
+// the pane before anything is read off it for a notification.
 //
 // Reported as the notice about a finished session carrying **a reply Claude had
 // suggested** instead of what the agent said. Claude Code writes a suggested
@@ -158,9 +230,9 @@ var humanSaid = regexp.MustCompile(`^\s*❯(\x{00a0}|\s|$)`)
 // The box is cut structurally rather than by shape: it is the bottom of the TUI,
 // so everything from it down is interface — the rest of what is being typed, the
 // rules around it, the status lines under it — and cutting there needs no list of
-// what the footer looks like this release. What is above it is blanked line by
-// line, the message and whatever the pane wrapped it onto.
-func withoutTheHumanSide(lines []string) []string {
+// what the footer looks like this release. The echoes above it and the tool
+// blocks are blanked line by line, each with whatever the pane wrapped it onto.
+func withoutTheOtherVoices(lines []string) []string {
 	out := lines
 	if i := detect.InputBoxAt(out); i >= 0 {
 		out = out[:i]
@@ -168,7 +240,7 @@ func withoutTheHumanSide(lines []string) []string {
 	var pruned []string
 	for i := 0; i < len(out); i++ {
 		l := ansi.ReplaceAllString(out[i], "")
-		if !humanSaid.MatchString(l) {
+		if !humanSaid.MatchString(l) && !toolSaid.MatchString(l) {
 			continue
 		}
 		if pruned == nil {
@@ -176,8 +248,8 @@ func withoutTheHumanSide(lines []string) []string {
 		}
 		at := indentOf(l)
 		pruned[i] = ""
-		// What the pane broke the message onto sits indented under the glyph —
-		// the same shape a marked line's continuation has, one speaker over.
+		// What the pane broke the block onto sits indented under its glyph — the
+		// same shape a marked line's continuation has, one speaker over.
 		for j := i + 1; j < len(pruned); j++ {
 			c := ansi.ReplaceAllString(pruned[j], "")
 			if strings.TrimSpace(c) == "" || indentOf(c) <= at {
@@ -215,8 +287,9 @@ func withoutTheHumanSide(lines []string) []string {
 // maxLineLen anyway, and a notification is not the place to read an essay.
 func wrapped(lines []string, i int) string {
 	var b strings.Builder
+	n := 0
 	markerAt := indentOf(lines[i])
-	for j := i + 1; j < len(lines) && b.Len() < maxLineLen; j++ {
+	for j := i + 1; j < len(lines) && n < maxLineLen; j++ {
 		l := ansi.ReplaceAllString(lines[j], "")
 		s := strings.TrimSpace(l)
 		if s == "" || indentOf(l) <= markerAt || agentSaid.MatchString(l) {
@@ -229,6 +302,7 @@ func wrapped(lines []string, i int) string {
 		}
 		b.WriteString(" ")
 		b.WriteString(s)
+		n += 1 + utf8.RuneCountInString(s)
 	}
 	return b.String()
 }
