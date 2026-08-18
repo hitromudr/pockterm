@@ -1788,11 +1788,21 @@ concatenates text data and adds nothing for a block boundary).
 
 Five things that were each a way to be wrong:
 
-- **The browser makes a selection of its own out of the same press.** `user-select: none` goes
-  on when ours fires at 400ms, under Chrome's own 500ms threshold, and comes back a beat after
-  the finger lifts — so a plain drag still scrolls and a double tap still selects a word, which
-  is how half a line is taken on a phone. `contextmenu` is refused once the press is ours.
-  A phone judges this one: the stand has no touch text selection to suppress.
+- **The browser makes a selection of its own out of the same press, and refusing it needs a
+  clock of its own.** `user-select: none` goes on at `PARA_BAN` (200ms), well under Chrome's own
+  500ms, and comes back a beat after the finger lifts — so a plain drag still scrolls and a
+  double tap still selects a word, which is how half a line is taken on a phone. `contextmenu`
+  is refused for **any** touch press that started on a paragraph, pick or no pick.
+
+  It was the pick's own timer that did both, and that made every way the pick could miss a way
+  the refusal never happened: a thumb drifting past a travel bound of 8px — inside the drift of
+  a thumb resting on text, now 14px, which is about Chrome's own slop — or a 400ms timer
+  delivered late on a main thread that polls and renders. Reported as the second long press
+  selecting a word instead of marking a paragraph, with the handles and Android's own
+  Копировать/Поделиться over the copy window. The journal named it: `pick paras:1 on:true`
+  **twice running**, where the second should have said 2 — the set had been emptied in between by
+  the tap that dismisses that menu, so one defect wore two symptoms. A press that stopped being
+  a pick and is worth knowing about now says so as `pick-missed`.
 - **Touch and pen only.** On a laptop a drag already selects exactly what is wanted, and a
   mouse held still cannot be told from the start of a careful drag — the gesture a pick would
   break.
@@ -1800,9 +1810,11 @@ Five things that were each a way to be wrong:
   of the mode: it would leave, taking the pick with it. Swallowed, and the flag is cleared at
   the next press rather than by the click it waits for — a browser that read the press as a
   scroll sends no click at all.
-- **A tap with paragraphs picked starts over instead of leaving.** Losing a set of picks to a
-  stray thumb is the more expensive of the two mistakes, so it drops the picks and the way out
-  is one tap further.
+- **A tap with paragraphs picked neither leaves nor clears, unless it lands where no paragraph
+  is.** Losing a set of marks to a stray thumb is the more expensive mistake, and the stray thumb
+  turned out to be the one dismissing the menu above: that tap lands on the paragraph under it.
+  So a tap on text does nothing at all, the blank room around it starts over, and marks otherwise
+  go the way they came — a press each.
 - **The host's answer arrives after the mode opens**, and redrawing the window costs every pick
   made in that round trip. Identical text is left alone — the ordinary case on a pane with no
   history above its screen — and `data-from` says the answer came either way.

@@ -1546,6 +1546,89 @@ describe('selection and the clipboard', () => {
     assert.equal(clip, clip.trimEnd(), 'the copy ends in a newline nobody typed');
   });
 
+  test('the browser is refused a selection before its own long press, and a tap keeps the picks', async () => {
+    // Reported from the phone: the first long press marks a paragraph, the second
+    // selects a word instead — handles and Android's own Копировать/Поделиться over
+    // the copy window. Both halves of that are here.
+    //
+    // The refusal used to be done by the pick's own timer, so every way the pick
+    // could fail to fire — a thumb drifting past the travel bound, a timer late on
+    // a busy main thread — was a way the refusal never happened and Chrome's long
+    // press at 500ms took the gesture. It has a clock of its own now, PARA_BAN at
+    // 200ms, and needs nothing else to be true. The stand has no touch text
+    // selection to be refused, so what is asserted is the lever: the class is on
+    // well before 500ms and gone after the finger.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#term');
+    await page.keyboard.type('\nfirst block here\n\nsecond block here\n');
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('second block here'));
+    await page.click('#select');
+    await page.waitForSelector('#snapshot[data-from="host"]', { timeout: 5000 });
+    await page.waitForFunction(
+      () => document.querySelectorAll('#snapshot .para').length >= 2, null, { timeout: 5000 });
+
+    const cdp = await page.context().newCDPSession(page);
+    const at = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('#snapshot .para')].find((e) => e.textContent.includes('first block'));
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getClientRects()[0];
+      return { x: Math.round(r.x + 4), y: Math.round(r.y + r.height / 2) };
+    });
+    const banned = () => page.evaluate(
+      () => document.getElementById('snapshot').classList.contains('holding'));
+
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+    await page.waitForTimeout(320); // past PARA_BAN, short of Chrome's own 500ms
+    assert.equal(await banned(), true, 'the browser could still make a selection out of this press');
+    // And a drift that costs the pick must not cost the refusal: a press that
+    // moved 15px and stopped is still a press the browser would answer.
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove', touchPoints: [{ x: at.x + 20, y: at.y }],
+    });
+    await page.waitForTimeout(50);
+    assert.equal(await banned(), true, 'a drift lifted the refusal with the pick');
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForFunction(
+      () => !document.getElementById('snapshot').classList.contains('holding'),
+      null, { timeout: 3000 });
+    assert.equal(await page.locator('#snapshot .para.picked').count(), 0,
+      'a press that travelled picked a paragraph anyway');
+
+    // Now a mark, and the tap that dismisses that menu: it lands on the paragraph
+    // under it, and it used to take the pick with it.
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+    await page.waitForTimeout(700);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForFunction(
+      () => document.querySelectorAll('#snapshot .para.picked').length === 1, null, { timeout: 3000 });
+
+    // A tap on text: nothing happens, the mark stays.
+    const other = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('#snapshot .para')].find((e) => e.textContent.includes('second block'));
+      const r = el.getClientRects()[0];
+      return { x: Math.round(r.x + 4), y: Math.round(r.y + r.height / 2) };
+    });
+    await page.mouse.click(other.x, other.y);
+    await page.waitForTimeout(200);
+    assert.equal(await page.locator('#snapshot .para.picked').count(), 1,
+      'a tap on a paragraph dropped the picks');
+    assert.equal(await page.locator('#snapshot').isVisible(), true, 'a tap on a paragraph left the mode');
+
+    // The blank room no paragraph owns is the deliberate target, and it starts over.
+    const blank = await page.evaluate(() => {
+      const box = document.getElementById('snapshot').getBoundingClientRect();
+      return { x: Math.round(box.right - 30), y: Math.round(box.bottom - 30) };
+    });
+    await page.mouse.click(blank.x, blank.y);
+    await page.waitForFunction(
+      () => document.querySelectorAll('#snapshot .para.picked').length === 0, null, { timeout: 3000 });
+    assert.equal(await page.locator('#snapshot').isVisible(), true, 'starting over left the mode as well');
+  });
+
   test('the system copy also lets go of the screen', async () => {
     await stand.open();
     await stand.attach();

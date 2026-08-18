@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v160';
+const APP_VERSION = 'v161';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3032,13 +3032,36 @@ function dropSelection() {
 // Touch and pen only. On a laptop a drag already selects exactly what is wanted,
 // and a mouse held still for a moment cannot be told from the start of a careful
 // drag — which is the gesture a pick would break.
-const PARA_HOLD = 400; // ms, under Chrome's own long-press threshold of 500
-const PARA_TRAVEL = 8; // px of movement that makes it a scroll instead
+// The refusal has a clock of its own, and that is the whole of the second
+// release. Both were done by the pick's own timer at 400ms: the pick, and the
+// `user-select: none` that stops the browser making a selection out of the same
+// press. So every way the pick could fail to fire was also a way the refusal
+// never happened — and then Chrome's own long press at 500ms took the gesture,
+// with the handles and the floating Копировать/Поделиться over the copy window.
+// Reported as the second long press selecting a word instead of marking a
+// paragraph, and the journal named it: `pick paras:1 on:true` twice running,
+// where the second should have said 2. The set had been emptied in between, by
+// the tap that dismisses that menu — one defect, two symptoms.
+//
+// So the ban goes on at 200ms and needs nothing else to be true: no travel bound,
+// no punctual timer. 200 rather than 400 is slack against a busy main thread —
+// this page polls, renders and reflows, and a timer delivered late enough is a
+// timer that lost the race to 500.
+const PARA_BAN = 200; // ms, when the browser is refused a selection of its own
+const PARA_HOLD = 400; // ms, when the paragraph is picked
+const PARA_UNBAN = 350; // ms after the finger, when the refusal is lifted
+// A thumb resting on text drifts, and 8px was inside that drift: the press was
+// cancelled and the browser had it. This is about Chrome's own touch slop, which
+// is what it forgives a long press of its own.
+const PARA_TRAVEL = 14;
 let paraEls = [];
 const picked = new Set();
+let banTimer = null;
 let holdTimer = null;
 let holdFrom = null;
+let holdAt = 0;
 let holdFired = false;
+let holdTouch = false;
 
 // The copy window is laid out one span per paragraph so a press has something to
 // land on and a pick has something to mark. The newlines stay inside the spans,
@@ -3092,7 +3115,9 @@ function clearPicks() {
 
 function cancelHold() {
   clearTimeout(holdTimer);
+  clearTimeout(banTimer);
   holdTimer = null;
+  banTimer = null;
   holdFrom = null;
 }
 
@@ -3101,43 +3126,61 @@ snapshotEl.addEventListener('pointerdown', (e) => {
   // was a scroll sends no click at all, so it is cleared here rather than by the
   // click it is waiting for. Same rule as the tab strip's hold.
   holdFired = false;
+  holdTouch = false;
   if (e.pointerType === 'mouse') return;
   const para = e.target && e.target.closest ? e.target.closest('.para') : null;
   if (!para) return;
+  holdTouch = true;
   holdFrom = { x: e.clientX, y: e.clientY };
+  holdAt = Date.now();
+  clearTimeout(banTimer);
   clearTimeout(holdTimer);
+  // The browser is refused a selection out of this press, on its own clock and
+  // whatever the finger does next. Refusing here rather than at `touchstart`
+  // keeps the ordinary gestures: a plain drag still scrolls, and a double tap —
+  // two taps well under this — still selects a word, which is how half a line is
+  // taken on a phone.
+  banTimer = setTimeout(() => {
+    banTimer = null;
+    snapshotEl.classList.add('holding');
+  }, PARA_BAN);
   holdTimer = setTimeout(() => {
     holdTimer = null;
     holdFired = true;
-    // The browser is about to make a selection of its own out of this press.
-    // Refusing it here rather than at `touchstart` keeps the ordinary gestures:
-    // a plain drag still scrolls, a double tap still selects a word — the way to
-    // take half a line on a phone.
-    snapshotEl.classList.add('holding');
     togglePara(para);
   }, PARA_HOLD);
 });
 snapshotEl.addEventListener('pointermove', (e) => {
-  if (!holdFrom) return;
+  if (!holdFrom || !holdTimer) return;
   if (Math.abs(e.clientX - holdFrom.x) > PARA_TRAVEL || Math.abs(e.clientY - holdFrom.y) > PARA_TRAVEL) {
-    cancelHold();
+    // Only the pick is off — the ban stands until the finger goes. A gesture that
+    // travelled is a scroll, and a scroll makes no selection, but a press that
+    // drifted 15px and stopped is still a press the browser would answer.
+    clearTimeout(holdTimer);
+    holdTimer = null;
+    // The one press that used to end with the browser holding the gesture. Rare
+    // enough to say out loud: it is what "the second long press selected a word"
+    // will look like from here if it happens again.
+    const held = Date.now() - holdAt;
+    if (held >= PARA_BAN) report('pick-missed', { ms: held, reason: 'travel' });
   }
 });
 // A scroll the browser took for itself ends the press the same way lifting does.
 for (const ev of ['pointerup', 'pointercancel']) {
   snapshotEl.addEventListener(ev, () => {
+    const fired = holdFired;
     cancelHold();
-    if (!holdFired) return;
     // Let go of the ban a beat after the finger: the browser's own long press
     // fires later than ours, and one it slipped in anyway is dropped with it.
     setTimeout(() => {
       snapshotEl.classList.remove('holding');
-      if (holdFired) dropSelection();
-    }, 350);
+      if (fired) dropSelection();
+    }, PARA_UNBAN);
   });
 }
-// Android raises its selection menu from the same press. Ours has answered it.
-snapshotEl.addEventListener('contextmenu', (e) => { if (holdFired) e.preventDefault(); });
+// Android raises its selection menu from the same press — from any touch press on
+// a paragraph, whether ours became a pick or not. Ours has answered it.
+snapshotEl.addEventListener('contextmenu', (e) => { if (holdTouch) e.preventDefault(); });
 
 // Selection mode covers the terminal with a frozen copy of the screen (see
 // #snapshot in app.css) and selects from that. Selecting in the live
@@ -3331,16 +3374,20 @@ function preview(text) {
 // Without it the only way out is the Done button, and every report so far has
 // been that selection mode hangs the terminal — because from the outside a
 // frozen screen and a hung one are the same picture.
-snapshotEl.addEventListener('click', () => {
+snapshotEl.addEventListener('click', (e) => {
   // The click a long press ends in is not a tap, and this is the one place it
   // would cost something: it would leave the mode the pick was made in.
   if (holdFired) { holdFired = false; return; }
   const sel = insideSnapshot();
   if (sel) return; // a tap that lands inside a selection is not a way out
-  // With paragraphs picked a tap starts over instead of leaving: the way out is
-  // one tap further, and losing a set of picks to a stray thumb is the more
-  // expensive of the two mistakes.
+  // With paragraphs picked, a tap **on text** does nothing at all, and only a tap
+  // on the blank room around it starts over. Both used to clear the set, and it
+  // cost the owner his mark: the tap that dismisses Android's own selection menu
+  // lands on the paragraph under it, so a menu nobody asked for took the pick with
+  // it when it went. What remains a deliberate target is the space no paragraph
+  // owns — and the marks otherwise go the way they came, by a press each.
   if (picked.size) {
+    if (e.target && e.target.closest && e.target.closest('.para')) return;
     clearPicks();
     toast('picks dropped');
     return;
