@@ -1868,10 +1868,29 @@ screenful of scrollback, every one of them OSC — `\x1b]8;id=…;<uri>\x1b\` ar
 What is done with the target was measured too. On those panes it is nearly always the visible text
 itself — a bare URL the terminal made clickable, or a `file:///` path an agent printed — and
 `[STATE.md](file:///home/…/STATE.md)` is worse to paste than `STATE.md`. So `linksFrom` drops the
-wrapper and keeps the text, **except** where the target is an http(s) URL that the text is not:
-that is the `[текст](адрес)` an agent wrote, and it goes back as one. Not across a line break —
-the pane wrapped the text there, and reassembling it is a guess this does not have to make. A
-target carrying a paren takes the `<…>` form, or the first `)` would end the link; a sequence the
+wrapper and keeps the text, and only an http(s) target the text is **not part of** becomes
+`[текст](адрес)`: that is the link an agent wrote (`[learn more](https://support.claude.com/…)`
+on the owner's own pane, twice).
+
+**A wrapped link is several spans, and each of them looked like a label.** The pane re-opens the
+hyperlink on every physical line it covers, so a URL too long for the width arrives as
+`…/hitromudr/yarr.g` and `it` — and the first version made two Markdown links out of that, one of
+them labelled `it`. Three of four live panes carried it; nothing on the stand did. So the spans of
+one address are joined first, and then: the visible text is part of the address → **the address
+goes out once and whole**, which is the one form a paste can use; it is not → the link an agent
+wrote, unless the run was wrapped, a label broken across lines being worse as a link than as the
+text it already is. A single span whose text is a *piece* of its address stays text: half a URL, or
+a short word (`yarr` under `…/yarr.git`), and this cannot tell them apart.
+
+**And the gap between two spans is whitespace only once the escapes are out of it.** Between them
+sits `\n     \x1b[94m` — the pane closes the colour at the end of a line and opens it again on the
+next — so a gap tested with the escapes still in it is never whitespace and nothing was ever
+joined. Measured on the elect pane, where a URL stayed split for exactly that reason. What the
+joined address replaces gives up its text but **keeps its escapes**, in order: a colour reset thrown
+away there would leave the colour on, and one of those colours is what a code span is read from a
+line later.
+
+A target carrying a paren takes the `<…>` form, or the first `)` would end the link; a sequence the
 capture window cut in half is dropped rather than shown, 2000 lines ending wherever they end.
 
 **A table is drawn too, and a copy of it is a wall of box glyphs.** `tablesFrom` in
@@ -1923,7 +1942,12 @@ came from: the server's own capture (`capture-pane -p -e -S -2000`) piped throug
 converter in node, three sessions, ~1300 lines each. What it settled, and none of it was visible
 from the stand:
 
-- **The OSC links above.** 72 escape bytes survived; the fix took it to 0 on every pane.
+- **The OSC links above.** 72 escape bytes survived; the fix took it to 0 on every pane. And the
+  fix itself was measured twice more before it was right: the first version made two links out of
+  one wrapped URL, and the second joined nothing at all because the gap it tested for whitespace
+  had a colour escape in it. What each pane says now, in one line rather than two:
+  `To http://127.0.0.1:3030/hitromudr/yarr.git`,
+  `http://duma.gov.ru/duma/deputies/?letter=&fraction=&district=202 -> 404`.
 - **The tables convert on real data.** 66 box lines on one pane became four tables and **no box
   glyph anywhere**; a wrapped cell came out joined (`Советские мультфильмы`), and the package names
   inside its cells came out as code spans, the colour reading working inside a cell.

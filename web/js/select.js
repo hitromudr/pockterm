@@ -67,18 +67,94 @@ const OSC8 = /\x1b\]8;[^;\x1b\x07]*;([^\x1b\x07]*)(?:\x1b\\|\x07)([\s\S]*?)\x1b\
 // Anything else OSC, and the string terminator a cut-off sequence leaves behind.
 const OSC_ANY = /\x1b\][^\x1b\x07]*(?:\x1b\\|\x07)?/g;
 
+// A wrapped link is several spans, and each of them looked like a label. The pane
+// re-opens the hyperlink on every physical line it covers, so a bare URL too long
+// for the width arrives as `…/yarr.g` and `it` — and the first version made two
+// Markdown links out of that, one of them labelled `it`. Caught on the owner's own
+// panes, where three of four carried it.
+//
+// So the spans of one run are joined first, and what is claimed then follows from
+// **whether the visible text is part of the address**. It is the address itself,
+// drawn as its own label and possibly wrapped: the address goes out once, whole,
+// which is the one form a paste can use. It is not: that is the `[текст](адрес)` an
+// agent wrote, and it goes back as one — unless the run was wrapped, a label broken
+// across lines being worse as a link than as the text it already is.
+//
+// A single span whose text is a piece of its address stays text and nothing else:
+// half a URL, or a short word (`yarr` under `…/yarr.git`) that this has no way to
+// tell from one — and rewriting what is on screen into a longer address is the kind
+// of guess that reads as the right answer.
+const stripSGR = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+// Every escape, whatever kind: what is left is what a person sees.
+const ESC_ANY = /\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x1b\x07]*(?:\x1b\\|\x07)?|[()][A-Za-z0-9]|\\)/g;
+const stripEscapes = (s) => s.replace(ESC_ANY, '');
+
 function linksFrom(src) {
   if (!src.includes('\x1b]')) return src;
-  return src.replace(OSC8, (_, uri, body) => {
-    const text = body.replace(/\x1b\[[0-9;]*m/g, ''); // for the comparison only
-    const plain = text.trim();
+  // Tokenise: link spans, and the text between them.
+  const parts = [];
+  let at = 0;
+  OSC8.lastIndex = 0;
+  let m;
+  while ((m = OSC8.exec(src)) !== null) {
+    if (m.index > at) parts.push({ text: src.slice(at, m.index) });
+    parts.push({ uri: m[1], body: m[2] });
+    at = m.index + m[0].length;
+  }
+  if (at < src.length) parts.push({ text: src.slice(at) });
+
+  let out = '';
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (p.uri === undefined) { out += p.text; continue; }
+    // The run: spans of the same address, separated by nothing but the whitespace
+    // the wrap left behind.
+    const run = [p];
+    let j = i + 1;
+    while (j < parts.length) {
+      const gap = parts[j];
+      const next = parts[j + 1];
+      if (gap.uri !== undefined && gap.uri === p.uri) { run.push(gap); j += 1; continue; }
+      // The gap is whitespace **once the escapes are out of it**: the pane closes
+      // the colour at the end of a line and opens it again on the next, so between
+      // two spans of one address sits `\n     \x1b[94m`. Measured on the elect pane,
+      // where a URL stayed split because of exactly that.
+      if (gap.uri === undefined && /^\s*$/.test(stripEscapes(gap.text))
+        && (gap.text.match(/\n/g) || []).length <= 1
+        && next && next.uri === p.uri) { run.push(gap, next); j += 2; continue; }
+      break;
+    }
+    i = j - 1;
+    const spans = run.filter((r) => r.uri !== undefined);
+    const bodies = spans.map((r) => r.body).join('');
+    const visible = stripSGR(bodies).replace(/\s+/g, '');
+    const uri = p.uri.trim();
     const http = /^https?:\/\//i.test(uri);
-    if (!http || plain === '' || plain === uri.trim() || /\n/.test(body)) return body;
+    const asText = () => run.map((r) => (r.uri === undefined ? r.text : r.body)).join('');
+    if (!http || visible === '') { out += asText(); continue; }
+    if (uri.includes(visible)) {
+      // The address as its own label. Whole and once, wrapped or not — and the
+      // escapes of everything it replaces are kept, in order: a colour reset thrown
+      // away here would leave the colour on, and one of those colours is what a code
+      // span is read from a line later.
+      if (spans.length > 1 || visible === uri) {
+        const escapes = run
+          .map((r) => (((r.uri === undefined ? r.text : r.body).match(ESC_ANY)) || []).join(''))
+          .join('');
+        out += uri + escapes;
+      } else out += asText();
+      continue;
+    }
+    // A label the pane broke — as two spans of one address, or as one span with the
+    // break inside it. Either way a link labelled half a sentence is worse than the
+    // sentence, and putting it back together is a guess this does not need.
+    if (spans.length > 1 || /\n/.test(bodies)) { out += asText(); continue; }
     // A target with a paren or a space in it needs the angle-bracket form, or the
     // first `)` ends the link.
     const target = /[()\s]/.test(uri) ? `<${uri}>` : uri;
-    return `[${body}](${target})`;
-  }).replace(OSC_ANY, '');
+    out += `[${bodies}](${target})`;
+  }
+  return out.replace(OSC_ANY, '');
 }
 
 function convertInline(src) {

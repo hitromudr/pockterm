@@ -338,8 +338,27 @@ test('an address with a paren in it takes the angle-bracket form', () => {
     '[ключ](<https://ru.wikipedia.org/wiki/Ключ_(замок)>)');
 });
 
-test('a link the pane wrapped keeps its text and makes no link', () => {
-  assert.equal(markdownFrom(link('https://example.org/doc', 'первая\n  вторая')), 'первая\n  вторая');
+test('a label the pane broke over two spans keeps its text and makes no link', () => {
+  // The pane re-opens the hyperlink on every physical line it covers, so a wrapped
+  // label arrives as two spans of one address. A link labelled half a sentence is
+  // worse than the sentence.
+  const uri = 'https://example.org/doc';
+  assert.equal(markdownFrom(`${link(uri, 'первая')}\n  ${link(uri, 'вторая')}`), 'первая\n  вторая');
+  assert.equal(markdownFrom(link(uri, 'первая\n  вторая')), 'первая\n  вторая');
+});
+
+test('a bare URL the pane wrapped comes out whole and once', () => {
+  // Measured on three of the owner's four panes: `…/yarr.g` and `it` on the next
+  // line, which the first version turned into two links, one labelled `it`.
+  const uri = 'http://127.0.0.1:3030/hitromudr/yarr.git';
+  const wrapped = `${link(uri, 'http://127.0.0.1:3030/hitromudr/yarr.g')}\n  ${link(uri, 'it')}`;
+  assert.equal(markdownFrom(wrapped), uri);
+});
+
+test('a word that happens to sit inside its address is left as the word', () => {
+  // `yarr` under `…/yarr.git` cannot be told from half a wrapped URL, and rewriting
+  // what is on screen into a longer address is the guess that reads as right.
+  assert.equal(markdownFrom(link('http://127.0.0.1:3030/hitromudr/yarr.git', 'yarr')), 'yarr');
 });
 
 test('a link whose closer never came back is still not left raw', () => {
@@ -364,4 +383,24 @@ test('a code span holding a backtick gets a longer fence', () => {
   // would.
   assert.equal(markdownFrom('\x1b[38;5;153ma`b\x1b[39m'), '`` a`b ``');
   assert.equal(markdownFrom('\x1b[38;5;153ma``b\x1b[39m'), '``` a``b ```');
+});
+
+test('a URL wrapped with a colour change between its halves is still one URL', () => {
+  // Measured on the elect pane: between two spans of one address sits
+  // `\n     \x1b[94m` — the pane closes the colour at the end of a line and opens it
+  // again on the next, and a gap tested for whitespace with the escapes still in it
+  // is never whitespace.
+  const uri = 'http://duma.gov.ru/duma/deputies/?letter=&fraction=&district=202';
+  const wrapped = `${link(uri, 'http://duma.gov.ru/duma/deputies/?letter=')}\n     \x1b[94m`
+    + `${link(uri, '&fraction=&district=202')} -> 404`;
+  assert.equal(markdownFrom(wrapped), `${uri} -> 404`);
+});
+
+test('the colour reset inside a rejoined URL is not thrown away with it', () => {
+  // Dropping a reset leaves the colour on, and one of those colours is what a code
+  // span is read from a line later.
+  const uri = 'https://example.org/aaa/bbb';
+  const wrapped = `${link(uri, 'https://example.org/aaa')}\n  ${link(uri, '/bbb')}`
+    + `\x1b[38;5;153mmake\x1b[39m`;
+  assert.equal(markdownFrom(wrapped), `${uri}\`make\``);
 });
