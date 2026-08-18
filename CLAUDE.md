@@ -26,69 +26,112 @@ layout bug in this app was found on a phone rather than by the unit tests:
 Code comments are in English. User-facing documentation is bilingual:
 `README.md` (Russian) and `README.en.md` (English).
 
+## Rules this file keeps re-learning
+
+Every one of these was paid for twice or more. The sections below cite them
+instead of deriving them again.
+
+- **Nothing that reacts to the pane may sit in the flow.** A panel in the
+  terminal's flex column shortens the pane, tmux redraws to the new height, and
+  what the page reads changes under it: the answer row cost nine rows of
+  thirty-five, the menu scrolled out of the grid, the row went away, the pane
+  grew back, round again — reported as the buttons blinking. So `#answers`,
+  `#ctrlpad`, `#pager`, `#scrollbar`, the sent list and `#snapshot` are
+  `position: absolute` inside `#term`, drawn over the last rows they repeat. A
+  browser test asserts `#{pane_height}` does not move when one is shown.
+- **Focus is the keyboard on Android.** The system raises one for whatever
+  *takes* focus, and raises one again for whatever *holds* focus as soon as the
+  layout moves under it. Hence three levers: a control takes no focus
+  (`keepsTerminalFocus`); anything that moves the layout gives it up
+  (`releaseTerminalFocus`, `releaseFocus`, which also takes the pressed
+  element); and a control that wants a keyboard asks **inside the touch** by
+  giving the focus up and taking it again (`askKeyboard`) — focusing what is
+  already focused raises nothing. Two bounds on giving it up: never while the
+  keyboard is up, since its owner is typing, and never on a desktop, where
+  focus is the only way to type at all. `sawKeyboard` tells the two machines
+  apart, learned by watching a keyboard appear rather than guessed from the
+  user agent.
+- **The keyboard is measured, not assumed** (`measureKeyboard`: the viewport,
+  not focus) and the answer is published as `data-kb` on the root element.
+  Tests wait on that rather than on the viewport's own number — a shrink and a
+  restore in quick succession coalesce into one event, and the page then never
+  sees a keyboard at all. It is a diagnostic first, like `data-size` beside it.
+- **Never rebuild a row under the finger.** A rebuild takes the focused element
+  with it (see above), and on a WebView that is the keyboard coming up; it also
+  disarms a confirmation half way through. State is applied as classes and
+  `data-` attributes, glyphs live in child spans, `paintRows`/`renderTabs`
+  repaint instead of rebuilding, and `renderTabs` refuses outright while a tab
+  is being carried.
+- **One owner per fact.** Two listeners on the same events are two answers, and
+  the one that drifts is the one that decides: composition state is asked of
+  `fieldHygiene` and of nothing else. Likewise one vocabulary of kinds and
+  marks (`web/js/kinds.js`), one confirmation (`armTwice`), one socket
+  (`dropSocket`), one gesture arbiter (`ownsGesture`), one detector pair held
+  together by shared fixtures.
+- **Ask tmux for a state; do not command it.** The page's picture of the pane is
+  up to one poll (400ms) old, so what goes out must be harmless against a pane
+  that has moved on: `send-keys -X cancel` rather than `q`, `scroll-to` with a
+  place rather than a delta. Anything sent after a flick stops the glide first —
+  inertia keeps sending notches for up to a second after the finger is gone.
+- **Read a TUI by shape, never by vocabulary.** Verbs, labels and spinner frames
+  turn over between Claude Code releases; brackets, indentation, a pointer
+  glyph, a footer line do not. Where a word is unavoidable (`TYPE_FIELD`,
+  `Submit`/`Next`) it is marked as the exception it is and carries the version
+  it was measured on.
+- **Measure the agent's TUI off the agent** — a real pane
+  (`test/fixtures/menus.json`, captured at 51 columns, which is what a phone
+  gives a shared window) or the binary itself in
+  `~/.local/share/claude/versions`. Every guess about it here has cost a
+  release.
+- **Check a test against the defect first.** A test that passes with the fix
+  reverted is worse than none. That happened once in this repository already.
+- **The stand cannot compose.** Desktop Chromium has no IME (see the header of
+  `js/inputdiag.js`), so IME rules are unit-tested against an injected field and
+  faked only where the fake is not the thing under test (`FAKE_IME` in
+  `test/ui/stand.mjs`, dispatched at xterm's own field). The phone is the judge,
+  through `🔍 Input log`.
+- **The journal is the instrument.** The device has no console anybody can open:
+  the page posts what decides an outcome to `/api/log`, and the server writes
+  its own decisions (`journalctl -u pockterm | grep -E 'client:|watch:|notify:'`).
+  Every "иногда зависает" here became a fix only once a line separated two
+  failures that looked identical from a thumb.
+- **A wrong answer looks exactly like the right one.** Where a guess could
+  answer a menu, press a button or type a byte nobody meant, silence is the
+  cheap failure: no button, a toast, a line in the journal.
+
 ## The client is not always a browser
 
-On the owner's phone this runs inside a WebView in his own Android app
-(`android_client` in the devops repo), not in Chrome. A WebView has no
-asynchronous Clipboard API, no Notification API, no file chooser and no PWA
-install; it also cannot be opened in devtools. Every clipboard, image and
-notification bug reported here came from that gap, and the app now injects a
-bridge — `window.PockNative` with `copy`, `read`, `commitInput`, `setImeMode`,
-`notify` and `appVersion`. The page prefers it when present and falls back to
-browser APIs where there are any; a call the installed app does not know
-returns false rather than throwing, which is how the page tells "no" from "this
-app is older than the request".
+On the owner's phone this once ran inside a WebView in his own Android app
+(`android_client` in the devops repo). A WebView has no asynchronous Clipboard
+API, no Notification API, no file chooser and no PWA install, and it cannot be
+opened in devtools; every clipboard, image and notification bug reported here
+came from that gap. The app injects a bridge — `window.PockNative` with `copy`,
+`read`, `commitInput`, `setImeMode`, `notify` and `appVersion`. The page prefers
+it when present and falls back to browser APIs where there are any; a call the
+installed app does not know returns false rather than throwing, which is how the
+page tells "no" from "this app is older than the request".
 
-The keyboard's document model is the source of a whole class of bugs here.
-Gboard keeps the word being typed as a composing region and rewrites it in
-place, and xterm.js only clears its hidden textarea while nothing is being
-composed — so under Gboard it never clears, offsets drift, and letters of one
-word end up spliced into the next. `commitInput` ends a composition, which the
-page cannot do itself; `setImeMode` asks for a different kind of field. Neither
-is fixable inside the page — see `TerminalWebView` in the devops repo for what
-the app actually asks the keyboard for.
-
-The lever is pulled from the ⋯ menu, not from the URL. `?ime=` still works and
-still wins on load, but inside the Android client the address is fixed
-(`POCKTERM_URL` in `MainActivity`) and there is no address bar to type it into
-— the parameter was unreachable on the only device that can test it. The
-button cycles text → raw → raw-strict and stores the choice; the URL is read
-once at load, because re-reading it on every call made a lingering `?ime=`
-undo every tap.
-
-**The terminal defaults to `raw` since 2026-08-03**, and that is the first
-thing here decided by measurement rather than by argument. Under app 2.3 on
-the owner's phone, with the mode finally staying put long enough to type in
-it: a backspace arrives as `deleteContentBackward` instead of an
-`insertCompositionText` rewriting the whole word — which is what put a second
-copy of the word on screen — and the composing region covers the last word
-instead of everything typed so far. What was typed came out right. What is
-still true: xterm.js does not clear its hidden textarea while a composition is
-open, so the field accumulates (17 characters of it in the journal), and that
-accumulation is where the drift comes from when you edit the middle of a line.
-What that accumulation actually does was measured later and has its own section
-below — and the fix turned out to be smaller than the page's own input field.
-
-`setImeMode` is not a fix, it is a lever with the strength picked at runtime.
-The app defaults to `raw`, and the page asks for `text` everywhere — including
-the terminal — because the strict variant that ships in app 2.1
-(`VISIBLE_PASSWORD` + `NO_SUGGESTIONS`, now `?ime=raw-strict`) brought up no
-keyboard at all on the owner's phone: `sawKeyboard:false` for a whole session
-under `ime-mode raw ok:true`. A drifting keyboard is bad and no keyboard is
-worse, so the default undoes the app's own, and it takes effect on reload
-rather than on an install. `?ime=raw` is the gentle variant — the WebView's
-negotiated input type plus "no dictionary" — kept behind a query parameter so
-the next attempt costs a reload instead of an APK release.
+`commitInput` ends a composition, which a page cannot do; `setImeMode` asks for
+a different kind of field. Neither is fixable inside the page — see
+`TerminalWebView` in the devops repo for what the app asks the keyboard for. The mode is cycled from the drawer (text → raw →
+raw-strict) and stored; `?ime=` still wins on load but is unreachable inside the
+app, whose address is fixed (`POCKTERM_URL` in `MainActivity`). The URL is read
+once at load, or a lingering `?ime=` undoes every tap. The terminal defaults to
+`raw` since 2026-08-03, measured rather than argued: under app 2.3 a backspace
+arrives as `deleteContentBackward` instead of an `insertCompositionText`
+rewriting the whole word, and the composing region covers the last word rather
+than everything typed. `raw-strict` (`VISIBLE_PASSWORD` + `NO_SUGGESTIONS`,
+app 2.1) brought up **no keyboard at all** — `sawKeyboard:false` for a whole
+session — so the page's default undoes the app's own; a drifting keyboard is bad
+and no keyboard is worse.
 
 **None of that lever exists on the client the owner actually uses.** The phone
-has been a Chrome PWA rather than the Android client since at least 2026-08-05
-(`"native":false` in the `hello` line, which is where to check before explaining
-anything here by the bridge), and without `PockNative` both `setImeMode` and
-`commitInput` return without doing anything at all — `setImeMode` does not even
-reach the journal. So the `⌨` button in the drawer cycles a mode, remembers it,
-and changes nothing, and the Enter held in `ender.js` is waiting on its 90ms
-bound rather than on a commit. Everything above describes the app; the section
-below describes the phone.
+has been a Chrome PWA since at least 2026-08-05 (`"native":false` in the `hello`
+line — check that before explaining anything here by the bridge), and without
+`PockNative` both `setImeMode` and `commitInput` do nothing at all. So the `⌨`
+button cycles a mode, remembers it and changes nothing, and the Enter held in
+`ender.js` waits on its 90ms bound rather than on a commit. This section
+describes the app; the ones below describe the phone.
 
 ## The word came back because the field still had it
 
@@ -96,8 +139,8 @@ The drift was read for two releases as the keyboard corrupting what was typed.
 It is not: **the word is written twice**, and the second copy is the keyboard's
 own, offered because the page left the word where the keyboard could find it.
 
-Measured on the owner's phone (Chrome PWA, Gboard, 2026-08-06) with the input
-log at `chars`, typing `порт`, a space, then a backspace:
+Measured on the owner's phone (Chrome PWA, Gboard, 2026-08-06) at `chars`,
+typing `порт`, a space, then a backspace:
 
 ```
 compositionend        "порт"   field="порт"   ← sent, and the field is not cleared
@@ -107,2426 +150,1734 @@ compositionstart      ""       field="порт"   ← the keyboard re-opens over
 insertCompositionText "порт"   field="порт"   ← sent a SECOND time
 ```
 
-and the same block again for every further space-and-backspace: three presses,
-three copies. That is what `❯ орарь орарл` on the screenshot was — one word,
-typed once, sent twice, the second time in the shape the keyboard preferred.
-Nothing is corrupted anywhere; the residue in the field *is* the defect, because
-what a keyboard finds in a field is what it takes for the word being written now.
+— and the same block for every further space-and-backspace: three presses, three
+copies. That is what `❯ орарь орарл` on the screenshot was. Nothing is corrupted:
+the residue in the field *is* the defect, because what a keyboard finds in a
+field is what it takes for the word being written now.
 
-**The same phone in its other mood opens no composition at all.** Half a minute
-of ordinary tapping in the same recording: 83 keyups, zero composition events —
-the letters arrive as key events and never touch the field — and twelve
-`insertText` events, every one of them a space, the field growing 4 → 16 and
-never shrinking. Different route, same residue. So the rule is about the field
-rather than about compositions, and it is why the fix is not another keyboard
-mode: two moods would need two.
+**The same phone in its other mood opens no composition at all**: 83 keyups and
+zero composition events in half a minute of the same recording, with twelve
+`insertText` spaces growing the field 4 → 16 and never shrinking. Different
+route, same residue — which is why the fix is about the field rather than about
+compositions, and why another keyboard mode would have needed two.
 
 `fieldHygiene` in `web/js/imefield.js` empties the field once an edit is over,
 and the two bounds are the whole of it. **Never while a composition is open** —
 what is in the field then is being written. **Never in the same task as the
 event** — xterm reads the field on a `setTimeout(0)` scheduled from
 `compositionend`, so a clear that ran first would send an empty string, and
-sending nothing is worse than sending twice. Nothing here reads, replaces or
-sends anything; the one operation is emptying a field the keyboard has finished
-with, which is what keeps it from becoming a fifth author in the buffer that
-"One owner for typing" in `app.js` exists to prevent.
+sending nothing is worse than sending twice. It reads, replaces and sends
+nothing; the one operation is emptying a field the keyboard has finished with,
+which keeps it from becoming a fifth author in the buffer that "One owner for
+typing" in `app.js` exists to prevent.
 
-**The stand cannot produce a single event above**, and that is stated in the
-header of `js/inputdiag.js` for the same reason: desktop Chromium has no IME. So
-the rule is tested against an injected field and an injected clock, and the
-phone is the judge. What the browser tests do cover is the other half — that
-typing still reaches the pty with the clear wired in.
+**Whether the rule did anything is its own question, with two silent wrong
+answers**: never wired (xterm's textarea not yet there when `keepEmpty` is
+called) and wired but never firing look identical from a phone, and both look
+like the drift. `field-guard` says which at load, `field-clear` reports the first
+clear with its length. On the owner's phone, v133: `{"wired":true}`,
+`{"len":6,"first":true}`.
 
-The instrument is the reason any of this is written down rather than guessed at.
-`🔍 Input log` in the drawer, `on` for shapes and `chars` for the text as well;
-the second level writes whatever is typed into the journal of a box that also
-serves git, which is why it is a separate tap and not a default.
+**Measured again with the log on, and the defect is gone.** 316 events, the field
+emptied fourteen times and never grew past 8 where the day before it ran to 16
+and kept going. The number that decides it: eight `compositionstart`, seven of
+them over an empty field. A keyboard that finds nothing has no previous word to
+offer.
 
-**And whether the rule did anything is its own question, with two silent wrong
-answers.** Never wired — xterm's textarea not yet there when `keepEmpty` is
-called, and the guard returns a no-op — and wired but never firing look
-identical from a phone, and both look exactly like the drift still being there.
-`field-guard` says which at load and `field-clear` reports the first clear with
-its length, one line each per session. On the owner's phone, v133:
-`{"wired":true}` and `{"len":6,"first":true}`.
-
-**Measured again with the log on, and the defect this was written for is gone.**
-316 events, the field dropped to empty fourteen times, and it never grew past 8
-where the day before it had run to 16 and kept going. The number that decides it
-is the one the word came back from: **eight `compositionstart`, seven of them
-over an empty field**. A keyboard that finds nothing has no previous word to
-offer, and there is no second `insertCompositionText` of a word already sent.
-
-The eighth is what is left, and it is a different animal. Gboard sometimes
-**restarts a composition without ending the one before** — `compositionupdate`
-with `len:0`, no `compositionend`, then a fresh `compositionstart` over the one
-character the previous region had put there, and the next region is appended to
-it rather than replacing it (field 1 → 3 for a two-character update). The rule
-never fires: nothing ended, so by its own bounds a composition is still open and
-the field is still the keyboard's.
-
-**And it must not simply be widened to cover that.** xterm sends a composition
-at `compositionend`, so the character sitting in the field there has *not* been
-sent yet — clearing it would lose a keystroke, and this file's own rule is that
-sending nothing is worse than sending twice. Whether that character comes out
-duplicated or missing needs a recording at `chars`, and the one made did not
-reproduce it: three compositions, three ends, `слово1 слово2 слово3` typed and
-`слово1 слово2 слово3` arrived, with the space-and-backspace that used to double
-a word in the middle of it. So the restart-without-end is rare — two of eight in
-one run, none in the next — and what it costs is still unmeasured. It is not a
-reason to widen the rule against a keystroke that might simply be lost.
+The eighth is a different animal, and it must not be fixed by widening the rule.
+Gboard sometimes **restarts a composition without ending the one before** —
+`compositionupdate` with `len:0`, no `compositionend`, then a fresh
+`compositionstart` over the character the previous region left, with the next
+region appended rather than replacing it (field 1 → 3 on a two-character
+update). Nothing ended, so by its own bounds the field is still the keyboard's.
+xterm sends a composition at `compositionend`, so the character sitting there has
+*not* been sent: clearing it would lose a keystroke. A recording at `chars` did
+not reproduce any loss (`слово1 слово2 слово3` typed and arrived, with the
+space-and-backspace in the middle of it), and the restart is rare — two of eight
+in one run, none in the next. Unmeasured cost is not a reason to widen a rule
+against a keystroke that might simply vanish.
 
 ## The bar carries what the keyboard cannot
 
-Every key on the bar has to earn its cell against the same question: does the
-on-screen keyboard already do this? Erasing does, so the backspace left on
-2026-08-12 and its key went to **Ctrl as a latch** — one tap arms it, the next
-character typed goes as a control code, the arm is spent. `^R`, `^D`, `^Z`, `^L`
-are what an agent's console asks for and what no on-screen keyboard offers at
-all; `applyCtrl` in `js/keys.js` had been written for this and sat unused.
+Every key on the bar earns its cell against one question: does the on-screen
+keyboard already do this? Erasing does, so the backspace left on 2026-08-12 and
+its cell went to **Ctrl as a latch** — one tap arms it, the next character typed
+goes as a control code, the arm is spent. `^R`, `^D`, `^Z`, `^L` are what an
+agent's console asks for and no on-screen keyboard offers; `applyCtrl` in
+`js/keys.js` had been written for this and sat unused.
 
-**And the modifier alone was the wrong answer, which the phone said within the
-hour.** Reported as "Ctrl, letter — and out comes text, with Ctrl still lit", and
-the input log explains it: Gboard composes, so xterm is handed a **whole word**
-when the composition closes. Measured 2026-08-12 — `compositionend` with len 3,
-5, 7, 8, 9 and only twice len 1. There is no keystroke to modify: the character
-is not an event, it is part of a word that arrives later, after whatever else was
-typed. A latch that waits for one character waits for something this keyboard
-does not send.
+**The modifier alone was the wrong answer, and the phone said so within the
+hour**: "Ctrl, letter — and out comes text, with Ctrl still lit". Gboard
+composes, so xterm is handed a whole word when the composition closes —
+`compositionend` with len 3, 5, 7, 8, 9 and only twice len 1 (2026-08-12). There
+is no keystroke to modify; a latch waiting for one character waits for something
+this keyboard does not send.
 
 So Ctrl also opens **a pad of the control keys themselves** (`#ctrlpad`), which
-asks the keyboard for nothing at all: `^A ^E ^K ^U ^W ^R ^L ^D ^Z ^P`, one tap
-each, and it closes on use — a pad left open covers the output it was opened
-over. It is `position: absolute` over the terminal's last rows for the reason the
-answer row is: a panel in the flow shortens the pane, tmux redraws to the new
-height, and what the page reads changes under it. A browser test asserts the row
-count does not move when it opens.
+asks the keyboard for nothing: `^A ^E ^K ^U ^W ^R ^L ^D ^Z ^P`, one tap each,
+closing on use — a pad left open covers the output it was opened over. The two
+share one state: arming shows the pad *and* latches the next character, and they
+must not disagree about whether Ctrl is on.
 
-The two share one state. Arming shows the pad *and* latches the next typed
-character, and they must not be able to disagree about whether Ctrl is on.
+**And the keyboard can be made to hand the letter over, which is what the pad
+stood in for.** A composition can be ended by moving the focus (`endEditByBlur`,
+written for the held Enter), and a composition that has ended is a letter xterm
+sends at once. With Ctrl armed, the first edit inside a composition is ended a
+task later (`ctrlSawEdit`), the letter arrives at `onData`, and the latch turns
+it into a control code. Arming also ends a word already in flight: it goes as the
+typing it is, and the next letter then arrives in a field of its own. Which
+question is asked of the field rule (`fieldHygiene`'s `onEdit`, beside
+`onCompose`), not of a listener of its own.
 
-**And the keyboard can be made to hand the letter over, which is what the pad was
-standing in for.** Asked from the phone with both on screen at once — ten buttons
-covering the output while a real keyboard sat under them: *could the modifier use
-the ordinary keyboard instead of its own?* It can, and the lever was already here.
-A composition can be ended by moving the focus (`endEditByBlur`, written for the
-held Enter), and a composition that has ended is a letter xterm sends at once. So
-with Ctrl armed, the first edit inside a composition is ended a task later
-(`ctrlSawEdit`), the letter arrives at `onData` on its own, and the latch turns it
-into a control code. Arming ends a word already in flight for the same reason: it
-goes as the typing it is, and the next letter arrives in a field of its own, where
-a residue would make it one character of several and spend the arm on nothing.
+**The layout is the other half.** The owner's keyboard is Russian, and a page can
+switch neither layout nor language — there is no API in the browser or in
+Android. So `applyCtrl` reads a Cyrillic letter **by the key it sits on**: `к` is
+where `r` is, so Ctrl+`к` is `^R`, which is what a terminal does one layer down,
+applying Ctrl to the keycode rather than to the letter the layout produced.
+Letters only: `х ъ ж э б ю` sit on brackets and punctuation and pass through
+untouched. A test checks that every key the pad offers has a Cyrillic letter
+reaching it.
 
-Which question is asked of the field rule rather than of a listener of its own
-(`fieldHygiene`'s `onEdit`, beside `onCompose` and the `isComposing` the Enter
-reads) — two listeners on these events are two answers, and the one that drifts is
-the one that decides.
+**So the pad is now for a screen with no keyboard on it** — reading back through
+output with the bars away, where `^C` still has to be reachable. With a keyboard
+up the letter comes from there (`keyboardUp`, the page's own measurement), so on
+a desktop the pad behaves exactly as before.
 
-**The layout is the other half, and without it the latch is a lever for somebody
-else's keyboard.** The owner's is Russian, and a page can switch neither the layout
-nor the language: there is no API for it in the browser or in Android, the keyboard
-decides. `setImeMode` picks a *kind* of field and says nothing about language, and
-on a Chrome PWA it does nothing at all. So `applyCtrl` reads a Cyrillic letter **by
-the key it sits on** — `к` is where `r` is, so `Ctrl` `к` is `^R`, which is what a
-terminal on a laptop does one layer down, where Ctrl is applied to the keycode
-rather than to the letter the layout produced. Letters only: `х ъ ж э б ю` sit on
-brackets and punctuation, which are not control codes here, and they go through
-untouched rather than being swallowed. A test checks that every key the pad offers
-has a Cyrillic letter reaching it, or the latch would do less than the buttons
-beside it.
+Three properties of the latch, each a way it could have gone wrong quietly:
 
-**So the pad is now for a screen with no keyboard on it**, which is the case it is
-actually good for: reading back through output with the bars away, `^C` still has to
-be reachable. With a keyboard up the letter comes from there. `keyboardUp` is the
-page's own measurement — the viewport, not focus (see `measureKeyboard`) — so on a
-desktop, where nothing shrinks the viewport, the pad behaves exactly as it did.
+- **Spent, not sticky, and visible while armed.** A latch left on turns a
+  sentence into control codes with nothing on screen reacting until one of them
+  means something. The button lights with the same `on` class every lever here
+  uses, and the test asserts the class goes out when the arm is used.
+- **One character only.** A paste and a composed word arrive as several, and
+  turning the first into a control code would mangle the rest.
+- **A mouse report neither is typing nor spends the arm.** xterm hands the wheel
+  to the same callback as the keyboard, so a scroll between arming and typing
+  would otherwise leave the latch quietly off.
 
-**The stand judges all of it, including the composing half.** `FAKE_IME` moved into
-`test/ui/stand.mjs` and now dispatches the `input` event Chrome fires alongside
-`compositionupdate` — the page reads that event, so a fake without it made this rule
-untestable and the recording it came from a lie. `test/ui/bytes.test.mjs` reads the
-wire through `cat -v`: `^R` from a composed `к`, `^R` from a typed `к`, and the pad
-staying away with the viewport shortened. Each was checked against the defect first
-— with `onEdit` unwired the composed letter never reaches the pty at all.
-
-Three properties of the latch, and each is a way it could have gone wrong
-quietly.
-
-**Spent, not sticky, and visible while armed.** A latch left on turns a sentence
-into control codes, and nothing on screen reacts until one of them means
-something — by which time what was typed is gone. The button lights up with the
-same `on` class every other lever here uses, and the browser test asserts the
-class goes out again when the arm is used.
-
-**One character only.** A paste and a composed word arrive as several, and
-turning the first into a control code would mangle the rest of what somebody
-meant to insert.
-
-**A mouse report neither is typing nor spends the arm.** xterm hands the wheel to
-the same callback as the keyboard, so a scroll between arming Ctrl and typing the
-letter would otherwise leave the latch quietly off — the same trap that once made
-a wheel cancel copy-mode.
-
-And another bar key **spends** the arm rather than being modified by it: those
-keys are sequences of their own, and a Ctrl+Esc that sent something else would be
-a key nobody asked for. `test/ui/bytes.test.mjs` reads all of it off the wire
-through `cat -v`, including `^[r` for exactly that case.
+Another bar key **spends** the arm rather than being modified by it: those keys
+are sequences of their own, and a Ctrl+Esc sending something else is a key nobody
+asked for. `test/ui/bytes.test.mjs` reads all of it off the wire through
+`cat -v` — `^R` from a composed `к`, `^R` from a typed `к`, `^[r` for that last
+case, and the pad staying away with the viewport shortened. Each was checked
+against the defect first: with `onEdit` unwired the composed letter never reaches
+the pty at all.
 
 ## The bar's Enter waits for the keyboard's word
 
-Gboard holds the word being typed as a composing region, and only the app can
-end that — `PockNative.commitInput()`, which asks Android to restart the input.
-Calling it before Enter is necessary and was not sufficient: the committed text
-reaches the page in a later task, so an Enter sent in the same tick overtook it.
-The line went without its last word, and the word turned up after the newline.
+Gboard holds the word being typed as a composing region. Only the app can end
+that (`PockNative.commitInput()`), and calling it before Enter was necessary and
+not sufficient: the committed text reaches the page in a later task, so an Enter
+in the same tick overtook it — the line went without its last word, and the word
+turned up after the newline.
 
-`web/js/ender.js` holds the key instead: released a moment after input arrives,
-or after 90ms when nothing was being composed. Both bounds matter — a commit can
-arrive in more than one chunk, and an Enter that sometimes does nothing would be
-worse than the defect. Only keys that end an input go through it (`enter`,
-`alt-enter`, the `accept` macro); `esc` and `ctrl-c` interrupt one and must not
-wait for anything.
+`web/js/ender.js` holds the key: released a moment after input arrives, or after
+90ms when nothing was being composed. Both bounds matter — a commit can arrive in
+more than one chunk, and an Enter that sometimes does nothing is worse than the
+defect. Only keys that end an input go through it (`enter`, `alt-enter`, the
+`accept` macro); `esc` and `ctrl-c` interrupt one and must not wait. The bridge
+cannot say whether anything was composing, so the page waits on the data rather
+than on the answer.
 
-The bridge cannot say whether anything was composing — `commitInput` returns
-`true` whenever the app knows the call — so the page waits on the data, not on
-the answer. `test/ui/bytes.test.mjs` proves the order on the wire: a real
-keystroke delivered right after the tap lands before the `^M`.
-
-**And a browser was assumed not to need any of it, which stopped being true when
-the phone stopped being the app.** `commitPendingInput` asked the bridge and
-answered `false` without one, saying so in its own comment; the ender reads
-`false` as "nothing to wait for" and sends the key at once. So on a Chrome PWA —
-which is what the owner's phone has been since 2026-08-05 — the wait never
-happened at all, and the 90ms bound above never applied. Reported as the last
-word not being sent, **dictating by voice**: dictation is one long composing
+**A browser was assumed not to need any of it, which stopped being true when the
+phone stopped being the app.** `commitPendingInput` answered `false` without a
+bridge, and the ender reads `false` as "nothing to wait for" — so on a Chrome PWA
+the wait never happened and the 90ms bound never applied. Reported as the last
+word not being sent while **dictating by voice**: dictation is one long composing
 region, so the word is always still in the field when the Enter goes. Typing by
-thumb hides it, because a word ends often enough that the field is usually empty
-at the moment anyone presses Enter.
+thumb hides it, a word ending often enough that the field is usually empty.
 
-A page cannot ask Android to restart the input. It can end a composition the
+A page cannot ask Android to restart the input, but it can end a composition the
 ordinary way: taking the focus off the field makes the keyboard finish the word
-and fire `compositionend`, which is what xterm forwards to the pty; focus goes
-straight back, so the keyboard stays up. `commitComposition` in `js/ender.js` is
-the choice between the two, and it answers **false when nothing is being
-composed** — that is the right answer rather than a missing one, since what was
-typed has already gone as key events, and an Enter that waited for a word nobody
-holds would read as lag on every press.
+and fire `compositionend`, which xterm forwards to the pty; focus goes straight
+back, so the keyboard stays up. `commitComposition` chooses between the two and
+answers **false when nothing is being composed** — the right answer rather than a
+missing one, since what was typed has already gone as key events. Whether a word
+is being composed is asked of `keepEmpty` in `js/imefield.js`, which hands back
+`isComposing` — the one owner of that fact.
 
-Whether a word is being composed is asked of the field rule (`keepEmpty` in
-`js/imefield.js` hands back `isComposing`), not of a second listener on the same
-events: two listeners are two answers to one question, and the one the Enter
-reads would be the one that drifted.
-
-**The phone is still the judge**, because the stand cannot compose — desktop
-Chromium has no IME, which is what `js/inputdiag.js` says in its own header. So
-the decision is unit-tested against an injected field, and the device answers
-with a line per Enter (`ender`): what was asked, whether a composition was open,
-and how much the field held. "The last word did not go" and "there was nothing
-to wait for" are the same thing from a thumb, and that line is what separates
-them — measured on the owner's phone dictating, `asked:true composing:true` with
-41, 46 and 67 characters held, which before this could not happen at all without
-the bridge.
-
-It lives **behind `🔍 Input log`**, where everything per-keystroke here lives. It
-was on by default for the one release in which the browser path was being
-judged; a line per Enter is a request per Enter, and that is not the price of
-typing once the answer is known.
+The device answers with a line per Enter (`ender`): what was asked, whether a
+composition was open, how much the field held. "The last word did not go" and
+"there was nothing to wait for" are the same thing from a thumb, and that line
+separates them — dictating, `asked:true composing:true` with 41, 46 and 67
+characters held. It lives behind `🔍 Input log`: a line per Enter is a request per
+Enter, and that is not the price of typing once the answer is known.
 
 ## The blur that ends the word is the blur that wipes it
 
-Ending the composition by moving the focus is the only lever a browser has, and
-for one release it did not merely delay the word — it **destroyed it**. Reported
-from the phone the way it had been reported before, "the last word is not sent",
-which is why the line that separates the two cases was worth having: the journal
-said the wait had happened this time (`ender asked:true composing:true len:4`,
-2026-08-08), with a `compositionend` carrying the word right above it and no
-data event after it at all. The Enter then went out on its 90ms bound, alone.
+For one release the blur did not merely delay the word — it **destroyed it**.
+Reported as "the last word is not sent" again, and the journal said the wait had
+happened this time (`ender asked:true composing:true len:4`, 2026-08-08), with a
+`compositionend` carrying the word above it and no data event after it at all.
 
 Both halves of the mechanism are xterm's own, and a blur runs them in the order
 that loses. `_handleTextAreaBlur` is literally `this.textarea.value = ""`, and
-`compositionend` does not send anything itself — it schedules a `setTimeout(…,
-0)` that reads the field and sends **what is in it then**. So the word was
-ended, wiped and read as nothing: `input.length > 0` is false, and the pty was
-never written to. The two-line `blur(); focus();` was correct about what it
-asked for and blind to what the asking cost.
+`compositionend` schedules a `setTimeout(…, 0)` that reads the field and sends
+**what is in it then**. The word was ended, wiped and read as nothing.
 
-`endEditByBlur` in `js/ender.js` puts back what xterm wiped inside our own
-call, before the task that reads it runs. It is the one write to that field on
-this page, and it is deliberately **not an edit**: the value goes back to
-exactly what the keyboard left there, nothing is read out of it, and nothing is
-sent from here. The owners are unchanged — xterm still sends, and
-`fieldHygiene`'s deferred clear still empties, which it does after the read
-because it is scheduled from the same `compositionend` (that bound is the one it
-already had). A field a browser did not wipe gets no write at all, and the
-journal carries how much was put back (`restored`), so "the word came back" and
-"there was nothing to put back" are again two different lines.
+`endEditByBlur` in `js/ender.js` puts back what xterm wiped, inside our own call,
+before the task that reads it runs. It is the one write to that field on this
+page and deliberately **not an edit**: the value goes back to exactly what the
+keyboard left, nothing is read out and nothing is sent. Owners are unchanged —
+xterm still sends, `fieldHygiene`'s deferred clear still empties after the read.
+A field a browser did not wipe gets no write at all, and the journal carries how
+much was put back (`restored`).
 
-**And this one the stand can judge**, which everything else in these two
-sections cannot. The composition is faked — desktop Chromium has no IME — but
-only the part that is not under test: the events are dispatched at the real
-field, and the `compositionend` is fired from a **capture-phase** blur listener,
-which is where Chrome fires it and, more to the point, ahead of xterm's own
-listener on the element. Everything after that is the page and xterm unfaked,
-and `test/ui/bytes.test.mjs` reads what reached the pty through `cat -v`.
-Against the two-line version it is `^M`; with the fix, `ab^M`. Checked in that
-order, because a test that passes against the defect is worse than none.
+**The stand can judge this one.** The composition is faked, but only the part not
+under test: events are dispatched at the real field and `compositionend` is fired
+from a **capture-phase** blur listener, which is where Chrome fires it and ahead
+of xterm's own listener. `test/ui/bytes.test.mjs` reads the pty through `cat -v`:
+against the two-line `blur(); focus();` it is `^M`, with the fix `ab^M`.
 
 ## Holding the focus is asking for the keyboard
 
-Focus and the keyboard are two different things on Android, and the page can
-only touch one of them. Dismissing the keyboard leaves the terminal's textarea
-focused; the system then puts a keyboard back up for whatever holds focus as
-soon as the layout moves under it. So a page that is being read has to hold no
-focus at all — anything else is a keyboard waiting for the next thing that
-moves.
+The general rule is above; two places learned it first. `attach` — a session
+switch kept raising the keyboard for somebody who had just put it away, and
+nothing on that path focuses anything. And the ⇩ that goes back to the live end,
+reported as the scroll arrow bringing the keyboard up over the output it had just
+returned to: leaving copy-mode is exactly a layout moving.
 
-`attach` learned that first: a session switch kept raising the keyboard for
-somebody who had just put it away, and nothing on that path focuses anything.
-The ⇩ that goes back to the live end is the same defect one button along —
-reported as the scroll arrow bringing the keyboard up over the output it had
-just gone back to — because leaving copy-mode is exactly a layout moving.
-
-`releaseTerminalFocus` is the one answer both use, and its two bounds are why it
-is not simply a blur. **While the keyboard is up its owner is typing**, and
-taking the focus away would close it under them. **On a desktop nothing has ever
-raised one**, and there focus is the only thing that makes typing possible at
-all. `sawKeyboard` tells the two machines apart, and it is learned by watching a
-keyboard appear rather than guessed from the user agent — which also means the
-very first time a keyboard is dismissed on a fresh load is outside the rule. The
-way back is unchanged: tapping the terminal is what asks for a keyboard, and it
-still gets one.
-
-**The stand has no soft keyboard, so the test asserts the lever rather than the
-symptom** — whether the textarea still holds the focus after the tap. The
-keyboard is played by the viewport, because that is how the page measures one: a
-short viewport is a keyboard up, and the tall one back is that keyboard
-dismissed with the focus still where it was. `keepsTerminalFocus` on the button
-stays, for the reason the mark picker has it: hiding a focused element hands the
-focus back to whatever had it before, and the ⇩ hides itself a moment later.
-
-**What the page decided is published** (`data-kb` on the root element, written by
-`measureKeyboard`), and the tests wait on that rather than on the viewport's own
-number. The two are not the same fact: a viewport reads short the instant it is
-resized, while the page learns of it only when the event arrives — so a shrink and
-a restore in quick succession coalesce into one, the page never sees a keyboard at
-all, and `releaseTerminalFocus` then declines for a reason that has nothing to do
-with what is under test. That was a failure about one run in three, on an
-assertion about the ⇩, with nothing wrong. It is a diagnostic first, like
-`data-size` beside it: whether this page thinks a keyboard is up decides three
-rules here and was invisible from outside.
+The way back is unchanged — tapping the terminal asks for a keyboard and gets
+one. The stand has no soft keyboard, so the tests assert the lever (does the
+textarea still hold focus) with the keyboard played by the viewport and waited
+for on `data-kb`. `keepsTerminalFocus` stays on the ⇩ itself: it hides a moment
+later, and hiding a focused element hands focus back to whatever had it before.
 
 ## A message that did not go out is still the owner's
 
-`send()` drops what it is given when the socket is not open, and that is right
-for a keystroke: there is nowhere to put it and nobody typed it twice. The
-composer handed it a whole message and then cleared its field in the same tick,
-as though the socket had taken it. Reported from the phone as the text
-disappearing when the send does not go through, with nothing anywhere to get it
-back from — and the moments when a send fails are exactly the ones with a long
-message in the box: a reconnect, a handover between Wi-Fi and cellular, the unit
-restarted by CI under whoever is typing.
+`send()` drops what it is given when the socket is not open, which is right for a
+keystroke: nowhere to put it, and nobody typed it twice. The composer handed it a
+whole message and cleared its field in the same tick, as though the socket had
+taken it — reported as the text disappearing when the send does not go through.
+The moments when a send fails are exactly the ones with a long message in the
+box: a reconnect, a Wi-Fi/cellular handover, the unit restarted by CI under
+whoever is typing.
 
-So `send()` answers whether the socket took the bytes, and the composer clears
-its field only then. **Held, not queued.** A message delivered on the next
-connect would arrive minutes later into whatever the session is doing by then,
-and nothing downstream — pty, tmux, the agent — knows it is a latecomer. The
-text stays where the person holding the phone can decide.
+So `send()` answers whether the socket took the bytes and the composer clears
+only then. **Held, not queued**: a message delivered on the next connect would
+arrive minutes later into whatever the session is doing by then, and nothing
+downstream — pty, tmux, the agent — knows it is a latecomer.
 
-**And what did go out is kept**, because the other half of this cannot be
-detected at all: a socket that is open and dead looks exactly like a quiet one
-from in here (see the watchdog above), so the page cannot refuse to send on a
-suspicion. The last twenty messages live in `localStorage` (`pt-sent`,
-`js/compose.js`), newest first, a repeat moved rather than added — sending the
-same line twice is what a retry after this defect looks like. `↻` in the
-composer opens them, and it is hidden until there is one: a way back to nothing
-is a control that explains itself only by being pressed. A recalled message goes
-**into the field, not down the socket** — it is usually being recalled because
-something went wrong with it the first time.
+**And what did go out is kept**, because the other half cannot be detected at all
+(an open dead socket looks like a quiet one, see the watchdog below). The last
+twenty messages live in `localStorage` (`pt-sent`, `js/compose.js`), newest
+first, a repeat moved rather than added — sending the same line twice is what a
+retry looks like. `↻` opens them and is hidden until there is one; a recalled
+message goes **into the field, not down the socket**, since it is usually being
+recalled because something went wrong with it.
 
-The list is drawn over the terminal and never beside it, which is the same rule
-`#answers` follows and for the same reason: a panel in the flow shortens the
-pane, tmux redraws to the new height, and what the page reads changes under it.
-
-**The draft is written down as it is typed** (`pt-draft`, on a 300ms timer).
-The page asks for a reload itself after a deploy, and Android kills a WebView
-whenever it likes; both used to take a half-written message with them. That is
-also the fear behind the update bar being a button rather than an automatic
-reload — the fear is smaller now, and the button stays, because a reload also
-interrupts whatever is on screen.
+**The draft is written down as it is typed** (`pt-draft`, 300ms timer). The page
+asks for a reload after a deploy and Android kills a WebView whenever it likes;
+both used to take a half-written message with them. That is also the fear behind
+the update bar being a button rather than an automatic reload.
 
 ## A quiet socket and a dead socket look the same from in here
 
-Reported from the phone as the screen freezing: a message typed on it had plainly
-been sent — the laptop's window showed the agent answering it — while the phone sat
-on the same frame and caught up "about a minute later". Nothing in the page was
-frozen. The socket had been handed between Wi-Fi and cellular, the far end was a
-black hole, and `readyState` stayed OPEN with sends appearing to succeed. The minute
-is TCP giving up.
+Reported as the screen freezing: a message typed on the phone had plainly been
+sent — the laptop showed the agent answering it — while the phone sat on the same
+frame and caught up "about a minute later". Nothing was frozen. The socket had
+been handed between Wi-Fi and cellular, the far end was a black hole,
+`readyState` stayed OPEN and sends appeared to succeed. The minute is TCP giving
+up.
 
-**`ping` was answered by the server before anything sent one.** That is the whole
-defect: the protocol had the question and the page never asked it, so a dead
-connection was indistinguishable from a session with nothing to say.
+**`ping` was answered by the server before anything sent one.** The protocol had
+the question and the page never asked it. `linkAction` in `web/js/link.js`
+decides, and it is a pure function because the alternative is a timer nobody can
+test: after `PING_AFTER` of silence the page asks, and if nothing arrives within
+`PONG_WAIT` the socket is discarded and `connect()` runs again — fifteen seconds
+against the minute it was. Any inbound traffic counts as the answer, so a busy
+session is never pinged.
 
-`linkAction` in `web/js/link.js` decides, and it is a pure function because the
-alternative is a timer nobody can test. After `PING_AFTER` of silence the page asks;
-if nothing arrives within `PONG_WAIT` the socket is discarded and `connect()` runs
-again — fifteen seconds against the minute it was. Any inbound traffic counts as the
-answer, pong or output alike, so a busy session is never pinged.
+**Only while the page is on screen.** A backgrounded page has its timers
+throttled to roughly one firing a minute, so every measurement it takes is late
+by construction. A pocketed phone keeps its socket, and `visibilitychange` asks
+the moment it comes back — which is when the answer is most often "gone".
 
-**Only while the page is on screen.** A backgrounded page has its timers throttled to
-roughly one firing a minute, so every measurement it takes is late by construction —
-tearing down a socket because Android slowed the clock is worse than the freeze this
-fixes. A pocketed phone keeps its socket, and `visibilitychange` asks the question the
-moment it comes back, which is also when the answer is most often "gone".
+**Discarding a socket means both its handlers, and `onclose` is the one that
+matters.** Closing a socket fires it, and `onclose` schedules a reconnect of its
+own — so the first version of this watchdog left the page with two sockets, then
+four, each writing every frame into the same terminal and carrying every
+keystroke. Reported within the hour: "терминал затроил", "по три сообщения
+начали отправляться".
 
-**And the reconnect a close armed is the other half of the same rule.** `onclose`
-fires a timer; anything that opens a socket before it fires — a tab tapped, the
-watchdog, the restore on load — leaves that timer to open a **second** one on top
-of the one now in hand. Every deploy makes the race: a restart drops every socket
-at once, and the page is reattached by hand within the second the backoff is
-armed for. Reported after two deploys in an evening as everything on screen being
-drawn twice — output lines, the agent's own prompt, tmux's status bar doubled —
-which reads as a message having been sent again. Nothing is: the page writes
-keystrokes to the newest socket and reads frames from **both**, so what doubles is
-the picture. `dropSocket` is now the one way a socket is let go, it clears the
-pending timer with the handlers, and `connect` calls it first — one page, one
-socket, by construction rather than by every caller remembering. The browser test
-makes the race rather than waiting for one: it closes the page's socket from
-outside and taps a tab inside the second, then counts open sockets in the page and
-clients at `/api/presence`. Against the old code it is two.
+**The reconnect a close armed is the other half of the same rule.** Anything that
+opens a socket before that timer fires — a tab tapped, the watchdog, the restore
+on load — leaves it to open a **second** one on top of the one now in hand. Every
+deploy makes the race: a restart drops every socket at once and the page is
+reattached by hand within the second the backoff is armed for. Reported after two
+deploys in an evening as everything on screen being drawn twice, which reads as a
+message having been sent again; nothing is, the page writes to the newest socket
+and reads frames from both, so what doubles is the picture. `dropSocket` is the
+one way a socket is let go, it clears the pending timer with the handlers, and
+`connect` calls it first.
 
-**Discarding a socket means both its handlers, and onclose is the one that matters.**
-Closing a socket fires it, and `onclose` schedules a reconnect of its own — so the
-first version of this watchdog left the page with two sockets on the session, then
-four, each writing every frame into the same terminal and each carrying every
-keystroke. Reported from the phone within the hour: "терминал затроил", "по три
-сообщения начали отправляться", and a reload put it right, which is exactly what a
-page holding several sockets looks like. Every other deliberate close on this page had
-the pattern already (`showSessions`, `attach`); this one did not. The test asks
-`/api/presence` how many clients the server sees and requires one.
+The backoff resets when the watchdog fires: this is a socket being thrown away,
+not a host that cannot be reached. `socket-stalled` goes to the journal with the
+length of the silence.
 
-The backoff is reset when the watchdog fires: this is a socket being thrown away, not
-a host that cannot be reached. And `socket-stalled` goes to the journal with how long
-the silence was — "иногда зависает" becomes a count with timestamps.
-
-The UI test drops the page's own sends (`WebSocket.prototype.send` swallowed) so
-nothing reaches the server and nothing comes back, then requires the journal line, the
-reconnect, and a terminal that types again. With the watchdog's timer commented out it
-times out — checked, because a test that passes against the defect is worse than none,
-which happened once already in this file.
+Two tests, each made rather than waited for. The UI test drops the page's own
+sends (`WebSocket.prototype.send` swallowed) and requires the journal line, the
+reconnect and a terminal that types again; with the watchdog's timer commented
+out it times out. The race test closes the page's socket from outside and taps a
+tab inside the second, then counts open sockets in the page and clients at
+`/api/presence` — one, where the old code gives two.
 
 ## A client attaches at a size, and the wrong one is everyone's problem
 
-Sessions here are grouped — `new-session -t <name>`, one window, several clients —
-and tmux's own `window-size latest` gives the shared window the size of the newest
-client. So a client attached at a default 80x24 and told its real size a moment
-later does not merely look wrong to itself: it resizes the window under **every
-other client on that session**, the laptop included, and they keep drawing at
-their own width while tmux fills lines to 80. On screen that is halves of two
-lines in one row and a cursor landing nowhere.
+Sessions here are grouped (`new-session -t <name>`, one window, several clients)
+and tmux's `window-size latest` gives the shared window the size of the newest
+client. A client attached at a default 80x24 and told its real size a moment
+later resizes the window under **every other client on that session**, the laptop
+included, which keeps drawing at its own width while tmux fills lines to 80: on
+screen, halves of two lines in one row and a cursor landing nowhere.
 
-It was reported twice from the phone as a desync — "на всех вкладках курсор
-прыгает, потом прошло" — and both halves of that sentence are the mechanism. Every
-tab switch attaches a new client, which is why it recurred; the page's first
-`resize` message arrived a moment later and fixed it, which is why it passed.
+Reported twice as a desync — "на всех вкладках курсор прыгает, потом прошло" —
+and both halves of that sentence are the mechanism: every tab switch attaches a
+new client, and the page's first `resize` a moment later fixed it.
 
-The size travels in the socket's address now (`/ws?session=…&cols=…&rows=…`) and
-`requestedSize` reads it there, so the pty is created at the page's size and the
-window is never handed a number nobody asked for. Missing or absurd values fall
-back to 80x24, since the value comes from a query string.
+The size travels in the socket's address (`/ws?session=…&cols=…&rows=…`) and
+`requestedSize` reads it there, so the pty is created at the page's size. Missing
+or absurd values fall back to 80x24, the value coming from a query string.
 
-**Measuring this after an ordinary attach proves nothing**, which the first version
-of the test demonstrated by passing against the defect: `sendResize` corrects the
-window before any assertion can run. The test drops resize frames on their way out
-of the page and then compares `#{window_width}` with what the page says its own
-size is — that difference is 80 against 44 on the old code.
-
-The page publishes that size on `#term` (`data-size`, set in `fitNow`). It is a
-diagnostic first: a screenshot of a broken redraw then answers the first question
-about it.
+**Measuring this after an ordinary attach proves nothing**, which the first
+version of the test demonstrated by passing against the defect: `sendResize`
+corrects the window first. The test drops resize frames on their way out and
+compares `#{window_width}` with what the page says its size is — 80 against 44 on
+the old code. The page publishes that size on `#term` (`data-size`, `fitNow`).
 
 ## Scrolled back is not the same as copy-mode
 
-The page shows two things while the pane is scrolled back into history: the
-round ⇩ button that returns to the live end, and no prompt buttons, because the
-numbered lines on screen belong to the past.
+While the pane is scrolled back the page shows the round ⇩ that returns to the
+live end, and no prompt buttons, the numbered lines on screen belonging to the
+past.
 
-Both used to follow `#{pane_in_mode}`, and that is a different state. tmux's own
-`WheelUpPane` binding enters copy-mode with `-e`, which leaves it again when a
-scroll reaches the bottom — but only when a scroll is what got there. The page's
-glide keeps sending notches after the finger is gone, a second client on the
-shared pane has its own idea of the position, and a mode entered by hand never
-had a scroll to end. All of those sit in copy-mode showing the present, which is
-what "the ⇩ stays at the bottom" was: a button offering the way back from where
-the screen already is.
+Both used to follow `#{pane_in_mode}`, which is a different state. tmux's own
+`WheelUpPane` enters copy-mode with `-e`, which leaves it again when a scroll
+reaches the bottom — but only when a scroll is what got there. The page's glide
+keeps sending notches after the finger is gone, a second client has its own idea
+of the position, and a mode entered by hand never had a scroll to end: all of
+those sit in copy-mode showing the present, which is what "the ⇩ stays at the
+bottom" was. The mode frame carries `#{scroll_position}` as well now, and the
+page shows both by whether there is history above. Nothing here asks tmux to
+leave the mode — the pane is shared and a laptop chose it (the one exception is
+typing, below).
 
-The mode frame carries `#{scroll_position}` as well now, and the page shows both
-by whether there is history above. Nothing here asks tmux to leave copy-mode:
-the pane is shared, and a page that sent `q` on its own would take the laptop's
-client out of a mode it chose to be in.
+**What the ⇩ is on screen with is a pager**: `⇞` and `⇟` above it, a screen at a
+time, because the swipe moves by what a thumb covers and reading back through a
+long output was a handful of lines and a glide per go.
 
-**And what the ⇩ is on screen with is a pager**: `⇞` and `⇟` above it, a screen
-at a time. The swipe was the only way through the scrollback and it moves by what
-a thumb covers — reading back through a long output is a handful of lines and a
-glide per go, with nothing to aim at.
-
-**⇞ is on screen at the live end too, and that is what makes it a way in.** It
-came and went with the ⇩ for one release, which meant the only way to reach the
-pager was the swipe it exists to replace: a button that appears once the pane is
-already scrolled back cannot be what took it there. ⇟ and the ⇩ stay tied to
-having history above, there being nothing below the live end to page to. The
-three are one stack (`#pager`, `column-reverse`), so the one that is always there
-is the one nearest the thumb and the column closes over the two that are not.
+**⇞ is on screen at the live end too, and that is what makes it a way in.** For
+one release it came and went with the ⇩, which left the only way to reach the
+pager being the swipe it exists to replace. ⇟ and the ⇩ stay tied to having
+history above. The three are one stack (`#pager`, `column-reverse`), so the one
+always present is nearest the thumb.
 
 **And it is permanent only while something is being scrolled.** Three circles in
-the corner of a screen that is being read are chrome for a control nobody is
-using, which is the bill that came with ⇞ being on screen always. So the stack
-fades `PAGER_IDLE` after the last scrolling and comes back with the next
-(`wakePager`), asked for from the phone — the only place that corner is paid for.
+the corner of a screen being read are chrome for a control nobody is using, so
+the stack fades `PAGER_IDLE` after the last scrolling and comes back with the
+next (`wakePager`). What counts as the next scrolling is every way this pane can
+move — the wheel the swipe and the buttons send, the scrollbar's request, the
+position changing under a second client — **and a finger arriving on the pane at
+all** (a pointerdown, so a laptop's mouse says the same). Without that last one ⇞
+would have stopped being a way in. The position wakes it, not the frame: the mode
+frame carries the history size, so a printing pane sends one every poll.
 
-That is a real trade against the paragraph above, and what keeps it honest is
-**what counts as the next scrolling**: every way this pane can move — the wheel
-the swipe and the buttons both send, the scrollbar's own request, the position
-changing under a second client — *and a finger arriving on the pane at all*. A
-pointerdown rather than a touch, so a laptop's mouse says the same thing. Without
-that last one ⇞ would have stopped being a way in, since a stack that came back
-only once you were already scrolled back cannot be what took you there.
+**Faded, and untouchable while faded** (`pointer-events: none`): an invisible
+44px circle over the answer row's Esc is the same defect as a visible one, only
+harder to report.
 
-The position is what wakes it, not the frame: the mode frame carries the history
-size now, so a pane that is merely printing sends one every poll and the stack
-would never go idle at all.
+**▴ takes the corner the fade frees.** With every bar hidden it is the only thing
+on screen; it sits left of the stack (`right: 76px`) only because the stack is
+there, and slides into the freed slot on the same quarter second the fade takes,
+so the two never share it. `right` rather than a transform, the button's position
+being stated that way already. What went into that corner first was ☰, and that
+was a misreading of "кнопку открытия меню сдвигай вправо на место кнопки
+возврат" — the button that opens a menu is this ▴ opening the bars, not the
+hamburger. It cost a release (a second ☰ over the pane, the header's stepping
+aside on a timer, a rule in `stand.tapMenu()` about which to click), all of it
+now gone. The sentence named a button by what it does, and two buttons matched.
 
-**Faded, and untouchable while faded** (`pointer-events: none`), which is the
-half that is not decoration — an invisible 44px circle over the answer row's Esc
-is the same defect as a visible one over it, only harder to report. What you
-cannot see, you must not be able to press; what is under it is what a tap gets.
-
-**And ▴ takes the corner the fade frees.** With every bar hidden that button is
-the only thing on screen, and it sits to the left of the stack (`right: 76px`)
-only because the stack is there — so when the stack fades it slides into the slot
-the way back to the live end stands in, which is the corner a thumb reaches for.
-It slides back on the same quarter second the fade takes, so the two never share
-the slot. `right` rather than a transform, because what moves is a button whose
-position is already stated that way.
-
-**What went into that corner first was ☰, and that was a misreading** — of
-"кнопку открытия меню сдвигай вправо на место кнопки возврат", where the button
-that opens a menu is this ▴ opening the bars, not the hamburger. It cost a
-release: a second ☰ appeared over the pane, the header's stepped aside on a timer
-to keep them from being two, and `stand.tapMenu()` grew a rule about which one to
-click. All of it is gone. The lesson is the cheap one — the sentence named a
-button by what it does, and there were two buttons it could have meant.
-
-**The stack lives inside `#term`, and being permanent is what forced that.** It
-was pinned 64px above the bottom of the viewport, which is a guess about how tall
-the bars are — harmless while the only button there appeared during a scroll, and
-a button sitting on the key bar's own ▾ and the composer's ▶ once ⇞ was on screen
-always. Three browser tests caught it as a click nothing could reach. The
-terminal's box ends where the bars begin, whatever the bars are doing, so the
-stack is bottom-right *of it*.
-
-That brought one thing with it: a tap on the pager or the bar now arrives at
-`#term`'s own click handler, whose job is to hand the focus back to the terminal —
-which on Android is the keyboard coming up over the output ⇩ was just pressed to
-get back to. Both are excluded there by name. A control drawn over the terminal is
-not the terminal.
+**The stack lives inside `#term`.** It was pinned 64px above the bottom of the
+viewport — a guess about how tall the bars are, harmless while the button only
+appeared during a scroll, and a button sitting on the key bar's ▾ and the
+composer's ▶ once ⇞ was always on screen. Three browser tests caught it as a
+click nothing could reach. The terminal's box ends where the bars begin, so the
+stack is bottom-right *of it*. That brought one thing with it: a tap on the pager
+or the bar now arrives at `#term`'s own click handler, whose job is to hand focus
+back to the terminal. Both are excluded there by name — a control drawn over the
+terminal is not the terminal.
 
 **And its corner is somebody else's corner.** The answer row and the control pad
-are drawn over the pane's last rows for their own reasons, so a 44px circle 10px
-off the bottom sat on the row's `Esc` and on the pad's last key — reported as Esc
-not answering, and caught here by a browser test that could not click it at all.
-It is the same "button nothing can reach" as the 64px guess above, one layer along,
-and the answer is the measurement rather than another number: `liftFloaters`
-publishes the height of whatever overlay is on screen and the stack stands that
-much higher (`--over-h`). The row is as tall as the menu it was drawn from — up to
-45vh of options — so nothing fixed would have covered it. The scrollbar still takes
-its 18px off the right edge of the row's full-width buttons, which is a rail rather
-than a target and has not been reported.
+are drawn over the pane's last rows, so a 44px circle 10px off the bottom sat on
+the row's `Esc` and the pad's last key — reported as Esc not answering. The
+answer is measurement rather than another number: `liftFloaters` publishes the
+height of whatever overlay is on screen and the stack stands that much higher
+(`--over-h`). The row is as tall as the menu it was drawn from (up to 45vh), so
+nothing fixed would have covered it. The scrollbar still takes 18px off the right
+edge of the row's buttons, which is a rail rather than a target.
 
-They send **the wheel the swipe already sends**, not tmux's own `page-up`, and
-that is what makes them need no state of their own: a notch enters copy-mode by
-itself, and a scroll down reaching the live end leaves it — which is what takes
-the three buttons off screen at the bottom. A copy-mode command would do neither,
-and one sent to a pane that has already left the mode is a character in somebody's
-prompt (see below, where the ⇩ and typing both had to be requests rather than a
-`q`).
-
-The size of the step is the whole of what this has to get right, and it is
-`floor((rows - 2) / wheelLines)` notches — **rounded down, and the remainder is
-overlap**. Rounding up skips the lines between two pages, and a line nobody knows
-they have not read is the one failure here that says nothing about itself. The
-two rows kept back are what the next page reads on from. Neither number is
-assumed: the rows are the page's own, and the lines per notch are what the server
-asked tmux for (see "the wheel step is a tmux setting" — one on the owner's host,
-five on a stock server, so the same button is one notch there and thirty-odd
-here).
-
-Two things they inherit rather than reimplement, and both are traps this file has
-met before. The glide is stopped first, because a flick's inertia goes on sending
-notches for up to a second after the finger has left and those would arrive behind
-the page and move it again. And the focus is given up (`releaseTerminalFocus`),
-because a page down that reaches the live end takes the pane out of copy-mode —
-a layout moving under a focused textarea, which on Android is the keyboard coming
-back over what was being read.
-
-The browser test asserts the bounds rather than the formula: a page moves at
-least half a screen — less is not a page — and never more than one, which is the
-same statement as skipping nothing. Forward then has to undo back exactly, there
-being no gesture in it and so no residue to round.
+The pager sends **the wheel the swipe already sends**, not tmux's `page-up`, so
+it needs no state of its own: a notch enters copy-mode by itself and a scroll
+down reaching the live end leaves it. The step is `floor((rows - 2) / wheelLines)`
+notches — **rounded down, and the remainder is overlap**. Rounding up skips the
+lines between two pages, and a line nobody knows they have not read is the one
+failure here that says nothing about itself. Neither number is assumed: the rows
+are the page's own, the lines per notch are what the server asked tmux for. It
+inherits the two traps above — stop the glide, give up the focus. The browser
+test asserts the bounds rather than the formula: at least half a screen, never
+more than one, and forward undoing back exactly.
 
 ## The bar says where in the output you are, which no step can
 
-The swipe and the pager both move by a step. Neither says how much there is
-behind the screen or how far through it you are, and crossing a long history with
-either is a lot of steps taken blind. `#scrollbar` is the answer to that question:
-the thumb covers the screen's share of the whole scrollback, the top of the track
-is the oldest line kept and the bottom is the live end.
+The swipe and the pager both move by a step; neither says how much is behind the
+screen or how far through it you are. `#scrollbar` answers that: the thumb covers
+the screen's share of the whole scrollback, the top of the track is the oldest
+line kept, the bottom is the live end.
 
 **It asks for a place, not a movement.** `{"type":"scroll-to","back":N}` names
-where to be, and the server works the difference out against a reading taken
-there and then — the page's own picture of the position is up to a poll old, and
-a delta applied to a pane that has moved since (a second client on it, the page's
-own glide) lands somewhere nobody asked for. That is also what keeps a drag from
-being several hundred wheel notches: `tmuxcmd.ScrollHistory` is one `send-keys -X
--N <count>`, with `copy-mode -e` in front of it because `-X` needs a mode to send
-to and the bar is on screen before there is one. The `-e` is what makes a drag to
-the very bottom leave the history, the same way a scroll to the live end does.
+where to be and the server works the difference out against a reading taken there
+and then. That also keeps a drag from being several hundred notches:
+`tmuxcmd.ScrollHistory` is one `send-keys -X -N <count>`, with `copy-mode -e` in
+front because `-X` needs a mode to send to and the bar is drawn before there is
+one. The `-e` is what makes a drag to the very bottom leave the history.
 
-**Both numbers come from tmux, and the second one is new.** `PaneMode` now reports
-`#{history_size}` beside the mode and the position, and the mode frame carries it
-— comma-separated, because the middle field is empty out of a mode and
-`strings.Fields` on `0  800` gives two fields and reads the history size as the
-position. tmux answers the size out of a mode as well, which is what lets the bar
-be drawn before the first scroll.
+**Both numbers come from tmux.** `PaneMode` reports `#{history_size}` beside the
+mode and the position, comma-separated — the middle field is empty out of a mode,
+and `strings.Fields` on `0  800` gives two fields and reads the size as the
+position. tmux answers the size out of a mode too, which is what lets the bar be
+drawn before the first scroll. The cost is a mode frame whenever the pane prints;
+that is the point rather than the price, a bar drawn against a minute-old total
+being wrong by everything printed since. The journal line stays on the state the
+page *shows* changing.
 
-The cost of carrying it is that the mode frame now changes whenever the pane
-prints, not only when somebody scrolls — a small frame per poll on a busy pane.
-That is the point rather than the price: a bar drawn against the total it had a
-minute ago is wrong by everything printed since. The journal line stays where it
-was, on the state the page *shows* changing, or a printing pane would write one
-every 400ms.
+**A hidden element measures zero, and the first version deadlocked on it**: the
+track was read off the bar, the bar starts `hidden`, so it had no height, so it
+was never shown. It is measured off `#term`, the same box by construction.
 
-**A hidden element measures zero, and the first version deadlocked on it.** The
-track was read off the bar itself, the bar starts `hidden`, so it had no height,
-so it was never shown, so it never had a height. It is measured off `#term` now,
-which is the same box by construction (`top: 0; bottom: 0` inside it).
-
-**Pointer events, not touch** — the one place on this page that uses them, and for
-the defect the rows met above: a touch is delivered to the node it started on, so
-anything redrawing under the finger takes the gesture with it. `setPointerCapture`
-says outright that the bar owns the drag until it is let go, which is also what
-lets a finger slide off an 18px track and go on dragging. One set of handlers
-covers the laptop's mouse with it.
-
-Two widths and that is the whole design: the rail is 4px because it stands over
-output that has to stay readable, the target is 18px because it is dragged with a
-thumb. The floating buttons moved from `right: 10px` to `22px` to clear it —
-they are on top where the two overlap, and the corner is where a thumb reaches
-for both.
+**Pointer events, not touch** — the one place here that uses them, for the defect
+the rows met below: a touch is delivered to the node it started on.
+`setPointerCapture` says outright that the bar owns the drag, which is also what
+lets a finger slide off an 18px track and go on dragging; one set of handlers
+covers the laptop's mouse. Two widths and that is the design: a 4px rail over
+output that has to stay readable, an 18px target for a thumb. The floating
+buttons moved from `right: 10px` to `22px` to clear it.
 
 ## Typing into copy-mode goes nowhere, and nothing on screen says so
 
-tmux discards what is typed into a pane it holds in copy-mode: a printable
-character lands nowhere and the rest are the mode's own commands. On a laptop
-that is visible and the way out is `q`. On a phone it is invisible — the page
-enters copy-mode by its own scroll gesture, and **a pane sitting in copy-mode at
-the live end looks exactly like a live one**, which is why the way back (⇩) is
-deliberately hidden then (see above: scrolled back is not the same as
-copy-mode).
+tmux discards what is typed into a pane it holds in copy-mode. On a laptop that
+is visible and the way out is `q`; on a phone it is invisible — the page enters
+copy-mode by its own scroll gesture, and **a pane sitting in copy-mode at the
+live end looks exactly like a live one**, which is why the ⇩ is hidden then.
 
 Reported as the terminal refusing text and a pasted image never arriving, with
-the cure found by hand — scroll up and come back, which is what ends the mode.
-The journal had already written down what nothing on screen did: four uploads in
-a minute, each `ok`, each preceded by `{"event":"mode","in":true,"back":0}`. The
-image had been saved every time and the path typed into a pane that was throwing
-it away.
+the cure found by hand: scroll up and come back. The journal had written down
+what nothing on screen did — four uploads in a minute, each `ok`, each preceded
+by `{"event":"mode","in":true,"back":0}`. The image had been saved every time and
+the path typed into a pane throwing it away.
 
-**So typing ends the mode**, and it is the one thing here allowed to. The rule it
-bends was written a release earlier — *nothing asks tmux to leave copy-mode,
-because the pane is shared and a laptop chose that mode* — and what it did not
-weigh is a keystroke that disappears. Typing is an act rather than a guess:
-somebody is writing to the program now. Against every keystroke on the phone
-going nowhere, a laptop being taken to the live end is the cheaper loss, and
-`leave-mode` in the journal says how often it happens.
-
-Three things make it safe rather than lucky:
-
-- **It is a request, not a `q`.** The page's picture of the mode is up to a poll
-  old (400ms), and a `q` sent to a pane that has already left the mode is a
-  character in somebody's prompt. `tmuxcmd.CancelMode` is `send-keys -X cancel`,
-  which tmux refuses with a message when there is no mode — it types nothing.
-  The server handles the frame in the same loop that writes the keystrokes, so
-  the mode is gone before the bytes that asked for it arrive. The ⇩ button uses
-  the same path now, for the same reason.
-- **The glide is stopped first.** A flick's inertia goes on sending notches for
-  up to a second after the finger has left, and those arrive behind the request
-  and put the pane straight back into the history it was just asked to leave.
-  That trap was found by the ⇩ button; typing right after a swipe is the
-  commonest way to meet it, and the browser test does exactly that.
-- **A mouse report is not typing.** xterm hands the wheel to the same `onData`
-  callback as the keyboard, so with tmux's mouse on, a scroll arrives as
-  `\x1b[<64;…M` — read as an act of typing it cancels the very copy-mode the
-  scroll just entered and drops the queued notches with it. Caught by the test
-  that asks whether a wheel scrolled tmux at all.
+**So typing ends the mode**, and it is the one thing allowed to. Typing is an act
+rather than a guess: somebody is writing to the program now. Against every
+keystroke on the phone going nowhere, a laptop taken to the live end is the
+cheaper loss, and `leave-mode` in the journal says how often it happens. Three
+things make it safe: it is a request (`tmuxcmd.CancelMode`, `send-keys -X
+cancel`, which tmux refuses with a message when there is no mode — it types
+nothing, and the server handles the frame in the same loop that writes the
+keystrokes, so the mode is gone before the bytes arrive); the glide is stopped
+first, typing right after a swipe being the commonest way to meet that trap; and
+**a mouse report is not typing** — with tmux's mouse on, a scroll arrives at the
+same `onData` as `\x1b[<64;…M`, and read as typing it would cancel the very
+copy-mode the scroll just entered.
 
 ## A tab carries three answers, and none of them is the others
 
 Which sessions exist is the row, which one you are in is a **frame**, and what
 each is doing is the **fill**: nothing for a session the watcher has no claim
 about, a moving purple while output arrives, green once it has gone quiet after
-doing something. The frame is not decoration — "attached" used to be the fill,
-which left the session you were sitting in as the only tab that could not tell
-you whether its agent was still running. The border is always present and only
-changes colour, or every switch would move the rest of the row by two pixels.
+doing something. "Attached" used to be the fill, which left the session you were
+sitting in as the only tab that could not tell you whether its agent was running.
+The border is always present and only changes colour, or every switch would move
+the row by two pixels.
 
-The state is `watch.Activity`, read off the same per-session bookkeeping the
-"finished" notification is decided from — so the colour and the notification
-cannot disagree about what a session is doing. `ActivityUnknown` is deliberately
-not called idle: the honest claim is that nothing has been seen since watching
-began, and a tab then paints itself neutral instead of inventing a fact.
+The state is `watch.Activity`, read off the same bookkeeping the "finished"
+notification is decided from, so the colour and the notice cannot disagree.
+`ActivityUnknown` is deliberately not called idle: the honest claim is that
+nothing has been seen.
 
 **The end of a turn is read off the agent, not waited out.** `detect.Live` looks
 for the counter an agent keeps on screen while a turn runs — `✶ Doing… (1m 13s ·
-↓ 3.9k tokens)` — and its going away is the event: `watch` reports "done" once it
-has stayed away for `liveGrace`, four seconds, instead of thirty seconds after the
-last change. The silence rule is still there and still needed — a shell running a
-build has no counter to read — but it is no longer the only one, and it was costing
-thirty seconds of a tab painted as working after the answer was already on it.
+↓ 3.9k tokens)` — and its going away is the event: "done" once it has stayed away
+for `liveGrace`, four seconds, instead of thirty seconds after the last change.
+The silence rule remains for a pane with no counter (a shell running a build).
 
-**One poll without the counter is not an answer.** It was, and the report was "часто
-зеленеет на время и отправляет уведомление": a capture landing between the footer
-being erased and painted again, or a release that stops drawing the counter during a
-tool call, is one screen without a counter on a turn still running. The window is
-four seconds — two polls — which keeps almost all of the advantage over the silence
-rule. `Activity` waits exactly as long as the notification does, because the whole
-reason both are decided here is that they cannot disagree about what a session is
-doing. Sampling the author's own sessions at twice the poll rate found no flicker in
-this release (30s and 55s, no transitions), so this is a guard rather than a fix for
-something caught in the act.
+**One poll without the counter is not an answer.** It was, and the report was
+"часто зеленеет на время и отправляет уведомление": a capture landing between the
+footer being erased and painted again is one screen without a counter on a turn
+still running. Two polls keep almost all of the advantage, and `Activity` waits
+exactly as long as the notification does. Sampling the author's sessions at twice
+the poll rate found no flicker in this release, so this is a guard rather than a
+fix for something caught in the act.
 
-**Every event is written down** (`Options.Log`, `journalctl -u pockterm | grep
-watch:`) with the session, the rule that raised it — `counter gone for 4s`, `quiet
-for 32s` — and, when nothing was sent, why: the session was on screen, or no page
-had ever opened it. Before that line the watcher's state lived in this process and
-nothing recorded it, so "it goes green for no reason" could not be told from a real
-finish an hour later. It was measurable only from the page's side, and even there
-what looked like a burst of notices was one event delivered to the several sockets a
-stalled reconnect had left behind.
+**Every event is written down** (`Options.Log`) with the session and the rule that
+raised it — `counter gone for 4s`, `quiet for 32s` — and, when nothing was sent,
+why. Before that line "it goes green for no reason" could not be told from a real
+finish an hour later, and what looked from the page's side like a burst of
+notices was one event delivered to the several sockets a stalled reconnect had
+left behind.
 
-Three readings say a turn is running, and the first of them had to be widened
-after it sent a "finished" notice mid-thought:
+Three readings say a turn is running, and the first had to be widened after it
+sent a "finished" notice mid-thought:
 
 - **Brackets opening with a duration** — and nothing else in them is required.
-  The first version also demanded the word `tokens`, which is there while the
-  agent spends them and gone while it only thinks: `✢ Crunching… (4m 23s · still
-  thinking)` read as a turn that had ended. That is what put a live counter in
-  the body of "pockterm закончил", and what made a working tab go green for a few
-  seconds at a time. A 40-second sample of a real session missed it entirely,
-  because tokens happened to be flowing throughout.
+  The first version also demanded `tokens`, which is gone while the agent only
+  thinks: `✢ Crunching… (4m 23s · still thinking)` read as a turn that had ended.
+  A 40-second sample missed it entirely, tokens happening to flow throughout.
 - **`esc to interrupt`**, which older releases show instead of a counter.
-- **One of a small set of stars, followed by a word ending in an ellipsis** —
-  `✻ Pondering…`, `✢ Crunching…` — from the owner's observation that the line
-  always opens with one and that those characters turn up in prose about never.
-  The ellipsis is what makes it safe: a turn in flight is named with one, and the
-  line left behind when it ends is not. `●` is deliberately not in the set — that
-  is the mark on the agent's own sentences, the thing a notification is *for*.
+- **One of a small set of stars followed by a word ending in an ellipsis** —
+  `✻ Pondering…`, `✢ Crunching…`. The ellipsis is what makes it safe: a turn in
+  flight is named with one, the line left behind when it ends is not. `●` is
+  deliberately not in the set — that is the mark on the agent's own sentences,
+  the thing a notification is *for*.
 
   **The set was observed, and observing it left a frame out.** Read out of Claude
-  Code 2.1.234 itself, the spinner cycles `["·", "✢", "*", "✶", "✻", "✽"]`, and
-  `·` (U+00B7) was the one missing — so one poll in six could not see the counter
-  at all. That is harmless while the brackets carry a duration, since the first
-  rule answers then, and not harmless on the shape a long think draws:
-  `✻ Unravelling… (thinking with xhigh effort)`, captured off two live sessions on
-  2026-08-18, has no duration in it. With only this rule left to answer, two polls
-  landing on `·` inside the four seconds the watcher waits report a turn as
-  finished mid-thought — the same notification the `tokens` rule cost before it,
-  in a new shape. The dot is also the one frame that can be prose (a bulleted line
-  ending in an ellipsis has the same shape) where a star cannot, so it was
-  measured first: no line in 2000 rows of scrollback from four working panes
-  begins with one, and the cost if it ever happens is a tab that stays purple
-  rather than a notice saying the opposite of what is true.
+  Code 2.1.234, the spinner cycles `["·", "✢", "*", "✶", "✻", "✽"]`, and `·`
+  (U+00B7) was missing — one poll in six blind. Harmless while the brackets carry
+  a duration, and not harmless on the shape a long think draws:
+  `✻ Unravelling… (thinking with xhigh effort)`, captured off two live sessions
+  on 2026-08-18, has no duration in it, so two polls landing on `·` inside the
+  four seconds report a turn as finished mid-thought. The dot is also the one
+  frame that can be prose, so it was measured first: no line in 2000 rows of
+  scrollback from four working panes begins with one, and the cost if it happens
+  is a tab that stays purple rather than a notice saying the opposite of what is
+  true.
 
-What is never matched is the verb. Pondering, Crunching, Deciphering, Scampering,
-Cooked, Sautéed — they turn over between releases, and the line left behind when
-a turn ends is the same words in the past tense: `✻ Crunched for 4m 3s · 1 monitor
-still running`. Shapes, not vocabulary.
-
-The counter also outranks the threshold while it is *there*: a turn that thinks
-for a minute can redraw to the same bytes, and silence alone called that
-finished. And the search window is the last 20 non-blank lines rather than the
-footer's four, because what the agent draws under the counter — its input box,
-its own status line, a task list, a tip — is as tall as it feels like.
+What is never matched is the verb — Pondering, Crunching, Cooked, Sautéed turn
+over between releases, and the line left behind is the same words in the past
+tense (`✻ Crunched for 4m 3s · 1 monitor still running`). The counter outranks
+the silence threshold while it is there: a turn that thinks for a minute can
+redraw to the same bytes. The search window is the last 20 non-blank lines, not
+the footer's four, because what the agent draws under the counter is as tall as
+it feels like.
 
 **Once a session has been seen counting, the counter is the whole answer, and a
 change on screen is not an answer at all.** Any change used to count as work
-resuming, and the change a person makes most often is typing the next message into
-the agent's own input box: the tab went green when the turn ended and purple again
-at the first keystroke — reported from the phone as "it does not detect the stop
-and jumps from green to purple". A tab was calling the human's typing the machine's
-work. It cost notifications as well, and worse: every keystroke re-armed
-"finished", so a turn already reported was reported again. The regression test
-types four characters and demands one event; against the old rule it produced five.
+resuming, and the change a person makes most often is typing the next message
+into the agent's input box: the tab went green when the turn ended and purple at
+the first keystroke — "it does not detect the stop and jumps from green to
+purple". It cost notifications too: every keystroke re-armed "finished", so a
+turn already reported was reported again. The regression test types four
+characters and demands one event; the old rule produced five. So `sawLive` is a
+property of the session, and `Activity` answers `done` for any session that has
+counted before and is not counting now.
 
-So `sawLive` is a property of the session rather than an arming flag, and
-`Activity` answers `done` for any session that has counted before and is not
-counting now. Silence keeps its job where there is nothing else: a shell running a
-build has no counter, and for it a change on screen is still the only evidence of
-work there is.
+**Attaching is not work either.** Tapping a green tab turned it purple for the
+whole idle threshold: a page attaching makes tmux give the new client its own
+size and the pane is redrawn, so the screen differs through nobody's effort.
+Leaving cost more — the pane resizes back, nobody is looking, and thirty seconds
+later the session was announced as *finished* for having been left.
+`Watcher.Rebase` marks the next screen as ours; `Presence.Join`/`Leave` call it.
+The immunity is a short window rather than one poll, because tmux redraws and the
+agent redraws its own box a moment later — with the window removed the test shows
+the first redraw forgiven and the second not.
 
-**And attaching is not work either.** Tapping a green tab turned it purple for the
-whole idle threshold: a page attaching makes tmux give the new client its own size
-and the pane is redrawn to it, so the screen differs from the one before through
-nobody's effort — which for a session that has never counted is the only evidence
-of work there is. Leaving costs more: the pane resizes back, nobody is looking any
-more, and thirty seconds later the session was announced as *finished* for having
-been left. `Watcher.Rebase` marks the next screen as ours rather than the agent's,
-and `Presence.Join`/`Leave` call it. It is a short window rather than a single poll
-because tmux redraws and then the agent redraws its own box a moment later — the
-test proves that too: with the window removed the first redraw is still forgiven
-and the second one is not.
+**Typing into a session that has never counted is not work either.** `sawLive`
+was written for a session whose agent had already run a turn; a session just
+opened has not, so the only evidence of work was the screen changing, and it was
+changing because the first message was being written into it. The tab swept
+purple beside the one really running, and thirty seconds after the last keystroke
+the watcher announced it as finished — four times in five minutes (`watch: done
+pockterm (quiet for 30s)`). `detect.InputBox` answers it: the box and the counter
+are drawn by the same TUI, so a pane showing the box and no counter has no turn
+running, whether or not one has ever been seen. The tab is neutral and nothing is
+announced. It is read fresh every poll: a session that ran an agent and dropped
+back to a shell is a shell now.
 
 **`ActivityAsking` outranks both and waits for nothing.** A menu on screen is the
-only state that is about the person holding the phone — output arriving is the
-machine's business, a question is theirs — so it beats working and done, and it
-does not require the screen to have changed once: a pane already showing a
-question is showing it now. It also survives the idle threshold, where "done"
-would be a tab claiming the opposite of what is true. The tab goes blue with a
-yellow `!` centred on its top edge, half of it above the tab: the mark is allowed
-to break the row's outline because the question is the one thing here that needs a
-person. The sweep is the same keyframes as working, so the speed and the per-tab
-phase cannot drift apart from it. This is the same detection the answer buttons are
-drawn from (`detect.Question`) — and those exist only for the session on screen,
-while the question you want to know about is usually in the one that is not.
+only state about the person holding the phone, so it beats working and done, it
+needs no change to the screen, and it survives the idle threshold. The tab goes
+blue with a yellow `!` centred on its top edge, half of it above the tab — the
+mark may break the row's outline because the question is the one thing here that
+needs a person. Same keyframes as working, so speed and per-tab phase cannot
+drift. It is the same detection the answer buttons are drawn from
+(`detect.Question`), and those exist only for the session on screen while the
+question you want to know about is usually in another.
 
-**And the walk and the Enter are two writes, because in one they answer option
-one.** The digits were the first version of this defect and the arrows were its
-fix; the fix had the same outcome for the same reason, one layer down. Sent as a
-single write, `↓↓↓\r` is applied by the menu against the position it had *before*
-the arrows — measured on a real `AskUserQuestion` at 51 columns: three arrows
-alone move the pointer to the fourth option, the same three with the Enter
-attached answer the first, and so does a single `↓` with one. Every button but
-the first had been answering the first. Reported from the phone as "Chat about
-this and Type something do not work", which is what the two options at the bottom
-of that menu look like when they quietly pick the top one.
+**Every session is watched; only the ones a page has opened are announced.**
+Those were one thing, so a session was not watched until a page attached — and
+after a deploy every tab went neutral and stayed there, the watcher's state being
+per process and CI installing a new binary several times a day. Found by reading
+`/api/sessions` and seeing no `state` on a session that was visibly working.
+`Options.Sessions` is the roster, swept every tick, and `observe` adds what it
+finds; `Watch` — the attach path — is the only thing that sets `notify`. Sessions
+leave the same way: a `capture-pane` that fails removes one.
 
-**A menu scrolls its own list, and reading an option by its place lost it
-twice.** `AskUserQuestion` keeps its pointer in view by scrolling the options
-under it, so on a pane 51 columns wide walking down to the fourth answer pushes
-the first two off the top of the list. What is left on screen is a run beginning
-at `3.` — and a run had to begin at `1.` to be a menu at all, so there was no
-menu: the row of buttons went away at the moment it was tapped. Then the press
-that followed compared the cursor's index with the index the button carried, and
-after a scroll those are two different rows. Reported from the phone as the two
-options at the bottom of a long menu doing nothing, which is the third visit of
-this defect — the digits, then the Enter glued to the arrows, now the list moving
-under the walk. All three look identical from outside: a button that answers
-nothing, or worse, something else.
+**Green expires after ten minutes** (`doneFresh`). Green means gone quiet *after
+doing something*, which is news while recent and nothing once old — a distinction
+that used to come for free when a session was watched only from the moment a page
+attached. Reading everything from the start turned every session that had ever
+run green for good: "only now everything is green", a strip that has stopped
+saying anything. Stale goes back to neutral, which already means "quiet for
+hours". The badge does not fade with it: what is still running is a fact about
+now.
 
-So a run may start at any number. **The leading 1 was never what kept prose
-out** — that is the chrome a run is kept on (`❯`, a border) and the indentation
-rule in `continues`, and both are untouched; the number now only has to be one
-past the option before it. And the press follows the option rather than the row:
-it finds it by label in a fresh scan, and watches for the pointer to arrive **by
-the option's own number**, which is the one thing about it that a scroll does not
-change. The prompt is checked too, because every one of these menus carries a
-"Type something." and a "Chat about this" — a label alone would answer the menu
-that had replaced this one.
+The page polls every 3s, only while the terminal is on screen and the page is in
+front, plus a `visibilitychange` refresh — coming back is when the answer is most
+out of date. The purple sweeps over 4.2s and `alternate`, with a per-tab phase
+from the session name (`workingPhase`); it was 1.4s one-way with every tab in
+step, which read as one decoration flickering along the strip.
+
+The state rides in the session list (`state` on each entry, filled from
+`Presence.Activity`) rather than in an endpoint of its own: a name and its state
+fetched separately can disagree, and the disagreement shows as the wrong tab lit
+up. tmux never fills that field. The `!`'s upper half lives in `#tabs`'
+`padding-top`, given back by an equal negative margin — the strip clips both
+axes, and a taller strip would move `☰` down, the drawer's `❮` being measured
+against it.
+
+**The fill answers what the agent is saying; a fourth question is what it left
+running.** `watch.Background` reads the shells and monitors off the agent's own
+footer (`detect.ReadBackground`, on the same poll as the colour) and the tab
+carries how many in its bottom-right corner — in the corner rather than after the
+name because the row scrolls sideways and the names are what is worth reading
+along it. A session at "done" with two monitors alive is not one with nothing
+left, and the colour cannot say so.
+
+**One plate per kind.** The sum answered "is anything still running" and refused
+every follow-up: a shell is something started and forgotten, a monitor something
+still watching for an answer, and `3` said neither. The argument for summing was
+that two glyphs in a corner that size are a smudge; the owner, who reads the
+strip, says otherwise. The plate carries a number, and shape and colour say which
+kind: the monitor keeps the heraldic shield (`clip-path`: flat top, pointed
+bottom), the shell is a triangle pointing right — the same `▸` the strip gives a
+shell session; cyan for shells, green for monitors, green being the strip's own
+"gone quiet after doing something". Both began with a glyph in front of the
+number and neither kept it: two of them at 9px in a corner 20px wide were exactly
+the smudge. A triangle is tallest down its left edge, so the room goes to the
+digit.
+
+**On a tab they hang off the edge, one above the other** — side by side they cost
+the name twice the width. Each hangs a third of itself past the tab, out to the
+right and over the top (triangle) or under the bottom (shield), because two
+plates inside a tab 34px tall crowd each other and the name. The triangle is as
+wide as it is tall: drawn longer, its point read as an arrow leaving. The room is
+`#tabs`' own padding given back by a negative margin, the same trick as the `!`
+above. The drawer's rows keep them side by side, a row being three times as tall.
+They are pseudo-elements of a `.bg` span (`data-sh`, `data-mon`), the button's
+own `::before` being the `!`; `data-bg` counts the plates rather than the
+processes, which is what the corner reserves room for.
+
+Only the footer counts, and only its lowest line with a number in it. The same
+words appear in the line an agent prints when a turn ends ("Cogitated for 2m 23s
+· 1 shell, 1 monitor still running"), which was true when printed and says
+nothing about now — skipped by its wording, and output scrolled above the last
+few lines is out of range by position.
+
+**The top edge says who is running for it.** A subagent is not a background
+process: it is another agent with its own turn, and the session is waiting on it.
+Claude Code lists them under its status lines (`● main`, then a `◯` per subagent),
+and the tab carries **one head per agent on its top edge**, right-aligned with the
+name, the mirror of the plates below. No number — two heads are seen where a `2`
+has to be read — and four is the cap. What they claim is what the agent's own list
+claims: an agent that has finished but not been collected is still on that list.
+`detect.ReadAgents` needs the block's own `● main` above the circles, so an answer
+that happens to use `◯` grows no heads. **The block is footer**, and counting it as
+content cost the plates their line: it sits below the status lines and is as tall
+as the session has subagents, so with three of them "1 shell, 2 monitors" fell out
+of the four-line window. `ReadBackground` steps over it.
+
+**The drawer says all of it too, in the strip's own colours** — the same three
+states, keyframes, duration and per-session phase, the same CSS for the shapes and
+glyphs, differing only in size and padding: the sweep runs the row's width, the `!`
+straddles its top edge at the left, the plates stand in its bottom-right corner one
+size larger. A row and a tab describing one session differently is worse than
+either saying nothing. Two things keep it honest: the rows are painted, never
+rebuilt (`paintRows`, which here also protects the armed `✕`), and **the poll runs
+while the drawer is open** — with nothing attached the drawer is all there is.
+
+**The mark is a cell of its own beside the name, never inside it.** `.name` is the
+session's name and nothing else — the page reads it back to attach, rename and
+close — and a glyph spliced into it produced a session called
+`⭐pockterm-ui-oWck6x` that tmux had never heard of.
+
+## The answer row presses what the menu says it takes
+
+The row is drawn over the pane's last rows (see the flow rule at the top; the same
+shrinking is why a *waiting* session read as finished on the strip — the watcher
+reads the very same pane, and while the menu was out of it there was no question
+to see). A swipe on the row scrolls the row: six options with labels are taller
+than the room it has, and `ownsGesture` gives it its own gesture.
+
+`detectQuestion` reports `navigate` (`digits` or `arrows`, read off the footer
+line) and `cursor` (which option carries the `❯`); `answerKeys` turns the two into
+bytes. The count of arrow presses starts from where the pointer **is** — a menu
+already navigated sits somewhere else — and no pointer means no honest count and
+therefore no button. `internal/detect` parses neither field: it renders
+notifications, and a notification presses nothing.
+
+**Not a digit.** "Type the digit and press Enter" was the rule from the beginning
+and it is an assumption about every menu that looks like one. It holds for a
+permission prompt and is false for the question with a description under each
+answer, which lists its keys underneath — `Enter to select · ↑/↓ to navigate · Esc
+to cancel`, digits not among them: the digit fell on the floor and the Enter took
+whatever was highlighted, so **every button answered option 1**.
+
+**The walk and the Enter are two writes, because in one they answer option one.**
+Sent as a single write, `↓↓↓\r` is applied by the menu against the position it had
+*before* the arrows — measured on a real `AskUserQuestion` at 51 columns: three
+arrows alone move the pointer to the fourth option, the same three with an Enter
+attached answer the first, and so does a single `↓` with one. Reported as "Chat
+about this and Type something do not work", which is what the two options at the
+bottom look like when they quietly pick the top one.
+
+So `answerKeys` returns `{move, commit}` apart and `pressAnswer` in `js/app.js`
+sends the walk, **waits until it can see the pointer arrive** — the same detector
+the row is drawn from, polled for up to a second — and only then the Enter. A
+pointer that never arrives means nothing is pressed at all, with a line in the
+journal and a word on screen.
+
+**A menu scrolls its own list, and reading an option by its place lost it twice.**
+`AskUserQuestion` keeps its pointer in view by scrolling the options under it, so
+at 51 columns walking down to the fourth answer pushes the first two off the top:
+what is left is a run beginning at `3.`, and a run had to begin at `1.` to be a
+menu at all — the row went away at the moment it was tapped. Then the press
+compared the cursor's index with the index the button carried, and after a scroll
+those are two different rows. So a run may start at any number; the leading 1 was
+never what kept prose out (that is the chrome and the indentation rule in
+`continues`), and the number now only has to be one past the option before it. The
+press follows the option rather than the row: it finds it by label in a fresh
+scan and watches for the pointer by **the option's own number**, the one thing a
+scroll does not change. The prompt is checked too, every one of these menus
+carrying a "Type something." and a "Chat about this".
 
 What a scrolled menu costs is its prompt: the question is off screen with the
 options, so `prompt` is whatever line sits above the run — a fragment of the
-description belonging to the option before. A notification then names the
-fragment. That is worse than the question and much better than the silence it
-replaced, which is a tab painted neutral in front of a screen full of question.
-`test/fixtures/menus.json` carries the real scrolled pane, captured while the
-pointer sat on the fourth answer.
+previous option's description. A notification then names the fragment, which is
+worse than the question and much better than the silence it replaced.
+`test/fixtures/menus.json` carries the real scrolled pane.
 
-**And the press reads the screen again instead of trusting the row.** The row is
-drawn from an older scan, and a menu is painted a line at a time: one built before
-its `Enter to select · ↑/↓ to navigate` footer had arrived carries *digits*, which
-on that menu are answered by whatever happens to be highlighted. That window is a
-tenth of a second and it is the same wrong answer as everything else here. Between
-the two scans the pointer can also have moved, or the menu can have been replaced
-altogether — so the press checks that the option it is about to take still has the
-label the button was drawn with, and does nothing if it does not.
-
-`answerKeys` returns the two halves apart (`{move, commit}`) and `pressAnswer` in
-`js/app.js` sends the walk, then **waits until it can see the pointer arrive** —
-the same detector the row itself is drawn from, polled for up to a second — and
-only then the Enter. Waiting on the screen rather than on a timer is what makes
-it safe rather than lucky: a pointer that never arrives means nothing is pressed
-at all, with a line in the journal and a word on screen. Silence is the cheaper
-failure here, and the reason is the one this whole section keeps running into — a
-wrong answer looks exactly like the right one until you read what it did.
-
-**The answer buttons press what the menu says it takes, not a digit.** "Type the
-digit and press Enter" was the rule from the beginning, and it was an assumption
-about every menu that looks like one. It holds for a permission prompt. It is
-false for the question with a description under each answer, which lists its keys
-directly underneath — `Enter to select · ↑/↓ to navigate · Esc to cancel`, and
-digits are not among them: the digit fell on the floor and the Enter took whatever
-was highlighted, so **every button answered option 1**. Reported from the laptop as
-a click on the third one coming back as the first, and that is the worst shape a
-defect can take here — a wrong answer looks exactly like the right one until you
-read what it did. It also only became reachable when the fix below made those menus
-detectable at all.
-
-**An offer is not a menu, and the page now reads both.** A TUI menu carries
-chrome — a pointer, a box — and that chrome is the whole defence against reading
-a numbered list in prose as something to press. But an agent that has finished
-its turn and written "Что делаем? 1. … 2. …" is asking a question too, and
-answering it from the phone meant finding the field with a thumb and typing the
-digit by hand. Reported as the row of buttons not being drawn for exactly that
-screen.
-
-What makes it safe is not the shape of the list but where it is and what pressing
-it does. `detectOffer` requires four things, and each removes a way to be wrong:
-the agent's own input box is on screen and **empty** — that is what the digit is
-typed into, not a shell and not a half-written message; the list is inside the
-agent's last message (below the last `●`); that message **ends in a question**,
-because a list of what was done is not an offer and the question mark is what the
-two do not share; and the numbers run 1,2,3… in order, at least two of them. The
-button then types the number and presses Enter, which is what the owner would
-have done.
-
-`detectPrompt` asks the strict question first: a real menu can be driven with
-arrows and knows where its pointer is, an offer knows neither. And this lives on
-the page alone — `internal/detect` does not read offers, so the tab's blue and
-the "asks for an answer" notice keep meaning a menu is on screen. An agent that
-ends every second answer with a numbered list would otherwise have a phone
-buzzing about its prose.
-
-**The row is drawn over the terminal, never beside it.** It used to sit in the
-terminal screen's own flex column, so drawing it shrank the terminal — nine rows
-of thirty-five, measured on the stand. tmux redrew the pane that much shorter, the
-top of the menu scrolled out of the grid, nothing was detected any more, the row
-went away, the pane grew back, and round again: reported from the phone as the
-buttons blinking. A row whose own presence decides whether it should be there
-cannot be in the flow. It is `position: absolute` inside `#term` now, opaque, over
-the last rows — what it covers is the text it repeats. The same shrinking is why a
-*waiting* session read as finished on the strip: the watcher reads the very same
-pane, and while the menu was out of it there was no question to see. The test
-asserts the invariant rather than the symptom — showing the row must not change
-`#{pane_height}`.
-
-A swipe on the row scrolls the row: six options with their labels are taller than
-the room it is allowed, and `ownsGesture` gives it its own gesture for the same
-reason the composer and the tab strip have theirs.
-
-`detectQuestion` reports `navigate` (`digits` or `arrows`, read off that footer
-line) and `cursor` (which option carries the `❯`), and `answerKeys` turns the two
-into bytes. The count of arrow presses starts from where the pointer **is**, not
-from the top: a menu already navigated on screen sits somewhere else. No pointer
-means no honest count, and then no button — one that guesses gives an answer
-indistinguishable from the one the owner meant. `internal/detect` parses neither
-field: it renders notifications, and a notification presses nothing.
+**The press reads the screen again instead of trusting the row.** The row is drawn
+from an older scan and a menu is painted a line at a time: one built before its
+footer had arrived carries *digits*. That window is a tenth of a second and it is
+the same wrong answer as everything else here. Between the two scans the pointer
+can also have moved or the menu been replaced, so the press checks the option
+still has the label the button was drawn with.
 
 **A menu's options do not have to be adjacent, and requiring it found nothing.**
-The rule was a run of lines numbered 1,2,3 with nothing in between, which is a
-permission prompt exactly and an `AskUserQuestion` not at all: that one draws a
-description under every answer, and a rule across the menu before "chat about
-this". So the run broke at the first option, no menu was found, and the tab stayed
-neutral in front of a screen full of question — reported from a phone looking at
-one. A numbered line now continues the run when everything between it and the
-previous option belongs to that option: blank, box glyphs only, or **indented past
-the column the numbers sit in**. That indentation is what tells a description from
-a paragraph, and it is measured in columns rather than bytes — the descriptions
-this exists to read are in whatever language the prompt is, and one Cyrillic letter
-is two bytes against a box glyph's three. `test/fixtures/menus.json` carries the
-real screen, captured off the pane rather than typed from memory, and both
-implementations run against it.
+The rule was a run of lines numbered 1,2,3 with nothing between — a permission
+prompt exactly and an `AskUserQuestion` not at all, that one drawing a description
+under every answer and a rule before "chat about this". The run broke at the first
+option, so no menu was found and the tab stayed neutral in front of a screen full
+of question. A numbered line now continues the run when everything between it and
+the previous option belongs to that option: blank, box glyphs only, or **indented
+past the column the numbers sit in**. That indentation tells a description from a
+paragraph, and it is measured in columns rather than bytes — the descriptions are
+in whatever language the prompt is, and one Cyrillic letter is two bytes against a
+box glyph's three.
 
-**But the rule across the menu is where the list ends, not something between two
-options.** It was swallowed as chrome, which drew a fifth button for the one
-option the arrows cannot reach: `AskUserQuestion` puts `Chat about this` below
-that rule, outside the ring its arrows walk. Measured on the owner's phone
-2026-08-10 on a five-option menu — tapping the last button sent four downs and
-the pointer came back to option **1**, twice: `{"want":4,"key":"5","from":0,
-"on":"1","moved":false}`. A ring of four. So `Chat about this` is not an option
-here, and the row is drawn without it.
+**But the rule across the menu is where the list ends**, not something between two
+options. Swallowed as chrome it drew a fifth button for the one option the arrows
+cannot reach: `AskUserQuestion` puts `Chat about this` below that rule, outside the
+ring its arrows walk. Measured 2026-08-10 on a five-option menu — tapping the last
+button sent four downs and the pointer came back to option **1**, twice:
+`{"want":4,"key":"5","from":0,"on":"1","moved":false}`. A ring of four. Not the
+press being wrong: the walk went out, the pointer was watched, it never arrived and
+nothing was sent, so the cost was a toast rather than a wrong answer.
 
-It is **not the press being wrong** — the walk went out, the pointer was watched,
-it never arrived and nothing was sent, which is the guard above doing its job and
-the reason the cost was a toast rather than a wrong answer.
+An empty row inside a border stays chrome (`│      │` pads a boxed prompt). What
+ends the run is a horizontal line with nothing else on it, which is why `RULE` is
+deliberately blind to the border glyphs.
+
+**An offer is not a menu, and the page reads both.** A TUI menu carries chrome — a
+pointer, a box — and that chrome is the whole defence against reading a numbered
+list in prose as something to press. But an agent that has finished its turn and
+written "Что делаем? 1. … 2. …" is asking a question too. `detectOffer` requires
+four things, each removing a way to be wrong: the agent's input box is on screen
+and **empty**; the list is inside the agent's last message (below the last `●`);
+that message **ends in a question**, a list of what was done not being an offer;
+and the numbers run 1,2,3… in order, at least two of them. The button types the
+number and presses Enter, which is what the owner would have done. `detectPrompt`
+asks the strict question first. This lives on the page alone — `internal/detect`
+does not read offers, so the tab's blue and the "asks for an answer" notice keep
+meaning a menu is on screen; otherwise an agent that ends every second answer with
+a list would have a phone buzzing about its prose.
+
+**And the agent's own input box is not a menu, though it is drawn like one.** It
+carries the very same `❯`, and under it is whatever is being typed: a message
+beginning "1. …" newline "2. …" drew two answer buttons before it had been sent,
+and pressing one would have submitted the half-written message with a digit on the
+end. What tells the two apart took a capture: the composer draws a **non-breaking**
+space after the glyph, a menu pointer an ordinary one. That is also what made the
+indentation rule miss it — `indentOf` counted the non-breaking space as text, so
+the option line measured one column shallower than the lines wrapped under it,
+exactly the shape of an option with a description. Both halves are fixed and either
+would do alone (`indentOf` counts it as a space; `composerPrompt`/`detect.InputBox`
+bring no chrome). Measured on v2.1.222 at 51 columns off two real panes — the box
+with a list in it, and `/model`, a real menu still detected — and both are in the
+shared fixtures.
 
 ## `Type something.` is a field, not an answer, and an Enter on it is a refusal
 
-The same menu's other odd entry was read here for two releases as a feature: the
-button presses it correctly, the menu closes, the tool comes back cancelled, and
-that was written down as what choosing "I will answer in my own words" means.
-Reported again from the phone 2026-08-17 — *the button sends a refusal, `user
-declined to answer`* — and the reading was simply wrong.
+For two releases this was read as a feature: the button presses it correctly, the
+menu closes, the tool comes back cancelled. Reported 2026-08-17 — *the button sends
+a refusal, `user declined to answer`* — and the reading was wrong.
 
-That line is **not an option**. `AskUserQuestion` puts a text input in its own
-list, and what the pane shows on that row is its **placeholder**:
+That line is **not an option**. `AskUserQuestion` puts a text input in its own list
+and the pane shows its **placeholder**:
 `{type:"input",value:"__other__",label:"Other",placeholder:"Type something."}` in
-Claude Code 2.1.233, with `Type something` (no dot) when the question takes
-several answers. Selecting it hands the keyboard to that field; Enter submits
-whatever has been typed into it, and **at the moment a button is tapped the field
-is empty** — an empty `__other__` reaches the agent as "User declined to answer
-questions". Nothing was broken in the press: the journal has
-`{"want":3,"key":"4","on":"4","moved":true}` from that very tap. The answer it
-gave was the honest consequence of pressing a field nobody had typed into.
+Claude Code 2.1.233, with `Type something` (no dot) when the question takes several
+answers. Selecting it hands the keyboard to that field; Enter submits what has been
+typed, and at the moment a button is tapped the field is empty — an empty
+`__other__` reaches the agent as "User declined to answer questions". Nothing was
+broken in the press (`{"want":3,"key":"4","on":"4","moved":true}` from that tap).
 
 So this is the one option with **no commit**: `answerKeys` returns the walk and an
 empty string, `pressAnswer` stops when the pointer arrives, and `openForTyping`
 puts the keyboard where the answer can be written — the composer when that bar is
-on screen (an ordinary field, which is what dictation wants, and its `▶` sends the
+on screen (an ordinary field, which is what dictation wants, its `▶` sending the
 text with the Enter behind it), the terminal otherwise. The bar it finds is the bar
 it uses: switching to the composer here would rewrite a remembered choice
-(`pt-bar`) as a side effect of answering a question, which the settings panel
-already got wrong once. The button is drawn outlined rather than filled, because it
-is not an answer and a thumb reads a row of identical buttons as a row of answers.
+(`pt-bar`) as a side effect of answering a question. The button is drawn outlined
+rather than filled, a thumb reading a row of identical buttons as a row of answers.
 
-Two bounds, and each is a way this could go quietly wrong again. **The label is
-matched whole** (`TYPE_FIELD`) — a vocabulary rule, which this file otherwise
-avoids, and there is no shape to read instead: the field is drawn exactly like an
-option. So an answer that merely talks about typing something keeps its button.
-And **a menu that has not yet said how it is answered gets no button for the
-field**: digits are the assumption made when the footer has not arrived, and a
-digit cannot put the pointer on the field without taking what is under it. Silence
-there is the cheap failure; the refusal above is the loud one.
+Two bounds. **The label is matched whole** (`TYPE_FIELD`) — a vocabulary rule,
+which this file otherwise avoids, and there is no shape to read instead: the field
+is drawn exactly like an option. And **a menu that has not yet said how it is
+answered gets no button for the field**: digits are the assumption before the
+footer arrives, and a digit cannot put the pointer on the field without taking what
+is under it.
 
-`test/ui/pockterm.test.mjs` reads it off the wire like the rest of that block —
-the walk goes out, the pane redraws with the pointer on the field, and the
-assertion is that **no `\r` follows**. Checked against the defect first: with the
-Enter put back, it fails on that byte.
+`test/ui/pockterm.test.mjs` reads it off the wire: the walk goes out, the pane
+redraws with the pointer on the field, and the assertion is that **no `\r`
+follows**. With the Enter put back it fails on that byte.
 
-**And the row cannot stay where the answer is being typed.** Reported within the
-hour of the fix above, from the phone, typing into the field the button had just
-opened: the word came out over three of the buttons. Nothing is mispositioned.
-xterm draws what is being composed at the cursor, *inside the pane*, and when a
-menu's own text field has the keyboard the cursor is in the very rows `#answers` is
-drawn over. The row is absolute over the pane's last rows for a reason that has not
-changed — a row in the flow shortens the pane, tmux redraws, and the menu it was
-drawn from scrolls out of the grid — so what moves is the row's visibility: off
-screen while a composition is open, back when it is over.
+**The row cannot stay where the answer is being typed.** Reported within the hour
+of the fix, typing into the field the button had just opened: the word came out
+over three of the buttons. Nothing is mispositioned — xterm draws what is being
+composed at the cursor, inside the pane, and a menu's own text field puts that
+cursor in the very rows `#answers` covers. So what moves is the row's visibility:
+off screen while a composition is open, back when it is over. Composition state is
+asked of `fieldHygiene`'s `onCompose`; `paintAnswers` is the only owner of
+`hidden`, with `answersDrawn` saying whether there is a row at all — a row hidden
+because a word is being written has to come back, one never drawn must not. The
+stand can judge this one: the composition is faked at xterm's own field and what is
+asserted is the page's geometry, both halves.
 
-Whether a word is being composed is asked of the field rule (`fieldHygiene`'s
-`onCompose`, beside the `isComposing` the held Enter already reads), not of a second
-listener on the same events: two listeners are two answers, and the one that drifts
-is the one that decides. `paintAnswers` is then the only owner of `hidden`, with
-`answersDrawn` saying whether there is a row at all — a row hidden because a word is
-being written has to come back, and one that was never drawn must not.
+**Only that field asks for a keyboard — the answers must not.** Reported the day
+after: a tap on any button brought the keyboard up over the menu it was answering.
+Two paths did it, either enough alone: the handler called `term.focus()` after every
+press, and the row lives inside `#term`, whose click handler hands focus back to the
+terminal for anything not named there (the pager and the scrollbar were named, the
+answer row and the control pad were not — and the pad exists for a screen with *no*
+keyboard on it). So a button takes no focus (`keepsTerminalFocus`), which also
+leaves the keyboard up for whoever is typing into the field.
 
-**The stand can judge this one**, unlike most of what is written about the IME here.
-The composition is faked — `FAKE_IME` in `test/ui/stand.mjs`, moved there because two
-suites need it and two copies of a fake IME would drift into two different browsers —
-but it is dispatched at xterm's own field, and what is asserted is the page's own
-geometry. Both halves: gone while composing, back when the word ends. A row that
-never came back would read from a phone as the buttons having disappeared for good.
+Taking no focus was half of it. The terminal's field keeps the focus from whenever
+it was last typed into, and answering a menu moves the layout by definition — so an
+answer **gives the focus up** (`releaseFocus`, which also releases the pressed
+button, since a browser ignoring `keepsTerminalFocus` leaves focus on a button the
+row rebuilds away a frame later). And the field's own button has to **ask inside the
+touch** (`askKeyboard`, `openForTyping` called from the click rather than after the
+pointer arrives): Android gives a keyboard to a focus taken inside the gesture and
+to no other, and focusing what is already focused raises nothing. That it worked
+before was the blanket `term.focus()` doing it by accident. A menu that changed in
+between costs a keyboard nobody wanted, which is cheaper than the one button
+*about* typing opening nothing. `askKeyboard`'s blur is safe here only because the
+row is off screen while a word is being composed.
 
-**And only that field asks for a keyboard — the answers must not.** Reported from
-the phone the day after: a tap on any button of the row brought the keyboard up
-over the menu it was answering. Two paths did it and either was enough on its own.
-The handler called `term.focus()` after every press, which is a rule this file
-wrote down once already for the key bar ("no focus() here: the press already kept
-it"). And the row lives *inside* `#term`, whose own click handler hands the focus
-back to the terminal for anything not named there as a control drawn over it — the
-pager and the scrollbar were named, the answer row and the control pad were not,
-and the pad is the one that exists for a screen with **no** keyboard on it.
-
-So a button takes no focus at all (`keepsTerminalFocus`, the same one every other
-button here uses), which is also what leaves the keyboard *up* for whoever is
-typing into the menu's field. What it must not do is grab it.
-
-**The field's own button has to ask from inside the touch.** Android gives a
-keyboard to a focus that happens inside the gesture and to no other, so the focus
-`pressAnswer` took once the pointer had arrived — a couple of polls later — raised
-nothing at all; that it worked before was the blanket `term.focus()` doing it by
-accident, for every button alike. `openForTyping` is called from the click now, on
-the option the button was drawn for, and the walk happens behind an already-open
-keyboard. A menu that changed in between then costs a keyboard nobody wanted,
-which is the cheaper of the two: the alternative is the one button that is *about*
-typing opening nothing.
-
-**Taking no focus was half of it, and the phone said so against the release that
-fixed the taking.** The terminal's field keeps the focus from whenever it was last
-typed into — dismissing a keyboard does not take it away — and Android raises one
-for whatever holds the focus as soon as the layout moves under it. Answering a
-menu moves the layout by definition. So an answer *gives the focus up*
-(`releaseTerminalFocus`), which is the answer the ⇩ and a session switch already
-gave, with the same two bounds; the pressed button is released too, since a
-browser that ignores `keepsTerminalFocus` leaves the focus on a button the row
-rebuilds away a frame later, and removing a focused element hands the focus back
-to whatever had it before — the terminal, which is the keyboard. `releaseFocus`
-holds the two bounds in one place and takes the element.
-
-**And the field's button has to ask for a keyboard, not for the focus.** Android
-raises one when an element *takes* the focus, so focusing what is already focused
-raises nothing at all — and on a phone the terminal's field is usually already
-focused, for the same reason as above. `askKeyboard` gives it up and takes it
-again inside the same touch. Its blur is safe here only because the row is off
-screen while a word is being composed: there is no composition to end and no word
-for xterm to wipe on the way out.
-
-The stand has no soft keyboard, so the test asserts the lever rather than the
-symptom — whether the terminal's field ends up holding the focus — which is the
-same measurement the ⇩ and the tab strip are covered by. Three halves of it now:
-an answer and Esc leave it alone from nothing, an answer gives it up when typing
-left it there (the keyboard played by the viewport, waited for on `data-kb`), and
-the field takes it — counted as focus *events*, because taking a focus that is
-already held is exactly the case that raises nothing. Each was checked against its
-own defect, since any one of them alone reproduces the report.
+The tests assert the lever rather than the symptom, three halves of it: an answer
+and Esc leave the focus alone from nothing, an answer gives it up when typing left
+it there (keyboard played by the viewport, waited for on `data-kb`), and the field
+takes it — counted as focus *events*, taking a focus already held being exactly the
+case that raises nothing. Each was checked against its own defect.
 
 ## A question that takes several answers is toggled, not answered
 
-`AskUserQuestion` has a second shape, and the page could not see it at all: the
-one that takes several answers draws a checkbox after every number (`1. [ ] …`,
-`[✔]` once chosen), a `Submit` entry of its own under the last option, and — this
-is what hid it — **its descriptions at the very column the numbers sit in**.
-Reported from the phone as the buttons having disappeared, in front of a menu six
-options long.
+`AskUserQuestion` has a second shape the page could not see at all: the one that
+takes several answers draws a checkbox after every number (`1. [ ] …`, `[✔]` once
+chosen), a `Submit` entry under the last option, and — this is what hid it — **its
+descriptions at the very column the numbers sit in**. Reported as the buttons
+having disappeared, in front of a menu six options long.
 
-Nothing was wrong with the page. `continues` requires an option's continuation to
-be set *past* the column of its number, which is the whole defence against reading
-a numbered list in prose as something to press, and it is exactly true of the
-single-answer variant (descriptions indented under the label). Here the run broke
-at the first option, so there was no menu: no buttons, no blue tab, no
-notification.
+Nothing was wrong with the page: `continues` requires a continuation to be set
+*past* the column of its number, which is the defence against reading prose as a
+menu and is exactly true of the single-answer variant. The checkbox buys the
+exception (`flush` in both detectors): it is a widget rather than prose, and a
+paragraph back at the margin is still not a description — the fixture with one
+under a pointer holds this to `<` rather than `<=`. Both implementations changed,
+a notification and a row of buttons disagreeing being what the shared fixtures
+exist to prevent.
 
-The checkbox is what buys the exception (`flush` in both detectors): it is a
-widget rather than prose, and a paragraph back at the margin is still not a
-description — the fixture with one under a pointer holds this to `<` rather than
-`<=`. Both implementations changed, because a notification and a row of buttons
-disagreeing about what is on screen is the thing the shared fixtures exist to
-prevent.
+**The box comes off the label**, which is not cosmetic: the label is what
+everything here compares, and `[ ] Type something` is not `Type something` — the
+menu's own field stopped being recognised as one, which is yesterday's refusal in
+a shape nothing was watching for. The state travels beside the label (`checked`,
+absent rather than false when a menu has no boxes) and the button carries it as
+`☐`/`☑`, because **Enter on one of these toggles it**: measured off the owner's own
+answering session, `[ ]` became `[✔]` and the list stayed up.
 
-**The box comes off the label**, and that is not cosmetic: the label is what
-everything here compares. `[ ] Type something` is not `Type something`, so the
-menu's own field stopped being recognised as one — which is yesterday's refusal
-back in a shape nothing was watching for. The state travels beside the label
-(`checked`, absent rather than false when a menu has no boxes) and the button
-carries it as `☐`/`☑`, because **Enter on one of these toggles it**: measured off
-the owner's own answering session, `[ ]` became `[✔]` and the list stayed up. A row
-of buttons that all looked like answers would say the tap had answered the
-question, when what it did was one tick of several.
+**`Submit` had no button, so the row could set an answer without ever giving it.**
+Where that unnumbered row sits in the ring the arrows walk was unmeasured, and this
+file has paid for a guess about that ring once already. It is measured now, off the
+binary rather than off a pane: in Claude Code 2.1.234 the multi-select list draws
+the row from `submitButtonText` — `Submit` on the last question of a set, `Next`
+before it, which is why both words are read — and its key handling puts it **one `↓`
+past the last option**, with `↑` coming back and a further `↓` going on to `Chat
+about this` below the rule. Enter on an option toggles; Enter on that row ends the
+question.
 
-**`Submit` had no button, and the row could therefore set an answer without ever
-giving it.** It is the list's own unnumbered entry; where it sat in the ring the
-arrows walk was unmeasured, and this file has paid for a guess about that ring once
-already, so the ticks came from the row and the Submit from `↓` and `⏎` on the key
-bar. Reported from the phone as the button not being drawn.
-
-It is measured now, and off the agent's own binary rather than off a pane: in Claude
-Code 2.1.234 the multi-select list draws that row from `submitButtonText` — `Submit`
-on the last question of a set, `Next` before it, which is why both words are read —
-and its key handling puts it **one `↓` past the last option**, with `↑` coming back
-to that option and a further `↓` going on to `Chat about this` below the rule. Enter
-on an option toggles the box; Enter on that row is what ends the question.
-
-**The walk steps rather than counting, and that is the whole of what it gets
-right.** The page sees a window and not a list — the widget scrolls its options to
-keep the pointer in view — so how far the pointer is from the end is not on screen.
-A batch that fell short leaves the pointer on an option, where an Enter ticks a box
-and reports the question answered; a batch that overshot lands on `Chat about this`,
-where an Enter answers something else entirely. So `submitKeys` hands back one `↓`
-at a time and `pressSubmit` reads the screen between them, which also ends the walk
-by itself when the menu is gone.
-
-Three things that were each a way to be wrong, and the first two were found by the
-stand rather than argued:
+**The walk steps rather than counting.** The page sees a window, not a list — the
+widget scrolls its options to keep the pointer in view — so how far the pointer is
+from the end is not on screen. A batch that fell short leaves the pointer on an
+option, where Enter ticks a box and reports the question answered; one that
+overshot lands on `Chat about this`. So `submitKeys` hands back one `↓` at a time
+and `pressSubmit` reads the screen between them, which also ends the walk when the
+menu is gone. Three things that were each a way to be wrong:
 
 - **The pointer standing on that row is chrome for the list above it.** All the
   chrome these panes carry is the pointer itself, so a walk that reached the submit
-  row took it off every option and the run read as prose: the row of buttons went
-  away one step from being pressed. It is narrow — a list of checkboxes with a `❯`
+  row took it off every option and the run read as prose: the buttons went away one
+  step from being pressed. The exception is narrow — a list of checkboxes with a `❯`
   on a `Submit` of its own is a widget, and prose does not draw one.
-- **A step hands back the screen it settled on**, because the pointer arrives on the
-  next option before the row below it has been repainted, and a step that re-read
-  then found no row and called the menu gone.
+- **A step hands back the screen it settled on**, the pointer arriving on the next
+  option before the row below it is repainted; a step that re-read then found no row
+  and called the menu gone.
 - **The prompt says which menu this is, and it is asked once.** A scrolling list
-  changes the line the prompt is read from, so asking it every step would abort the
+  changes the line the prompt is read from, so asking every step would abort the
   walk halfway down exactly the menu stepping exists for. What holds afterwards is
-  the pointer's own number, which only goes up while one list is walked down — a
-  menu replaced mid-walk starts over at option 1, and that is not a step this
-  accepts.
+  the pointer's own number, which only goes up while one list is walked down.
 
-The button is drawn green rather than in the row's accent, since a row of identical
-buttons reads as a row of answers — the same reasoning that draws the text field as
-an outline. `test/ui/pockterm.test.mjs` reads it off the wire: `↓`, `↓`, and the
-`\r` only on the screen that shows the pointer on the row. Checked against the
-defect first, with the naive one-write walk put back.
-
-Both panes are in `test/fixtures/menus.json`, captured off a real one at 51
-columns rather than typed from memory: the fresh menu, and the same question
-part-answered — two boxes ticked, the pointer moved, and the list scrolled past its
-own first option, which is three of this file's earlier lessons in one screen.
-
-An empty row inside a border stays chrome (`│      │` pads a boxed prompt, and
-the options either side of it are one list). What ends the run is a horizontal
-line with nothing else on it, which is why `RULE` is deliberately blind to the
-border glyphs.
-
-**And the agent's own input box is not a menu, though it is drawn like one.** It
-carries the very same `❯`, and what sits under that `❯` is whatever is being
-typed: a message beginning "1. …" newline "2. …" drew two answer buttons before it
-had been sent, and pressing one would have submitted the half-written message with
-a digit on the end. Reported from the phone as the buttons appearing while the text
-was still in the box.
-
-What tells the two apart is the space after the glyph, and it took a capture to
-find: the composer draws a **non-breaking** one, a menu pointer an ordinary one.
-That is also what made the indentation rule miss it — `indentOf` counted the
-non-breaking space as text, so the option line measured one column shallower than
-the lines wrapped under it, which is exactly the shape of an option with a
-description. Both halves are fixed and either would do alone: a non-breaking space
-is a space to `indentOf`, and a line of the input box brings no chrome with it
-(`composerPrompt`, `detect.InputBox`). Measured on Claude Code v2.1.222 at 51
-columns off two real panes — the box with the list in it, and `/model`, which is a
-real menu and still detected. Both are in the shared fixtures.
-
-**Typing into a session that has never counted is not work either.** The rule that
-a person at the keyboard is not the machine was written for a session whose agent
-had already run a turn — `sawLive` — and a session just opened has not. So the only
-evidence of work was the screen changing, and the screen was changing because the
-first message was being written into it: the tab swept purple beside the one that
-was really running, and thirty seconds after the last keystroke the watcher
-announced the session as *finished*, four times in five minutes (`watch: done
-pockterm (quiet for 30s)` in the journal, which is what made this measurable rather
-than an impression).
-
-`detect.InputBox` answers it, and it is the same measurement as above: the box and
-the counter are drawn by the same TUI, so a pane showing the box and no counter has
-no turn running in it, whether or not one has ever been seen. The tab is neutral —
-`ActivityUnknown`, nothing has happened, which is the honest claim — and nothing is
-announced, because an agent that has not started a turn has not finished one. It is
-read fresh on every poll rather than remembered: a session that ran an agent and
-dropped back to a shell is a shell now, and for a shell a changed screen is still
-the only evidence of work there is.
-
-The mark's upper half lives in `#tabs`' own `padding-top`, given back to the layout
-by an equal negative margin: the strip scrolls sideways, so it clips both axes, and
-a taller strip would move `☰` down — the drawer's `❮` is measured against it.
-
-It rides in the session list (`state` on each entry, filled by the server from
-`Presence.Activity`) rather than having an endpoint of its own: a name and its
-state fetched separately can disagree, and the disagreement would show as the
-wrong tab lit up. tmux never fills that field.
-
-**Every session is watched; only the ones a page has opened are announced.** Those
-were one thing, and being one thing meant a session was not watched at all until a
-page attached to it — so after a deploy every tab went neutral and stayed there.
-The watcher's state is per process and CI installs a new binary several times a
-working day: a session started in the morning and left running had no colour and
-raised no "finished" until it was opened again by hand. Found by reading
-`/api/sessions` on the host and seeing no `state` on a session that was visibly
-working.
-
-`Options.Sessions` is the roster, swept on every tick, and `observe` adds what it
-finds; `Watch` — the attach path — is the only thing that sets `notify`. So the
-strip is right about everything tmux has, and the phone is told about the sessions
-it was asked to be told about, attaching once being the asking. Sessions still
-leave the same way: a `capture-pane` that fails removes one, which is what keeps
-the sweep from re-adding a closed session for ever.
-
-**Green expires after ten minutes** (`doneFresh`), and that is the other half of
-watching everything. Green means gone quiet *after doing something*, which is news
-while it is recent and nothing at all once it is old — and the distinction used to
-come for free, because a session was watched only from the moment a page attached
-to it and had no history to go stale. Reading everything from the start turned every
-session that had ever run green for good: reported as "only now everything is
-green", which is a strip that has stopped saying anything. Stale goes back to
-neutral rather than to a fourth colour, because "quiet for hours" is exactly what
-the neutral tab already means. The badge does not fade with it: what is still
-running is a fact about now, however long ago the agent stopped speaking.
-
-The page polls it every 3s, and only while the terminal is on screen and the page
-is in front — a pocketed phone holds its socket for hours, and polling tmux for a
-strip nobody can see is work for nobody. A `visibilitychange` refresh goes with
-it, because coming back is exactly when the answer is most out of date. **The
-state is applied as a class, never by rebuilding the row**: a rebuild takes the
-focused button with it and a WebView answers that by raising the keyboard, so a
-session flipping between working and done would flip the keyboard with it.
-
-The purple sweeps over 4.2s and `alternate`, with a per-tab phase set from the
-session name (`workingPhase`). It was 1.4s one-way with every tab in step, which
-read as one decoration flickering along the whole strip; the name is the source of
-the offset so a tab keeps its phase when the row is rebuilt instead of jumping.
-
-**The fill answers what the agent is saying, and a fourth question is what it left
-running.** `watch.Background` reads the shells and monitors off the agent's own
-footer (`detect.ReadBackground`, on the same poll as the colour, so the two cannot
-describe different moments) and the tab carries how many on **heraldic shields in
-its bottom-right corner** (a `clip-path` polygon: flat top, pointed bottom, the
-digit in the upper half) — in the corner rather than after the name because the row
-scrolls sideways and the names are the only thing worth reading along it.
-A session at "done" with two monitors alive is not a session with nothing left,
-and the colour cannot say so: it goes green the moment the agent stops speaking.
-
-**One plate per kind, and for a while it was one shield for both.** The sum
-answered "is anything still running" and refused every follow-up: a shell is
-something started and forgotten, a monitor is something still watching for an
-answer, and `3` said neither. The argument for adding them up was that two glyphs
-in a corner that size are a smudge — the owner, who is the one reading the strip,
-says otherwise. Nothing else moved: the footer has always counted them apart and
-the session list has carried both numbers since the badge existed, so what
-changed is only that the page stopped summing them.
-
-**The plate carries a number, and its shape and colour say which kind it is.**
-Both were decided by looking at them on the phone rather than argued. Shape: the
-monitor keeps the heraldic shield, the shell is a triangle pointing right — the
-same `▸` the strip gives a shell session, at the same height and in the same
-corner. Colour: cyan for the shells, green for the monitors, because green is the
-strip's own "gone quiet after doing something" and of the two a monitor is the one
-still waiting to report.
-
-Both plates began with a glyph in front of the number and neither kept it: two of
-them at 9px in a corner 20px wide came out as exactly the smudge the single plate
-had been defended with. A triangle is at its tallest down its left edge, so what
-room there is goes to the digit and the rest of the width is the point.
-
-**On a tab they hang off the edge, one above the other.** Side by side they cost
-the name twice the width of a plate, and the strip is read along a row that
-already scrolls sideways; stacked at the right edge they cost it once. Each is
-then hung a third of itself past the tab in both directions — out to the right,
-and the triangle over the top edge with the shield under the bottom — because two plates inside a tab 34px tall crowd each
-other and the name. The triangle is as wide as it is tall: drawn longer, its
-point ran out past the tab's own corner and read as an arrow leaving rather than
-as a mark on it. The room they hang into is `#tabs`' own padding, given back by an equal
-negative margin: the strip clips both axes, and a taller strip would move `☰` down
-with the drawer's `❮` measured against it. That trick was already there for the
-question's `!` at the top; this adds the same at the bottom. The drawer's rows
-keep them side by side — a row is three times as tall and has the room.
-
-They are drawn as the pseudo-elements of a `.bg` span (`data-sh`, `data-mon`),
-because the button's own `::before` is the question's `!` and one pseudo-element
-cannot carry two plates. Still not text in the button, for the same reason the
-state is a class — the label is the session's name and rewriting it rebuilds the
-button under the finger — and `data-bg` on the button counts the plates rather than
-the processes, which is what the corner reserves room for.
-
-Only the footer counts, and only its lowest line with a number in it. The same
-words appear in the line an agent prints when a turn ends ("Cogitated for 2m 23s ·
-1 shell, 1 monitor still running"), which was true when printed and says nothing
-about now — that one is skipped by its wording, and output scrolled above the last
-few lines is out of range by position.
-
-**And the top edge says who is running for it.** The plates below are what the
-agent left running — a shell, a monitor. A subagent is not that: it is another
-agent, with its own turn, and the session is waiting on it. Claude Code lists
-them under its status lines (`● main`, then a `◯` per subagent with its type and
-what it was given), and the tab carries **one head per agent on its top edge**,
-right-aligned with the name and hanging half above the line — the mirror of the
-plates hanging half below.
-
-No number on them, and that is the point of drawing heads at all: two heads are
-seen where a `2` has to be read. Four is the cap, because a tab 34px tall is not
-a bar chart. What they claim is what the agent's own list claims — an agent that
-has finished but not been collected is still on that list, so the honest sentence
-is "the session lists this many", not "this many are running". `detect.ReadAgents`
-needs the block's own `● main` above the circles: a list in prose is not a list of
-agents, and the tab must not grow heads over an answer that happens to use `◯`.
-
-**The block is footer, and counting it as content cost the plates their line.**
-It sits *below* the status lines and is as tall as the session has subagents, so
-with three of them the line saying "1 shell, 2 monitors" fell out of the footer's
-four-line window and the plates went away while the shell was still running.
-`ReadBackground` steps over the block instead of counting it.
-
-**The drawer says all of it too, in the strip's own colours.** It is the list you
-open to see what else is running, and it was the one surface that could not answer
-that: a row said what a session *is* — its button, its folder, its age — and nothing
-about what it was doing. The same three states, the same keyframes at the same
-duration, the same per-session phase, because a row and a tab describing one session
-differently is worse than either of them saying nothing. What differs is only what a
-row has room for: the sweep runs its width, the `!` straddles its top edge at the
-left instead of centred, and the plates stand in its own bottom-right corner, one
-size larger. They are the very same rule — the CSS for the shapes, the glyphs and
-the colours is shared, and only the size and the padding differ — because a row
-and a tab disagreeing about a session is exactly what this section exists to
-prevent.
-
-Two things make it honest rather than decorative. **The rows are painted, never
-rebuilt** (`paintRows`) — the same rule the strip follows, and here it also protects
-the armed `✕`: a session flipping between working and done would otherwise disarm a
-confirmation half way through. And **the poll runs while the drawer is open**, the
-terminal being on screen no longer being the only reason to ask: with nothing
-attached the drawer is all there is, and a colour that was true when the drawer
-opened is exactly the claim this was built to stop making.
-
-**The mark is a cell of its own beside the name, never inside it.** `.name` is the
-session's name and nothing else — the page reads it back to attach, to rename and to
-close — and a glyph spliced into it produced a session called `⭐pockterm-ui-oWck6x`
-that tmux had never heard of. Four tests failed on that, which is the cheap version
-of the same defect on a phone.
+The button is drawn green rather than in the row's accent, a row of identical
+buttons reading as a row of answers. `test/ui/pockterm.test.mjs` reads it off the
+wire: `↓`, `↓`, and the `\r` only on the screen showing the pointer on the row,
+checked against the naive one-write walk. Both panes are in
+`test/fixtures/menus.json`, captured at 51 columns: the fresh menu, and the same
+question part-answered — two boxes ticked, the pointer moved, the list scrolled past
+its own first option, which is three of this file's lessons in one screen.
 
 ## The row is the owner's, and a held tab is carried
 
-tmux orders its sessions by name, which is the one order nobody chose: the strip is
-read left to right dozens of times a day, and the session you keep coming back to is
-not the one whose name sorts first.
+tmux orders sessions by name, which is the one order nobody chose: the strip is read
+dozens of times a day, and the session you keep coming back to is not the one whose
+name sorts first.
 
 **The gesture is the press that already existed.** A hold picks the tab up — and
-puts the plate under it, which is what the hold used to be for on its own — travel
-then rearranges the row, and a press that does not travel is still just the question
-about the mark. Which of the two it was is decided by the finger rather than by a
-mode. Not a plain drag: that scrolls the strip, which a row wider than the screen
-needs, so the pickup costs a hold exactly like the plate. The one non-passive
-listener here is that `touchmove`, because while a tab is being carried the browser
-must not take the gesture as its own sideways scroll.
+puts the plate under it, which is what the hold used to be for — travel then
+rearranges the row, and a press that does not travel is still the question about the
+mark. Not a plain drag: that scrolls the strip, which a row wider than the screen
+needs. The one non-passive listener here is that `touchmove`, because while a tab is
+carried the browser must not take the gesture as its own sideways scroll.
 
 **Where the tab goes is the finger's x, and reading the y as well is what broke
-it.** The first version asked `elementFromPoint` what was under the finger and
-inserted the held tab beside whatever tab that was — which needs the finger to stay
-inside a strip 34 pixels tall at the very top edge of the screen. A thumb travelling
-sideways across it arcs out of it within a centimetre, the point then lands on the
-terminal, and the row stops rearranging while the gesture is plainly still going:
-reported from the phone as the carrying stopping when the finger is taken up or
-down. `dropIndex` in `web/js/carry.js` counts how many of the other tabs the finger
-is past the middle of, and there is no y to pass it — vertical travel during a carry
-means nothing, because there is one row and no second place to drop a tab.
+it.** The first version asked `elementFromPoint` what was under the finger, which
+needs the finger to stay inside a strip 34px tall at the top edge of the screen; a
+thumb travelling sideways arcs out of it within a centimetre, the point lands on the
+terminal, and the row stops rearranging while the gesture is plainly still going.
+`dropIndex` in `web/js/carry.js` counts how many of the other tabs the finger is past
+the middle of, and there is no y to pass it — there is one row and no second place to
+drop a tab.
 
-**And the hand holding the tab covers it.** Everything the carry had to say was said
-under the finger: the tab lifts, the row rearranges beneath it, and none of that is
-visible to whoever is doing it — "под пальцем не видно". Two answers, both about what
-sticks out around a thumb. The lift is a ring in the accent colour rather than a
-shade, since a shade is only readable on the part that is hidden. And the plate stays
-— the same `#kind-help` that answered what the mark means, now saying which session is
-in hand and following it along the row, dropped `CARRY_DROP` (44px) below the strip
-rather than the 4px the question's plate uses, which is under the pad of the finger.
-It is one element and two claims, so it carries `carrying` while it is making the
-second, and the question's own timer is cleared: a carry lasts as long as it lasts,
-where the answer about a mark expires.
+**And the hand holding the tab covers it** — "под пальцем не видно". Two answers,
+both about what sticks out around a thumb: the lift is a ring in the accent colour
+rather than a shade (a shade is only readable on the part that is hidden), and the
+plate stays — the same `#kind-help` that answers what a mark means, now saying which
+session is in hand and following it along the row, dropped `CARRY_DROP` (44px) below
+the strip rather than the 4px the question's plate uses. One element, two claims, so
+it carries `carrying` while making the second and the question's timer is cleared: a
+carry lasts as long as it lasts.
 
 **A mouse carries a tab by a plain drag, and needs no hold.** Every listener here
-was for touches, so on a laptop the row could not be rearranged at all — reported
-as the tabs not moving in the web version. The hold is not copied over, because the
-hold buys the gesture back from the strip's own sideways scroll and a mouse scrolls
-that with a wheel instead of by pushing it: five pixels of travel is what tells a
-drag from the click that switches session. `carryTo` and `dropCarry` are shared by
-both, since two implementations would be two answers to where a tab goes, and
-`mousemove`/`mouseup` are on the document for the same reason the y is not read —
-the pointer leaves the row. A release ends in a click on whatever is under it, so
-the drag sets `helpHeld`, which is the same thing that swallows the click at the end
-of a hold.
-
-**A touch leaves mouse events behind it, and those are not a mouse.** They arrive
-after `touchend`, and read as a gesture they would clear the suppression the hold
-had just set — turning "what is this tab" into a switch to it. Anything within 700ms
-of a touch on the strip is that echo and is ignored.
+was for touches, so on a laptop the row could not be rearranged at all. The hold is
+not copied over — it buys the gesture back from the strip's sideways scroll, and a
+mouse scrolls that with a wheel; five pixels of travel is what tells a drag from the
+click that switches session. `carryTo` and `dropCarry` are shared, and
+`mousemove`/`mouseup` are on the document for the same reason the y is not read.
+A release ends in a click on whatever is under it, so the drag sets `helpHeld`, the
+same thing that swallows the click at the end of a hold. **A touch leaves mouse
+events behind it, and those are not a mouse**: they arrive after `touchend` and
+would clear that suppression, turning "what is this tab" into a switch to it —
+anything within 700ms of a touch on the strip is ignored.
 
 **The order lives in tmux, on the sessions themselves** (`@pockterm-order`, beside
-`@pockterm-kind`), for the same three reasons the kind does: CI restarts this binary
-several times a working day, a second phone must see the same row, and a session
-that is closed takes its slot with it instead of leaving a hole in a list somewhere.
-`SortByOrder` puts the placed ones first, in their numbers, and leaves everything
-else where tmux had it — so a session started after the last drag lands at the end
-of the strip rather than in the middle of a row somebody arranged. The sort is
-applied where the list is served, not in the page, because the drawer's list and the
-strip must not disagree about it.
+`@pockterm-kind`), for the three reasons the kind does: CI restarts this binary
+several times a working day, a second phone must see the same row, and a closed
+session takes its slot with it instead of leaving a hole. `SortByOrder` puts the
+placed ones first and leaves everything else where tmux had it, so a session started
+after the last drag lands at the end rather than in the middle of a row somebody
+arranged. The sort is applied where the list is served, not in the page, or the
+drawer and the strip would disagree.
 
-The page sends **names, not indices** (`/api/sessions/order`), and the server stamps
-each one with its place: a session closed between the drag and the save is then
-simply not found, which costs nothing — the row is redrawn from tmux on the next
-poll anyway. Every name is checked against the list the server itself just produced,
-because the value reaches a tmux command line.
-
-`renderTabs` refuses to rebuild the row while a tab is being carried, and
-`saveTabOrder` writes the new signature itself: a rebuild takes the button out from
-under the finger, and on a WebView it hands focus back to the terminal, which raises
-the keyboard.
+The page sends **names, not indices** (`/api/sessions/order`) and the server stamps
+each with its place: a session closed between the drag and the save is simply not
+found, and the row is redrawn from tmux on the next poll anyway. Every name is
+checked against the list the server just produced, the value reaching a tmux command
+line. `saveTabOrder` writes the new signature itself, `renderTabs` refusing to
+rebuild while a tab is carried.
 
 ## A tab also says what it is, and that is a different question
 
 Colour says what a session is doing; **form says what it is**. A tab carries the
-glyph of the button that started it, before the name — `▸` shell, `✦` claude,
+glyph of the button that started it, before the name — `▸` shell, `❄️` claude,
 `⚡` yolo, `↻` continue, `★` for one the owner added — and the drawer names that
-button in the row's meta line, before the window count. The glyphs are the `+`
-menu's own, so there is nothing to learn: a tab marked `⚡` carries the mark of the
-button that was tapped to make it. Two vocabularies would drift, so there is one
-(`web/js/kinds.js`), shared by the menu, the strip and the drawer.
+button in the row's meta line. The glyphs are the `+` menu's own, so there is
+nothing to learn. One vocabulary (`web/js/kinds.js`), shared by the menu, the strip
+and the drawer.
 
-The question exists because **the name stopped being able to answer it**. Sessions
+The question exists because **the name stopped being able to answer it**: sessions
 are named after the folder they were started in, so `natal` and `natal-2` are one
-project opened two different ways, and which of them is the yolo one was nowhere
-on screen.
+project opened two different ways, and which is the yolo one was nowhere on screen.
 
-The drawer's row carries two more facts for the same reason, and both replaced
-`1 window`. That count was a constant: the Makefile creates a session with one
-window, and the page can neither make a second nor reach one — it attaches with
-`new-session -t`, sharing the session's windows, and has no window switcher. So it
-said the same thing on every row for as long as it existed. What is there now
-varies: **where the pane actually is** (`pane_current_path` through
-`session.ShortDir` — the name says where the session was *opened*, and one opened
-in `~/work` spent an afternoon in `~/work/self` with nothing saying so) and **how
-long it has been up** (`shortAge`, one coarse unit — which of these is from
-yesterday). The path is shortened on the server because the two paths it is
-measured against are the host's: `/api/dirs` tells the page what the root is
-*called*, never where it is.
+The drawer's row carries two more facts, both replacing `1 window` — a constant, the
+Makefile creating one window and the page having no window switcher. What is there
+now varies: **where the pane actually is** (`pane_current_path` through
+`session.ShortDir`; the name says where the session was *opened*, and one opened in
+`~/work` spent an afternoon in `~/work/self` with nothing saying so) and **how long
+it has been up** (`shortAge`, one coarse unit). The path is shortened on the server,
+the paths it is measured against being the host's: `/api/dirs` tells the page what
+the root is *called*, never where it is.
 
-**tmux keeps the fact, and the Makefile is what writes it there.** The server
-passes `KIND=` beside `DIR=` and `PREFIX=`, the Makefile stamps it on the session
-as a user option (`@pockterm-kind`), and the server reads it back in the same
-`list-sessions` that fetches the row — so a name and its type cannot be fetched
-separately and disagree. Through the Makefile for the same reason `PREFIX` goes
-that way: only it knows which number came out free, so only it can say what to
-stamp. That also means a session started by hand from a shell is typed, because
-each target carries its own default.
+**tmux keeps the fact, and the Makefile writes it there.** The server passes `KIND=`
+beside `DIR=` and `PREFIX=`, the Makefile stamps it as a user option
+(`@pockterm-kind`), and the server reads it back in the same `list-sessions` that
+fetches the row — so a name and its type cannot be fetched separately and disagree.
+Through the Makefile for the same reason `PREFIX` goes that way: only it knows which
+number came out free. Three things follow from where it is kept: it survives a
+rename, it survives this binary's restarts, and there is no register of the server's
+own to drift out of step with tmux.
 
-Three things follow from where it is kept rather than from what it is. It survives
-a rename, because the option belongs to the session and not to its name. It
-survives this binary's restarts, which CI does several times a working day. And
-there is no register of the server's own to drift out of step with tmux — the
-mistake that would show up as a tab labelled after a button that started something
-else.
+`session.Kind` is the gate — the value reaches a make command line and then a tmux
+command inside the recipe — and what may pass is a known preset's name or
+`custom:<id>` of a button that exists, **by id and not by label**, so renaming keeps
+the sessions it started; an id the store no longer has draws the shared `★` and no
+name rather than guessing.
 
-`session.Kind` is the gate: the value reaches a make command line and then a tmux
-command inside the recipe, and what may pass is a known preset's name or
-`custom:<id>` of a button that exists. A button by **id and not by label**, so
-renaming it keeps the sessions it started; an id the store no longer has draws the
-shared `★` and no name at all, rather than guessing.
-
-**And make's own variables do not travel into the session.** A variable given on a
-make command line is exported to the recipe *and* carried in `MAKEFLAGS`, so every
-session the page started held `PREFIX`, `DIR`, `KIND` and `CMD` in its environment
-— and a `make` typed by hand inside that session inherited them. Measured on the
-author's own host: `make custom CMD=qwen` in such a session came out named after the
-folder of the session it was run from and stamped with the button that had started
-*that* one, which is a session lying about what it is.
-
-**The cleaning goes on the pane's command, and the obvious placement does nothing.**
-`env -u … tmux new-session …` changes the environment of the tmux *client*, and the
-pane is started by the *server* — running since the first session, carrying whatever
-it was started with. That version was written, shipped and then measured: the
-variables were still there. What works is wrapping the command the pane runs
-(`clean="env -u …"; cmd=$(1)`; the pane gets `"$clean $cmd"`), because tmux hands
-that string to `sh`, which splits the words and honours the quoting the callers
-already use. `-e VAR=` on `new-session` also reaches the pane but only empties the
-variables, and an empty `DIR` is worse than an inherited one — `DIR ?= $(CURDIR)`
-then keeps the empty value.
-
+**Make's own variables do not travel into the session.** A variable given on a make
+command line is exported to the recipe *and* carried in `MAKEFLAGS`, so every session
+the page started held `PREFIX`, `DIR`, `KIND` and `CMD` in its environment, and a
+`make` typed by hand inside it inherited them: `make custom CMD=qwen` came out named
+after the folder of the session it was run from and stamped with the button that had
+started *that* one. **The cleaning goes on the pane's command**, and the obvious
+placement does nothing: `env -u … tmux new-session …` changes the environment of the
+tmux *client*, while the pane is started by the *server*, running since the first
+session. That version was written, shipped and then measured — the variables were
+still there. What works is wrapping the command the pane runs (`clean="env -u …";
+cmd=$(1)`, the pane getting `"$clean $cmd"`), tmux handing that string to `sh`, which
+honours the quoting the callers already use. `-e VAR=` on `new-session` reaches the
+pane but only empties the variables, and an empty `DIR` is worse than an inherited
+one (`DIR ?= $(CURDIR)` keeps the empty value).
 `TestExampleMakefileKeepsMakesVariablesOutOfTheSession` reads the `spawn` definition
-rather than the file, because a mention in a comment is not a variable being unset,
-and the UI test reads `/proc/<pane_pid>/environ` of a session the page started —
-which is what caught the placement being wrong. The host's own Makefile is an
-ansible template (`pockterm_app`), so the same lines have to go there separately.
+rather than the file, a mention in a comment not being a variable unset, and the UI
+test reads `/proc/<pane_pid>/environ` of a session the page started — which is what
+caught the placement being wrong.
 
 **No `=` before the name in `set-option`.** That prefix means "exact match" to the
-commands that take a session (`rename-session`, `kill-session` both use it here),
-and `set-option` reads its `-t` as a pane instead: it answers `no such session:
-=claude` and the stamp silently never lands. Found by a real run, which is also
-what proved the rest of the chain; `TestExampleMakefileStampsTheKind` now refuses
-the form outright.
+commands that take a session (`rename-session`, `kill-session` use it here), and
+`set-option` reads its `-t` as a pane instead: it answers `no such session: =claude`
+and the stamp silently never lands. `TestExampleMakefileStampsTheKind` refuses the
+form outright.
 
-A session nobody stamped says nothing, and the page draws nothing — the same rule
-as `ActivityUnknown`. The one exception is coarse on purpose:
-`tmuxcmd.KindFromStart` reads `#{pane_start_command}` and answers **"shell" or
-nothing**. Which button ran `agent-run --dangerously-skip-permissions` is the
-Makefile's knowledge and this program refuses to hold it, so the stamp is the
-answer about buttons and this is the answer about shells — for a session started
-before the Makefile knew how, or by hand with `tmux new`. It never overrules a
-stamp.
+A session nobody stamped says nothing and the page draws nothing. The one exception
+is coarse on purpose: `tmuxcmd.KindFromStart` reads `#{pane_start_command}` and
+answers **"shell" or nothing** — which button ran `agent-run
+--dangerously-skip-permissions` is the Makefile's knowledge and this program refuses
+to hold it. It never overrules a stamp.
 
-**The mark is picked from a grid, and that replaced a trick.** The way to give a
-button a glyph was to type an emoji at the front of its label: something you had to
-know, and a character out of a name that has 24. The owner's own row was three
-custom buttons all drawing the same `★`, which is what he was looking at when he
-asked for this. `MARKS` in `web/js/kinds.js` is the vocabulary — a curated set
-rather than a keyboard, because the glyph is read at 13px on a tab — and the picker
-is a popup grid beside the label field, since the mark and the label are the pair a
-button is named by. Picking the glyph already chosen clears it: one tap in, one tap
-out, rather than a button of its own for "no mark".
+**The mark is picked from a grid**, which replaced a trick: the way to give a button
+a glyph was to type an emoji at the front of its label, something you had to know and
+a character out of a name that has 24. `MARKS` in `web/js/kinds.js` is the vocabulary
+— curated rather than a keyboard, the glyph being read at 13px — and the picker is a
+popup grid beside the label field, mark and label being the pair a button is named
+by. Picking the glyph already chosen clears it.
 
-Three things about it were wrong on the first phone that saw it, and each is a rule
-worth keeping. **The grid opens under the button that opens it** — it was appended at
-the end of the panel, a screen away from a 44px target. **That button had been drawn
-as a full-width bar**, because `#buttons-box .add button` styles the Add button and
-an id selector loses to it: `#buttons-box .add #custom-mark` is what wins.
-**Nothing in the picker may move the focus** (`keepsTerminalFocus` on the button and
-on every glyph): hiding the grid hides the element that has focus, and Android hands
-focus back to whatever had it before — which raised the keyboard over the grid being
-used.
-
-A fourth followed on a laptop: **the mark has to share its line with the name.**
-Every input in this form is `flex: 1 1 100%` — one field per line, which the command
-wants — and the name inherited that basis and wrapped to the next row, leaving the
-mark button alone above it, a control belonging to nothing on screen.
-`#buttons-box .add #custom-label` gives that one field `auto` instead. The field is
-labelled `название` rather than `подпись`, because what it holds is the button's own
-name and the row it appears in reads as one.
+Four things about it were wrong on the first devices that saw it, and each is a rule:
+**the grid opens under the button that opens it** (it was appended at the end of the
+panel, a screen away from a 44px target); **that button had been drawn as a full-width
+bar**, `#buttons-box .add button` styling the Add button and an id selector losing to
+it — `#buttons-box .add #custom-mark` is what wins; **nothing in the picker may move
+the focus** (`keepsTerminalFocus` on the button and every glyph), hiding the grid
+hiding the element that has focus; and **the mark has to share its line with the
+name** — every input in this form is `flex: 1 1 100%`, so the name wrapped to the next
+row and left the mark button belonging to nothing, until `#buttons-box .add
+#custom-label` gave that field `auto`. The field is labelled `название`, since what it
+holds is the button's own name.
 
 **The form shows the glyph the button will be drawn with, not the one that was
 picked.** Nothing picked is the common case, and a `⭐` on the form while the row two
 lines up shows `❄️` describes the form's own state instead of what is being edited —
-reported as "сейчас там звезда всегда". `paintMarkButton` asks `markOf` the same
-question the row and the tab ask, so the form previews the answer; it follows the
-label as it is typed, because that is one of the things `markOf` reads. The button is
-only *lit* for a glyph that was actually chosen — that is a different claim, and the
-grid's highlight is where it belongs.
+"сейчас там звезда всегда". `paintMarkButton` asks `markOf` the same question the row
+and the tab ask, and follows the label as it is typed. The button is only *lit* for a
+glyph actually chosen — a different claim, and the grid's highlight is where it
+belongs.
 
 **U+FE0F asks for the colour form and does not get it on its own.** The marks were
 stored and drawn with the selector and still came out monochrome on the tabs and in
 the `+` menu, while the drawer's list — heavier weight, larger size — reached the
-colour font and showed them properly: two answers for one glyph, which is the defect
-whichever of the two is prettier. The stack is the reason. `font-family: system-ui`
-resolves to a font that has a *text* glyph for `❄` and `☀`, and a font that has the
-glyph is where the lookup stops. So the mark now lives in a `.kind` cell on every
-surface — the strip, both `+` menus, the drawer's rows and its button list — and that
-cell puts the colour fonts first (`Noto Color Emoji`, `Apple Color Emoji`, `Segoe UI
-Emoji`) and asks outright with `font-variant-emoji: emoji`. Both halves are needed:
-the property is recent, and the stack alone still loses to a text glyph in a font
-listed ahead of it. The monochrome-only marks (`▸ ✦ ↻ ⬡`) are untouched, since no
-emoji font has them and the lookup falls through as it always did.
+colour font: two answers for one glyph. `font-family: system-ui` resolves to a font
+that has a *text* glyph for `❄` and `☀`, and a font that has the glyph is where the
+lookup stops. So the mark lives in a `.kind` cell on every surface, and that cell puts
+the colour fonts first (`Noto Color Emoji`, `Apple Color Emoji`, `Segoe UI Emoji`) and
+asks outright with `font-variant-emoji: emoji`. Both halves are needed: the property
+is recent, and the stack alone still loses to a text glyph in a font listed ahead of
+it. The monochrome-only marks (`▸ ✦ ↻ ⬡`) are untouched. Two things follow from the
+cell: the tab's mark is no longer dimmed (`opacity: 0.7` on a coloured glyph reads as
+a washed-out label), and the gap between mark and label is a margin on the cell rather
+than a space in the text — `assert.match(text, /⚡ Ярость/)` had to become
+`/⚡\s?Ярость/`.
 
-Two things follow from the cell. The tab's mark is **no longer dimmed** — `opacity:
-0.7` on a coloured glyph reads as a washed-out version of the label, which is the
-thing this was fixing. And the gap between mark and label is a **margin on the cell**
-rather than a space in the text, so a button with no mark is not indented by a space
-standing for nothing — `assert.match(text, /⚡ Ярость/)` had to become `/⚡\s?Ярость/`,
-the space having stopped being text.
-
-**The glyphs carry U+FE0F where they have a colour form** (`❄️`, not `❄`). In text
+The glyphs carry U+FE0F where they have a colour form (`❄️`, not `❄`): in text
 presentation a mark takes the colour of whatever it sits in, so on a tab it came out
-the same shade as the session's name — a mark nobody notices. The ones with no colour
-form stay monochrome and are on offer as such; two of the four defaults are drawn
-with them.
+the same shade as the name. `markOf` is the one order of precedence and every surface
+goes through it — the mark that was picked, then a mark the label leads with, then
+what the id is known for (a default's own glyph, or the name of an agent this
+recognises), then the shared `★`. `kindMark` answers a tab by looking the button up
+and calling the same function. Two names are guessed at and no more: **Claude is
+cold, Codex is sol** (`❄`, `☀`, the owner's own vocabulary), and one tap in the grid
+overrules either. The mark lives in a span of its own, never in the label — the kind
+arrives on a later poll than the name.
 
-`markOf` is the one order of precedence, and every surface goes through it: the mark
-that was picked, then a mark the label leads with (which is how this worked before
-and still does), then what the id is known for — a default's own glyph, or the name
-of an agent this recognises — and the shared `★` when nothing says anything.
-`kindMark` answers a tab by looking the button up and calling the same function, so
-the menu and the strip cannot drift into two glyphs for one button.
-
-Two names are guessed at and no more: **Claude is cold, Codex is sol** (`❄`, `☀`,
-the owner's own vocabulary, and `claude`'s stock glyph changed from `✦` to match).
-Two agents are what this serves; a third would be a guess, and one tap in the grid
-overrules either.
-
-**The mark lives in a span of its own, never in the label.** Same reason the state
-is a class and the badge an attribute: the kind arrives on a later poll than the
-name — the session list is fetched before `/api/presets` answers — and rebuilding
-a button under a finger is what raises the keyboard. Rewriting a child's text does
-not.
-
-**A long press asks what a glyph means.** There is no hover on a phone and the mark
-is far too small to be a target of its own, so the press that would switch session
-holds instead and a plate appears under the tab with the mark and the button's name.
-Under it, because the strip *is* the top edge of the screen. It cancels if the finger
-travels — that gesture is the strip's own sideways scroll — and it swallows the click
-it ends in, or asking what a tab is would switch to it. The UI test drives it through
-the browser's own touch input (CDP `Input.dispatchTouchEvent`), because only a real
-press produces the click that has to be swallowed.
+**A long press asks what a glyph means.** There is no hover on a phone and the mark is
+too small to be a target, so the press that would switch session holds instead and a
+plate appears under the tab with the mark and the button's name — under it, the strip
+*being* the top edge of the screen. It cancels if the finger travels, and it swallows
+the click it ends in. The UI test drives it through the browser's own touch input
+(CDP `Input.dispatchTouchEvent`), only a real press producing the click that has to be
+swallowed.
 
 ## A session is started in a folder, and named after it
 
-The drawer has two lists and shows one at a time: the sessions, and the folders
-of the projects root (`/api/dirs`, one level deep, no dotted directories). The
-root is the first row and by its own name — a session in `~/work` is ordinary,
-and a label like "the root" hides which directory that is. Tapping a folder does
-not start anything; it points the four presets at that folder, which is the only
-menu there is, because two would drift.
+The drawer has two lists and shows one at a time: the sessions, and the folders of the
+projects root (`/api/dirs`, one level deep, no dotted directories). The root is the
+first row and by its own name — a label like "the root" hides which directory that is.
+Tapping a folder starts nothing; it points the buttons at that folder, which is the
+only menu there is, because two would drift.
 
-`POCKTERM_SESSION_DIR` is both the Makefile's directory and the projects root.
-One setting rather than two: the second would have to be kept in step with the
-first, and in every deployment this was written for the answer is the same path.
+`POCKTERM_SESSION_DIR` is both the Makefile's directory and the projects root. One
+setting rather than two: the second would have to be kept in step with the first.
 
-**The name is still the Makefile's to choose.** The server passes `DIR=` and
-`PREFIX=` and nothing else; which number is free as *both* a session and a group
-name stays in the one place that knows — see the trap below for what happens when
-that is got wrong. `session.Prefix` only decides what to number: the folder,
-sanitised to what tmux and a phone tab can carry (no `.` or `:`, 24 characters),
-and the root's own basename for the root. An empty result — a folder whose name
-survives none of that — passes no `PREFIX` at all, leaving the Makefile's own
-default rather than inventing a session called `-`.
+**The name is still the Makefile's to choose.** The server passes `DIR=` and `PREFIX=`
+and nothing else; which number is free as *both* a session and a group name stays in
+the one place that knows (see the trap below). `session.Prefix` only decides what to
+number: the folder, sanitised to what tmux and a phone tab can carry (no `.` or `:`,
+24 characters), and the root's own basename for the root. An empty result passes no
+`PREFIX` at all, leaving the Makefile's default rather than inventing a session called
+`-`. A Makefile that knows neither variable still works, make taking an override for a
+variable it never reads — which matters because the host's Makefile is a template in
+the `pockterm_app` ansible role, so the folder reaches the tab only once that role has
+been applied.
 
-A Makefile that knows neither variable still works: make takes an override for a
-variable it never reads, so the session opens where it always did under the name
-it always used. That matters here because the host's Makefile is not this
-repository's file — it is a template in the `pockterm_app` ansible role — so the
-folder reaches the tab only once that role has been applied.
-
-`session.ResolveDir` is a gate, not a formality: the value becomes make's `DIR=`,
-and the page may only name one plain folder inside the root. `..`, a separator, a
-leading dot and an absolute path are all refused, and the reason travels back as
-text the drawer shows.
+`session.ResolveDir` is a gate, not a formality: the value becomes make's `DIR=`, and
+the page may only name one plain folder inside the root. `..`, a separator, a leading
+dot and an absolute path are refused, and the reason travels back as text.
 
 **`pockterm-` was too wide a namespace to reserve.** Client sessions are
-`pockterm-client-<id>` since 2026-08-04, because sessions are named after folders
-now and `~/work/pockterm` is a folder: its second session is `pockterm-2`, which
-the old prefix hid from the list and made unattachable, with nothing anywhere
-saying why. Worse, ids count from 1 per process, so that name is one of the first
-two a page takes for itself — and `new-session -A -s pockterm-2` would have
-attached the phone to the user's own session instead of making a client for it.
-
-## The settings are in the drawer, and the ⋯ menu is gone
-
-Text size, the notification switch, `〰 smooth`, the keyboard mode, the input log,
-the version line and Install used to sit behind `⋯` over the terminal. That is the
-surface you work on: levers touched once a month were taking permanent space from
-the one place where every tap matters, and the drawer — where you go to decide
-something rather than to do something — had room to spare. So they moved, **and
-they moved rather than being copied**: two places holding one lever is how the two
-drift, and the ⋯ button went with them.
-
-`#settings` is a panel at the bottom of the drawer with the toggle pinned under it,
-so opening the drawer never costs the settings a scroll and a long list of custom
-buttons cannot push the toggle off screen. `closeDrawer` collapses it for the same
-reason it closes the rename field: leaving it open would have it waiting behind a
-closed drawer.
-
-**A pull down inside the panel closes it**, because that is where the panel goes:
-it opens upward from the row at the bottom of the drawer, so dragging it back down
-says the same thing as tapping that row — and it is what a hand tries first. It
-counts only from the top of the panel (`scrollTop <= 0`) and only when the drag is
-mostly vertical: the panel scrolls under the same finger, and a list of buttons that
-collapsed while being scrolled would be worse than one more tap. It goes through
-`showSettings`, so it is remembered as the owner's answer.
-
-**A pull up anywhere in the drawer opens it**, which is the same statement in the
-other direction: the panel slides up out of the row at the bottom, so both
-gestures say what the animation shows.
-
-It counted only from that row, on the argument that everything above is a list
-that scrolls under the same finger. The row is one target at the very bottom of a
-tall screen, and the gesture is wanted from wherever the thumb happens to be — so
-**the bound is the scroll rather than the place**: whatever is under the finger
-keeps the gesture while it still has somewhere to go down, and the question is
-asked of the ancestors rather than of one list, because the drawer holds several.
-A short list has nowhere to go, which is the common case and the one that reads
-as "anywhere"; a long one is being scrolled, and settings that opened mid-scroll
-would be worse than one more tap.
-
-**The click the gesture ends in is not a tap**, and widening the gesture widened
-that too. From the row it was the row's own click, which would have shut the panel
-the swipe had just opened. From anywhere it lands on whatever the finger came down
-on, and what is in there is sessions — a pull up over the list would open the
-settings and switch session on the way. It is caught on the drawer in the capture
-phase, before it reaches the button it is aimed at, and the suppression is cleared
-at the next touch rather than by the click it is waiting for: a browser that
-decides a 45px drag was a scroll sends no click at all, and a flag left set would
-eat the next honest tap.
-
-**Collapsing it is not the same as closing it, and for one version it was.** Open
-or closed is remembered (`pt-settings-open`) because for anyone who keeps the text
-size or the keyboard mode within reach it is a preference, not a state — and the
-drawer collapsing the panel on the way out wrote "closed" down every time, so the
-panel had to be reopened on every visit. `showSettings` is the owner's answer and
-records it; `paintSettings` only draws, and `collapseSettings` is what the drawer
-calls. `openDrawer` paints what was last answered. A preference must not be
-overwritten by the mechanics of the thing it is a preference about.
-
-`▾ hide the bars` stayed in the key bar. It is a one-tap action on the working
-surface, not a setting, and its way back (`▴`) is the only thing on screen when
-everything is hidden.
-
-Anything in the tests that pulls a lever goes through `startStand`'s `openSettings`
-and `shutDrawer`, both by state — and `shutDrawer` waits on the panel's geometry,
-not its class: it slides out over 200ms, and a swipe aimed at the terminal in the
-meantime lands on the drawer still covering it.
-
-## A custom button carries a command, and the Makefile still launches it
-
-The four presets are make targets, and the rule they were built on holds: the page
-sends a name, and the Makefile is the only thing that knows what a session is —
-the sandbox wrapper, a free number, its own systemd scope. What the four could not
-answer is a fifth agent. `qwen` or `opencode` meant editing a Makefile that on the
-host this serves is an ansible template: a laptop, a deploy and a working day
-between wanting it on the phone and having it.
-
-So a custom button **parameterises one target instead of adding its own**:
-`session.CustomTarget` (`custom`) takes the command in `CMD=`, and the recipe wraps
-it in the same launcher as everything else. A Makefile without that target fails
-with make's own message, which the drawer shows as text — that is also what the
-host here will do until the `pockterm_app` role's template has it.
-
-`session.ValidCustom` is the gate, and it is a gate: the value reaches a make
-command line and make hands it to a shell inside the recipe, single-quoted. Letters,
-digits, spaces and `- _ . / = : , @ +`, starting with a letter, a digit or a path —
-nothing that can end that quoting or start an expansion. A refusal travels back as
-the reason it was refused, because on a phone there is no log to open.
-
-The list lives on the host (`POCKTERM_PRESETS_FILE`, next to the notification mode)
-for the same three reasons that switch does: what the buttons start happens on the
-host, a second phone or a reinstalled PWA must find the same ones, and CI restarts
-this binary several times on a working day. Ids are the host's to hand out, so a
-rename keeps the button rather than making a new one, and the page saves **the whole
-list** and draws what came back — never what was just typed.
-
-## A session that could not start took its own reason with it
-
-The endpoint answers 200 and the journal says `started`, because both are true: make
-ran, tmux made the session, and everything this program can see went right. What
-happens next is between the pane and the command it was given, and a command that
-fails on startup — a binary that is not installed, a typo in a custom button,
-`claude -c` in a folder with no conversation to continue — exits within the second.
-The pane goes with it, tmux closes the session, and on a phone that is **a tab that
-appears and vanishes**. The message explaining it was on screen for exactly as long
-as the session existed.
-
-Reported as new sessions no longer opening, and the two halves of the report are the
-two halves of the mechanism: the tab did appear, and what was left afterwards was
-the previous session redrawn, which is `stepBackFrom` doing its job over a session
-that had just died. Nothing in the journal said anything was wrong — `start-session
-ok:true`, then a `watch: question` off the dying screen, then silence. It was found
-by running the same button's command by hand: `No conversation found to continue`,
-exit 1, twice, in two different folders.
-
-So the Makefile holds a pane whose command failed: the message stays on screen and
-the pane **drops into a shell in the same directory**. A live shell rather than a
-dead pane, because what is typed into a dead pane goes nowhere — the failure this
-file keeps meeting — and because the commonest thing to want next is to look at the
-folder and try again.
-
-**Bounded by how long the command ran, not by its status alone.** `make shell` runs
-an interactive shell, and `exit` there reports the status of the last command run in
-it — so a non-zero exit is the ordinary way out of a session somebody worked in, and
-holding that one would be a session that refuses to close. Ten seconds is far above
-every startup failure above and far below any session anyone used.
-
-The recipe lives in two files that must not diverge — `deploy/sessions.mk.example`
-here and the `pockterm_app` role's template in the devops repository — so the fix is
-in both, and on the host it is in force only once that role has been applied.
-
-## The four buttons are entries in the list, not a menu written into the page
-
-They were a map in Go (`session.Presets`) and four `<button>`s in the HTML, and both
-were the answer to "what can be started". That is two answers, and it showed the
-moment either could change: a default renamed or removed was still in the menu, in
-its stock words, starting what it always had.
-
-So the stored list is the whole set. A default is an entry whose **id is a make
-target** (`shell`, `claude`, `yolo`, `continue`) and whose command is empty, which is
-`Custom.Builtin()` and the one case `ValidCustom` lets through without a command —
-the Makefile decides what that target does, as it always did. `DefaultButtons()`
-carries their labels, because a label that can be renamed has to be stored
-somewhere; the glyph stays in the page (`web/js/kinds.js`), which is its own
-vocabulary and shared by the menu, the strip and the drawer.
-
-**Editing a default's command moves it onto the `custom` target and keeps its id.**
-The id is what `KIND=` stamps and what a tab is marked from, so `claude --model opus`
-is still `✦ claude` on every tab it opens. `Buttons.Resolve` is the only place that
-turns a preset name into a target and a command, and **the list is the authority**: a
-button the owner removed cannot be started however well-known its name, or removing
-it would have been hiding it. The UI test asks the endpoint directly for a removed
-`shell` and requires a 400.
-
-**The stored file grew a shape.** It was a bare array of the owner's own buttons;
-now it is `{"buttons":[…]}`. The difference carries a fact no array could: an empty
-list means every button was removed and must stay removed, while a bare array is a
-store written before the defaults were in it — `parseButtons` puts them back in
-front of what it holds. Without that, the first release would have looked like it
-deleted the four on every host that had ever saved a custom button.
-
-**A reset restores the defaults and nothing else.** `Buttons.Reset` drops the
-built-in entries, puts `DefaultButtons()` back in front, and leaves the owner's own
-where they are: the four are a default, and `qwen` typed on a phone is not. It is the
-store's operation rather than a list the page could send, because a page older than
-the binary would otherwise install whatever it thought the defaults were — the
-endpoint takes `{"reset":true}`. Two taps on the button, like every other removal
-here, since it does undo renames and commands.
-
-Both menus are written from the list (`renderCustom`), and opening one waits for
-`customReady` — the first `/api/presets` answer. A `+` tapped before it arrived would
-open an empty popup, which reads as "nothing can be started". On a host with no store
-at all (404) the page falls back to `DEFAULT_BUTTONS`: not a second source of truth,
-since there is no list there to disagree with.
-
-**A button may name a make target instead of carrying a command.** The four are
-targets; a Makefile has others that they do not cover — the author's own has
-`cont-yolo` — and reaching one from a phone meant typing `make cont-yolo` into the
-command field. That runs make *inside* the session the button just created: a second
-session appears beside it and the first one dies. So `make <target>` in that field
-now means that target (`asMake`, `Custom.Target`), which is also what the rows
-already show for the defaults — one vocabulary, and the thing to type is the thing
-on screen. `targetOK` is a narrower gate than `cmdOK`: a name, no arguments, no
-path, nothing that reaches a shell. The target is the owner's own Makefile's, at the
-same trust as the four, and make answers an unknown one with its own message which
-the drawer shows as text.
-
-**A button can be changed, and that is what the id was for.** `✎` on a row loads it
-into the two fields the form already has and `Добавить` becomes `Сохранить`; the row
-being edited is outlined, because with the label retyped there is nothing else on
-screen saying which button the fields are about, and the keyboard has by then put
-them a screen apart. The one form rather than a pair of fields per row, for the same
-reason the session list has one rename field: there is no room, and a form that
-appeared under the row would appear under the keyboard.
-
-Without it the way to fix a command was to remove the button and type it again — the
-same button to look at, and a different id. The id is what the tabs it opened are
-marked with (`custom:<id>`, `session.Kind`), so every session that button had started
-would have been left marked by a button that no longer exists, drawing the shared `★`
-and no name. Nothing on screen would have said that retyping cost anything. The edit
-sends the same list with the same id in place, which the server already supported —
-`Buttons.Set` keeps an id that arrives and hands out numbers only for entries without
-one.
-
-**`✕` takes two taps, and the first is the question.** It took one, on the argument
-that this removes a button rather than a running agent and typing it back is two
-fields — and a stray thumb removed one with nothing asked, which is how it was
-reported. The argument was about what a mistake costs, and the gesture is the wrong
-place to encode that: the two rows look alike, live in the same drawer, and are hit
-the same way, so a `✕` that asks in one list and not in the other is a `✕` nobody
-reads before pressing. `armTwice` is the one implementation both use — the session
-list had it first, inline — because two copies of a confirmation drift into two
-different answers to one gesture. The arming lapses after `ARM_MS`, since a button
-left armed is a button whose next tap, minutes later, does something other than what
-it says.
-
-A second tap on `✎` cancels, and `closeDrawer` cancels too: a form still saying
-`Сохранить` about a button chosen a day ago saves the wrong thing when it is finally
-tapped. The UI test proves the id survives by reading `data-preset` off the menu
-entry before and after — the label and the command are what the owner sees, and both
-of them changing is exactly the case where a new id would look identical.
+`pockterm-client-<id>` since 2026-08-04, because sessions are named after folders now
+and `~/work/pockterm` is a folder: its second session is `pockterm-2`, which the old
+prefix hid from the list and made unattachable. Worse, ids count from 1 per process,
+so that name is one of the first two a page takes for itself — and `new-session -A -s
+pockterm-2` would have attached the phone to the user's own session.
 
 ## A session name can be a group in disguise
 
-tmux names a session group after the session it was created from and never
-renames it. Rename that session and the old name lives on as a group — and
-`new-session -t <name>`, which is how every client attaches, resolves a group
-before a session of the same name. Hand the freed name to another session and
-its tab opens the first session's window.
+tmux names a session group after the session it was created from and never renames it.
+Rename that session and the old name lives on as a group — and `new-session -t <name>`,
+which is how every client attaches, resolves a group before a session of the same name.
+Hand the freed name to another session and its tab opens the first session's window.
 
-This is not cosmetic: attaching merges the two sessions into one group
-permanently. Renaming out of it does not separate them, and `move-window` out
-of the group destroys the other session's windows. The only way out is to
-close one of the pair, which frees the other.
-
-`tmuxcmd.NameConflict` refuses such a name at the rename endpoint, and the
-session Makefile picks numbers that are free as both a session and a group
-name. Both guards exist because the trap is invisible from the page: two tabs,
-one window, and nothing anywhere saying why.
+This is not cosmetic: attaching merges the two sessions into one group permanently.
+Renaming out of it does not separate them, and `move-window` out of the group destroys
+the other session's windows. The only way out is to close one of the pair.
+`tmuxcmd.NameConflict` refuses such a name at the rename endpoint, and the session
+Makefile picks numbers free as both a session and a group name. Both guards exist
+because the trap is invisible from the page: two tabs, one window, and nothing saying
+why.
 
 ## The session list is a drawer, not a screen
 
-It was a screen of its own, and switching to it tore the terminal down: the
-socket closed, `term.reset()` ran, and coming back redrew from tmux. The list is
-what you open to see what else is running, so what is running has to survive it.
+It was a screen of its own, and switching to it tore the terminal down: the socket
+closed, `term.reset()` ran, and coming back redrew from tmux. The list is what you open
+to see what else is running, so what is running has to survive it.
 
-`#screen-sessions` is a fixed panel over the terminal now, off-screen by a
-transform rather than by `hidden` — a transform animates and leaves the terminal
-underneath untouched, where `display: none` would reflow it. `☰` toggles it, `✕`
-sits where `☰` is so the same spot closes it, and a tap on the scrim closes it
-too. With no session attached the terminal screen is hidden and the drawer is all
-there is, which is where the page starts and where closing the last session
-lands.
+`#screen-sessions` is a fixed panel over the terminal, off-screen by a transform rather
+than by `hidden` — a transform animates and leaves the terminal untouched, where
+`display: none` would reflow it. `☰` toggles it, `✕` sits where `☰` is, and a tap on the
+scrim closes it. The tab strip is the same list in miniature, so it carries the same `+`
+with the same handler.
 
-The tab strip is the same list in miniature, so it carries the same `+` with the
-same four presets — and the same handler, because two would drift.
+**A swipe to the left closes it**, which is where the panel goes anyway. It closes once
+the drag is unmistakably horizontal and past 45px; nothing follows the finger, the
+transition already covering the distance. Two other drags must not trigger it, and both
+were the reason for the guard: the list scrolls vertically under the same finger, and
+the rename field drags a caret sideways.
 
-**A swipe to the left closes it too**, which is where the panel goes anyway — the
-closed state is a transform off the left edge, so the gesture and the animation say
-the same thing. It closes once the drag is unmistakably horizontal and past 45px;
-nothing follows the finger, because the transition already covers the distance. Two
-drags must not trigger it and both were the reason for the guard: the list scrolls
-vertically under the same finger, and the rename field drags a caret sideways.
+**And a swipe to the right over the terminal brings it back.** ☰ is at the top edge and
+the thumb is at the bottom, so the way in cost a reach the way out did not. It rides on
+the terminal's own gesture, the two sharing a finger: the drawer takes the swipe only
+when it is unmistakably sideways (past `DRAWER_SWIPE` and further across than down), and
+takes it whole — `scroller.cancel` ends the swipe the way a browser stealing it does,
+with no glide, or the terminal would go on scrolling behind an open drawer. Where a
+swipe was never the terminal's (the composer, the frozen copy, the header, the answer
+row) it is not the drawer's either. That cancel is why the gesture report grew a `by`:
+the journal counts cancelled gestures to tell a fact of the platform from a defect, and
+folding the page's own swipes into that number would spoil the measurement.
 
-**And a swipe to the right over the terminal brings it back.** ☰ is in the header
-at the top edge of a phone and the thumb is at the bottom, so the way in cost a
-reach that the way out did not. The gesture is the mirror of the one that puts the
-drawer away — it lives off the left edge, so pulling rightwards is pulling it out
-from there.
+**Closing the tab you are in steps back to the one you came from.** It used to land on
+the modal drawer whatever else was running, reported as the interface sticking: the tab
+under the finger was gone and its place was no longer anything to tap. `visited` is the
+order tabs were attached in and `stepBackFrom` walks it, skipping names tmux no longer
+has; the tab beside the closed one is the fallback, and the drawer is what is left when
+nothing is running at all.
 
-It rides on the terminal's own gesture rather than beside it, because the two
-share a finger and only one of them can have it. The scroll is vertical, so the
-drawer takes the swipe only when it is unmistakably sideways (past `DRAWER_SWIPE`
-and further across than down), and it takes it whole: `scroller.cancel` ends the
-swipe the way a browser stealing it does, with no glide, or the terminal would go
-on scrolling behind an open drawer. Where a swipe was never the terminal's —
-the composer, the frozen copy, the header, the answer row — it is not the
-drawer's either, `ownsGesture` being the one answer to that question.
+**With nothing attached the drawer is modal.** The terminal screen is hidden then and
+`☰` lives in its header, so a drawer that could still be dismissed left a black page
+with nothing to tap and no way back but a reload. `❮` and the scrim are gone in that
+state rather than inert: an exit that does nothing is worse than no exit. The swipe
+goes through `closeDrawer`, which refuses then, rather than checking for itself.
 
-That cancel is why the gesture report grew a `by`: the journal counts cancelled
-gestures to tell a fact of the platform from a defect, and folding the page's own
-swipes into that number would spoil the very measurement the flag exists for.
+**A touch aimed at the terminal must wait for the drawer to be gone.** The panel slides
+out over 200ms; `stand.attach()` waited only for the terminal to appear, so a gesture
+dispatched right after it landed on a `<ul>` in the drawer and the test timed out
+waiting for a move nobody received. Latent while the page was quick enough, it started
+failing when the drawer grew four rows — a change to the timing, not to the page.
+`attach()` waits on the geometry too, and anything in the tests that clicks a session
+opens the drawer **by its state**: `☰` toggles, and the restore of the last session
+happens after load, so a blind tap raced it (two suites failed that way about one run
+in three before `startStand` grew `openDrawer`).
 
-**Closing the tab you are in steps back to the one you came from.** It used to land
-on the modal drawer whatever else was running, which was reported as the interface
-sticking: the tab under the finger was gone and the place it had been was no longer
-anything to tap. `visited` is the order tabs were attached in, and `stepBackFrom`
-walks it, skipping names tmux no longer has; the tab beside the closed one is the
-fallback for a session nothing was visited before, and the drawer is what is left
-when nothing is running at all — which is the case it was built for.
+## The settings are in the drawer, and the ⋯ menu is gone
 
-**With nothing attached the drawer is modal.** The terminal screen is hidden then
-and `☰` lives in its header, so a drawer that could still be dismissed left a
-black page with nothing to tap and no way back but a reload — reported after
-closing the very session being used. `❮` and the scrim are gone in that state
-rather than inert: an exit that does nothing is worse than no exit. The swipe obeys
-that too — it goes through `closeDrawer`, which refuses then, rather than checking
-for itself.
+Text size, the notification switch, `〰 smooth`, the keyboard mode, the input log, the
+version line and Install used to sit behind `⋯` over the terminal. That is the surface
+you work on: levers touched once a month were taking permanent space from the one place
+where every tap matters. So they moved, **and they moved rather than being copied** —
+two places holding one lever is how the two drift — and the `⋯` button went with them.
 
-**A touch aimed at the terminal must wait for the drawer to be gone**, and that is
-the same lesson as `shutDrawer`'s, learned a second time. The panel slides out over
-200ms; `stand.attach()` waited only for the terminal to appear, so a gesture
-dispatched right after it landed on a `<ul>` in the drawer, never reached
-`#screen-term`, and the test timed out waiting for a move nobody received. It was
-latent for as long as the page was quick enough and started failing when the drawer
-grew four rows — a change to the timing, not to the page. `attach()` now waits on the
-geometry too.
+`#settings` is a panel at the bottom of the drawer with the toggle pinned under it, so
+opening the drawer never costs the settings a scroll and a long list of custom buttons
+cannot push the toggle off screen. `closeDrawer` collapses it, for the same reason it
+closes the rename field.
 
-Anything in the tests that clicks a session has to open the drawer **by its
-state**, never by tapping `☰`. `☰` toggles, and the restore of the last session
-happens after load, so a blind tap raced it: the drawer that had just opened
-itself was closed again and the next click landed on the terminal. Two suites
-failed that way about one run in three before `startStand` grew its own
-`openDrawer`.
+**A pull down inside the panel closes it** — it opens upward from the row at the bottom,
+so dragging it back down says what the animation shows. It counts only from the top of
+the panel (`scrollTop <= 0`) and only when the drag is mostly vertical, the panel
+scrolling under the same finger. **A pull up anywhere in the drawer opens it**, and the
+bound there is the scroll rather than the place: whatever is under the finger keeps the
+gesture while it still has somewhere to go down, asked of the ancestors rather than of
+one list. A short list has nowhere to go, which is the common case and the one that
+reads as "anywhere".
+
+**The click the gesture ends in is not a tap**, and widening the gesture widened that
+too: from anywhere it lands on whatever the finger came down on, and what is in there is
+sessions — a pull up over the list would open the settings and switch session on the
+way. It is caught on the drawer in the capture phase, and the suppression is cleared at
+the next touch rather than by the click it is waiting for: a browser that decides a 45px
+drag was a scroll sends no click at all, and a flag left set would eat the next honest
+tap.
+
+**Collapsing it is not the same as closing it**, and for one version it was. Open or
+closed is remembered (`pt-settings-open`), and the drawer collapsing the panel on the
+way out wrote "closed" down every time, so it had to be reopened on every visit.
+`showSettings` is the owner's answer and records it; `paintSettings` only draws,
+`collapseSettings` is what the drawer calls, `openDrawer` paints what was last answered.
+A preference must not be overwritten by the mechanics of the thing it is a preference
+about.
+
+`▾ hide the bars` stayed in the key bar: a one-tap action on the working surface, not a
+setting, and its way back (`▴`) is the only thing on screen when everything is hidden.
+Anything in the tests that pulls a lever goes through `startStand`'s `openSettings` and
+`shutDrawer`, both by state — and `shutDrawer` waits on the panel's geometry, not its
+class.
+
+## A custom button carries a command, and the Makefile still launches it
+
+The presets are make targets, and the rule they were built on holds: the page sends a
+name, and the Makefile is the only thing that knows what a session is — the sandbox
+wrapper, a free number, its own systemd scope. What the four could not answer is a fifth
+agent: `qwen` or `opencode` meant editing a Makefile that on the host this serves is an
+ansible template, so a laptop, a deploy and a working day stood between wanting it on
+the phone and having it.
+
+So a custom button **parameterises one target instead of adding its own**:
+`session.CustomTarget` (`custom`) takes the command in `CMD=`, and the recipe wraps it in
+the same launcher as everything else. A Makefile without that target fails with make's
+own message, which the drawer shows as text.
+
+`session.ValidCustom` is a gate: the value reaches a make command line and make hands it
+to a shell inside the recipe, single-quoted. Letters, digits, spaces and `- _ . / = : ,
+@ +`, starting with a letter, a digit or a path — nothing that can end that quoting or
+start an expansion. A refusal travels back as the reason it was refused, there being no
+log to open on a phone.
+
+The list lives on the host (`POCKTERM_PRESETS_FILE`, next to the notification mode) for
+the three reasons that switch does: what the buttons start happens on the host, a second
+phone or a reinstalled PWA must find the same ones, and CI restarts this binary several
+times a working day. Ids are the host's to hand out, and the page saves **the whole
+list** and draws what came back — never what was just typed.
+
+**A button may name a make target instead of carrying a command.** A Makefile has others
+the presets do not cover — the author's own has `cont-yolo` — and reaching one meant
+typing `make cont-yolo` into the command field, which runs make *inside* the session the
+button just created: a second session appears beside it and the first one dies. So
+`make <target>` in that field now means that target (`asMake`, `Custom.Target`), which is
+also what the rows show for the defaults. `targetOK` is a narrower gate than `cmdOK`: a
+name, no arguments, no path, nothing that reaches a shell.
+
+**A button can be changed, and that is what the id was for.** `✎` on a row loads it into
+the two fields the form already has and `Добавить` becomes `Сохранить`; the row being
+edited is outlined, because with the label retyped nothing else on screen says which
+button the fields are about, and the keyboard has by then put them a screen apart. One
+form rather than a pair of fields per row, for the same reason the session list has one
+rename field. Without it the way to fix a command was to remove the button and type it
+again — the same button to look at, and a different id, so every session that button had
+started would be left marked by a button that no longer exists, drawing the shared `★`
+and no name. The edit sends the same list with the same id in place; `Buttons.Set` keeps
+an id that arrives and hands out numbers only for entries without one.
+
+**`✕` takes two taps, and the first is the question.** It took one, on the argument that
+this removes a button rather than a running agent — and a stray thumb removed one with
+nothing asked. The argument was about what a mistake costs, and the gesture is the wrong
+place to encode that: the two lists look alike, live in the same drawer, and are hit the
+same way, so a `✕` that asks in one and not in the other is a `✕` nobody reads before
+pressing. `armTwice` is the one implementation both use, and the arming lapses after
+`ARM_MS`. A second tap on `✎` cancels, and `closeDrawer` cancels too: a form still saying
+`Сохранить` about a button chosen a day ago saves the wrong thing when it is finally
+tapped. The UI test proves the id survives by reading `data-preset` off the menu entry
+before and after.
+
+## The four buttons are entries in the list, not a menu written into the page
+
+They were a map in Go (`session.Presets`) and four `<button>`s in the HTML, and both were
+the answer to "what can be started". That is two answers, and it showed the moment either
+could change: a default renamed or removed was still in the menu, in its stock words,
+starting what it always had.
+
+So the stored list is the whole set. A default is an entry whose **id is a make target**
+(`shell`, `claude`, `yolo`, `continue`) and whose command is empty, which is
+`Custom.Builtin()` and the one case `ValidCustom` lets through without a command.
+`DefaultButtons()` carries their labels, a label that can be renamed having to be stored
+somewhere; the glyph stays in the page.
+
+**Editing a default's command moves it onto the `custom` target and keeps its id**, so
+`claude --model opus` is still `❄️ claude` on every tab it opens. `Buttons.Resolve` is the
+only place that turns a preset name into a target and a command, and **the list is the
+authority**: a button the owner removed cannot be started however well-known its name, or
+removing it would have been hiding it. The UI test asks the endpoint for a removed
+`shell` and requires a 400.
+
+**The stored file grew a shape**: it was a bare array, now it is `{"buttons":[…]}`. The
+difference carries a fact no array could — an empty list means every button was removed
+and must stay removed, while a bare array is a store written before the defaults were in
+it, and `parseButtons` puts them back in front of what it holds. Without that the first
+release would have looked like it deleted the four on every host that had ever saved a
+custom button.
+
+**A reset restores the defaults and nothing else.** `Buttons.Reset` drops the built-in
+entries, puts `DefaultButtons()` back in front, and leaves the owner's own where they
+are. It is the store's operation rather than a list the page could send, because a page
+older than the binary would otherwise install whatever it thought the defaults were — the
+endpoint takes `{"reset":true}`. Two taps, like every other removal here.
+
+Both menus are written from the list (`renderCustom`), and opening one waits for
+`customReady` — the first `/api/presets` answer, a `+` tapped before it arriving opening
+an empty popup that reads as "nothing can be started". On a host with no store at all
+(404) the page falls back to `DEFAULT_BUTTONS`, which is not a second source of truth,
+there being no list there to disagree with.
+
+## A session that could not start took its own reason with it
+
+The endpoint answers 200 and the journal says `started`, because both are true: make ran,
+tmux made the session, and everything this program can see went right. What happens next
+is between the pane and the command it was given, and a command that fails on startup — a
+binary that is not installed, a typo in a custom button, `claude -c` in a folder with no
+conversation to continue — exits within the second. The pane goes with it, tmux closes
+the session, and on a phone that is **a tab that appears and vanishes**.
+
+Reported as new sessions no longer opening, and the two halves of the report are the two
+halves of the mechanism: the tab did appear, and what was left afterwards was the
+previous session redrawn, which is `stepBackFrom` doing its job over a session that had
+just died. Nothing in the journal said anything was wrong — `start-session ok:true`, a
+`watch: question` off the dying screen, then silence. It was found by running the
+button's command by hand: `No conversation found to continue`, exit 1, twice, in two
+folders.
+
+So the Makefile holds a pane whose command failed: the message stays on screen and the
+pane **drops into a shell in the same directory**. A live shell rather than a dead pane,
+because what is typed into a dead pane goes nowhere — the failure this file keeps meeting
+— and because the commonest thing to want next is to look at the folder and try again.
+**Bounded by how long the command ran, not by its status alone**: `make shell` runs an
+interactive shell, where `exit` reports the status of the last command run in it, so a
+non-zero exit is the ordinary way out of a session somebody worked in. Ten seconds is far
+above every startup failure and far below any session anyone used.
+
+The recipe lives in two files that must not diverge — `deploy/sessions.mk.example` here
+and the `pockterm_app` role's template in the devops repository.
 
 ## Notifications are decided in one place
 
-`internal/watch` reads each watched session's pane with `capture-pane` and
-emits two events: a menu appeared, or the screen went quiet after doing
-something. Both channels — Telegram and a `notify` frame to an open page —
-render that same event, through `watch.Format` and `watch.Notice`.
+`internal/watch` reads each watched session's pane with `capture-pane` and emits two
+events: a menu appeared, or the screen went quiet after doing something. Both channels —
+Telegram and a `notify` frame to an open page — render that same event, through
+`watch.Format` and `watch.Notice`.
 
-The page decides nothing. It used to, and the result was notifications nobody
-could predict: it counted "activity" from bytes on the socket, but tmux redraws
-its status line on a clock, so the silence never lasted; and the timer that
-checked was throttled once Android backgrounded the WebView. If you are tempted
-to raise a notice from the browser again, read the header of `web/js/notify.js`
-first.
+The page decides nothing. It used to, and the result was notifications nobody could
+predict: it counted "activity" from bytes on the socket, but tmux redraws its status line
+on a clock, so the silence never lasted; and the timer that checked was throttled once
+Android backgrounded the WebView. If you are tempted to raise a notice from the browser
+again, read the header of `web/js/notify.js` first.
 
-**A pane wraps a sentence, and the body used to be one line of it.** The notice
-that reached the phone said `API Error: 529 Overloaded. This is a` and stopped
-there. The same message from another session arrived whole, which is the tell: a
-pane is as wide as the narrowest client attached to it and this page attaches
-phones — that session was 51 columns, the other 175. So the marker `●` is on the
-first line only and the rest is a continuation indented under it. `wrapped` puts
-them back together, ending the paragraph where the pane does: a blank line, a line
-back at the margin, another `●`, a tool's `⎿`, or anything already known to be
-interface. `clip` still caps the result, so a long answer is cut at 200 characters
-with an ellipsis rather than mid-clause with nothing.
+Body text comes from `watch.Tail`, not from the last non-blank line: agent TUIs draw an
+input box and a shortcut hint under their output, so the honest last line is usually
+`? for shortcuts` or a row of `─`. What that function has had to learn:
 
-Body text comes from `watch.Tail`, not from the last non-blank line: agent TUIs
-draw an input box and a shortcut hint under their output, so the last line on
-screen is usually `? for shortcuts` or a row of `─`.
+**What the agent said comes before what it ran.** Its own lines are marked with `●`, and
+what sits under the last of them is the output of whatever it did last — which is how
+"pockterm закончил" reached the phone with `{"name":"devops",` as its whole body, a
+fragment of a `curl` that was honestly the last line on screen. `Tail` looks for the
+lowest `●` line that is a sentence and strips the marker; `● Bash(…)` is skipped by its
+shape, the agent pointing at a command rather than speaking. Reading up from the bottom
+is the fallback, for a pane with no marker in it.
 
-**What the agent said comes before what it ran.** Its own lines are marked with
-`●`, and what sits under the last of them is the output of whatever it did last —
-which is how "pockterm закончил" reached the phone with `{"name":"devops",` as its
-whole body, a fragment of a `curl` that was honestly the last line on screen. `Tail`
-looks for the lowest `●` line that is a sentence and strips the marker; `● Bash(…)`
-is skipped by its shape, because that is the agent pointing at a command rather
-than speaking. Reading up from the bottom is the fallback, for a pane with no
-marker in it — a shell, or an agent this does not recognise.
+**A pane wraps a sentence, and the body used to be one line of it.** The notice read
+`API Error: 529 Overloaded. This is a` and stopped there, while the same message from a
+session last attached from a laptop arrived whole: the pane was 51 columns against 175.
+The marker is on the first line only and the rest is a continuation indented under it, so
+`wrapped` puts them back together, ending the paragraph where the pane does — a blank
+line, a line back at the margin, another `●`, a tool's `⎿`, or anything already known to
+be interface. `clip` caps the result at 200 characters with an ellipsis.
 
-Two more lines had to be named there, and both are the interface at its most
-convincing — full of words, none of them about the work. The **status line**
-(`ctx 71% | dms@ai:~/work/exante (main) $ | Opus 5`) arrived on the phone as the
-entire body of "exante закончил": how much context was left and in which
-directory, under a title about a session finishing. And the **turn summary**
-(`✻ Cooked for 19s`) is true and says nothing the title has not, while sitting
-between the title and the sentence you actually want. Both are matched by shape —
-`^ctx \d+%\s*\|` and `<one word> for <duration>` — because the numbers and the
-verbs change with every release while the shapes do not. The shape has to start
-the line, or a "собрал за 4s" in prose would vanish from a notice too.
+**Two lines of pure interface had to be named**, both full of words and none of them
+about the work. The **status line** (`ctx 71% | dms@ai:~/work/exante (main) $ | Opus 5`)
+arrived as the entire body of "exante закончил", and the **turn summary**
+(`✻ Cooked for 19s`) is true and says nothing the title has not. Both are matched by
+shape — `^ctx \d+%\s*\|` and `<one word> for <duration>` — and the shape has to start the
+line, or a "собрал за 4s" in prose would vanish from a notice too. A notification cannot
+be coloured either (`title` and `body` are plain strings), which is another reason not to
+send a line whose colour is most of what makes it readable.
 
-**A notification cannot be coloured**, and that is the API rather than a decision
-here: `title` and `body` are plain strings, and the shade renders them in its own
-type. So the colour the status line has on screen cannot come along — which is
-another reason not to send that line at all, since colour is most of what makes it
-readable in the terminal.
+**And what was said *to* the agent is not what it said.** The `❯` marks the human's side
+twice over: the input box at the bottom of the TUI, and the echo of every message already
+sent, standing in the transcript above the answer to it. Claude Code writes a reply it
+suggests into that box, so with no `●` in the visible screen — a long answer, its marker
+scrolled off the 51 columns a phone gives the shared window — the fallback read one of the
+two and the phone was told "✅ elect закончил" over a line the machine had proposed for the
+owner to send. Measured on the owner's own panes 2026-08-18: devops answered
+`❯ согласуй мост с mesh`, which is the message he had sent, not a word the agent said.
+`withoutTheHumanSide` cuts the box structurally (`detect.InputBoxAt`: it is the bottom of
+the TUI, so everything from it down is interface, whatever the footer looks like this
+release) and blanks the echoes above it together with their wrapped continuations. The
+space after the glyph tells the two apart — non-breaking in the box, ordinary in the echo
+— and neither of them is the agent speaking, so `humanSaid` matches both.
 
-**What is wanted is one switch, and it is the server's.** `watch.Pref` holds
-`off`, `pwa` or `pwa+tg`, `watch.Deliver` turns it into the two booleans the
-notifier obeys, and the page reads and writes it over `/api/notify` — plus
-`notify` in the config frame, so the button is right the moment it is drawn
-rather than one request later. Three reasons it is not a browser preference, and
-each of them was the design: half of what it controls is sent from the host to a
-phone that has this page closed, so the page cannot be the one holding it; a
-second phone or a reinstalled PWA would otherwise disagree with what the host
-actually does; and `off` has to mean silence in Telegram too, which the old bell
-could not do at all. It is remembered on disk (`POCKTERM_NOTIFY_FILE`, under the
-user's config directory by default) because CI restarts this binary on every
-push to `main` — a mode in memory would come back as the default several times a
-working day, and `off` is the state whose loss is loud. Default is `pwa+tg`: an
-install must not silence a phone that was being notified before it.
+**What is wanted is one switch, and it is the server's.** `watch.Pref` holds `off`, `pwa`
+or `pwa+tg`, `watch.Deliver` turns it into the two booleans the notifier obeys, and the
+page reads and writes it over `/api/notify` — plus `notify` in the config frame, so the
+button is right the moment it is drawn. Three reasons it is not a browser preference:
+half of what it controls is sent from the host to a phone that has this page closed; a
+second phone or a reinstalled PWA would disagree with what the host actually does; and
+`off` has to mean silence in Telegram too. It is remembered on disk
+(`POCKTERM_NOTIFY_FILE`) because CI restarts this binary on every push to `main`, and
+`off` is the state whose loss is loud. Default is `pwa+tg`: an install must not silence a
+phone that was being notified before it. The middle state exists only where a bot token
+does — `NotifyMode` answers `telegram` alongside the mode, and `nextMode` drops `pwa+tg`
+from the ring without one.
 
-The middle state exists only where a bot token does. `NotifyMode` answers
-`telegram` alongside the mode for that reason, and `nextMode` in `js/notify.js`
-drops `pwa+tg` from the ring without it — a label promising delivery that cannot
-happen is worse than a shorter cycle.
+**Two paths raise a notice in a browser, and the weaker one looked like the only one.**
+`new Notification(...)` is illegal in Android Chrome: the API is present, the permission
+is granted, and the constructor throws — and the throw escaped `show()`, taking the rest
+of the frame handler with it, so an installed PWA showed nothing at all until 2026-08-04.
+`deliver()` prefers the service worker's registration, which is also the only path that
+can carry a tap to a page that is gone: `notificationclick` in `sw.js` focuses an open
+window and posts it the session, or opens one at `?session=`. Which path ran goes to the
+journal (`notify via: …`).
 
-**Two paths raise a notice in a browser, and the weaker one looked like the only
-one.** `new Notification(...)` is illegal in Android Chrome: the API is present,
-the permission is granted, and the constructor throws. The owner's phone runs
-this as an installed PWA, so no notification was shown there at all until
-2026-08-04 — and the throw escaped `show()`, taking the rest of the frame handler
-with it. `deliver()` prefers the service worker's registration, which is also the
-only path that can carry a tap to a page that is gone: a worker's notification
-delivers its click to the worker, so `notificationclick` in `sw.js` focuses an
-open window and posts it the session, or opens one at `?session=`. Which path ran
-goes to the journal (`notify via: …`) — the silence is what hid the defect for as
-long as it lasted.
+**A notice goes to every open page, not to the pages attached to its session.** That
+routing was the whole of "PWA notifications do not arrive" (2026-08-04, Telegram off).
+Two sensible rules cancelled out: the watcher stayed silent about a session somebody had
+visible, and `Notices` delivered only to sockets attached to *that* session — so the only
+session a frame could reach was the one it was never sent for. `Notices` is keyed by
+client id now and `Send` takes just the notice; the notice already names its session, and
+a tap on it already switches there.
 
-**A notice goes to every open page, not to the pages attached to its session.**
-That routing was the whole of "PWA notifications do not arrive", reported on
-2026-08-04 with Telegram switched off. The two rules were each sensible and
-together they cancelled out: the watcher stays silent about a session somebody has
-**visible**, and `Notices` delivered only to sockets attached to *that* session. A
-phone has one socket, on the session being looked at — so the only session the
-frame could reach was the one it was never sent for, and a question in the session
-next to it reached nobody at all. `Notices` is keyed by client id now and `Send`
-takes just the notice. Nothing else had to change: the notice already names its
-session, and a tap on it already switches there.
-
-**Being on screen is now a per-page answer, and it was everyone's.** The watcher
-stayed silent about a session somebody had visible — one rule, decided once, for
-every recipient there is. That is the right answer for Telegram, which is one
-recipient: a message about what the owner is looking at is noise. It is no answer at
-all for the pages, which are several. With a phone open on one session and a laptop
-showing the one beside it, a finish in the session on the laptop reached nobody: the
-phone was silenced by a screen it cannot see, which is exactly the notice it is
-holding the phone for.
-
-So `OnScreen` travels on the event, and the two channels read it differently.
-Telegram skips it. `Notices.Send` takes a `showing` predicate and drops only the
-sockets that have that very session visible — a page is silenced by what it is
-itself showing and by nothing else. Every send says how many pages took it and how
-many were skipped (`journalctl -u pockterm | grep notify:`), because "уведомления
-не приходят" is otherwise an impression on both sides of the socket.
+**Being on screen is a per-page answer, and it was everyone's.** That is right for
+Telegram, which is one recipient, and no answer at all for the pages: with a phone open on
+one session and a laptop showing the one beside it, a finish on the laptop's session
+reached nobody. So `OnScreen` travels on the event, Telegram skips it, and `Notices.Send`
+takes a `showing` predicate that drops only the sockets with that very session visible.
+Every send says how many pages took it and how many were skipped.
 
 **A page that was never asked cannot notify, and that looked identical to a broken
-switch.** The default mode is `pwa+tg`, so a fresh install starts in a notifying
-state — and permission used to be requested only on the way *into* one, which
-nobody walks when the switch already says what they want. `show()` then returned
-silently on `Notification.permission !== 'granted'`, the one silent return left on
-the path. Now the bell asks whenever the mode it moves to notifies, an unpermitted
-`🔔` wears a dashed outline saying one tap is the fix, the permission is in the
-`hello` line of the journal, and a dropped notice says why it was dropped.
-
-**And the bell is no longer the only place that asks — the first touch does.** The
-dashed outline is a fix for whoever notices it, which is a poor thing to hang a
-whole install on: the default notifies, so nothing on a fresh install ever asks the
-one question standing between the frames arriving and a notice appearing.
-`shouldAskPermission` (in `js/notify.js`, so it is testable) decides, and
-`armPermissionAsk` fires it from a one-shot `pointerdown`.
-
-Two bounds, both learned from what browsers do rather than from what they document.
-It is not asked **on load**: a prompt raised without a gesture is refused outright
-by some browsers and shown as a quieter, easier-to-miss UI by others, and a phone
-touches the page within seconds anyway. And it is asked **once per install**, which
-is why `pt-notify-asked` exists rather than reading `Notification.permission`:
-`default` is what a *dismissed* prompt leaves behind too, so the state alone cannot
-tell "never asked" from "asked and ignored" — and a page that asks on every load is
-one the browser stops letting ask at all. The flag is written before the answer
-comes back for the same reason.
-
-The UI stand grants `notifications` alongside the clipboard. Not for convenience:
-the first touch in most of those tests is the start of a swipe being measured, and a
-permission prompt in the middle of a gesture is a different measurement.
+switch.** The default notifies, so a fresh install starts in a notifying state — and
+permission used to be requested only on the way *into* one, which nobody walks when the
+switch already says what they want; `show()` then returned silently on
+`Notification.permission !== 'granted'`. Now the bell asks whenever the mode it moves to
+notifies, an unpermitted `🔔` wears a dashed outline, the permission is in the `hello`
+line, and a dropped notice says why. **And the bell is no longer the only place that asks
+— the first touch does** (`shouldAskPermission` in `js/notify.js`, fired by
+`armPermissionAsk` from a one-shot `pointerdown`). Two bounds, both learned from what
+browsers do rather than from what they document: not **on load**, a prompt raised without
+a gesture being refused outright by some browsers and shown as a quieter UI by others; and
+**once per install**, which is why `pt-notify-asked` exists rather than reading
+`Notification.permission` — `default` is also what a *dismissed* prompt leaves behind, and
+a page that asks on every load is one the browser stops letting ask. The flag is written
+before the answer comes back for the same reason. The UI stand grants `notifications`
+alongside the clipboard, the first touch in most tests being the start of a swipe being
+measured.
 
 **Every notice names its own icon.** Left unset, Chrome draws a generic bell — and
-unpredictably: two notices from this page sat in the owner's shade one above the
-other, one bell and one app mark, because whether the manifest icon resolves
-depends on whether the page was still there when the worker raised the notice.
-`icons/icon-192-notify.png` is the app's own drawing — the prompt and its
-underscore — in **white on nothing at all**, and it is passed as both `icon` and
-`badge`. No plate behind it: the shade draws its own circle and background, so an
-icon carrying one arrives as a square inside a circle. The mark is scaled to fill
-its box rather than keeping the installed icon's margin, which left it a smudge at
-24px. It is generated from `icon-192.png` (luminance to alpha), so the two cannot
-drift into different drawings.
+unpredictably: two notices sat in the owner's shade one above the other, one bell and one
+app mark, depending on whether the page was still there when the worker raised it.
+`icons/icon-192-notify.png` is the app's own drawing in **white on nothing at all**,
+passed as both `icon` and `badge`; no plate behind it, the shade drawing its own circle,
+and the mark scaled to fill its box rather than keeping the installed icon's margin. It is
+generated from `icon-192.png` (luminance to alpha), so the two cannot drift.
 
-`show()` also no longer consults the page's own copy of the switch. The frame's
-existence *is* the decision — the server read the mode at the moment of the event —
-and the page's copy is the stale second owner of one fact, changed from whichever
-page happened to be in hand.
+`show()` no longer consults the page's own copy of the switch: the frame's existence *is*
+the decision, the server having read the mode at the moment of the event.
 
 ## The wheel step is a tmux setting, and it is the floor for everything here
 
-A wheel notch is the smallest movement tmux can draw, so it bounds every
-smoothness question on this page: the residue the shift has to give back at the
-end of a gesture, the size of a jump when a prediction is wrong, the band of
-background at the leading edge. The page does not assume it — the server asks
-tmux (`list-keys -T copy-mode WheelUpPane`) on every connect and sends it in the
-`config` frame.
+A wheel notch is the smallest movement tmux can draw, so it bounds every smoothness
+question on this page: the residue the shift gives back at the end of a gesture, the size
+of a jump when a prediction is wrong, the band of background at the leading edge. The page
+does not assume it — the server asks tmux (`list-keys -T copy-mode WheelUpPane`) on every
+connect and sends it in the `config` frame.
 
-On the owner's host it is **one line since 2026-08-03**, set in `~/.tmux.conf`:
-five (tmux's default) meant a short swipe moved nothing until the finger had
-travelled five rows, two still left a two-row residue that read as the screen
-sliding back at the release. One is the floor. That file lives in the `dotfiles`
-repository since 2026-08-03 (`tmux/tmux.conf`, symlinked by its installer, and
-the small step is behind an `%if` on the hostname — one line is a step for a
-thumb, not for a mouse) — changing the step is a change to it and to nothing in
-here.
+On the owner's host it is **one line since 2026-08-03**, set in `~/.tmux.conf`: five
+(tmux's default) meant a short swipe moved nothing until the finger had travelled five
+rows, two still left a residue that read as the screen sliding back at the release. That
+file lives in the `dotfiles` repository (`tmux/tmux.conf`, the small step behind an `%if`
+on the hostname — one line is a step for a thumb, not for a mouse), so changing the step
+is a change to it and to nothing here.
 
 **The count in that binding has to be a literal.** tmux does expand a format in
-`send-keys -N`, so a variable works as far as tmux is concerned, but `list-keys`
-prints the binding with the format unexpanded and that output is all this server
-knows: `ParseWheelLines` falls back to 5 on anything non-numeric. tmux would
+`send-keys -N`, but `list-keys` prints the binding unexpanded and that output is all this
+server knows: `ParseWheelLines` falls back to 5 on anything non-numeric, and tmux would
 scroll one row while the page compensated for five.
 
 ## A touch belongs to the element it started on, and xterm replaces that element
 
-Reported from the browser as the scroll jumping and refusing to go more than a
-screen or two back: some swipes covered a screen and a half, the next one moved
-two lines, and there was no pattern to which. The pattern is **where the finger
-landed**.
+Reported from the browser as the scroll jumping and refusing to go more than a screen or
+two back: some swipes covered a screen and a half, the next moved two lines, with no
+pattern to which. The pattern is **where the finger landed**.
 
-Every touch event after `touchstart` is delivered to the node the gesture started
-on, whatever is under the finger later — and a node taken out of the document has
-no ancestors left to bubble to, so those events reach nothing at all. xterm's DOM
-renderer rebuilds a row's spans on every write (the same fact the frozen copy in
-`#snapshot` exists for, one layer up). So a swipe that started on drawn text was
-over at the first redraw tmux answered with: one move delivered, two lines
-scrolled, and the rest of the hand's travel dispatched into a detached span. A
-swipe that started past the end of a short line hit the row's own `div`, which
-xterm keeps and reuses, and ran to the end.
+Every touch event after `touchstart` is delivered to the node the gesture started on, and
+a node taken out of the document has no ancestors left to bubble to. xterm's DOM renderer
+rebuilds a row's spans on every write, so a swipe that started on drawn text was over at
+the first redraw tmux answered with: one move delivered, two lines scrolled, the rest of
+the travel dispatched into a detached span. A swipe that started past the end of a short
+line hit the row's own `div`, which xterm keeps, and ran to the end. Measured on the
+stand, six identical swipes: the first delivered 10 moves and scrolled 50 lines, every one
+after it delivered 1 and scrolled 2, with `target.isConnected` false for each. That is
+also why it got worse the further back you were — the more of the screen is text, the
+fewer places there are to land that survive.
 
-Measured on the stand, six identical swipes: the first delivered 10 moves of 10
-and scrolled 50 lines, every one after it delivered 1 and scrolled 2, and
-`target.isConnected` was `false` for each of those. That is also why the defect
-gets worse the further back you are — the deeper into history, the more of the
-screen is text and the fewer places there are to land that survive.
+`.xterm-rows { pointer-events: none }` is the fix: the finger lands on `.xterm-screen`,
+which xterm creates once and keeps. Nothing is lost — xterm's own mouse handling listens
+there and works from coordinates, and selection is made from the frozen copy.
 
-`.xterm-rows { pointer-events: none }` is the fix: the rows take no hits and the
-finger lands on `.xterm-screen`, which xterm creates once and keeps. Nothing is
-lost — xterm's own mouse handling listens on that element and works from
-coordinates, and selection here is made from the frozen copy rather than from the
-live rows.
-
-**What it is not** is anything about tmux, which is where two earlier readings of
-this went. tmux holds the copy-mode position as an offset from the *bottom* of the
-history, so a pane that is still producing output does drag a reader forward — measured, and real — but the session this was
-reported from had a stopped agent and a silent pane. And the page was sending its
-notches: the journal shows 33 to 66 per gesture. The gesture was being cut off
-before it became notches at all, which is visible from neither end.
+**What it is not** is anything about tmux, which is where two earlier readings went. tmux
+does hold the copy-mode position as an offset from the bottom of the history, so a pane
+still producing output drags a reader forward — measured, and real — but the session this
+was reported from had a stopped agent and a silent pane, and the page was sending its
+notches (33 to 66 per gesture in the journal). The gesture was being cut off before it
+became notches at all, which is visible from neither end.
 
 ## The copy window had nothing to scroll, because the page has no history
 
-Selection mode lays a frozen copy of the screen over the terminal, and for as
-long as it existed that copy was the screen and nothing else — so it was exactly
-as tall as its own box. Measured on the stand: `scrollHeight` equal to
-`clientHeight` after eighty lines of output, and `scrollTop = 9999` leaving it at
-0. Reported from the phone as the copy window not scrolling, which is precisely
-what it did.
+Selection mode lays a frozen copy of the screen over the terminal, and for as long as it
+existed that copy was the screen and nothing else — exactly as tall as its own box.
+Measured on the stand: `scrollHeight` equal to `clientHeight` after eighty lines of
+output, and `scrollTop = 9999` leaving it at 0.
 
-**The obvious fix reads xterm's own scrollback, and there is none.** The terminal
-here is created with `scrollback: 5000` and it stays empty: tmux owns the history
-and repaints its pane rather than letting lines scroll off it, so the browser's
-buffer sits at the top with `viewportY` at 0 however much has gone past. That was
-measured before it was believed — the first version of this fix read the buffer,
-and the copy window came out one screen tall exactly as before.
+**The obvious fix reads xterm's own scrollback, and there is none.** The terminal is
+created with `scrollback: 5000` and it stays empty: tmux owns the history and repaints its
+pane rather than letting lines scroll off it, so the browser's buffer sits at the top with
+`viewportY` at 0. That was measured before it was believed — the first version of this fix
+read the buffer and the copy window came out one screen tall exactly as before.
 
-So it is asked of the host (`tmuxcmd.CaptureHistory`, `capture-pane -p -S -N`),
-over the socket the page already has rather than an endpoint of its own: the
-session is the one this socket is attached to, so there is no name to pass and no
-second way in to guard. The count is clamped on both sides (`proto.CaptureMax`) —
-a nonsense number is answered with the screen rather than with an error, because
-what answers this frame is text on a phone with no console.
-
-**The mode opens on the frame it was asked for.** The screen is frozen at once and
-the history replaces it a round trip later, with the view pinned at the bottom
-where the mode was entered from; a copy window that appeared only after the answer
-would read as a button that does nothing, and a host that cannot answer costs
-nothing but the scrollback. The answer is dropped unless a copy window is still
-waiting for it (`captureWanted`), or one arriving late would overwrite a newer
-screen with older text.
-
-**And nothing floats over a frozen copy.** The pager stack and the scrollbar are
-drawn above it — z-index 12 and 7 against the snapshot's 6 — and both are about a
-pane that is not moving here, so what they did was take drags from the one gesture
-this mode has: the corner, and an 18px strip down the right edge. They are gone
-while it is up.
-
-The control frame goes out as **text**. `send` encodes to binary, which is the
-keystroke path, so the first version of this asked for the capture by typing
+So it is asked of the host (`tmuxcmd.CaptureHistory`, `capture-pane -p -S -N`), over the
+socket the page already has rather than an endpoint of its own: the session is the one
+this socket is attached to, so there is no name to pass and no second way in to guard. The
+count is clamped on both sides (`proto.CaptureMax`) — a nonsense number is answered with
+the screen rather than with an error, what answers this frame being text on a phone with
+no console. The control frame goes out as **text**: `send` encodes to binary, which is the
+keystroke path, so the first version asked for the capture by typing
 `{"type":"capture","lines":2000}` into the pane.
+
+**The mode opens on the frame it was asked for.** The screen is frozen at once and the
+history replaces it a round trip later, pinned at the bottom; a copy window that appeared
+only after the answer would read as a button that does nothing. The answer is dropped
+unless a copy window is still waiting for it (`captureWanted`), or one arriving late would
+overwrite a newer screen with older text. **And nothing floats over a frozen copy**: the
+pager stack and the scrollbar are about a pane that is not moving here, and what they did
+was take drags from the one gesture this mode has — they are gone while it is up.
 
 ## What the shift under the finger does not cover
 
-The page shifts the drawn rows to follow the finger between whole lines
-(`track` in `web/js/scroll.js`), and two limits on that were learned by
-shipping it:
+The page shifts the drawn rows to follow the finger between whole lines (`track` in
+`web/js/scroll.js`). What was learned by shipping it:
 
-- **The lift changes nothing.** For one version the shift was handed back the
-  moment the finger left, on the theory that a glide is too fast to judge a
-  fraction of a line in. With the cap at three steps that is a screen flying six
-  rows backwards at the release, which is what it was reported as. The shift
-  stands for content that has not arrived; it goes back as that content lands,
-  and the two cancel to no movement at all. A glide keeps more messages in the
-  air than the cap allows, so the picture rides at the cap instead of following
-  exactly — what it does not do is jump.
-- **`track()` expires before it decides.** `owed()` is both the question and the
-  expiry, so asking whether anything is left before calling it leaves the
-  sub-line residue on screen for good — a terminal parked a few pixels off its
-  grid. The browser test caught that as a shift that never came back.
-- **Notches dropped with the queue must be disowned** (`dropped()`). Leaving the
-  history throws away what was queued for the next message, and only a message
-  that went out can expire on the backstop.
-- **tmux's status line is not chrome.** It is drawn into the bottom row of the
-  same grid the pane lives in, so a transform on the screen takes it along —
-  reported as the green strip rising two rows on an upward swipe. The server asks
-  tmux how tall it is (`show-options -gv status`) and says so in the `config`
-  frame; the page takes the shift straight back off those rows, with the same
-  transition so the two cancel at every point of the settle and not only at its
-  end. Guessing is the wrong move here: too high pins a row of real output while
-  the rest follows the finger, so anything unreadable counts as none.
-- **One repaint accounts for every message it can have drawn.** Counting one
-  batch per repaint was the first rule and the numbers killed it: xterm renders
-  once per animation frame, so several of tmux's answers arrive in one repaint,
-  the rest stayed owed, and the shift sat at `MAX_TRACK` — where it stops
-  following the finger. A repaint now clears everything sent more than a frame
-  ago (`ACK_MARGIN`), because tmux acts on a message at once and it is the
-  picture coming back that is slow.
-- **The whole terminal screen is the gesture surface**, not the box the text is
-  drawn in: the bars take a third of a phone, and a thumb reaching them mid-swipe
-  is how a long swipe ends. `#composer`, `#snapshot` and the tab strip keep their
-  own gestures.
-- **`〰 smooth` in the ⋯ menu turns the shift off.** Whether holding the picture
-  between whole lines reads better than moving in whole ones is a question about
-  feel — and the shift moves everything in the pane, an agent's own input box
-  included, which is what it looks like when it is not wanted. The lever is
-  remembered, so answering costs a tap instead of a deploy.
-- **A pane with no history cannot answer anything.** Every message is then a
-  message tmux has nothing to draw, the air fills up and the shift pins at the
-  cap. Two measurements were read as defects before this was noticed, so a test
-  that swipes has to print some output first.
+- **The lift changes nothing.** For one version the shift was handed back the moment the
+  finger left, on the theory that a glide is too fast to judge a fraction of a line in.
+  With the cap at three steps that is a screen flying six rows backwards at the release.
+  The shift stands for content that has not arrived; it goes back as that content lands,
+  and the two cancel to no movement. A glide keeps more messages in the air than the cap
+  allows, so the picture rides at the cap instead of following exactly — what it does not
+  do is jump.
+- **`track()` expires before it decides.** `owed()` is both the question and the expiry,
+  so asking whether anything is left before calling it leaves the sub-line residue on
+  screen for good — a terminal parked a few pixels off its grid.
+- **Notches dropped with the queue must be disowned** (`dropped()`): leaving the history
+  throws away what was queued, and only a message that went out can expire on the
+  backstop.
+- **tmux's status line is not chrome.** It is drawn into the bottom row of the same grid
+  the pane lives in, so a transform takes it along — reported as the green strip rising
+  two rows on an upward swipe. The server asks tmux how tall it is (`show-options -gv
+  status`) and says so in the `config` frame; the page takes the shift straight back off
+  those rows with the same transition, so the two cancel at every point of the settle.
+  Guessing is wrong here: too high pins a row of real output, so anything unreadable
+  counts as none.
+- **One repaint accounts for every message it can have drawn.** Counting one batch per
+  repaint was the first rule and the numbers killed it: xterm renders once per animation
+  frame, so several of tmux's answers arrive in one repaint, the rest stayed owed, and the
+  shift sat at `MAX_TRACK`. A repaint now clears everything sent more than a frame ago
+  (`ACK_MARGIN`).
+- **A clock cannot say when a notch landed.** The shift first predicted it from the
+  measured round trip, and the device settled that: the trip averages 40-50ms and peaks at
+  130. A short swipe has one notch and gets away with it; a longer one has twenty,
+  mispredicts several, and every miss is a step back and then forward — reported as
+  juddering, and as sticking where a misprediction ran the shift into `MAX_TRACK`. The
+  page counts what it can observe: one message out (`batched`), one repaint of the whole
+  viewport back (`drew`). `movedWholeScreen` tells a scroll from output — measured on the
+  stand, a printed character repaints one row and a scroll repaints all of them. A batch
+  nobody answers expires after `AIR_MAX`: that is the top of the history, where there is
+  no scroll for tmux to make.
+- **The cap is a decision, not a safety valve.** The shift is content that has not
+  arrived, so it shows as a band of background at the leading edge; while it is at the cap
+  the picture stops following the finger. Three steps (six rows here) is where that trade
+  sits.
+- **The whole terminal screen is the gesture surface**, not the box the text is drawn in:
+  the bars take a third of a phone, and a thumb reaching them mid-swipe is how a long
+  swipe ends. `#composer`, `#snapshot` and the tab strip keep their own gestures.
 - **The gesture is the page's, and the browser has to be told.** `#term` sets
-  `touch-action: none`; without it the browser may decide mid-swipe that a long
-  drag is its own scroll, take the touch and stop delivering moves — reported as
-  a long swipe being interrupted. `touchcancel` is handled too, because the
-  declaration is a request and not a guarantee: a cancelled gesture ends without
-  a throw (there was no release to read a speed from) and says so in the journal
-  as `cancelled`, which is how often it happens becomes a fact rather than a
-  guess.
-- **A clock cannot say when a notch landed.** The shift first predicted it from
-  the measured round trip, and the device settled that: the trip averages 40-50ms
-  and peaks at 130. A short swipe has one notch and gets away with it; a longer
-  one has twenty, mispredicts several, and every miss is a step back and then
-  forward — reported as juddering, and as sticking where a misprediction ran the
-  shift into `MAX_TRACK`. The page now counts what it can observe: one message
-  out (`batched`), one repaint of the whole viewport back (`drew`).
-  `movedWholeScreen` is what tells a scroll from output — measured on the stand,
-  a printed character repaints one row and a scroll repaints all of them. A batch
-  nobody answers expires after `AIR_MAX`: that is the top of the history, where
-  there is no scroll for tmux to make.
-- **The cap is a decision, not a safety valve.** The shift is content that has
-  not arrived, so it shows as a band of background at the leading edge. While it
-  is at the cap the picture stops following the finger, which is the sticking
-  being fixed — the cap trades one for the other, and three steps (six rows
-  here) is where it sits.
+  `touch-action: none`; without it the browser may decide mid-swipe that a long drag is
+  its own scroll and stop delivering moves. `touchcancel` is handled too, the declaration
+  being a request rather than a guarantee: a cancelled gesture ends without a throw and
+  says so in the journal as `cancelled`.
+- **A pane with no history cannot answer anything.** Every message is then one tmux has
+  nothing to draw, the air fills up and the shift pins at the cap. Two measurements were
+  read as defects before this was noticed, so a test that swipes has to print output
+  first.
+- **`〰 smooth` turns the shift off.** Whether holding the picture between whole lines
+  reads better than moving in whole ones is a question about feel — and the shift moves
+  everything in the pane, an agent's own input box included. The lever is remembered, so
+  answering costs a tap instead of a deploy.
 
-`lag`, `predicted` and `lost` in the gesture report are diagnostics now, not
-controls: the shift no longer reads them.
+`lag`, `predicted` and `lost` in the gesture report are diagnostics now, not controls.
 
 ## The installer does what the README used to ask of a reader
 
-Everything `deploy/install.sh` gained is one shape of defect: a step that was
-written down instead of done, and whose absence does not look like an absence.
+Everything `deploy/install.sh` gained is one shape of defect: a step that was written down
+instead of done, and whose absence does not look like an absence.
 
-**A host without `tmux` is refused, not served.** Nothing here works without it —
-the phone gets an empty session list, which reads as a broken terminal rather than
-as a package nobody installed. `make` is a warning instead, because only the `+`
-button goes through it, and its absence turns that button off just as quietly.
-Neither was checked at all before. The refusal carries the command that fixes it,
-picked off the package manager that exists rather than off `/etc/os-release`.
+**A host without `tmux` is refused, not served** — the phone otherwise gets an empty
+session list, which reads as a broken terminal rather than as a package nobody installed.
+`make` is a warning instead, only the `+` button going through it. The refusal carries the
+command that fixes it, picked off the package manager that exists rather than off
+`/etc/os-release`.
 
-**The session Makefile is installed, and `POCKTERM_SESSION_DIR` points at it.**
-Those were four steps in the README — copy, edit, set the variable, restart — and
-the moment they are wanted is the moment a phone has no session on it and no way to
-start one, which is the worst possible moment to be reading a README. The root
-defaults to the served account's home; `POCKTERM_SESSION_DIR` names another.
+**The session Makefile is installed, and `POCKTERM_SESSION_DIR` points at it.** Those were
+four steps in the README — copy, edit, set the variable, restart — and the moment they are
+wanted is the moment a phone has no session on it, which is the worst possible moment to
+be reading a README. The root defaults to the served account's home. Two refusals inside
+that, both about not owning what we did not write: a Makefile already in the root is never
+overwritten (`make claude` in somebody else's Makefile is an unknown target, not a
+session), and then the variable is not written either, since pointing the `+` button at
+unknown targets is worse than leaving it off. A copy of ours is recognised by
+`pockterm-sessions` in the header and left exactly as edited, the file being meant for
+editing. `GNUmakefile` and `makefile` count as the Makefile that is there — make reads the
+first of the three, so writing `Makefile` beside a `GNUmakefile` would install a file make
+never opens and report success.
 
-Two refusals inside that, and both are about not owning what we did not write. A
-Makefile already in the root is never overwritten — `make claude` in somebody
-else's Makefile is an unknown target, not a session — and then the variable is not
-written either, because pointing the `+` button at unknown targets is worse than
-leaving it off. A copy of ours is recognised by `pockterm-sessions` in the header
-and left exactly as edited, the file being meant for editing. `GNUmakefile` and
-`makefile` count as the Makefile that is there: make reads the first of the three,
-so writing `Makefile` beside a `GNUmakefile` would install a file make never opens
-and report success.
-
-**A restart happens when the env file changed, and only then.** systemd reads that
-file at start, so anything added to it is not in force yet — and the README's
-`tee -a` plus `systemctl restart` was where people stopped reading. The condition
-matters as much: a restart drops every open terminal, so an install that changed
-nothing must cost nobody a reconnect.
+**A restart happens when the env file changed, and only then.** systemd reads that file at
+start, so anything added is not in force yet; and a restart drops every open terminal, so
+an install that changed nothing must cost nobody a reconnect.
 
 **`--tg` runs the pairing that already existed.** `pockterm tg-setup` has done the
-mechanical half since it was written; what it could not do is be remembered, and
-the part left out afterwards was the restart. Its failure ends only itself — the
-install stands and prints the link, because a bot that is not ready yet is not a
-reason to have no terminal.
+mechanical half since it was written; what it could not do is be remembered, and the part
+left out afterwards was the restart. Its failure ends only itself — the install stands and
+prints the link, a bot that is not ready being no reason to have no terminal.
 
-`test/install_test.sh` covers each of those, including both answers where a machine
-can only give one: `REQUIRE_TMUX`/`REQUIRE_MAKE` name the tool to look for, so the
-missing-tool path is exercised on a host that has it, and a stub `tmux` on `PATH`
-lets the happy path run in a container that has none.
+`test/install_test.sh` covers each of those, including both answers where a machine can
+only give one: `REQUIRE_TMUX`/`REQUIRE_MAKE` name the tool to look for, so the missing-tool
+path is exercised on a host that has it, and a stub `tmux` on `PATH` lets the happy path
+run in a container that has none.
 
 ## Diagnostics
 
-The page posts what decides an outcome to `/api/log`, which the server writes
-to its journal (`journalctl -u pockterm | grep client:`): the environment on
-load — version, secure context, which clipboard APIs exist, whether the native
-bridge is there — plus copy/paste/upload results and uncaught errors. It is
-there because the device this serves has no console anyone can open, and every
-fix before it was a guess.
+The page posts what decides an outcome to `/api/log`, which the server writes to its
+journal (`journalctl -u pockterm | grep client:`): the environment on load — version,
+secure context, which clipboard APIs exist, whether the native bridge is there — plus
+copy/paste/upload results and uncaught errors. The device this serves has no console
+anyone can open, and every fix before this was a guess.
 
-**A refused upload had been the one outcome here that wrote nothing down.** Only
-the successful path reported, so "413 при загрузке фото" arrived as a sentence from
-the owner with nothing in the journal to put beside it — and 413 is a status this
-server never sends. It comes from the nginx in front, whose default body limit is
-one megabyte: a screenshot is a few hundred kilobytes and went through for months,
-a camera frame is several megabytes and never did. The limit lives in the
-`pockterm_vhost` role in the devops repository (`client_max_body_size 12M`, chosen
-just above `upload.MaxBytes` so an oversized image is refused by this program's own
-words rather than by the proxy's status code), and it takes a deploy of that role
-to be in force. The page now names the proxy instead of pasting nginx's HTML into a
-toast, and logs the failure with its status and the size.
+**A refused upload had been the one outcome that wrote nothing down.** Only the successful
+path reported, so "413 при загрузке фото" arrived with nothing in the journal to put
+beside it — and 413 is a status this server never sends. It comes from the nginx in front,
+whose default body limit is one megabyte: a screenshot is a few hundred kilobytes and went
+through for months, a camera frame is several megabytes and never did. The limit lives in
+the `pockterm_vhost` role in the devops repository (`client_max_body_size 12M`, just above
+`upload.MaxBytes` so an oversized image is refused by this program's own words rather than
+by the proxy's status code), and it takes a deploy of that role to be in force. The page
+names the proxy instead of pasting nginx's HTML into a toast, and logs the failure with
+its status and the size.
 
 ## Deploy
 
-A push to `main` builds, tests and hands the binary over, and **the host
-installs it at once**. Do not install by hand on the RPi5, and do not run the
-`pockterm_app` ansible role's binary copy against it.
+A push to `main` builds, tests and hands the binary over, and **the host installs it at
+once**. Do not install by hand on the RPi5, and do not run the `pockterm_app` ansible
+role's binary copy against it.
 
-`.forgejo/workflows/deploy.yml` runs on the runner that lives on that same box.
-The job builds in a container and drops `pockterm.new` plus an HMAC signature
-into `/var/lib/pockterm/incoming`; the host watches that path
-(`pockterm-deploy.path`) and `/usr/local/sbin/pockterm-deploy` verifies the
-signature and takes it from there. Identical bytes are a no-op, so a docs-only
-push does not drop anyone's terminal; a binary that fails to start is rolled
-back to the previous one.
+`.forgejo/workflows/deploy.yml` runs on the runner that lives on that same box. The job
+builds in a container and drops `pockterm.new` plus an HMAC signature into
+`/var/lib/pockterm/incoming`; the host watches that path (`pockterm-deploy.path`) and
+`/usr/local/sbin/pockterm-deploy` verifies the signature and takes it from there.
+Identical bytes are a no-op, so a docs-only push does not drop anyone's terminal; a binary
+that fails to start is rolled back.
 
-**That no-op needs the build to be reproducible, and for a day it was not.**
-`go build` stamps the commit hash into the binary and the build directory along
-with it, so every push produced new bytes and every push restarted the unit —
-found on 2026-08-04 by a commit that touched only this file and dropped the
-terminal anyway. `BUILD_FLAGS` in `make/go.mk` is `-trimpath -buildvcs=false`
-for that reason, and `make test-repro` builds the tree twice under different
-paths to prove it: same source, same bytes. It is two real cross-compiles, so it
-is not part of `make check` — run it when the build line changes. The cost of
-the flags is that the binary no longer says which commit it is; the page's
-`APP_VERSION` is what identity there is.
+**That no-op needs the build to be reproducible, and for a day it was not.** `go build`
+stamps the commit hash into the binary and the build directory along with it, so every
+push produced new bytes and every push restarted the unit — found on 2026-08-04 by a
+commit that touched only this file. `BUILD_FLAGS` in `make/go.mk` is `-trimpath
+-buildvcs=false` for that reason, and `make test-repro` builds the tree twice under
+different paths to prove it. It is two real cross-compiles, so it is not part of `make
+check` — run it when the build line changes. The cost is that the binary no longer says
+which commit it is; the page's `APP_VERSION` is what identity there is.
 
-It used to wait for nobody to be looking, on the grounds that a restart drops
-the terminal its author is sitting in. That cost a parked build, a retry timer,
-a `waiting` flag on `/api/presence` and a line in the ⋯ menu explaining why the
-version would not change — and the person waiting for the fix was the one
-holding it up. **The wait was removed on 2026-08-03.** A restart costs a
-reconnect, the tmux session behind it is untouched, and the page says what to
-do about the rest: the server names the page it serves in the socket's `config`
-frame, and a page running anything else shows a bar with **Обновить** on it.
+The deploy used to wait for nobody to be looking, which cost a parked build, a retry
+timer, a `waiting` flag on `/api/presence` and a line in the menu explaining why the
+version would not change — and the person waiting for the fix was the one holding it up.
+**The wait was removed on 2026-08-03.** A restart costs a reconnect, the tmux session
+behind it is untouched, and the page says what to do about the rest: the server names the
+page it serves in the socket's `config` frame, and a page running anything else shows a
+bar with **Обновить** on it. A reload rather than an automatic one, because the composer
+can have half a message in it; the button is a plain `location.reload()`, the service
+worker being network-first.
 
-A reload rather than an automatic one, because the composer can have half a
-message in it. The button is a plain `location.reload()` — the service worker
-is network-first, so the assets come from the server and the cache is only the
-offline fallback.
+`APP_VERSION` in `web/js/app.js` and `VERSION` in `web/sw.js` are that mechanism's single
+number, bumped by hand in two files; `assets_test.go` fails if they drift, because a page
+misreporting its own version never looks out of date and no bar is ever raised. The server
+reads the number out of its own embedded `app.js` (`PageVersion` in `assets.go`) rather
+than keeping a third copy.
 
-`APP_VERSION` in `web/js/app.js` and `VERSION` in `web/sw.js` are that
-mechanism's single number, bumped by hand in two files; `assets_test.go` fails
-if they drift, because a page misreporting its own version never looks out of
-date and no bar is ever raised. The server reads the number out of its own
-embedded `app.js` (`PageVersion` in `assets.go`) rather than keeping a third
-copy.
-
-The host-side pieces — `pockterm-deploy`, its `.path` and `.service` — live in
-`deploy/` in this repository and are covered by `test/deploy_test.sh`
-(`make test-deploy`), which stubs systemctl. They were host-only files until
-2026-08-03, owned by nothing.
+The host-side pieces — `pockterm-deploy`, its `.path` and `.service` — live in `deploy/`
+and are covered by `test/deploy_test.sh` (`make test-deploy`), which stubs systemctl.
 
 That path installs on the RPi5 only. For everyone else there are releases:
-`.github/workflows/release.yml` fires on a `v*` tag, runs `make release`
-(both architectures plus `SHA256SUMS`) and publishes them, and
-`deploy/install.sh` downloads one when no Go toolchain is present. The
-checksum check is not decoration — a binary that does not match is refused,
-and `test/install_test.sh` covers both outcomes with a `file://` release.
+`.github/workflows/release.yml` fires on a `v*` tag, runs `make release` (both
+architectures plus `SHA256SUMS`) and publishes them, and `deploy/install.sh` downloads one
+when no Go toolchain is present. The checksum check is not decoration — a binary that does
+not match is refused, and `test/install_test.sh` covers both outcomes with a `file://`
+release.
 
 The signing key is the repo Actions secret `DEPLOY_HMAC_KEY` and
-`/etc/pockterm/deploy-hmac.key` on the host. It exists because the drop
-directory is mounted into a job container and the runner serves other
-repositories too — without it, any workflow could have the host install a
-binary as root.
+`/etc/pockterm/deploy-hmac.key` on the host. It exists because the drop directory is
+mounted into a job container and the runner serves other repositories too — without it,
+any workflow could have the host install a binary as root.
