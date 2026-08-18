@@ -1936,6 +1936,29 @@ line later.
 A target carrying a paren takes the `<…>` form, or the first `)` would end the link; a sequence the
 capture window cut in half is dropped rather than shown, 2000 lines ending wherever they end.
 
+**A paragraph is one line in the message and several on the pane**, and the copy kept the pane's.
+Reported by pasting one into a chat: every break the pane made at its own width came out as a break
+in the message, each continuation carrying the two spaces of the pane's margin. The width those
+lines were broken at is the width of a phone and means nothing in a clipboard, so `unwrapFrom` puts
+them back together — and what tells a break the pane made from one the agent wrote is the shape of
+the block, measured three ways on a tape of this session's own pane at 47 columns:
+
+- **The renderer wraps at word boundaries and keeps no space.** So a join has to put one back — 42
+  distinct breaks at the pane's own edge, every one between whole words, not one inside a token.
+  (At 163 columns almost nothing wraps, which is why this had to be measured on a phone-width pane.)
+- **A paragraph's lines all sit at one indent** — the agent's own margin, two columns — while what is
+  deeper belongs to somebody else: a `⎿` block's output at five, a code block further still. Those
+  breaks are the thing itself and are left alone, as are lists, tables, rules and headers, each of
+  which begins a line of its own.
+- **A sentence after the `●` the agent's speech is marked with continues at the column after the
+  marker**: `●` at 0, its continuation at 2, 941 times in that tape. A second `●` is a second
+  sentence, not a continuation.
+
+The one break this cannot put back is a token wider than the pane, which has to be cut somewhere: the
+join would put a space inside it. None appeared in the tape — a URL is a link and is rejoined as one
+— and inventing a guard for a shape that has not turned up is how the wrong answers in this file got
+written.
+
 **A thematic break is drawn as a rule**, and a copy of the rule is box glyphs. Found while looking
 for those header underlines, which is the second Markdown construct that search turned up rather
 than the one it was after. `rulesFrom` puts the `---` back, and the width is what tells a break

@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { snapshotText, chunks, pickedText, markdownFrom, tablesFrom, rulesFrom, headingsFrom } from '../web/js/select.js';
+import { snapshotText, chunks, pickedText, markdownFrom, tablesFrom, rulesFrom, headingsFrom, unwrapFrom } from '../web/js/select.js';
 
 test('rows become lines', () => {
   assert.equal(snapshotText(['one', 'two']), 'one\ntwo');
@@ -120,8 +120,11 @@ test('bold inside a code span carries both marks, code first', () => {
   assert.equal(markdownFrom('\x1b[1m\x1b[38;5;153mmake\x1b[39m\x1b[0m'), '**`make`**');
 });
 
-test('text with no escapes in it is handed back exactly', () => {
-  assert.equal(markdownFrom('plain text\nsecond line'), 'plain text\nsecond line');
+test('text with no escapes in it gets no marks — and its paragraph is still joined', () => {
+  // The inline pass has nothing to read without attributes; the block passes still
+  // run, and two lines at one indent are a paragraph the pane broke.
+  assert.equal(markdownFrom('plain text\nsecond line'), 'plain text second line');
+  assert.equal(markdownFrom('plain text\n\nsecond paragraph'), 'plain text\n\nsecond paragraph');
   assert.equal(markdownFrom(''), '');
   assert.equal(markdownFrom(null), '');
 });
@@ -507,4 +510,61 @@ test('every level below the first is the same bold, down to the sixth', () => {
   for (const word of ['четыре', 'пять', 'шесть']) {
     assert.equal(markdownFrom(`  \x1b[1mУровень ${word}\x1b[0m`), `  **Уровень ${word}**`);
   }
+});
+
+// --- the paragraph the pane broke at its own width -------------------------
+// The shapes are the measured ones: at 47 columns the renderer wraps at word
+// boundaries and keeps no space, a paragraph's lines all sit at the agent's own
+// two-column margin, and a `●` line's continuation sits at the column after the
+// marker.
+test('a paragraph broken by the pane comes back as one line', () => {
+  const pane = [
+    '  За пять лет изменились не позиции партий, а',
+    '  то, что палата пишет законы. Единогласие',
+    '  осталось прежним; сместился поток.',
+  ].join('\n');
+  assert.equal(unwrapFrom(pane),
+    '  За пять лет изменились не позиции партий, а то, что палата пишет законы.'
+    + ' Единогласие осталось прежним; сместился поток.');
+});
+
+test('a blank line is where one paragraph ends and the next begins', () => {
+  const pane = '  первый абзац\n  и его хвост\n\n  второй абзац\n  и его хвост';
+  assert.equal(unwrapFrom(pane), '  первый абзац и его хвост\n\n  второй абзац и его хвост');
+});
+
+test("the sentence after the agent's own marker joins at the column after it", () => {
+  // `●` at 0, its continuation at 2 — 941 times in the tape.
+  assert.equal(unwrapFrom('● Начало фразы, которая\n  продолжается ниже'),
+    '● Начало фразы, которая продолжается ниже');
+  // And a second marker is a second sentence, not a continuation.
+  assert.equal(unwrapFrom('● Первая\n● Вторая'), '● Первая\n● Вторая');
+});
+
+test("a tool's output keeps every break it has", () => {
+  // `⎿` at 2 with its output at 5: those breaks are the output, not a wrap.
+  const pane = '  ⎿  rc=0\n     первая строка вывода\n     вторая строка вывода';
+  assert.equal(unwrapFrom(pane), pane);
+});
+
+test('a code block keeps its breaks, being deeper than the margin', () => {
+  const pane = '    const a = 1;\n    const b = 2;';
+  assert.equal(unwrapFrom(pane), pane);
+});
+
+test('a list is a list, and its items are not glued into a sentence', () => {
+  const pane = '  - первый пункт\n  - второй пункт\n  1. и нумерованный\n  2. второй';
+  assert.equal(unwrapFrom(pane), pane);
+});
+
+test('a table, a rule and a header are each their own line', () => {
+  const pane = '| a | b |\n| --- | --- |\n| c | d |\n---\n  # Заголовок\n  и абзац под ним';
+  assert.equal(unwrapFrom(pane), '| a | b |\n| --- | --- |\n| c | d |\n---\n  # Заголовок\n  и абзац под ним');
+});
+
+test('the whole of it together: a pane paragraph with marks and a wrapped header', () => {
+  const src = `  ${H1('Очень длинный')}\n  ${H1('заголовок')}\n\n`
+    + '  \x1b[1mВажная\x1b[0m \x1b[1mправка,\x1b[0m без которой\n  цифры читаются неверно.';
+  assert.equal(markdownFrom(src, 47),
+    '  # Очень длинный заголовок\n\n  **Важная правка,** без которой цифры читаются неверно.');
 });

@@ -1515,8 +1515,11 @@ describe('selection and the clipboard', () => {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       await page.waitForTimeout(100);
     };
+    // The first two words of each picked paragraph: a paragraph is one line now —
+    // the pane's own wraps are joined back — so the line itself is the whole block.
     const marked = () => page.evaluate(
-      () => [...document.querySelectorAll('#snapshot .para.picked')].map((e) => e.textContent.trim().split('\n')[0]));
+      () => [...document.querySelectorAll('#snapshot .para.picked')]
+        .map((e) => e.textContent.trim().split(/\s+/).slice(0, 2).join(' ')));
 
     await press('alpha one');
     assert.deepEqual(await marked(), ['alpha one'], 'the long press picked nothing');

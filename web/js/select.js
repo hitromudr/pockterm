@@ -47,7 +47,65 @@ export function markdownFrom(text, cols = 0) {
   // into `---`, and runs always — an unstyled pane draws both with no colour in
   // them at all.
   const inline = src.includes('\x1b') ? convertInline(headingsFrom(linksFrom(src))) : src;
-  return rulesFrom(tablesFrom(inline), cols);
+  return unwrapFrom(rulesFrom(tablesFrom(inline), cols));
+}
+
+// A paragraph is one line in the message and several on the pane, and the copy kept
+// the pane's. Reported by pasting one into a chat: every break the pane made at its
+// own width came out as a break in the message, each continuation carrying the two
+// spaces of the pane's own margin — a lesson in a lesson, since the width the lines
+// were broken at is the width of a phone and means nothing in a clipboard.
+//
+// What tells a break the pane made from one the agent wrote is **the shape of the
+// block**, and three measurements went into it. At 47 columns the renderer wraps at
+// word boundaries and **keeps no space** at the end of the line, so a join has to put
+// one back — checked against 42 distinct breaks at the pane's own edge in a tape of
+// this session's pane, every one of them between whole words and not one inside a
+// token. A paragraph's lines all sit at **one indent** (the agent's own margin, two
+// columns), while what is deeper belongs to somebody else: a `⎿` block's output at
+// five, a code block further still, and those breaks are real. And a sentence that
+// follows the `●` the agent's own speech is marked with continues at **the column
+// after the marker** — `●` at 0, its continuation at 2, 941 times in that tape.
+//
+// The one break this cannot put back together is a token wider than the pane, which
+// has to be cut somewhere: the join would put a space inside it. None appeared in the
+// tape — a URL is a link and rejoined as one — and inventing a guard for a shape that
+// has not turned up is how the wrong answers in this file got written.
+const MARKER = /^( {0,1})● /;
+// What begins something of its own rather than continuing a sentence.
+const STARTS_BLOCK = /^(#{1,6} |> |\||---|[-*+] |\d+[.)] |[●⎿✻✢✽·⏵◯] |\[[ xX✔]\] )/;
+const OWN_LINE = /^(#{1,6} |---$|\|)/;
+
+export function unwrapFrom(text) {
+  const lines = String(text == null ? '' : text).split('\n');
+  const out = [];
+  for (const line of lines) {
+    const prev = out.length ? out[out.length - 1] : null;
+    if (prev !== null && joins(prev, line)) {
+      out[out.length - 1] = `${prev.replace(/\s+$/, '')} ${line.trim()}`;
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
+function indentOf(line) { return /^[ \t]*/.exec(line)[0].length; }
+
+function joins(prev, line) {
+  if (!prev.trim() || !line.trim()) return false;
+  const bare = prev.trimStart();
+  const next = line.trimStart();
+  // The agent's own column and nothing deeper: below it are a tool's output and a
+  // code block, where a line break is the thing itself.
+  const pi = indentOf(prev);
+  const ni = indentOf(line);
+  if (pi > 3 || ni > 3) return false;
+  if (OWN_LINE.test(bare) || /^⎿/.test(bare)) return false;
+  if (STARTS_BLOCK.test(next)) return false;
+  const marker = MARKER.exec(prev);
+  if (marker) return ni === pi + 2;
+  return ni === pi;
 }
 
 // `#` is the one header level the pane carries, and it carries it as an underline.
