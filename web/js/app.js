@@ -3,7 +3,7 @@ import { detectPrompt, answerKeys, submitKeys } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from './notify.js';
 import { linkAction } from './link.js';
 import { pickImages, imageFiles, carriesFiles, firstImage } from './paste.js';
-import { snapshotText, chunks, pickedText } from './select.js';
+import { snapshotText, chunks, pickedText, markdownFrom } from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v161';
+const APP_VERSION = 'v162';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3251,7 +3251,11 @@ let captureWanted = false;
 function tookCapture(text) {
   if (!captureWanted || !selectMode) return false;
   captureWanted = false;
-  const lines = String(text == null ? '' : text).split('\n');
+  // The attributes tmux was asked for are turned back into the Markdown they were
+  // drawn from before anything else looks at the text: what the copy window shows
+  // is what the clipboard gets, so the picks, the paragraphs and a selection
+  // dragged across them all see one string.
+  const lines = markdownFrom(text).split('\n');
   // The screen is already at the end of what came back, so this replaces rather
   // than appends — and the view stays where it was put, at the bottom.
   //

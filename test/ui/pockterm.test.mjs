@@ -1546,6 +1546,56 @@ describe('selection and the clipboard', () => {
     assert.equal(clip, clip.trimEnd(), 'the copy ends in a newline nobody typed');
   });
 
+  test('the Markdown the pane drew is in the copy, not the drawing of it', async () => {
+    // Reported as the copy losing Markdown, and that is what it was: what the agent
+    // wrote as `**слово**` reaches the pane as an attribute and left the clipboard
+    // as a bare word. tmux hands the attributes back when asked (`capture-pane -e`)
+    // and the page reads two of them into text — bold and the light blue an inline
+    // code span is drawn in.
+    //
+    // End to end on purpose: a real pane carrying real attributes, the server's own
+    // capture, and the page's own converter. The unit tests cover the shapes off the
+    // live panes; what this one proves is that the flag, the frame and the page meet.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    // The pane runs `cat`, so bytes sent to it are echoed and the terminal applies
+    // them: this is the only way to get styled text onto the stand's pane.
+    const styled = '\x1b[1mважное\x1b[0m \x1b[1mслово\x1b[0m и \x1b[38;5;153mmake\x1b[39m \x1b[38;5;153mcheck\x1b[39m тут';
+    stand.tmux(['send-keys', '-t', 'demo', '-l', styled]);
+    stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('важное слово и make check тут'),
+      null, { timeout: 5000 });
+
+    await page.click('#select');
+    await page.waitForSelector('#snapshot[data-from="host"]', { timeout: 5000 });
+    const shown = await page.evaluate(() => document.getElementById('snapshot').textContent);
+    // One pair of marks around the pair of words, and one pair of backticks around
+    // the command: the renderer sets the attribute per word, and the page joins the
+    // neighbours back into the span they came from.
+    assert.ok(shown.includes('**важное слово** и `make check` тут'),
+      `the copy window holds ${JSON.stringify(shown.slice(-160))}`);
+    // And no escape sequence reached the text a person selects.
+    assert.ok(!shown.includes('\x1b'), 'the escapes are on screen instead of the marks');
+
+    // What is copied is what is shown — the same string, so a pick and a selection
+    // cannot disagree about it.
+    await page.evaluate(() => {
+      const pre = document.getElementById('snapshot');
+      const range = document.createRange();
+      range.selectNodeContents(pre);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    });
+    await page.click('#copy');
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    assert.ok(clip.includes('**важное слово** и `make check` тут'),
+      `clipboard holds ${JSON.stringify(clip.slice(-160))}`);
+  });
+
   test('the browser is refused a selection before its own long press, and a tap keeps the picks', async () => {
     // Reported from the phone: the first long press marks a paragraph, the second
     // selects a word instead — handles and Android's own Копировать/Поделиться over

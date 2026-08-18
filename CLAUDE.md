@@ -1823,6 +1823,43 @@ Five things that were each a way to be wrong:
 copies what the window holds and nothing after it, and a press, a second press elsewhere and a
 press back on the same paragraph leave the picks the pair of them describe.
 
+## The pane draws Markdown, and a copy of the drawing has none
+
+What the agent wrote as `**слово**` reaches the pane as an attribute, and the copy handed over a
+bare word — reported as the copy losing Markdown. The text was never the message; it was a
+picture of it.
+
+tmux gives the attributes back when asked, so `CaptureHistory` asks (`-e`) and `markdownFrom` in
+`js/select.js` reads two of them into text. **Bold is `**`**, headers included — an agent's `##`
+is drawn bold and nothing else, so bold is as much of it as can honestly be recovered. **And the
+light blue is a backtick.** That one is a colour rather than a shape, which this file otherwise
+refuses to read a TUI by, and there is no shape to read instead: an inline code span is coloured
+text and nothing more. So it was measured rather than assumed — off four live panes, Claude Code
+2.1.x, `38;5;153` wrapped `apps.cikrf.ru`, `SUMMARY.md`, `scripts/deputy_family_card.py`,
+`python3`, `e4cf208`, `min-width:`, `280px`, `origin/main`, every one of them backticked in what
+the agent wrote. The pink beside it (`38;5;211`, `⏵⏵ bypass permissions on`) is chrome and gets
+no marks; everything else is dropped, escapes included.
+
+**The marks are set word by word, and a span has to be put back together.** The renderer emits
+the attribute per word — `\x1b[1mВажная\x1b[0m \x1b[1mпоправка,\x1b[0m` is one `**…**` in the
+source, `\x1b[38;5;153mmake\x1b[39m \x1b[38;5;153mcheck\x1b[39m` is one `` `make check` `` — so
+neighbours of one style are joined across the space between them, and across a single newline,
+which is where the pane wrapped a sentence. Not across a blank line: that is two paragraphs, and
+joining them would put one pair of marks around both. The marks never wrap the space beside a
+word either, `** foo**` being two asterisks and a word to every reader of Markdown there is.
+
+**What is shown is what is copied.** The conversion happens where the capture lands, before
+anything else looks at the text, so the copy window, the paragraphs `chunks` cuts, the picks and a
+selection dragged across them are all one string. The window therefore reads like source rather
+than like the screen — which is the point: it is what a paste will produce.
+
+Two things this costs. The frame is bigger, escapes being most of a styled line — one frame per
+entry into the mode, and the alternative was a clipboard without the formatting. And the text the
+mode opens on has **no** marks: that is the page's own screen, read out of xterm's buffer where
+the attributes are not, and it is replaced by the host's answer a round trip later (`data-from`
+says which is on screen). A capture that never comes back is a copy window without Markdown in
+it, which is the same failure as a copy window without history — and it says so the same way.
+
 ## What the shift under the finger does not cover
 
 The page shifts the drawn rows to follow the finger between whole lines (`track` in

@@ -281,11 +281,17 @@ func CapturePane(session string) []string {
 // inside, not on what tmux remembers. Negative in tmux's own terms — `-S` counts
 // back from the top of the visible pane — and the end is left at the default,
 // which is the bottom of that pane.
+//
+// `-e` keeps the attributes, and they are what an agent's Markdown became: what
+// it wrote as `**слово**` is bold on the pane and a bare word in the clipboard.
+// The page reads two of them back into text (`markdownFrom` in js/select.js) and
+// drops the rest, so this flag is the whole of the difference between copying a
+// message and copying a drawing of one.
 func CaptureHistory(session string, lines int) []string {
 	if lines < 0 {
 		lines = 0
 	}
-	return []string{"tmux", "capture-pane", "-p", "-S", "-" + strconv.Itoa(lines), "-t", session}
+	return []string{"tmux", "capture-pane", "-p", "-e", "-S", "-" + strconv.Itoa(lines), "-t", session}
 }
 
 // PaneMode returns the argv reporting three things about the current pane of
