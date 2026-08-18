@@ -1334,6 +1334,37 @@ async function renderTabs() {
   // The drawer's rows say the same thing off the same answer: one fetch, so a row
   // and a tab cannot describe one session out of two different moments.
   paintRows(sessions);
+  showCurrentTab(false);
+}
+
+// The strip is wider than the screen, and nothing ever scrolled it: which tab is
+// current is said by a frame around it, and a frame off screen says nothing.
+// Reported after following a notification, which is the one switch nobody's finger
+// was on the strip for — the page attached to the session the notice was about and
+// the row stayed wherever it had been left.
+//
+// The switch is not the only case: the drawer covers the strip, so a session
+// started or chosen there lands on a tab that may be off it too.
+let tabShown = '';
+function showCurrentTab(force) {
+  if (!current) return;
+  if (!force && current === tabShown) return;
+  // Not while the row is being handled: a carry is rearranging it, a press is
+  // asking what a tab means, and a flick is a scroll somebody chose. `lastTouchAt`
+  // is the strip's own touches, so this yields to the finger and to nothing else.
+  if (dragName || helpStart || Date.now() - lastTouchAt < 700) return;
+  let btn = null;
+  for (const b of tabsEl.querySelectorAll('button[data-session]')) {
+    if (b.dataset.session === current) { btn = b; break; }
+  }
+  if (!btn) return; // painted on a later poll than the switch; the next one has it
+  tabShown = current;
+  const box = tabsEl.getBoundingClientRect();
+  const r = btn.getBoundingClientRect();
+  // A strip that jumps when it did not have to is worse than one that stays put.
+  if (r.left >= box.left && r.right <= box.right) return;
+  const left = tabsEl.scrollLeft + (r.left - box.left) - (box.width - r.width) / 2;
+  tabsEl.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
 }
 
 // --- what the mark on a tab means ---
@@ -4585,7 +4616,12 @@ if ('serviceWorker' in navigator) {
     const msg = e.data || {};
     if (msg.type !== 'notification-click') return;
     report('notify-tap', { session: msg.session || '', open: current || '' });
+    // Already there is the commonest one — half the taps in the journal name the
+    // session the page is showing — and it used to do nothing at all: the switch is
+    // what brings the tab into view, and there was no switch to make. So the strip
+    // is asked either way, the tap being how somebody arrived at this tab.
     if (msg.session && msg.session !== current) attach(msg.session);
+    else showCurrentTab(true);
   });
 }
 

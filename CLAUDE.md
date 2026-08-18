@@ -1112,6 +1112,19 @@ checked against the list the server just produced, the value reaching a tmux com
 line. `saveTabOrder` writes the new signature itself, `renderTabs` refusing to
 rebuild while a tab is carried.
 
+**And a row three screens wide has to scroll itself to where you were sent.** Which
+tab is current is said by a frame around it, and a frame off screen says nothing —
+reported after following a notification, which is the one switch nobody's finger was
+on the strip for: the page attached to the session the notice named and the row stayed
+wherever it had been left. `showCurrentTab` centres it, and three things bound it. It
+**yields to the finger** — never while a tab is carried, while a press is asking what
+a mark means, or within 700ms of a touch on the strip, a flick being a scroll somebody
+chose. It moves **only when the current tab changed** (`tabShown`) and only when the
+tab is not already whole on screen, a strip that jumps when it did not have to being
+worse than one that stays put. And the tap is asked **even when there is nothing to
+switch to**: half the taps in the journal name the session already on screen, so the
+switch that used to do the scrolling never happened.
+
 ## A tab also says what it is, and that is a different question
 
 Colour says what a session is doing; **form says what it is**. A tab carries the

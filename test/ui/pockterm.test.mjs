@@ -38,6 +38,57 @@ describe('sessions screen', () => {
     await last.locator('button.rename').click({ trial: true });
   });
 
+  test('the strip scrolls to the tab that was switched to', async () => {
+    // Which tab is current is said by a frame around it, and a frame off screen
+    // says nothing: the strip is wider than a phone and nothing scrolled it.
+    // Reported after following a notification, which is the switch nobody's finger
+    // was on the strip for — a tap on the notice attaches to its session and the
+    // row stayed where it had been left.
+    await stand.open();
+    // tmux orders by name, so `s9` is the last tab of the twelve and `s1` the
+    // first — the two ends of a row about three screens wide.
+    await stand.attach('s9');
+    const { page } = stand;
+    await page.waitForFunction(
+      () => document.querySelectorAll('#tabs button[data-session]').length === 12, null, { timeout: 8000 });
+    assert.ok(await page.evaluate(() => {
+      const s = document.getElementById('tabs');
+      return s.scrollWidth > s.clientWidth + 20;
+    }), 'the strip fits on the screen, so it cannot say anything about scrolling');
+
+    // Where the frame is, and whether all of it is on the strip. The scroll is
+    // animated, so this is waited on rather than read once — a measurement taken
+    // mid-glide is a tab still on its way in.
+    const where = () => page.evaluate(() => {
+      const strip = document.getElementById('tabs');
+      const btn = strip.querySelector('button.active');
+      if (!btn) return null;
+      const box = strip.getBoundingClientRect();
+      const r = btn.getBoundingClientRect();
+      return { name: btn.dataset.session, in: r.left >= box.left - 1 && r.right <= box.right + 1, scroll: strip.scrollLeft };
+    });
+    const waitInView = async (name) => {
+      await page.waitForFunction((want) => {
+        const strip = document.getElementById('tabs');
+        const btn = strip.querySelector('button.active');
+        if (!btn || btn.dataset.session !== want) return false;
+        const box = strip.getBoundingClientRect();
+        const r = btn.getBoundingClientRect();
+        return r.left >= box.left - 1 && r.right <= box.right + 1;
+      }, name, { timeout: 5000 });
+      return where();
+    };
+
+    // A tab at the far end of the row is what the old code left off screen.
+    const far = await waitInView('s9');
+    assert.ok(far.scroll > 20, `the strip never moved (scrollLeft ${far.scroll})`);
+
+    // And back to the other end, from the drawer — which covers the strip, so this
+    // is the same blind switch a notification makes.
+    await stand.attach('s1');
+    const back = await waitInView('s1');
+    assert.ok(back.scroll < 20, `the strip stayed at the far end (scrollLeft ${back.scroll})`);
+  });
 });
 
 describe('the size a client attaches at', () => {
