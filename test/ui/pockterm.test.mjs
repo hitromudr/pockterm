@@ -1596,6 +1596,47 @@ describe('selection and the clipboard', () => {
       `clipboard holds ${JSON.stringify(clip.slice(-160))}`);
   });
 
+  test('a box table in the copy is a Markdown table', async () => {
+    // The agent's table reaches the pane as `┌┬┐ │ ├┼┤ └┴┘`, and a copy of the
+    // drawing is a wall of box glyphs. End to end: a real box printed to the pane,
+    // the server's own capture, the page's own converter.
+    //
+    // In a session of its own with the tty echo off — the shared `cat` echoes what
+    // is typed and then prints it again, so a box drawn into it comes out doubled:
+    // every border and every row twice over, which is a stand artifact and not
+    // anything an agent does. Echo off, `cat` prints the box once.
+    stand.tmux(['new-session', '-d', '-s', 'tbl', 'sh', '-c', 'stty -echo; exec cat']);
+    await stand.open();
+    await stand.attach('tbl');
+    const { page } = stand;
+
+    const table = [
+      '┌────────────┬──────────┐',
+      '│ Приложение │  Время   │',
+      '├────────────┼──────────┤',
+      '│ Советские  │ 8.5 мин  │',
+      '│ мультики   │          │',
+      '├────────────┼──────────┤',
+      '│ BSPlayer   │ 0.8 мин  │',
+      '└────────────┴──────────┘',
+    ];
+    // One write with the newlines in it: cat prints the box once, unechoed.
+    stand.tmux(['send-keys', '-t', 'tbl', '-l', table.join('\n') + '\n']);
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('BSPlayer'),
+      null, { timeout: 5000 });
+
+    await page.click('#select');
+    await page.waitForSelector('#snapshot[data-from="host"]', { timeout: 5000 });
+    const shown = await page.evaluate(() => document.getElementById('snapshot').textContent);
+    assert.ok(shown.includes('| Приложение | Время |'), `no header row: ${JSON.stringify(shown.slice(-260))}`);
+    assert.ok(shown.includes('| --- | --- |'), `no separator row: ${JSON.stringify(shown.slice(-260))}`);
+    assert.ok(shown.includes('| Советские мультики | 8.5 мин |'),
+      `the wrapped cell was not joined: ${JSON.stringify(shown.slice(-260))}`);
+    assert.ok(!shown.includes('┌') && !shown.includes('│'),
+      `box glyphs reached the copy: ${JSON.stringify(shown.slice(-260))}`);
+  });
+
   test('the browser is refused a selection before its own long press, and a tap keeps the picks', async () => {
     // Reported from the phone: the first long press marks a paragraph, the second
     // selects a word instead — handles and Android's own Копировать/Поделиться over

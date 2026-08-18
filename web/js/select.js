@@ -41,7 +41,15 @@ const CODE_FG = '153';
 // both.
 export function markdownFrom(text) {
   const src = String(text == null ? '' : text);
-  if (!src.includes('\x1b')) return src; // nothing was asked of tmux, or nothing styled
+  // Two passes, inline then block. The inline one turns attributes into `**`/
+  // backticks and runs only when there is an attribute to read; the block one
+  // turns box tables into Markdown tables and runs always, an unstyled pane
+  // drawing a table with no colour in it at all.
+  const inline = src.includes('\x1b') ? convertInline(src) : src;
+  return tablesFrom(inline);
+}
+
+function convertInline(src) {
   const segs = [];
   const st = { bold: false, code: false };
   let at = 0;
@@ -125,6 +133,123 @@ function emit(segs) {
     out += head + body + tail;
   }
   return out;
+}
+
+// A table is drawn too, and a copy of the drawing is a wall of box glyphs.
+// tablesFrom finds those boxes and writes the Markdown table they were rendered
+// from — the same job as the inline pass, one level up: what the agent wrote as a
+// pipe table reached the pane as `┌┬┐ │ ├┼┤ └┴┘`, and this puts the pipes back.
+//
+// Read by shape, not by vocabulary — the rule this file keeps: the box glyphs are
+// the whole signal. A block begins at a **top border that carries a column
+// junction** (`┬`/`┳`/`╦`) and ends at a bottom border (`└`/`╰`/`┗`/`╚`); every
+// line between is a row (`│…│`) or an inner rule (`├┼┤`). The column junction is
+// what tells a table from a box drawn round a note or the agent's own input box —
+// those have no `┬`, so they are left exactly as they are.
+//
+// Measured off a live pane (Claude Code 2.1.x): a three-column table with an inner
+// rule between every row and cells that wrap down two physical rows
+// (`Советские` / `мультфильмы`). So a logical row is the run of `│…│` lines between
+// two rules, and a wrapped cell is its fragments joined by a space. The first
+// logical row is the header, which is what Markdown needs and what the box draws
+// above its first inner rule.
+const H_RULE = '─━═'; // ─ ━ ═
+const V_BAR = '│┃║'; // │ ┃ ║
+const COL_TEE = '┬┳╦'; // ┬ ┳ ╦ — a top border's column junction
+const TOP_CORNER = '┌╭┏╔'; // ┌ ╭ ┏ ╔
+const BOT_CORNER = '└╰┗╚'; // └ ╰ ┗ ╚
+// A border line is made only of glyphs from the Box Drawing block (U+2500–257F)
+// and spaces.
+const BORDER_RE = /^[─-╿ ]+$/;
+
+const hasAny = (s, set) => [...s].some((ch) => set.includes(ch));
+
+function borderLine(s) {
+  const t = s.trim();
+  // All box glyphs, and a horizontal run in it — a lone `│` is a row, not a rule.
+  return t !== '' && BORDER_RE.test(t) && hasAny(t, H_RULE);
+}
+function rowLine(s) {
+  const t = s.trim();
+  if (!t || !V_BAR.includes(t[0])) return false;
+  let n = 0;
+  for (const ch of t) if (V_BAR.includes(ch)) n++;
+  return n >= 2; // an opening bar and a closing one at the very least
+}
+
+// Split a `│ a │ b │` row into its cells, dropping the empty ends the outer bars
+// leave behind.
+function splitCells(line) {
+  const fields = line.trim().split(new RegExp(`[${V_BAR}]`));
+  return fields.slice(1, -1);
+}
+
+// One logical row out of the physical `│…│` lines it spans: each column is its
+// fragments, trimmed, the empty ones dropped, joined by the space a wrap ate.
+function collapseRow(physical) {
+  const parts = physical.map(splitCells);
+  const cols = Math.max(0, ...parts.map((p) => p.length));
+  const cells = [];
+  for (let k = 0; k < cols; k++) {
+    cells.push(parts.map((p) => (p[k] || '').trim()).filter((x) => x !== '').join(' '));
+  }
+  return cells;
+}
+
+function renderTable(block) {
+  const rules = block.filter(borderLine).length;
+  // With inner rules, a logical row is what sits between two of them; with only
+  // the top and bottom border, each `│…│` line is its own row — there is nothing
+  // then to tell a wrap from a new row, and a guess that merged them would be
+  // worse than one that does not.
+  const groups = [];
+  let cur = [];
+  for (const line of block) {
+    if (borderLine(line)) { if (cur.length) { groups.push(cur); cur = []; } continue; }
+    if (!rowLine(line)) continue;
+    if (rules > 2) cur.push(line);
+    else groups.push([line]);
+  }
+  if (cur.length) groups.push(cur);
+  if (!groups.length) return null;
+
+  const rows = groups.map(collapseRow);
+  const cols = Math.max(0, ...rows.map((r) => r.length));
+  if (cols < 2) return null; // a single column is a box round prose, not a table
+
+  // A pipe inside a cell would end the cell; a Markdown table escapes it.
+  const cell = (r, k) => (r[k] || '').replace(/\|/g, '\\|');
+  const line = (r) => `| ${Array.from({ length: cols }, (_, k) => cell(r, k)).join(' | ')} |`;
+  const out = [line(rows[0]), `| ${Array.from({ length: cols }, () => '---').join(' | ')} |`];
+  for (let r = 1; r < rows.length; r++) out.push(line(rows[r]));
+  return out;
+}
+
+export function tablesFrom(text) {
+  const lines = String(text == null ? '' : text).split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const top = lines[i];
+    if (borderLine(top) && hasAny(top, TOP_CORNER) && hasAny(top, COL_TEE)) {
+      let j = i + 1;
+      let closed = false;
+      while (j < lines.length) {
+        if (borderLine(lines[j]) && hasAny(lines[j], BOT_CORNER)) { closed = true; break; }
+        // A line that is neither a row nor a rule means this was not a clean table
+        // after all; leave the block untouched rather than guess at it.
+        if (!rowLine(lines[j]) && !borderLine(lines[j])) break;
+        j++;
+      }
+      if (closed) {
+        const md = renderTable(lines.slice(i, j + 1));
+        if (md) { out.push(...md); i = j + 1; continue; }
+      }
+    }
+    out.push(top);
+    i++;
+  }
+  return out.join('\n');
 }
 
 // chunks cuts the frozen text into what a long press can pick: a paragraph is a

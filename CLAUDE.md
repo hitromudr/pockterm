@@ -1860,6 +1860,33 @@ the attributes are not, and it is replaced by the host's answer a round trip lat
 says which is on screen). A capture that never comes back is a copy window without Markdown in
 it, which is the same failure as a copy window without history — and it says so the same way.
 
+**A table is drawn too, and a copy of it is a wall of box glyphs.** `tablesFrom` in
+`js/select.js` is the same job as the inline pass one level up: what the agent wrote as a pipe
+table reached the pane as `┌┬┐ │ ├┼┤ └┴┘`, and this puts the pipes back. It runs whether or not
+anything is styled — an unstyled pane draws a table with no colour in it at all — so the inline
+pass became `convertInline` and `markdownFrom` now always ends in `tablesFrom`.
+
+Read by shape, the rule this file keeps: the box glyphs are the whole signal. A block begins at a
+**top border carrying a column junction** (`┬`/`┳`/`╦`) and ends at a bottom border
+(`└`/`╰`/`┗`/`╚`), every line between a row (`│…│`) or an inner rule (`├┼┤`). The column junction
+is what separates a table from a box drawn round a note or the agent's own input box — those have
+no `┬`, so `╭────╮ │ … │ ╰────╯` is left exactly as it is. A block that turns out to hold a line
+that is neither row nor rule is left untouched rather than guessed at, and a block that collapses
+to one column is a box round prose, not a table.
+
+Two shapes measured off a live pane (Claude Code 2.1.x). **A logical row is the run of `│…│` lines
+between two rules**, because a cell wraps down several physical rows (`Советские` / `мультфильмы`)
+and its fragments are joined by the space the wrap ate. **The first logical row is the header**,
+which is what Markdown needs and what the box draws above its first inner rule. When a block has
+only its top and bottom border and no inner rules, each `│…│` line is its own row — there is
+nothing then to tell a wrap from a new row, and merging them would be worse than not. A pipe
+inside a cell is escaped, or it would end the cell.
+
+The end-to-end test prints the box into a session with the tty echo off: the shared `cat` echoes
+what is typed and then prints it again, so a box drawn into it comes out doubled — every border
+and row twice — which mangles the very structure under test. Echo off, `cat` prints it once, the
+way an agent draws it.
+
 ## What the shift under the finger does not cover
 
 The page shifts the drawn rows to follow the finger between whole lines (`track` in

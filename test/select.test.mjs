@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { snapshotText, chunks, pickedText, markdownFrom } from '../web/js/select.js';
+import { snapshotText, chunks, pickedText, markdownFrom, tablesFrom } from '../web/js/select.js';
 
 test('rows become lines', () => {
   assert.equal(snapshotText(['one', 'two']), 'one\ntwo');
@@ -128,4 +128,90 @@ test('text with no escapes in it is handed back exactly', () => {
 
 test('an escape that is not SGR is dropped rather than shown', () => {
   assert.equal(markdownFrom('a\x1b[2Kb\x1b[Hc'), 'abc');
+});
+
+// --- the table the pane drew -----------------------------------------------
+// The block below is the real one measured off a live pane (Claude Code 2.1.x):
+// three columns, an inner rule between every logical row, and cells that wrap
+// down two physical rows.
+const TABLE = [
+  '  ┌──────────────────────┬──────────┬──────────┐',
+  '  │      Приложение      │  Время   │ Открытий │',
+  '  ├──────────────────────┼──────────┼──────────┤',
+  '  │ Советские            │ 8.5 мин  │ 98       │',
+  '  │ мультфильмы          │          │          │',
+  '  ├──────────────────────┼──────────┼──────────┤',
+  '  │ BSPlayer             │ 0.8 мин  │ 24       │',
+  '  └──────────────────────┴──────────┴──────────┘',
+].join('\n');
+
+test('a box table becomes a Markdown table, header first', () => {
+  assert.equal(tablesFrom(TABLE), [
+    '| Приложение | Время | Открытий |',
+    '| --- | --- | --- |',
+    '| Советские мультфильмы | 8.5 мин | 98 |',
+    '| BSPlayer | 0.8 мин | 24 |',
+  ].join('\n'));
+});
+
+test('a wrapped cell is joined by the space the wrap ate', () => {
+  const md = tablesFrom(TABLE).split('\n');
+  assert.ok(md.some((l) => l.includes('Советские мультфильмы')), md.join('\n'));
+});
+
+test('the text around a table is left exactly as it was', () => {
+  const doc = `before\n\n${TABLE}\n\nafter`;
+  const md = tablesFrom(doc);
+  assert.ok(md.startsWith('before\n\n'), md);
+  assert.ok(md.endsWith('\n\nafter'), md);
+});
+
+test('a box round prose is not a table — no column junction, left alone', () => {
+  // The agent's own input box, and any note/callout: `╭────╮` has no `┬`.
+  const box = ['  ╭────────────╮', '  │ > type here │', '  ╰────────────╯'].join('\n');
+  assert.equal(tablesFrom(box), box);
+});
+
+test('a numbered list in prose is not a table', () => {
+  const prose = '1. первый\n2. второй\n\nобычный текст без рамок';
+  assert.equal(tablesFrom(prose), prose);
+});
+
+test('a pipe inside a cell is escaped, not left to end the cell', () => {
+  const t = [
+    '┌──────┬──────┐',
+    '│ a|b  │ c    │',
+    '├──────┼──────┤',
+    '│ d    │ e    │',
+    '└──────┴──────┘',
+  ].join('\n');
+  const md = tablesFrom(t).split('\n');
+  assert.equal(md[0], '| a\\|b | c |');
+});
+
+test('bold and code inside a cell survive the table pass', () => {
+  // markdownFrom runs the inline pass first, so a cell can already hold `**`.
+  const styled = [
+    '┌──────────────┬──────┐',
+    `│ \x1b[1m63\x1b[0m \x1b[38;5;153mиз\x1b[39m 63 │ да   │`,
+    '├──────────────┼──────┤',
+    '│ прочерк      │ нет  │',
+    '└──────────────┴──────┘',
+  ].join('\n');
+  const md = markdownFrom(styled).split('\n');
+  assert.equal(md[0], '| **63** `из` 63 | да |');
+});
+
+test('a table with no inner rules keeps each line as its own row', () => {
+  const t = [
+    '┌──────┬──────┐',
+    '│ a    │ b    │',
+    '│ c    │ d    │',
+    '└──────┴──────┘',
+  ].join('\n');
+  assert.equal(tablesFrom(t), [
+    '| a | b |',
+    '| --- | --- |',
+    '| c | d |',
+  ].join('\n'));
 });
