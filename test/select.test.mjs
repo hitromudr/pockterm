@@ -486,3 +486,25 @@ test('the spaces of an underlined line do not decide it', () => {
 test('text with no escapes has no headers to find', () => {
   assert.equal(headingsFrom('# уже написано так\nи текст'), '# уже написано так\nи текст');
 });
+
+test('a wrapped header reopens the underline per line, and the reset lands on the next', () => {
+  // The exact shape off the tape (Claude Code 2.1.234, pane 47 columns): every
+  // physical line carries `1;3;4` of its own, the trailing space sits inside the
+  // region, and the reset of the third line arrives at the start of the fourth,
+  // ahead of its indent. Four lines, one header.
+  const taped = '  \x1b[1;3;4mОчень длинный заголовок первого уровня, \x1b[0m\n'
+    + '  \x1b[1;3;4mкоторый заведомо не влезает в сорок семь \x1b[0m\n'
+    + '  \x1b[1;3;4mстолбцов и потому будет перенесён панелью на\n'
+    + '\x1b[0m  \x1b[1;3;4mдве или три строки подряд\x1b[0m';
+  assert.equal(markdownFrom(taped, 47),
+    '  # Очень длинный заголовок первого уровня, который заведомо не влезает'
+    + ' в сорок семь столбцов и потому будет перенесён панелью на две или три строки подряд');
+});
+
+test('every level below the first is the same bold, down to the sixth', () => {
+  // `####`, `#####` and `######` are drawn `\x1b[1m` — the same as `##` and `###`.
+  // Measured on the same tape: there is no seventh shape to look for.
+  for (const word of ['четыре', 'пять', 'шесть']) {
+    assert.equal(markdownFrom(`  \x1b[1mУровень ${word}\x1b[0m`), `  **Уровень ${word}**`);
+  }
+});

@@ -1858,7 +1858,16 @@ not possible at all. Claiming a level is the failure this section keeps refusing
 Two bounds. **Only a whole line**, its spaces excluded from the vote — tmux pads a row with
 underlined blanks, and a pad would otherwise decide the answer. And **consecutive underlined lines
 are one header**, which is a header the pane wrapped: an agent does not write two `#` lines with no
-blank between them, and the pane puts a blank line after a header either way. Run against the four
+blank between them, and the pane puts a blank line after a header either way.
+
+Both of those were then measured rather than left as arguments, on a second tape at 47 columns. **A
+wrapped header reopens the region on every physical line** (`1;3;4` four times for a four-line one),
+which is what makes the run the right unit — and **the reset can arrive on the next line, ahead of
+its indent**: `…панелью на` ends with no reset at all and the following line opens
+`\x1b[0m  \x1b[1;3;4mдве или три…`. That is why the state is carried across the break and the
+indent's spaces take no part in the vote; read line by line, the fourth line would have counted as
+plain text. And **`####`, `#####` and `######` are the same `\x1b[1m` as `##`** — there is no
+seventh shape to look for, and levels two to six collapse into bold by construction. Run against the four
 live panes and the tape — 6700 lines — this created exactly one header, the real one, and touched
 nothing else; the `# pass 240` lines a test suite prints are literal text and stayed literal.
 
