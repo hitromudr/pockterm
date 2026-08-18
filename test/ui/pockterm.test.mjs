@@ -1610,15 +1610,17 @@ describe('selection and the clipboard', () => {
     await stand.attach('tbl');
     const { page } = stand;
 
+    // The third column carries its room in front of the numbers, which is the only
+    // trace a rendered table keeps of `---:`.
     const table = [
-      '┌────────────┬──────────┐',
-      '│ Приложение │  Время   │',
-      '├────────────┼──────────┤',
-      '│ Советские  │ 8.5 мин  │',
-      '│ мультики   │          │',
-      '├────────────┼──────────┤',
-      '│ BSPlayer   │ 0.8 мин  │',
-      '└────────────┴──────────┘',
+      '┌────────────┬──────────┬────────┐',
+      '│ Приложение │  Время   │  Штук  │',
+      '├────────────┼──────────┼────────┤',
+      '│ Советские  │ 8.5 мин  │    98  │',
+      '│ мультики   │          │        │',
+      '├────────────┼──────────┼────────┤',
+      '│ BSPlayer   │ 0.8 мин  │   240  │',
+      '└────────────┴──────────┴────────┘',
     ];
     // One write with the newlines in it: cat prints the box once, unechoed.
     stand.tmux(['send-keys', '-t', 'tbl', '-l', table.join('\n') + '\n']);
@@ -1629,10 +1631,11 @@ describe('selection and the clipboard', () => {
     await page.click('#select');
     await page.waitForSelector('#snapshot[data-from="host"]', { timeout: 5000 });
     const shown = await page.evaluate(() => document.getElementById('snapshot').textContent);
-    assert.ok(shown.includes('| Приложение | Время |'), `no header row: ${JSON.stringify(shown.slice(-260))}`);
-    assert.ok(shown.includes('| --- | --- |'), `no separator row: ${JSON.stringify(shown.slice(-260))}`);
-    assert.ok(shown.includes('| Советские мультики | 8.5 мин |'),
-      `the wrapped cell was not joined: ${JSON.stringify(shown.slice(-260))}`);
+    assert.ok(shown.includes('| Приложение | Время | Штук |'), `no header row: ${JSON.stringify(shown.slice(-300))}`);
+    // And the alignment the padding carried: left, left, right.
+    assert.ok(shown.includes('| --- | --- | ---: |'), `no separator row: ${JSON.stringify(shown.slice(-300))}`);
+    assert.ok(shown.includes('| Советские мультики | 8.5 мин | 98 |'),
+      `the wrapped cell was not joined: ${JSON.stringify(shown.slice(-300))}`);
     assert.ok(!shown.includes('┌') && !shown.includes('│'),
       `box glyphs reached the copy: ${JSON.stringify(shown.slice(-260))}`);
   });

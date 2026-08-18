@@ -1882,6 +1882,23 @@ only its top and bottom border and no inner rules, each `│…│` line is its 
 nothing then to tell a wrap from a new row, and merging them would be worse than not. A pipe
 inside a cell is escaped, or it would end the cell.
 
+**The alignment is in the padding, and nowhere else.** `:---:` and `---:` are gone by the time a
+table is drawn; what is left is where the text sits in its cell — a left cell carries its spaces
+on the right, a right cell in front, a centred one splits them (`alignOf`). Two bounds, and the
+first is what makes it work at all:
+
+- **Read off the data rows, never off the header.** Claude Code centres a header whatever the
+  column is — `│      Приложение      │` over `│ Советские            │` — so a header taken as
+  evidence calls every column centred, which three of the unit tests hold it to. Renderers that
+  align the header with its column cost this nothing; it only ever has less to read.
+- **Claimed only when the padding is unambiguous**, `---` otherwise. A cell filled to its width has
+  no padding to read, one space on each side is what such a cell gets rather than evidence of
+  centring, and padding that disagrees between rows of one column is not an alignment. Centre wants
+  the two sides equal on every fragment (give or take the odd space an uneven remainder leaves) and
+  at least one fragment with room on both sides; right wants the same gap after the text on every
+  fragment and more room in front of it. Everything else is left, which Markdown writes as `---`
+  anyway — so the reading has one honest way to say "I don't know", and it uses it.
+
 The end-to-end test prints the box into a session with the tty echo off: the shared `cat` echoes
 what is typed and then prints it again, so a box drawn into it comes out doubled — every border
 and row twice — which mangles the very structure under test. Echo off, `cat` prints it once, the

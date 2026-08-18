@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v163';
+const APP_VERSION = 'v164';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {

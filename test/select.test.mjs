@@ -215,3 +215,100 @@ test('a table with no inner rules keeps each line as its own row', () => {
     '| c | d |',
   ].join('\n'));
 });
+
+// --- where the text sits in its cell ---------------------------------------
+const mk = (...rows) => rows.join('\n');
+
+test('the padding is read off the data rows, and a centred header decides nothing', () => {
+  // The measured table: Claude Code centres every header (`│      Приложение      │`
+  // over `│ Советские            │`), and its data cells are padded on the right —
+  // left-aligned, which Markdown writes as plain `---`. Three columns, so three.
+  assert.equal(tablesFrom(TABLE).split('\n')[1], '| --- | --- | --- |');
+});
+
+test('a column with the room in front of the text is right-aligned', () => {
+  const t = mk(
+    '┌────────────┬────────┐',
+    '│    Товар   │  Штук  │',
+    '├────────────┼────────┤',
+    '│ Болты      │    12  │',
+    '├────────────┼────────┤',
+    '│ Гайки      │   240  │',
+    '└────────────┴────────┘',
+  );
+  assert.equal(tablesFrom(t).split('\n')[1], '| --- | ---: |');
+});
+
+test('a column padded on both sides is centred', () => {
+  const t = mk(
+    '┌────────────┬────────────┐',
+    '│ Файл       │   Статус   │',
+    '├────────────┼────────────┤',
+    '│ app.js     │    есть    │',
+    '├────────────┼────────────┤',
+    '│ sw.js      │    нет     │',
+    '└────────────┴────────────┘',
+  );
+  assert.equal(tablesFrom(t).split('\n')[1], '| --- | :---: |');
+});
+
+test('a cell filled to its width says nothing, and nothing is claimed', () => {
+  // No padding to read: `---` rather than a guess.
+  const t = mk(
+    '┌──────┬──────┐',
+    '│ abcd │ efgh │',
+    '├──────┼──────┤',
+    '│ ijkl │ mnop │',
+    '└──────┴──────┘',
+  );
+  assert.equal(tablesFrom(t).split('\n')[1], '| --- | --- |');
+});
+
+test('one space on each side is not evidence of centring', () => {
+  // That is what a cell gets when it fills the column, and it happens on every
+  // left-aligned table with a value as wide as its column.
+  const t = mk(
+    '┌────────┬────────┐',
+    '│ Ключ   │ Знач   │',
+    '├────────┼────────┤',
+    '│ раз    │ 1      │',
+    '└────────┴────────┘',
+  );
+  assert.equal(tablesFrom(t).split('\n')[1], '| --- | --- |');
+});
+
+test('padding that disagrees between rows is not an alignment', () => {
+  const t = mk(
+    '┌──────────┬──────────┐',
+    '│ Строка   │ Числа    │',
+    '├──────────┼──────────┤',
+    '│ первая   │     12   │',
+    '├──────────┼──────────┤',
+    '│ вторая   │ 240      │',
+    '└──────────┴──────────┘',
+  );
+  assert.equal(tablesFrom(t).split('\n')[1], '| --- | --- |');
+});
+
+test('a header without data rows leaves every column plain', () => {
+  const t = mk(
+    '┌────────────┬────────────┐',
+    '│   Только   │   шапка    │',
+    '└────────────┴────────────┘',
+  );
+  assert.equal(tablesFrom(t).split('\n')[1], '| --- | --- |');
+});
+
+test('a wrapped cell contributes each of its fragments to the reading', () => {
+  const t = mk(
+    '┌────────────┬────────┐',
+    '│  Что       │  Штук  │',
+    '├────────────┼────────┤',
+    '│ длинное    │    12  │',
+    '│ название   │        │',
+    '└────────────┴────────┘',
+  );
+  const md = tablesFrom(t).split('\n');
+  assert.equal(md[1], '| --- | ---: |');
+  assert.equal(md[2], '| длинное название | 12 |');
+});

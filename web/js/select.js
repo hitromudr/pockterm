@@ -196,6 +196,59 @@ function collapseRow(physical) {
   return cells;
 }
 
+// Where the text sits in its cell is the only trace left of `:---:` and `---:`:
+// the renderer padded to the column width, so a left cell carries its spaces on
+// the right, a right cell on the left, and a centred one splits them.
+//
+// **Read off the data rows and never off the header.** Claude Code centres a
+// header whatever the column is (`│      Приложение      │` over
+// `│ Советские            │`), so a header taken as evidence would call every
+// column centred. Other renderers align the header with its column, which costs
+// this nothing — it only ever has less to read.
+//
+// **And claimed only when the padding is unambiguous**, `---` otherwise: a cell
+// filled to its width has no padding to read, a column of equal-width values says
+// nothing about intent, and inventing an alignment nobody wrote is the wrong kind
+// of failure here. One space on each side is what a cell gets when it fills the
+// column, so it is not evidence of centring either.
+function padOf(raw) {
+  const left = raw.length - raw.replace(/^ +/, '').length;
+  const right = raw.length - raw.replace(/ +$/, '').length;
+  return { left, right };
+}
+
+function alignOf(groups, cols) {
+  const out = [];
+  for (let k = 0; k < cols; k++) {
+    const pads = [];
+    // Data rows only — groups[0] is the header.
+    for (let g = 1; g < groups.length; g++) {
+      for (const line of groups[g]) {
+        const raw = splitCells(line)[k];
+        if (raw === undefined || raw.trim() === '') continue;
+        pads.push(padOf(raw));
+      }
+    }
+    out.push(decideAlign(pads));
+  }
+  return out;
+}
+
+function decideAlign(pads) {
+  if (!pads.length) return null;
+  // Centred: the two sides match on every fragment, give or take the odd space
+  // an uneven remainder leaves, and at least one of them has room to show it.
+  const centred = pads.every((p) => Math.abs(p.left - p.right) <= 1)
+    && pads.some((p) => p.left >= 2 && p.right >= 2);
+  if (centred) return 'center';
+  // Right: the gap after the text is the same on every fragment and the room is
+  // all in front of it.
+  const right = pads[0].right;
+  const flushRight = pads.every((p) => p.right === right) && pads.some((p) => p.left > p.right + 1);
+  if (flushRight) return 'right';
+  return null; // left, or nothing the padding can honestly say
+}
+
 function renderTable(block) {
   const rules = block.filter(borderLine).length;
   // With inner rules, a logical row is what sits between two of them; with only
@@ -220,7 +273,9 @@ function renderTable(block) {
   // A pipe inside a cell would end the cell; a Markdown table escapes it.
   const cell = (r, k) => (r[k] || '').replace(/\|/g, '\\|');
   const line = (r) => `| ${Array.from({ length: cols }, (_, k) => cell(r, k)).join(' | ')} |`;
-  const out = [line(rows[0]), `| ${Array.from({ length: cols }, () => '---').join(' | ')} |`];
+  const align = alignOf(groups, cols);
+  const rule = (a) => (a === 'center' ? ':---:' : a === 'right' ? '---:' : '---');
+  const out = [line(rows[0]), `| ${align.map(rule).join(' | ')} |`];
   for (let r = 1; r < rows.length; r++) out.push(line(rows[r]));
   return out;
 }
