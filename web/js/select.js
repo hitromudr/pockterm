@@ -45,8 +45,40 @@ export function markdownFrom(text) {
   // backticks and runs only when there is an attribute to read; the block one
   // turns box tables into Markdown tables and runs always, an unstyled pane
   // drawing a table with no colour in it at all.
-  const inline = src.includes('\x1b') ? convertInline(src) : src;
+  const inline = src.includes('\x1b') ? convertInline(linksFrom(src)) : src;
   return tablesFrom(inline);
+}
+
+// A link is an escape sequence too, and the one the SGR reader was blind to.
+// Found by running this converter over the owner's own live panes: 72 escape bytes
+// survived a screenful of scrollback, all of them OSC — `\x1b]8;id=…;<uri>\x1b\`
+// around the text, `\x1b]8;;\x1b\` after it. Left in, the copy window shows the
+// target twice and the sequences raw.
+//
+// What is done with the target was measured too. In those panes it is almost
+// always the visible text itself — a bare URL the terminal made clickable, or a
+// `file:///` path an agent printed — and `[STATE.md](file:///home/…/STATE.md)`
+// is worse to paste than `STATE.md`. So the wrapper is dropped and the text kept,
+// **except** where the target is an http(s) URL that the text is not: that is the
+// `[текст](адрес)` an agent actually wrote, and it goes back as one. Not across a
+// line break either — the pane wrapped the text there, and reassembling it is a
+// guess this does not need to make.
+const OSC8 = /\x1b\]8;[^;\x1b\x07]*;([^\x1b\x07]*)(?:\x1b\\|\x07)([\s\S]*?)\x1b\]8;;(?:\x1b\\|\x07)/g;
+// Anything else OSC, and the string terminator a cut-off sequence leaves behind.
+const OSC_ANY = /\x1b\][^\x1b\x07]*(?:\x1b\\|\x07)?/g;
+
+function linksFrom(src) {
+  if (!src.includes('\x1b]')) return src;
+  return src.replace(OSC8, (_, uri, body) => {
+    const text = body.replace(/\x1b\[[0-9;]*m/g, ''); // for the comparison only
+    const plain = text.trim();
+    const http = /^https?:\/\//i.test(uri);
+    if (!http || plain === '' || plain === uri.trim() || /\n/.test(body)) return body;
+    // A target with a paren or a space in it needs the angle-bracket form, or the
+    // first `)` ends the link.
+    const target = /[()\s]/.test(uri) ? `<${uri}>` : uri;
+    return `[${body}](${target})`;
+  }).replace(OSC_ANY, '');
 }
 
 function convertInline(src) {
@@ -128,7 +160,18 @@ function emit(segs) {
     if ((!s.bold && !s.code) || blank(s.text)) { out += s.text; continue; }
     const [, head, core, tail] = /^(\s*)([\s\S]*?)(\s*)$/.exec(s.text);
     let body = core;
-    if (s.code) body = `\`${body}\``;
+    // A code span holding a backtick of its own needs a longer fence and the
+    // padding that goes with it, or the span ends at the content's own mark. None
+    // of the owner's live panes carried one, and an agent quoting a backtick is
+    // exactly the case where a broken span would look like the right answer.
+    if (s.code) {
+      const runs = core.match(/`+/g);
+      if (!runs) body = `\`${body}\``;
+      else {
+        const fence = '`'.repeat(Math.max(...runs.map((r) => r.length)) + 1);
+        body = `${fence} ${body} ${fence}`;
+      }
+    }
     if (s.bold) body = `**${body}**`;
     out += head + body + tail;
   }

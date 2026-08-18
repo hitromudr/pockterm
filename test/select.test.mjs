@@ -312,3 +312,56 @@ test('a wrapped cell contributes each of its fragments to the reading', () => {
   assert.equal(md[1], '| --- | ---: |');
   assert.equal(md[2], '| длинное название | 12 |');
 });
+
+// --- the link the terminal made clickable ----------------------------------
+// Measured off the owner's own panes: 72 escape bytes survived a screenful of
+// scrollback before this, every one of them OSC 8.
+const link = (uri, text) => `\x1b]8;id=42;${uri}\x1b\\${text}\x1b]8;;\x1b\\`;
+
+test('a bare URL made clickable keeps its text and loses the sequences', () => {
+  assert.equal(markdownFrom(`см. ${link('https://ya.ru/x', 'https://ya.ru/x')} там`),
+    'см. https://ya.ru/x там');
+});
+
+test('a path an agent printed is not turned into a file:// link', () => {
+  // `[STATE.md](file:///home/…/STATE.md)` is worse to paste than `STATE.md`.
+  assert.equal(markdownFrom(link('file:///home/dms/work/yarr/STATE.md', 'STATE.md')), 'STATE.md');
+});
+
+test('text that is not its own address comes back as a Markdown link', () => {
+  assert.equal(markdownFrom(link('https://example.org/doc', 'документация')),
+    '[документация](https://example.org/doc)');
+});
+
+test('an address with a paren in it takes the angle-bracket form', () => {
+  assert.equal(markdownFrom(link('https://ru.wikipedia.org/wiki/Ключ_(замок)', 'ключ')),
+    '[ключ](<https://ru.wikipedia.org/wiki/Ключ_(замок)>)');
+});
+
+test('a link the pane wrapped keeps its text and makes no link', () => {
+  assert.equal(markdownFrom(link('https://example.org/doc', 'первая\n  вторая')), 'первая\n  вторая');
+});
+
+test('a link whose closer never came back is still not left raw', () => {
+  // The capture window cuts a sequence in half often enough — 2000 lines end
+  // wherever they end.
+  assert.equal(markdownFrom('\x1b]8;id=7;https://ya.ru\x1b\\хвост'), 'хвост');
+});
+
+test('bold inside a link text survives the link', () => {
+  assert.equal(markdownFrom(link('https://example.org/d', `\x1b[1mтут\x1b[0m`)),
+    '[**тут**](https://example.org/d)');
+});
+
+test('a bell-terminated OSC is read too, not only ESC-backslash', () => {
+  assert.equal(markdownFrom('\x1b]8;;https://ya.ru\x07текст\x1b]8;;\x07'),
+    '[текст](https://ya.ru)');
+});
+
+test('a code span holding a backtick gets a longer fence', () => {
+  // Otherwise the span ends at the content's own mark, which reads as the right
+  // answer and is not one. No live pane carried this; an agent quoting a backtick
+  // would.
+  assert.equal(markdownFrom('\x1b[38;5;153ma`b\x1b[39m'), '`` a`b ``');
+  assert.equal(markdownFrom('\x1b[38;5;153ma``b\x1b[39m'), '``` a``b ```');
+});

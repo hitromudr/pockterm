@@ -1860,6 +1860,20 @@ the attributes are not, and it is replaced by the host's answer a round trip lat
 says which is on screen). A capture that never comes back is a copy window without Markdown in
 it, which is the same failure as a copy window without history — and it says so the same way.
 
+**A link is an escape sequence too, and the SGR reader was blind to it.** Found by running this
+converter over the owner's own live panes rather than by a report: 72 escape bytes survived a
+screenful of scrollback, every one of them OSC — `\x1b]8;id=…;<uri>\x1b\` around the text and
+`\x1b]8;;\x1b\` after it. Left in, the copy window shows the target raw and then the text again.
+
+What is done with the target was measured too. On those panes it is nearly always the visible text
+itself — a bare URL the terminal made clickable, or a `file:///` path an agent printed — and
+`[STATE.md](file:///home/…/STATE.md)` is worse to paste than `STATE.md`. So `linksFrom` drops the
+wrapper and keeps the text, **except** where the target is an http(s) URL that the text is not:
+that is the `[текст](адрес)` an agent wrote, and it goes back as one. Not across a line break —
+the pane wrapped the text there, and reassembling it is a guess this does not have to make. A
+target carrying a paren takes the `<…>` form, or the first `)` would end the link; a sequence the
+capture window cut in half is dropped rather than shown, 2000 lines ending wherever they end.
+
 **A table is drawn too, and a copy of it is a wall of box glyphs.** `tablesFrom` in
 `js/select.js` is the same job as the inline pass one level up: what the agent wrote as a pipe
 table reached the pane as `┌┬┐ │ ├┼┤ └┴┘`, and this puts the pipes back. It runs whether or not
@@ -1903,6 +1917,25 @@ The end-to-end test prints the box into a session with the tty echo off: the sha
 what is typed and then prints it again, so a box drawn into it comes out doubled — every border
 and row twice — which mangles the very structure under test. Echo off, `cat` prints it once, the
 way an agent draws it.
+
+**And then it was run over the owner's own live panes**, which is where the rest of this section
+came from: the server's own capture (`capture-pane -p -e -S -2000`) piped through this very
+converter in node, three sessions, ~1300 lines each. What it settled, and none of it was visible
+from the stand:
+
+- **The OSC links above.** 72 escape bytes survived; the fix took it to 0 on every pane.
+- **The tables convert on real data.** 66 box lines on one pane became four tables and **no box
+  glyph anywhere**; a wrapped cell came out joined (`Советские мультфильмы`), and the package names
+  inside its cells came out as code spans, the colour reading working inside a cell.
+- **Every mark the converter adds is added in pairs.** Counted against the content's own marks:
+  +92, +388, +284, +552, +144, +250 — all even. The odd totals that raised the question were
+  content that already held backticks (one pane carries 269 of them), not an unbalanced span.
+- **Nothing is claimed about alignment on Claude Code's own tables**, which is what the reading
+  should do: its data cells are left-padded, so all four tables came out `| --- | --- | --- |`. The
+  right- and centre-readings are for the tables `psql`, `rich` and `gh` print.
+- **A box that is not a table did not appear at all** on those panes — the agent's input box is two
+  horizontal rules rather than a box — so the `┬` rule is a guard against a shape that has not
+  turned up in the wild yet, and it stays a guard.
 
 ## What the shift under the finger does not cover
 
