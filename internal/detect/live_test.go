@@ -97,6 +97,19 @@ func TestLive(t *testing.T) {
 		// A turn too young to have a duration: the star and the ellipsis are all
 		// there is, and they are enough.
 		{"named but not yet counting", []string{"✻ Pondering…"}, true},
+		// The spinner's own frames, read out of Claude Code 2.1.234 rather than
+		// collected by watching: `·` is the one this set did not have, and the shape
+		// a long think draws carries no duration for the other rule to answer. Both
+		// were captured off live sessions on 2026-08-18.
+		{"the dot is a frame of the spinner too", []string{
+			"· Unravelling… (thinking with xhigh effort)",
+		}, true},
+		{"a long think reports no duration at all", []string{
+			"✻ Unravelling… (thinking with xhigh effort)",
+		}, true},
+		{"the dot with no ellipsis is not a counter", []string{
+			"· ctx 21% | dms@ai:~/work (main) $ | Opus 5",
+		}, false},
 		{"a star with no ellipsis is the line the turn left behind", []string{
 			"✻ Cooked for 19s",
 		}, false},

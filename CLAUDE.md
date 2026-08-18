@@ -831,6 +831,21 @@ after it sent a "finished" notice mid-thought:
   line left behind when it ends is not. `●` is deliberately not in the set — that
   is the mark on the agent's own sentences, the thing a notification is *for*.
 
+  **The set was observed, and observing it left a frame out.** Read out of Claude
+  Code 2.1.234 itself, the spinner cycles `["·", "✢", "*", "✶", "✻", "✽"]`, and
+  `·` (U+00B7) was the one missing — so one poll in six could not see the counter
+  at all. That is harmless while the brackets carry a duration, since the first
+  rule answers then, and not harmless on the shape a long think draws:
+  `✻ Unravelling… (thinking with xhigh effort)`, captured off two live sessions on
+  2026-08-18, has no duration in it. With only this rule left to answer, two polls
+  landing on `·` inside the four seconds the watcher waits report a turn as
+  finished mid-thought — the same notification the `tokens` rule cost before it,
+  in a new shape. The dot is also the one frame that can be prose (a bulleted line
+  ending in an ellipsis has the same shape) where a star cannot, so it was
+  measured first: no line in 2000 rows of scrollback from four working panes
+  begins with one, and the cost if it ever happens is a tab that stays purple
+  rather than a notice saying the opposite of what is true.
+
 What is never matched is the verb. Pondering, Crunching, Deciphering, Scampering,
 Cooked, Sautéed — they turn over between releases, and the line left behind when
 a turn ends is the same words in the past tense: `✻ Crunched for 4m 3s · 1 monitor

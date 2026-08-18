@@ -53,7 +53,24 @@ var liveInterrupt = regexp.MustCompile(`(?i)esc to interrupt`)
 // `●` is deliberately absent from the set. That is the mark on the agent's own
 // sentences — the thing a notification is *for* — and reading it as a spinner
 // would make every session look permanently busy.
-var liveSpinner = regexp.MustCompile(`^[\s│]*[✻✽✶✢✳✱✧✺*][^\p{L}]*\p{L}[^…]*…`)
+//
+// **The set was observed rather than enumerated, and it was short by one frame.**
+// Read out of Claude Code 2.1.234 itself, the spinner cycles
+// `["·", "✢", "*", "✶", "✻", "✽"]` — `·` (U+00B7) is the frame this set did not
+// have, so one poll in six could not see the counter at all. Harmless while the
+// brackets carry a duration, because the rule above answers then. Not harmless on
+// the shape a long think draws — `✻ Unravelling… (thinking with xhigh effort)`,
+// captured off two live sessions on 2026-08-18 — which has no duration in it: with
+// only this rule left to answer, two polls landing on `·` inside the four seconds
+// the watcher waits report a turn as finished mid-thought. That is the same
+// notification the "tokens" rule cost before it, in a new shape.
+//
+// The dot is the one frame that can also be prose — a bulleted line ending in an
+// ellipsis has the same shape — where a star cannot. Measured before it was added:
+// no line in 2000 rows of scrollback from four working panes begins with one. The
+// cost if it ever happens is a tab that stays purple until the line scrolls out of
+// range, against a notification saying the opposite of what is true.
+var liveSpinner = regexp.MustCompile(`^[\s│]*[✻✽✶✢✳✱✧✺*·][^\p{L}]*\p{L}[^…]*…`)
 
 // How far up from the bottom the live counter can sit.
 //
