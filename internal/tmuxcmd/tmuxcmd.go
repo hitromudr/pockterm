@@ -395,6 +395,23 @@ func ParsePaneMode(out string) (inMode bool, scrollBack, history int) {
 // self-destroy when its last client detaches; ";" is tmux's command
 // separator (a plain argv element, no shell involved). -A makes
 // reconnects attach instead of failing on an existing name.
+//
+// What the group costs is the name a pane answers to. tmux resolves `#S` for a
+// command run inside a pane through the best session holding that window — the
+// one with the latest activity — so while a phone is attached, a script inside
+// the work session calls itself `pockterm-client-60`. Measured on the host
+// 2026-08-18: `#S` for yarr's own pane answered the client's name while
+// `#{session_group}` answered `yarr`. It is not about a client being attached,
+// a detached grouped session wins the same way, and it is not stable either:
+// ids count from 1 per process and CI restarts this binary several times a
+// working day, so one name belongs to different work sessions on different
+// days. Anything keyed by the pane's session name — a lease file, a lock, an
+// owner id — has to read `#{session_group}`, with `#S` the fallback for a
+// session outside a group. It cost an evening in the laptop-access lease, where
+// `ro` released nothing because the hold had been taken under the other name.
+//
+// The group is kept anyway: `destroy-unattached` and `mouse` are set on it, and
+// attaching to the session directly would put both on the owner's own session.
 func Attach(target, webSession string) []string {
 	return []string{
 		"tmux", "new-session", "-A", "-s", webSession, "-t", target,
