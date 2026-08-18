@@ -3,7 +3,7 @@ import { detectPrompt, answerKeys, submitKeys } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from './notify.js';
 import { linkAction } from './link.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
-import { snapshotText } from './select.js';
+import { snapshotText, chunks, pickedText } from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v158';
+const APP_VERSION = 'v159';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -2927,11 +2927,57 @@ function toast(msg) {
 // focus and can clear the document selection before the handler runs.
 let lastSelection = '';
 function remember(text) { if (text) lastSelection = text; }
-document.addEventListener('selectionchange', () => remember(String(document.getSelection() || '')));
+document.addEventListener('selectionchange', () => remember(selectMode ? insideSnapshot() : docSelection()));
 term.onSelectionChange(() => remember(term.getSelection()));
+function docSelection() { return String(document.getSelection() || ''); }
 
+// What of the selection lies inside the frozen copy — and nothing outside it.
+//
+// The clipboard took more than was selected, and a document selection is why: it
+// does not stop at an element. The copy window opens at its own bottom edge, which
+// is where the last line is and where a handle dragged downwards ends up — a
+// notch past it and the selection goes on into the page. Measured on the stand,
+// two lines selected at the end of the frozen copy came back with
+// `\n📋 Copy\n✕ Done\n✂\n📥 Paste\n📎\n💬` on the end of them: the labels of the
+// bars underneath, which nobody selects and which are 44px of chrome a thumb is
+// covering while it drags.
+//
+// Only the bars, and that is luck rather than design: the terminal's own rows sit
+// *behind* the frozen copy drawing the same lines it ends with, and they stay out
+// of this because xterm marks them `user-select: none`. A duplicate of every line
+// is what that would have added, with nothing on screen to see it by.
+//
+// What is being selected here is the frozen copy, so a boundary outside it is
+// clamped to its edge rather than followed.
+function insideSnapshot() {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return '';
+  const whole = document.createRange();
+  whole.selectNodeContents(snapshotEl);
+  let out = '';
+  for (let i = 0; i < sel.rangeCount; i++) {
+    const r = sel.getRangeAt(i).cloneRange();
+    // Entirely before or entirely after the copy window: nothing of it is ours.
+    if (r.compareBoundaryPoints(Range.END_TO_START, whole) >= 0) continue;
+    if (r.compareBoundaryPoints(Range.START_TO_END, whole) <= 0) continue;
+    if (r.compareBoundaryPoints(Range.START_TO_START, whole) < 0) {
+      r.setStart(whole.startContainer, whole.startOffset);
+    }
+    if (r.compareBoundaryPoints(Range.END_TO_END, whole) > 0) {
+      r.setEnd(whole.endContainer, whole.endOffset);
+    }
+    out += r.toString();
+  }
+  return out;
+}
+
+// One question, one owner: in selection mode the frozen copy is what is being
+// selected, so the picks answer first, then what is highlighted inside it, then
+// what was highlighted a moment ago (Android clears a selection when the finger
+// lands on Copy).
 function selectedText() {
-  return term.getSelection() || String(document.getSelection() || '') || lastSelection;
+  if (selectMode) return pickedFrom(paraEls) || insideSnapshot() || lastSelection;
+  return term.getSelection() || docSelection() || lastSelection;
 }
 
 function dropSelection() {
@@ -2940,6 +2986,127 @@ function dropSelection() {
   const sel = window.getSelection();
   if (sel) sel.removeAllRanges();
 }
+
+// --- picking a paragraph out of the frozen copy ---------------------------
+// A long press picks the paragraph under the finger, another drops it, and what
+// is picked is a set: additive by another press somewhere else, subtractive by a
+// press on what is already marked.
+//
+// It exists because dragging Android's own selection handles through a copy
+// window 2000 lines deep is the least precise gesture on this page — the handle
+// hits the edge, the container scrolls under it, and what was aimed at three
+// lines ends somewhere nobody can see. A paragraph is picked whole, marked where
+// it stands, and cannot grow behind your back.
+//
+// Touch and pen only. On a laptop a drag already selects exactly what is wanted,
+// and a mouse held still for a moment cannot be told from the start of a careful
+// drag — which is the gesture a pick would break.
+const PARA_HOLD = 400; // ms, under Chrome's own long-press threshold of 500
+const PARA_TRAVEL = 8; // px of movement that makes it a scroll instead
+let paraEls = [];
+const picked = new Set();
+let holdTimer = null;
+let holdFrom = null;
+let holdFired = false;
+
+// The copy window is laid out one span per paragraph so a press has something to
+// land on and a pick has something to mark. The newlines stay inside the spans,
+// so the text of a selection dragged across them is the text it looks like.
+//
+// `from` says which text this is — the screen the mode froze, or the history the
+// host answered with. A diagnostic first, like `data-kb` and `data-size`: the two
+// look identical on a phone, and "the copy window has nothing above the screen" is
+// either a capture that never came back or a pane with no history.
+let snapshotShown = '';
+function drawSnapshot(text, from) {
+  cancelHold();
+  picked.clear();
+  paraEls = [];
+  snapshotShown = text;
+  const frag = document.createDocumentFragment();
+  for (const c of chunks(text)) {
+    if (!c.para) { frag.appendChild(document.createTextNode(c.text)); continue; }
+    const span = document.createElement('span');
+    span.className = 'para';
+    span.textContent = c.text;
+    frag.appendChild(span);
+    paraEls.push(span);
+  }
+  snapshotEl.replaceChildren(frag);
+  snapshotEl.dataset.from = from;
+}
+
+function pickedFrom(els) {
+  return pickedText(els.filter((el) => picked.has(el)).map((el) => el.textContent));
+}
+
+function togglePara(el) {
+  if (picked.has(el)) {
+    picked.delete(el);
+    el.classList.remove('picked');
+  } else {
+    picked.add(el);
+    el.classList.add('picked');
+  }
+  // A pick is not a selection, and a leftover highlight from the press that made
+  // it would be a second answer to what Copy takes.
+  dropSelection();
+  report('pick', { paras: picked.size, on: picked.has(el) });
+}
+
+function clearPicks() {
+  for (const el of picked) el.classList.remove('picked');
+  picked.clear();
+}
+
+function cancelHold() {
+  clearTimeout(holdTimer);
+  holdTimer = null;
+  holdFrom = null;
+}
+
+snapshotEl.addEventListener('pointerdown', (e) => {
+  // A flag left set eats the next honest tap: a browser that decided the gesture
+  // was a scroll sends no click at all, so it is cleared here rather than by the
+  // click it is waiting for. Same rule as the tab strip's hold.
+  holdFired = false;
+  if (e.pointerType === 'mouse') return;
+  const para = e.target && e.target.closest ? e.target.closest('.para') : null;
+  if (!para) return;
+  holdFrom = { x: e.clientX, y: e.clientY };
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(() => {
+    holdTimer = null;
+    holdFired = true;
+    // The browser is about to make a selection of its own out of this press.
+    // Refusing it here rather than at `touchstart` keeps the ordinary gestures:
+    // a plain drag still scrolls, a double tap still selects a word — the way to
+    // take half a line on a phone.
+    snapshotEl.classList.add('holding');
+    togglePara(para);
+  }, PARA_HOLD);
+});
+snapshotEl.addEventListener('pointermove', (e) => {
+  if (!holdFrom) return;
+  if (Math.abs(e.clientX - holdFrom.x) > PARA_TRAVEL || Math.abs(e.clientY - holdFrom.y) > PARA_TRAVEL) {
+    cancelHold();
+  }
+});
+// A scroll the browser took for itself ends the press the same way lifting does.
+for (const ev of ['pointerup', 'pointercancel']) {
+  snapshotEl.addEventListener(ev, () => {
+    cancelHold();
+    if (!holdFired) return;
+    // Let go of the ban a beat after the finger: the browser's own long press
+    // fires later than ours, and one it slipped in anyway is dropped with it.
+    setTimeout(() => {
+      snapshotEl.classList.remove('holding');
+      if (holdFired) dropSelection();
+    }, 350);
+  });
+}
+// Android raises its selection menu from the same press. Ours has answered it.
+snapshotEl.addEventListener('contextmenu', (e) => { if (holdFired) e.preventDefault(); });
 
 // Selection mode covers the terminal with a frozen copy of the screen (see
 // #snapshot in app.css) and selects from that. Selecting in the live
@@ -2960,7 +3127,7 @@ function setSelectMode(on) {
     // The screen first, so the mode opens on the frame it was asked for, and the
     // history behind it when the host answers: a copy window that appeared only
     // after a round trip would read as a button that does nothing.
-    snapshotEl.textContent = snapshotText(visibleLines());
+    drawSnapshot(snapshotText(visibleLines()), 'screen');
     snapshotEl.style.fontSize = `${fontSize}px`;
   }
   snapshotEl.hidden = !on;
@@ -2976,7 +3143,7 @@ function setSelectMode(on) {
   renderBars();
   if (on) {
     hadTerminalFocus = !!term.textarea && document.activeElement === term.textarea;
-    toast('select text, then Copy — the screen is frozen');
+    toast('frozen — long-press a paragraph to pick it, again to drop it');
   } else if (hadTerminalFocus) {
     // Give the terminal its focus back only if selection mode took it away;
     // raising the keyboard for someone who was only reading is noise.
@@ -3013,8 +3180,18 @@ function tookCapture(text) {
   const lines = String(text == null ? '' : text).split('\n');
   // The screen is already at the end of what came back, so this replaces rather
   // than appends — and the view stays where it was put, at the bottom.
-  snapshotEl.textContent = snapshotText(lines);
-  snapshotEl.scrollTop = snapshotEl.scrollHeight;
+  //
+  // Unless it is the same text, which is the ordinary case on a pane with no
+  // history behind its screen: a redraw then costs the picks made in the round
+  // trip it took to arrive, and gains nothing. Whether the host has answered is
+  // said in `data-from` either way.
+  const fresh = snapshotText(lines);
+  if (fresh !== snapshotShown) {
+    drawSnapshot(fresh, 'host');
+    snapshotEl.scrollTop = snapshotEl.scrollHeight;
+  } else {
+    snapshotEl.dataset.from = 'host';
+  }
   return true;
 }
 
@@ -3124,15 +3301,36 @@ function preview(text) {
 // been that selection mode hangs the terminal — because from the outside a
 // frozen screen and a hung one are the same picture.
 snapshotEl.addEventListener('click', () => {
-  const sel = String(window.getSelection() || '');
+  // The click a long press ends in is not a tap, and this is the one place it
+  // would cost something: it would leave the mode the pick was made in.
+  if (holdFired) { holdFired = false; return; }
+  const sel = insideSnapshot();
   if (sel) return; // a tap that lands inside a selection is not a way out
+  // With paragraphs picked a tap starts over instead of leaving: the way out is
+  // one tap further, and losing a set of picks to a stray thumb is the more
+  // expensive of the two mistakes.
+  if (picked.size) {
+    clearPicks();
+    toast('picks dropped');
+    return;
+  }
   setSelectMode(false);
   toast('screen is live again');
 });
 
-document.addEventListener('copy', () => {
+// Android's own Copy and a desktop Ctrl+C put the selection in the clipboard
+// themselves, so they used to take the part of it that reaches outside the frozen
+// copy with it — the very thing `insideSnapshot` exists to leave behind. The
+// event is the one place to say otherwise: what this hands over is what the
+// button would have copied.
+document.addEventListener('copy', (e) => {
   if (copyingViaFallback || !selectMode) return;
   const text = selectedText();
+  if (text && e.clipboardData) {
+    e.preventDefault();
+    e.clipboardData.setData('text/plain', text);
+  }
+  report('copy', { how: 'system', chars: text.length, paras: picked.size });
   setSelectMode(false);
   if (text) toast(`copied ${text.length} chars: ${preview(text)}`);
 });
@@ -3141,8 +3339,13 @@ document.getElementById('copy').addEventListener('click', async () => {
   const text = selectedText();
   if (!text) { toast('nothing selected'); return; }
   lastCopyError = '';
+  const paras = picked.size;
+  // `outside` is what the selection reached past the frozen copy and did not get:
+  // the one number that tells a copy of exactly what was highlighted from the
+  // copy that used to take the rows behind it and the bars below it as well.
+  const outside = paras ? 0 : Math.max(0, docSelection().length - text.length);
   const how = await writeClipboard(text);
-  report('copy', { how, chars: text.length, error: lastCopyError });
+  report('copy', { how, chars: text.length, paras, outside, error: lastCopyError });
   if (!how) { toast(`copy failed: ${lastCopyError || 'blocked by the browser'}`); return; }
   // Leave selection mode on the way out: the frozen screen looks exactly
   // like the terminal, so staying in it after a copy reads as a hung app —
@@ -3150,8 +3353,10 @@ document.getElementById('copy').addEventListener('click', async () => {
   // puts focus back in the terminal inside the same tap, which is what
   // Android needs to raise the keyboard.
   setSelectMode(false);
-  // The mechanism is named because the fallback is the one that can lie.
-  toast(`copied ${text.length} chars (${how}): ${preview(text)}`);
+  // The mechanism is named because the fallback is the one that can lie, and the
+  // count of paragraphs because that is what was aimed at when there were any.
+  const what = paras ? `${paras}¶, ${text.length} chars` : `${text.length} chars`;
+  toast(`copied ${what} (${how}): ${preview(text)}`);
 });
 
 // --- pasting an image ---

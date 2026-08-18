@@ -37,6 +37,7 @@ describe('sessions screen', () => {
     await last.locator('button.session').click({ trial: true });
     await last.locator('button.rename').click({ trial: true });
   });
+
 });
 
 describe('the size a client attaches at', () => {
@@ -1344,6 +1345,154 @@ describe('selection and the clipboard', () => {
     assert.ok(await page.locator('#snapshot').isHidden(), 'the frozen screen stayed up after Copy');
     const focused = await page.evaluate(() => document.activeElement && document.activeElement.tagName);
     assert.equal(focused, 'TEXTAREA', `focus went to ${focused} instead of the terminal`);
+  });
+
+  test('the copy stops at the edge of the frozen copy', async () => {
+    // Reported as the clipboard taking more than was selected. A document
+    // selection does not stop at an element, and the copy window opens at its own
+    // bottom edge — which is where the last line is, and where a handle dragged
+    // downwards ends up. Measured on the stand against the old code: two lines
+    // selected at the end of the frozen copy came back with
+    // `\n📋 Copy\n✕ Done\n✂\n📥 Paste\n📎\n💬` after them, the labels of the bars
+    // a thumb is covering while it drags.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#term');
+    for (let i = 1; i <= 6; i++) await page.keyboard.type(`row ${i} of the output\n`);
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('row 6 of the output'));
+    await page.click('#select');
+    await page.waitForSelector('#snapshot:not([hidden])');
+    // The mode opens on the screen it froze and the host's answer replaces it a
+    // round trip later. Measuring in between measures a copy window about to be
+    // redrawn — which is what `data-from` is there to wait on.
+    await page.waitForSelector('#snapshot[data-from="host"]', { timeout: 5000 });
+
+    // Anchored in the frozen copy and dragged past its end, which is one notch of
+    // a handle away from what everybody does.
+    const want = await page.evaluate(() => {
+      const pre = document.getElementById('snapshot');
+      const at = pre.textContent.indexOf('row 6 of the output');
+      const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+      let seen = 0, node = null, offset = 0;
+      while (walker.nextNode()) {
+        const n = walker.currentNode;
+        if (seen + n.length > at) { node = n; offset = at - seen; break; }
+        seen += n.length;
+      }
+      const inside = document.createRange();
+      inside.selectNodeContents(pre);
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.setEnd(document.body, document.body.childNodes.length);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      // What the frozen copy holds from there on: the whole of what a copy may take.
+      const ours = document.createRange();
+      ours.setStart(node, offset);
+      ours.setEnd(inside.endContainer, inside.endOffset);
+      return { ours: ours.toString(), whole: String(sel) };
+    });
+    assert.ok(want.whole.length > want.ours.length,
+      'the selection did not reach outside the frozen copy, so this proves nothing');
+
+    await page.click('#copy');
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    assert.equal(clip, want.ours, `clipboard holds ${JSON.stringify(clip)}`);
+    assert.ok(!/Paste|Done/.test(clip), `the bars came with it: ${JSON.stringify(clip)}`);
+  });
+
+  test('a long press picks a paragraph, and another drops it', async () => {
+    // Dragging Android's own handles through a copy window 2000 lines deep is the
+    // least precise gesture on this page. A paragraph is picked whole, marked
+    // where it stands, and cannot grow behind your back: additive by a press
+    // somewhere else, subtractive by a press on what is already marked.
+    //
+    // Driven through the browser's own touch input, because a hold is a duration
+    // and synthetic events have no clock.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    // Three paragraphs: the stand's session runs `cat`, so each line typed comes
+    // back under itself and a bare Enter leaves a blank line between blocks.
+    //
+    // The leading Enter is what makes them three. The tests before this one left
+    // the pane full of output with no blank line at the end of it, so `alpha one`
+    // continued a paragraph a hundred lines tall whose first line box is off the
+    // top of the screen — and a press aimed at that landed outside the copy window
+    // and picked nothing, which is exactly what a paragraph is defined not to do.
+    await page.click('#term');
+    await page.keyboard.type('\nalpha one\nalpha two\n\nbeta only\n\ngamma last\n');
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('gamma last'));
+    await page.click('#select');
+    await page.waitForSelector('#snapshot:not([hidden])');
+    // On the host's answer, not on the paragraphs: a pick made before it lands is
+    // a pick on a text about to be replaced, and the test would be racing it.
+    await page.waitForSelector('#snapshot[data-from="host"]', { timeout: 5000 });
+    await page.waitForFunction(
+      () => document.querySelectorAll('#snapshot .para').length >= 3, null, { timeout: 5000 });
+
+    const cdp = await page.context().newCDPSession(page);
+    // The first line box of the paragraph holding a word, near its left edge: the
+    // room to the right of a short line belongs to the <pre>, not to the span.
+    const press = async (word) => {
+      const at = await page.evaluate((w) => {
+        const el = [...document.querySelectorAll('#snapshot .para')].find((e) => e.textContent.includes(w));
+        if (!el) return null;
+        el.scrollIntoView({ block: 'center' });
+        const r = el.getClientRects()[0];
+        const box = document.getElementById('snapshot').getBoundingClientRect();
+        const x = Math.round(r.x + 4);
+        const y = Math.round(r.y + r.height / 2);
+        // A press outside the copy window picks nothing and says nothing, which
+        // reads as the gesture not working at all.
+        const inside = x > box.left && x < box.right && y > box.top && y < box.bottom;
+        const under = document.elementFromPoint(x, y);
+        return { x, y, inside, on: under ? under.className : null, para: !!under && under.classList.contains('para') };
+      }, word);
+      assert.ok(at, `no paragraph holds ${word}`);
+      assert.ok(at.inside && at.para, `the press aimed at ${JSON.stringify(at)}`);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+      // PARA_HOLD is 400ms; the wait is longer because a loaded box fires a timer
+      // late, and a press that was not held is a different gesture.
+      await page.waitForTimeout(700);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(100);
+    };
+    const marked = () => page.evaluate(
+      () => [...document.querySelectorAll('#snapshot .para.picked')].map((e) => e.textContent.trim().split('\n')[0]));
+
+    await press('alpha one');
+    assert.deepEqual(await marked(), ['alpha one'], 'the long press picked nothing');
+    // The click a long press ends in must not be taken for a tap: that is the way
+    // out of the mode, and it would leave with the pick.
+    assert.ok(await page.locator('#snapshot').isVisible(), 'the long press left selection mode');
+
+    await press('gamma last');
+    assert.deepEqual(await marked(), ['alpha one', 'gamma last'], 'a second press did not add');
+
+    await press('gamma last');
+    assert.deepEqual(await marked(), ['alpha one'], 'a press on a picked paragraph did not drop it');
+
+    await press('beta only');
+    // Screen order, not the order they were tapped.
+    assert.deepEqual(await marked(), ['alpha one', 'beta only'], 'the picks are not in screen order');
+
+    await page.click('#copy');
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    assert.ok(clip.includes('alpha one') && clip.includes('alpha two') && clip.includes('beta only'),
+      `clipboard holds ${JSON.stringify(clip)}`);
+    assert.ok(!clip.includes('gamma last'), `the paragraph that was dropped came too: ${JSON.stringify(clip)}`);
+    // A blank line between them, which is what separated them on screen, and
+    // nothing after the last one — this text is pasted into a shell as often as
+    // into a message.
+    assert.ok(clip.includes('\n\nbeta only'), `the blank line between them is gone: ${JSON.stringify(clip)}`);
+    assert.equal(clip, clip.trimEnd(), 'the copy ends in a newline nobody typed');
   });
 
   test('the system copy also lets go of the screen', async () => {

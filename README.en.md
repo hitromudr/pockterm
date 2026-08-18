@@ -42,7 +42,11 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   the screen that shows the pointer on it.
 - **Clipboard exchange.** The ✂ button turns on selection mode: swiping
   stops scrolling, the text selects natively, and Copy / Paste move it to
-  the device clipboard and back into the terminal.
+  the device clipboard and back into the terminal. A long press takes a
+  paragraph whole and marks it where it stands — a press on another one adds
+  it, a press on a marked one drops it, and Copy hands over what is marked in
+  the order it is on screen. Nothing outside the frozen copy ever reaches the
+  clipboard.
 - **Images from the clipboard.** The same Paste button takes a screenshot
   (so does Ctrl+V, or dropping a file): only keystrokes fit through a pty,
   so the image goes to the server, lands as a file under the user's cache

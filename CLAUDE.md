@@ -1730,6 +1730,74 @@ overwrite a newer screen with older text. **And nothing floats over a frozen cop
 pager stack and the scrollbar are about a pane that is not moving here, and what they did
 was take drags from the one gesture this mode has — they are gone while it is up.
 
+Which of the two texts is on screen is published as `data-from` on `#snapshot` (`screen`,
+then `host`). A diagnostic first, like `data-kb` and `data-size` beside it — the two look
+identical from a phone, so "there is nothing above the screen in there" is either a capture
+that never came back or a pane with no history — and it is what the tests wait on, a
+measurement taken in that round trip being a measurement of a window about to be redrawn.
+
+## A selection does not stop where the copy window does
+
+Reported as the clipboard taking more than was selected. The window opens at its own bottom
+edge, the last line being what is wanted most often, so a handle dragged downwards ends up a
+notch past it — and a document selection does not stop at an element. Measured on the stand:
+two lines taken at the end of the frozen copy came back with
+`\n📋 Copy\n✕ Done\n✂\n📥 Paste\n📎\n💬` after them, the labels of the bars a thumb is
+covering while it drags.
+
+**Only the bars, and that is luck rather than design.** The terminal's own rows sit *behind*
+the frozen copy drawing the same lines it ends with, and they stay out of this because xterm
+marks them `user-select: none`. What they would have added is a duplicate of every line, with
+nothing on screen to see it by.
+
+`insideSnapshot` clamps every range of the selection to the copy window's own contents, and
+the `copy` event does the same through `e.clipboardData.setData`: Android's own Copy and a
+desktop Ctrl+C write the clipboard themselves, so the event is the only place to say what
+they may take. What a selection reached past the window and did not get goes to the journal
+as `outside`, which separates a copy of exactly what was highlighted from the copy that used
+to take the chrome as well.
+
+## A paragraph is picked, not dragged
+
+Dragging Android's handles through a copy window 2000 lines deep is the least precise gesture
+on this page: the handle meets the edge, the container scrolls under it, and what was aimed at
+three lines ends somewhere nobody can see. So **a long press picks the paragraph under the
+finger whole** and marks it where it stands — additive by a press somewhere else, subtractive
+by a press on what is already marked. Copy hands over what is picked in screen order rather
+than tap order, separated by the blank line that separated them there, and with no trailing
+newline: this text goes into a shell as often as into a message (`pickedText`).
+
+A paragraph is a run of lines with no blank line in it (`chunks` in `js/select.js`), read off
+the text and nothing else — the shape cannot go wrong in a way that needs a release to
+explain. The window is laid out one span per paragraph with the newlines kept **inside** the
+spans, so a native selection dragged across it still reads as it looks (`Range.toString`
+concatenates text data and adds nothing for a block boundary).
+
+Five things that were each a way to be wrong:
+
+- **The browser makes a selection of its own out of the same press.** `user-select: none` goes
+  on when ours fires at 400ms, under Chrome's own 500ms threshold, and comes back a beat after
+  the finger lifts — so a plain drag still scrolls and a double tap still selects a word, which
+  is how half a line is taken on a phone. `contextmenu` is refused once the press is ours.
+  A phone judges this one: the stand has no touch text selection to suppress.
+- **Touch and pen only.** On a laptop a drag already selects exactly what is wanted, and a
+  mouse held still cannot be told from the start of a careful drag — the gesture a pick would
+  break.
+- **The click a long press ends in is not a tap**, and a tap on the frozen copy is the way out
+  of the mode: it would leave, taking the pick with it. Swallowed, and the flag is cleared at
+  the next press rather than by the click it waits for — a browser that read the press as a
+  scroll sends no click at all.
+- **A tap with paragraphs picked starts over instead of leaving.** Losing a set of picks to a
+  stray thumb is the more expensive of the two mistakes, so it drops the picks and the way out
+  is one tap further.
+- **The host's answer arrives after the mode opens**, and redrawing the window costs every pick
+  made in that round trip. Identical text is left alone — the ordinary case on a pane with no
+  history above its screen — and `data-from` says the answer came either way.
+
+`test/ui/pockterm.test.mjs` reads both off the clipboard: a selection dragged past the window
+copies what the window holds and nothing after it, and a press, a second press elsewhere and a
+press back on the same paragraph leave the picks the pair of them describe.
+
 ## What the shift under the finger does not cover
 
 The page shifts the drawn rows to follow the finger between whole lines (`track` in

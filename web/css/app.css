@@ -1015,6 +1015,23 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   outline: 2px dashed var(--accent);
   outline-offset: -2px;
 }
+/* A long press picks the paragraph under the finger — see PARA_HOLD in js/app.js
+   for why it exists and why the mouse is left out of it. Marked where it stands
+   rather than in a list somewhere: what is picked has to be readable next to what
+   is not, with a thumb on top of it. */
+#snapshot .para.picked {
+  background: rgba(122, 162, 247, 0.28);
+  box-shadow: 0 0 0 1px rgba(122, 162, 247, 0.55);
+  border-radius: 2px;
+}
+/* While the press is ours the browser gets no selection out of it. Set a beat
+   before its own long press fires and given back a beat after the finger lifts,
+   so a plain drag still scrolls and a double tap still selects a word — which is
+   how half a line is taken on a phone. */
+#snapshot.holding, #snapshot.holding .para {
+  user-select: none;
+  -webkit-user-select: none;
+}
 /* Hide xterm's own scrollbar: under tmux the scrollback lives in tmux
    (copy-mode), so the bar is inert and only misleads — scroll with the
    wheel or a touch swipe instead. */
