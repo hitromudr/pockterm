@@ -1052,6 +1052,74 @@ func TestTailPrefersWhatTheAgentSaidOverWhatItRan(t *testing.T) {
 	}
 }
 
+func TestTailIgnoresTheAgentsInputBox(t *testing.T) {
+	// What is in that box is what will be said *to* the agent, and Claude Code
+	// puts a reply of its own there for the owner to send. Read as the last line
+	// of the pane it became the body of "закончил" — a suggestion, in the place
+	// where the agent's own last sentence belongs.
+	//
+	// The fallback is what reads it, so this needs a pane with no ● on it: an
+	// answer long enough for its marker to have scrolled off, which at the 51
+	// columns a phone gives the shared window is most of them.
+	pane := []string{
+		"  Выгрузка 2021 идёт: 79 округов из 225.",
+		"",
+		"✻ Brewed for 1m 6s · 2 shells still running",
+		"",
+		"───────────────────────────────────────────────",
+		// The space after the glyph is a non-breaking one — written as an escape
+		// because being that one is the whole of what tells the box from a menu.
+		"❯\u00a0посмотри, что осталось в очереди",
+		"───────────────────────────────────────────────",
+		"  ctx 53% | dms@ai:~/work/elect $ | Opus 5 (…",
+		"  ⏵⏵ bypass permissions on · 2 shells · ← fo…",
+	}
+	if got := Tail(pane); got != "Выгрузка 2021 идёт: 79 округов из 225." {
+		t.Fatalf("Tail = %q, want the pane's own last line rather than the box", got)
+	}
+
+	// A box holds more than one line once what is in it wraps, and none of those
+	// lines carries the ❯ either.
+	wrapped := []string{
+		"  Выгрузка 2021 идёт.",
+		"───────────────────────────────────────────────",
+		"❯\u00a0посмотри, что осталось в очереди, и скажи,",
+		"  сколько ещё ждать",
+		"───────────────────────────────────────────────",
+	}
+	if got := Tail(wrapped); got != "Выгрузка 2021 идёт." {
+		t.Fatalf("Tail = %q, want the line above the box", got)
+	}
+
+	// And what is typed into it is not the agent speaking however it is written:
+	// the box is cut off the pane before anything is read at all.
+	typed := []string{
+		"● Готово.",
+		"───────────────────────────────────────────────",
+		"❯\u00a0● а это я набрал сам",
+	}
+	if got := Tail(typed); got != "Готово." {
+		t.Fatalf("Tail = %q, want the agent's own sentence", got)
+	}
+
+	// The message keeps standing in the transcript once it has been sent, above
+	// the answer to it, with an ordinary space after the glyph rather than the
+	// box's non-breaking one. Captured off the owner's devops pane, where this is
+	// exactly what Tail answered: a suggestion he had accepted, read back to him
+	// as what the agent had just said.
+	echoed := []string{
+		"  прогон закончен, 48 проверок",
+		"",
+		"❯ согласуй мост с mesh, и если развилок нет —",
+		"  делай",
+		"",
+		"✻ Sautéed for 3m 47s",
+	}
+	if got := Tail(echoed); got != "прогон закончен, 48 проверок" {
+		t.Fatalf("Tail = %q, want anything but the owner's own message", got)
+	}
+}
+
 func TestGreenFadesWhenItStopsBeingNews(t *testing.T) {
 	// "Only now everything is green." Every session tmux has is read from the start
 	// now, so without an expiry anything that had ever run stayed green for good —

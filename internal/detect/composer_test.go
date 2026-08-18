@@ -27,4 +27,12 @@ func TestInputBoxIsTheAgentsOwnPrompt(t *testing.T) {
 	if InputBox([]string{"building...", "done in 2.3s"}) {
 		t.Error("plain output was read as the input box")
 	}
+	// Where it starts is what a reader of the pane needs: below that line there is
+	// no output left, only the rest of the box and the status lines under it.
+	if got := InputBoxAt(box); got != 1 {
+		t.Errorf("InputBoxAt = %d, want the line the ❯ is on", got)
+	}
+	if got := InputBoxAt(menu); got != -1 {
+		t.Errorf("InputBoxAt = %d on a pane with no box", got)
+	}
 }

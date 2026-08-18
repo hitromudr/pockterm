@@ -107,6 +107,7 @@ var (
 // Heuristic on purpose: this is decoration, and a wrong guess costs a less
 // informative notification, not a wrong one.
 func Tail(lines []string) string {
+	lines = withoutTheHumanSide(lines)
 	for i := len(lines) - 1; i >= 0; i-- {
 		m := agentSaid.FindStringSubmatch(ansi.ReplaceAllString(lines[i], ""))
 		if m == nil {
@@ -127,6 +128,69 @@ func Tail(lines []string) string {
 		return s
 	}
 	return ""
+}
+
+// The ❯ the TUI puts on the human's side of the conversation. It marks two
+// things and both are the same thing here — what was said *to* the agent:
+//
+//	❯ согласуй мост с mesh          the echo of a message already sent
+//	❯ жду выгрузку 2021             the input box, holding what will be sent
+//
+// The space after the glyph tells the two apart — ordinary in the echo,
+// non-breaking in the box, which is the rule detect.InputBox rests on — and
+// nothing here needs to know which: neither is the agent speaking.
+var humanSaid = regexp.MustCompile(`^\s*❯(\x{00a0}|\s|$)`)
+
+// withoutTheHumanSide takes the owner's own words out of the pane before
+// anything is read off it for a notification.
+//
+// Reported as the notice about a finished session carrying **a reply Claude had
+// suggested** instead of what the agent said. Claude Code writes a suggested
+// answer into the input box, the owner sends it, and both copies of it are then
+// on screen: one in the box, one in the transcript above the answer. Tail's
+// fallback reads up from the bottom of the pane, so with no ● in the visible
+// screen — a long answer, its marker scrolled off the 51 columns a phone gives
+// the shared window — the first thing it found was one of those two, and the
+// phone was told "✅ elect закончил" over the machine quoting what it hoped to be
+// asked next. Measured on the owner's own panes: devops answered "❯ согласуй
+// мост с mesh", which is the message he had sent, not a word the agent said.
+//
+// The box is cut structurally rather than by shape: it is the bottom of the TUI,
+// so everything from it down is interface — the rest of what is being typed, the
+// rules around it, the status lines under it — and cutting there needs no list of
+// what the footer looks like this release. What is above it is blanked line by
+// line, the message and whatever the pane wrapped it onto.
+func withoutTheHumanSide(lines []string) []string {
+	out := lines
+	if i := detect.InputBoxAt(out); i >= 0 {
+		out = out[:i]
+	}
+	var pruned []string
+	for i := 0; i < len(out); i++ {
+		l := ansi.ReplaceAllString(out[i], "")
+		if !humanSaid.MatchString(l) {
+			continue
+		}
+		if pruned == nil {
+			pruned = append([]string(nil), out...)
+		}
+		at := indentOf(l)
+		pruned[i] = ""
+		// What the pane broke the message onto sits indented under the glyph —
+		// the same shape a marked line's continuation has, one speaker over.
+		for j := i + 1; j < len(pruned); j++ {
+			c := ansi.ReplaceAllString(pruned[j], "")
+			if strings.TrimSpace(c) == "" || indentOf(c) <= at {
+				break
+			}
+			pruned[j] = ""
+			i = j
+		}
+	}
+	if pruned != nil {
+		return pruned
+	}
+	return out
 }
 
 // wrapped collects what the pane broke off the end of the sentence at line i.

@@ -24,11 +24,20 @@ var composerPrompt = regexp.MustCompile("^\\s*❯\\x{00a0}")
 // the box and no counter is a pane with no turn running. Without it the only
 // evidence of work in such a session is the screen changing — and the change a
 // person makes most often is typing their next message into that very box.
-func InputBox(lines []string) bool {
-	for _, l := range lines {
+func InputBox(lines []string) bool { return InputBoxAt(lines) >= 0 }
+
+// InputBoxAt says where that box begins, or -1 when there is none.
+//
+// It is the bottom of the TUI, so the line it starts on is also where the pane
+// stops being the agent's output: below it are the rest of what is being typed,
+// the rules around it and the status lines. Anything reading the screen for
+// something the agent *said* has to stop there — see watch.Tail, which did not
+// and sent the reply Claude had suggested to the phone instead.
+func InputBoxAt(lines []string) int {
+	for i, l := range lines {
 		if composerPrompt.MatchString(ansi.ReplaceAllString(l, "")) {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
