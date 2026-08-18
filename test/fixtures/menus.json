@@ -449,7 +449,11 @@
           false,
           false,
           false
-        ]
+        ],
+        "submit": {
+          "label": "Submit",
+          "focused": false
+        }
       }
     },
     {
@@ -504,7 +508,11 @@
           true,
           false,
           false
-        ]
+        ],
+        "submit": {
+          "label": "Submit",
+          "focused": false
+        }
       }
     }
   ]

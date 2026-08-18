@@ -1256,6 +1256,16 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   background: transparent;
   border: 1px dashed var(--accent);
 }
+/* What ends a question that takes several answers, and not an answer either: the
+   buttons above it toggle boxes. Green rather than the row's accent, because that
+   is the colour this page already uses for a thing that has finished — and a row of
+   identical buttons would read as a row of answers, which is the same reasoning
+   that draws the text field as an outline. */
+#answers button.submit {
+  color: #0b0e14;
+  background: #7fdca4;
+  font-weight: 600;
+}
 #answers button.esc {
   align-self: flex-end;
   width: auto;

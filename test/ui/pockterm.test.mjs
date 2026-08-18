@@ -2613,6 +2613,81 @@ describe('the answer buttons and the pane they are read from', () => {
       'nothing said the field was open');
   });
 
+  // A question that takes several answers, with the widget's own submit row under
+  // the list. Two options for the reason drawMenu has two: the stand's pane echoes
+  // every line twice.
+  const drawChecked = (on) => {
+    for (const l of [
+      'Что делаем?',
+      `${on === 0 ? '❯' : ' '} 1. [ ] Раз`,
+      `${on === 1 ? '❯' : ' '} 2. [ ] Два`,
+      `${on === 'submit' ? '❯' : ' '}    Submit`,
+      'Enter to select · ↑/↓ to navigate · Esc to cancel',
+    ]) stand.tmux(['send-keys', '-t', 'demo', l, 'Enter']);
+  };
+
+  test('Submit is drawn, reached a step at a time and pressed only once reached', async () => {
+    // Reported from the phone as the Submit button not being drawn. It was not: the
+    // options of a question that takes several answers are toggled, so the row
+    // could set an answer and never give it, and the way to finish was `↓` and `⏎`
+    // on the key bar.
+    //
+    // The walk steps rather than counting, because the page sees a window and not a
+    // list — the widget scrolls its options to keep the pointer in view. Both ways
+    // of being wrong are on the wire here: falling short leaves the pointer on an
+    // option, where an Enter *toggles* it, and overshooting lands on `Chat about
+    // this` under the rule, where an Enter answers something else entirely.
+    await recordFrames();
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    drawChecked(0);
+    await answersUp();
+    assert.equal(await page.locator('#answers button.submit').count(), 1,
+      'nothing in the row ends the question');
+    assert.match(await page.textContent('#answers button.submit'), /Submit/,
+      'the button does not carry the word the menu uses for it');
+
+    await page.evaluate(() => { window.__sent.length = 0; });
+    await page.locator('#answers button.submit').click();
+    await page.waitForTimeout(250);
+    assert.equal(await sent(), '\x1b[B',
+      `the walk went out as a batch: ${JSON.stringify(await sent())}`);
+
+    // The pane answers as the widget would: the pointer one row further down. Still
+    // an option, so still no Enter.
+    drawChecked(1);
+    await page.waitForFunction(
+      () => window.__sent.join('') === '\x1b[B\x1b[B', null, { timeout: 5000 });
+
+    // And now it is on the row itself, which is the only screen an Enter may go out
+    // on. With every option's pointer gone this pane carries no chrome but that one
+    // — which is why the run is kept on it.
+    drawChecked('submit');
+    await page.waitForFunction(() => window.__sent.join('').includes('\r'), null, { timeout: 5000 });
+    assert.equal(await sent(), '\x1b[B\x1b[B\r',
+      `the Enter is not a write of its own: ${JSON.stringify(await sent())}`);
+  });
+
+  test('a submit row the pointer never reaches is never pressed', async () => {
+    await recordFrames();
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    drawChecked(0);
+    await answersUp();
+
+    await page.evaluate(() => { window.__sent.length = 0; });
+    await page.locator('#answers button.submit').click();
+    // Nothing redraws, so the pointer stays on option 1. An Enter there would tick
+    // the box and report the question answered, which is the same shape of defect
+    // as answering the wrong option: silence is the cheaper failure.
+    await page.waitForTimeout(1600);
+    assert.equal(await sent(), '\x1b[B', `an Enter went out blind: ${JSON.stringify(await sent())}`);
+    assert.match(await page.textContent('#toast'), /did not move/,
+      'nothing said that Submit had not been pressed');
+  });
+
   test('only the menu\'s field asks for a keyboard; the answers leave it alone', async () => {
     // Reported from the phone: a tap on any button of the row brought the keyboard
     // up over the menu it was answering. Two paths did it and each was enough on

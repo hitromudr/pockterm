@@ -162,7 +162,60 @@ const NAVIGATION = /(enter to select|to navigate)/i;
 // menu, with at most a rule and a blank between.
 const FOOTER_REACH = 4;
 
-// detectQuestion(lines) → { prompt, options: [{key,label}], cursor, navigate } | null.
+// The widget's own button under a list of checkboxes, and the only thing on that
+// screen which ends the question: Enter on an option toggles its box, so a menu
+// that takes several answers is never finished by pressing an answer. It carried
+// no button for two releases — the ticks came from the row and the Submit from
+// `↓` and `⏎` on the key bar — because where it sits in the ring the arrows walk
+// was unmeasured, and this file has paid for a guess about that ring once
+// already. Reported from the phone as the Submit button not being drawn.
+//
+// It is read now rather than guessed at. In Claude Code 2.1.234 the multi-select
+// list draws it from `submitButtonText`, which is "Submit" on the last question
+// of a set and "Next" before it, so both words are read — literals of the widget
+// like the field's placeholder above, and a release that renames it costs the
+// button rather than a wrong press.
+const SUBMIT = /^(Submit|Next)$/;
+
+// How far under the last option to look for it: it is drawn directly below the
+// list. What sits under the rule below it is `Chat about this`, which is not in
+// the list at all — see `continues` for what reading that as an option cost.
+const SUBMIT_REACH = 6;
+
+// The chrome down the left edge of a row, and the row's own text.
+const ROW = /^([\s│>❯›]*)(\S.*?)\s*$/;
+
+// The submit row of a question that takes several answers, or undefined.
+//
+// Three things have to hold, and each removes a way to be wrong. **The menu has
+// checkboxes**: only that widget draws a submit button at all, and the
+// single-answer variant indents its descriptions under the label — where a line
+// reading "Submit" would be a description of the option above it. **It is
+// indented past the column the numbers sit in**, which is what tells the widget's
+// own row from a paragraph at the margin. And **it is above the rule**, because
+// the rule is where the list ends.
+function submitRow(plain, best) {
+  if (best.opts.every((o) => o.checked === undefined)) return undefined;
+  for (let i = best.last + 1, seen = 0; i < plain.length && seen < SUBMIT_REACH; i++) {
+    if (!plain[i].trim()) continue;
+    seen++;
+    // The rule that ends the list, or the line saying how the menu is answered:
+    // nothing of the list is left below either.
+    if (RULE.test(plain[i]) || NAVIGATION.test(plain[i])) return undefined;
+    const m = ROW.exec(plain[i]);
+    if (!m) continue;
+    const text = boxGlyphs(label(m[2]));
+    if (!SUBMIT.test(text) || indentOf(plain[i]) <= best.indent) continue;
+    // Whether the pointer is on it, which is the difference between a step and an
+    // Enter. Asked of the chrome rather than of the whole line, for the reason the
+    // options are: a pointer is what is drawn to the left of a label.
+    return { label: text, focused: POINTER.test(m[1]) };
+  }
+  return undefined;
+}
+
+// detectQuestion(lines) → { prompt, options: [{key,label}], cursor, navigate,
+// submit } | null.
 // A menu is a run of lines numbered 1,2,3,… in order that carries TUI chrome,
 // with nothing between them but each option's own continuation. The lowest such
 // run on screen wins: when a real prompt follows earlier output, the prompt is
@@ -183,7 +236,17 @@ export function detectQuestion(lines) {
   let run = null; // { start, last, indent, opts, pointers, chrome }
 
   const close = () => {
-    if (run && run.opts.length >= 2 && run.chrome) best = run;
+    // The pointer standing on the submit row is chrome for the list above it, and
+    // without that this menu vanishes at the one moment it matters. All the chrome
+    // these panes carry is the pointer itself — no border, no box — so a walk down
+    // to the submit row takes it off the options and the run is left looking like
+    // prose: the row of buttons goes away, and the Enter that was one step from
+    // being pressed is never sent. It is narrow on purpose: a list of checkboxes
+    // with a `❯` on a `Submit` of its own is a widget, and prose does not draw one.
+    if (run && run.opts.length >= 2) {
+      const s = run.chrome ? null : submitRow(plain, run);
+      if (run.chrome || (s && s.focused)) best = run;
+    }
     run = null;
   };
   for (let i = 0; i < plain.length; i++) {
@@ -253,7 +316,13 @@ export function detectQuestion(lines) {
     seen++;
     if (NAVIGATION.test(plain[i])) { navigate = 'arrows'; break; }
   }
-  return { prompt, options: best.opts, cursor: best.pointers.indexOf(true), navigate };
+  return {
+    prompt,
+    options: best.opts,
+    cursor: best.pointers.indexOf(true),
+    navigate,
+    submit: submitRow(plain, best),
+  };
 }
 
 // An offer is not a menu, and until now the page could not tell the difference
@@ -413,4 +482,27 @@ export function answerKeys(menu, want) {
   if (menu.navigate !== 'arrows') return { move: '', commit: menu.options[want].key + '\r' };
   const move = walkTo(menu, want);
   return move === null ? null : { move, commit: '\r' };
+}
+
+// submitKeys(menu) → { move, commit } | null: what to send next to reach and press
+// the submit row of a question that takes several answers.
+//
+// **One step at a time, and that is the whole of what this gets right.** The page
+// sees a window rather than a list — the widget scrolls its options to keep the
+// pointer in view — so how far the pointer is from the end of the list is not on
+// screen and cannot be counted. A batch that fell short leaves the pointer on an
+// option, where an Enter *toggles* it; a batch that overshot lands on `Chat about
+// this` below the rule, where an Enter answers something else entirely. So the
+// caller sends one `↓`, reads the screen, and asks again — and the Enter goes out
+// only on a screen that shows the pointer on the row itself.
+//
+// `↓` is safe to repeat where a digit would not be: on this widget a digit toggles
+// the box it names, and the submit row has no digit of its own. A menu that has
+// not yet said how it is answered therefore gets no button at all, which is the
+// same silence the menu's own text field is given for the same reason.
+export function submitKeys(menu) {
+  if (!menu || !menu.submit) return null;
+  if (menu.navigate !== 'arrows') return null;
+  if (menu.submit.focused) return { move: '', commit: '\r' };
+  return { move: '\x1b[B', commit: '' };
 }

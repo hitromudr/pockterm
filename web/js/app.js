@@ -1,5 +1,5 @@
 import { keyBytes, applyCtrl } from './keys.js';
-import { detectPrompt, answerKeys } from './detect.js';
+import { detectPrompt, answerKeys, submitKeys } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from './notify.js';
 import { linkAction } from './link.js';
 import { pickImage, carriesFiles, firstImage } from './paste.js';
@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v157';
+const APP_VERSION = 'v158';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3999,6 +3999,92 @@ async function pressAnswer(prompt, label, want) {
   send(keys.commit);
 }
 
+// How many steps the walk to the submit row is allowed. A menu is a handful of
+// options; this is a runaway bound rather than a limit anybody meets, and it is
+// reported when it is hit so a menu longer than this says so instead of the button
+// quietly doing nothing.
+const SUBMIT_STEPS = 20;
+
+// pressSubmit walks to the submit row of a question that takes several answers and
+// presses it there.
+//
+// **It steps rather than counting**, and the reason is what the page can see: the
+// widget scrolls its own options to keep the pointer in view, so the distance from
+// the pointer to the end of the list is not on screen (see submitKeys in
+// js/detect.js). Every step is a `↓` and a look, which is also what makes it stop
+// on its own — a menu that was answered by somebody else meanwhile is a menu this
+// no longer recognises, and the remaining arrows are never sent.
+//
+// Overshooting is the failure worth the extra frames: below the submit row, under
+// the rule, sits `Chat about this`, and an Enter there ends the question with
+// something nobody asked for. Falling short is the other one — an Enter on an
+// option *toggles* it, so a batch that stopped one row early would tick a box and
+// report that the question had been answered.
+// Which option the pointer is on, by the option's own number. NaN for a menu with
+// no pointer on screen, which is what makes it fail every comparison below.
+function pointerAt(menu) {
+  return menu && menu.cursor >= 0 ? Number(menu.options[menu.cursor].key) : NaN;
+}
+// One step of the walk: the screen showing the pointer's number gone up, or the
+// submit row holding it. It hands back the screen it settled on rather than a yes,
+// and the next step is decided from that — a second read a moment later is a
+// different screen, and this one is being redrawn a line at a time. Measured on the
+// stand: the pointer arrives on the next option before the submit row below it has
+// been painted, and a step that re-read then found no row and called the menu gone.
+async function submitStepped(label, from) {
+  const until = Date.now() + POINTER_WAIT;
+  for (;;) {
+    const now = detectPrompt(visibleLines());
+    if (now && now.submit && now.submit.label === label
+        && (now.submit.focused || pointerAt(now) > from)) return now;
+    if (Date.now() >= until) return null;
+    await new Promise((r) => setTimeout(r, POINTER_POLL));
+  }
+}
+
+async function pressSubmit(prompt, label) {
+  // Read the screen again rather than trusting the row: it was drawn from an older
+  // scan, and the menu can have been replaced since. The same thing pressAnswer
+  // does, and for the same reason.
+  //
+  // **The prompt is what says which menu this is, and it is asked once.** A list
+  // that scrolls under the walk pushes its own first option off the top, and the
+  // prompt is read as the line above that option — so on the long menus stepping
+  // exists for it changes as the pointer travels, and asking it every step would
+  // abort the walk halfway down exactly the menu it was built for. What holds
+  // afterwards is the pointer's own number, which only goes up while one list is
+  // walked down: a menu replaced mid-walk — the next question of a set, with the
+  // same shape and the same word on its button — starts over at option 1, and that
+  // is not a step this accepts.
+  let menu = detectPrompt(visibleLines());
+  if (menu && menu.prompt !== prompt) menu = null;
+  for (let step = 0; step <= SUBMIT_STEPS; step++) {
+    const keys = menu && menu.submit && menu.submit.label === label ? submitKeys(menu) : null;
+    if (!keys) {
+      report('submit', { step, gone: true, label });
+      toast('the menu changed — nothing was sent');
+      return;
+    }
+    if (keys.commit) {
+      send(keys.commit);
+      report('submit', { step, pressed: label });
+      return;
+    }
+    const from = pointerAt(menu);
+    if (!send(keys.move)) { toast('not sent: no connection'); return; }
+    menu = await submitStepped(label, from);
+    if (!menu) {
+      report('submit', { step, from, stuck: true });
+      toast('the menu did not move — nothing was sent');
+      return;
+    }
+  }
+  // A menu longer than the bound above. Nothing was pressed, and the number of
+  // steps is in the journal beside the label that was being reached for.
+  report('submit', { steps: SUBMIT_STEPS, reached: false, label });
+  toast(`could not reach ${label} — nothing was sent`);
+}
+
 // The one place on this row that raises a keyboard, and the only option that has
 // any business doing so: the question is answered by what gets typed into the
 // menu's own field, so the button puts the keyboard where that can happen. The
@@ -4085,7 +4171,7 @@ function renderAnswers() {
   // The cursor is in the signature: on an arrow-driven menu it is what the number
   // of presses is counted from, so a row built against an older position would
   // answer the wrong option.
-  const sig = q ? JSON.stringify([q.options, q.cursor, q.navigate]) : null;
+  const sig = q ? JSON.stringify([q.options, q.cursor, q.navigate, q.submit]) : null;
   if (sig === lastAnswersSig) return;
   lastAnswersSig = sig;
   answersEl.innerHTML = '';
@@ -4138,6 +4224,33 @@ function renderAnswers() {
       pressAnswer(q.prompt, o.label, i);
     });
     answersEl.appendChild(b);
+  }
+  // And the row carries what ends the question, on the one kind of menu that has
+  // such a thing. A question that takes several answers is toggled — every button
+  // above is one tick of several — so without this the row could set the answer and
+  // not give it, and the Submit had to be reached with `↓` and `⏎` on the key bar.
+  // Reported from the phone as the button not being drawn.
+  //
+  // It is drawn whatever the options came to, which is a state of its own worth
+  // having: with the pointer already on the submit row no option carries it, so
+  // there is nothing to walk from and no answer button is drawn at all — and that
+  // is exactly the screen where this button is one tap and no walk.
+  const submit = q.submit && submitKeys(q) ? q.submit.label : null;
+  if (submit) {
+    const s = document.createElement('button');
+    s.className = 'submit';
+    s.textContent = `⏎ ${submit}`;
+    keepsTerminalFocus(s);
+    s.addEventListener('click', () => {
+      // The same two bounds every other button on this row has: the focus is given
+      // up rather than merely not taken, because the terminal's field keeps it from
+      // whenever it was last typed into and Android raises a keyboard for whatever
+      // holds it the moment the layout moves.
+      releaseTerminalFocus();
+      releaseFocus(s);
+      pressSubmit(q.prompt, submit);
+    });
+    answersEl.appendChild(s);
   }
   if (!answersEl.children.length) {
     // Says so, since there is no console on the phone and the row simply not

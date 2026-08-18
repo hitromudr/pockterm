@@ -1186,12 +1186,51 @@ the owner's own answering session, `[ ]` became `[✔]` and the list stayed up. 
 of buttons that all looked like answers would say the tap had answered the
 question, when what it did was one tick of several.
 
-What has **no** button is `Submit`. It is the list's own unnumbered entry, and
-choosing it leads to an ordinary two-option menu (`Ready to submit your answers?`)
-that this already reads. Where it sits in the ring the arrows walk is unmeasured,
-and this file has paid for a guess about that ring once already — so the ticks come
-from the row and the Submit from `↓` and `⏎` on the key bar, until there is a
-capture that settles it.
+**`Submit` had no button, and the row could therefore set an answer without ever
+giving it.** It is the list's own unnumbered entry; where it sat in the ring the
+arrows walk was unmeasured, and this file has paid for a guess about that ring once
+already, so the ticks came from the row and the Submit from `↓` and `⏎` on the key
+bar. Reported from the phone as the button not being drawn.
+
+It is measured now, and off the agent's own binary rather than off a pane: in Claude
+Code 2.1.234 the multi-select list draws that row from `submitButtonText` — `Submit`
+on the last question of a set, `Next` before it, which is why both words are read —
+and its key handling puts it **one `↓` past the last option**, with `↑` coming back
+to that option and a further `↓` going on to `Chat about this` below the rule. Enter
+on an option toggles the box; Enter on that row is what ends the question.
+
+**The walk steps rather than counting, and that is the whole of what it gets
+right.** The page sees a window and not a list — the widget scrolls its options to
+keep the pointer in view — so how far the pointer is from the end is not on screen.
+A batch that fell short leaves the pointer on an option, where an Enter ticks a box
+and reports the question answered; a batch that overshot lands on `Chat about this`,
+where an Enter answers something else entirely. So `submitKeys` hands back one `↓`
+at a time and `pressSubmit` reads the screen between them, which also ends the walk
+by itself when the menu is gone.
+
+Three things that were each a way to be wrong, and the first two were found by the
+stand rather than argued:
+
+- **The pointer standing on that row is chrome for the list above it.** All the
+  chrome these panes carry is the pointer itself, so a walk that reached the submit
+  row took it off every option and the run read as prose: the row of buttons went
+  away one step from being pressed. It is narrow — a list of checkboxes with a `❯`
+  on a `Submit` of its own is a widget, and prose does not draw one.
+- **A step hands back the screen it settled on**, because the pointer arrives on the
+  next option before the row below it has been repainted, and a step that re-read
+  then found no row and called the menu gone.
+- **The prompt says which menu this is, and it is asked once.** A scrolling list
+  changes the line the prompt is read from, so asking it every step would abort the
+  walk halfway down exactly the menu stepping exists for. What holds afterwards is
+  the pointer's own number, which only goes up while one list is walked down — a
+  menu replaced mid-walk starts over at option 1, and that is not a step this
+  accepts.
+
+The button is drawn green rather than in the row's accent, since a row of identical
+buttons reads as a row of answers — the same reasoning that draws the text field as
+an outline. `test/ui/pockterm.test.mjs` reads it off the wire: `↓`, `↓`, and the
+`\r` only on the screen that shows the pointer on the row. Checked against the
+defect first, with the naive one-write walk put back.
 
 Both panes are in `test/fixtures/menus.json`, captured off a real one at 51
 columns rather than typed from memory: the fresh menu, and the same question

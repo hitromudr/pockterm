@@ -2,7 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { detectQuestion, detectOffer, detectPrompt, answerKeys } from '../web/js/detect.js';
+import {
+  detectQuestion, detectOffer, detectPrompt, answerKeys, submitKeys,
+} from '../web/js/detect.js';
 
 // The cases are shared with the Go detector (internal/detect), which drives
 // the Telegram notifications: one screen, one verdict, in both languages.
@@ -46,6 +48,16 @@ for (const c of fixtures.cases) {
       got.options.map((o) => o.checked),
       c.expect.checked === undefined ? got.options.map(() => undefined) : c.expect.checked,
       'which boxes are ticked',
+    );
+    // And the row that ends such a question, which is neither an option nor an
+    // answer: the buttons above it toggle boxes, and this is the widget's own
+    // button. Absent from every other screen here, which is the claim — only the
+    // list with checkboxes has one, and a line reading "Submit" anywhere else is
+    // not it.
+    assert.deepEqual(
+      got.submit === undefined ? null : got.submit,
+      c.expect.submit === undefined ? null : c.expect.submit,
+      'the row that ends a question taking several answers',
     );
   });
 }
@@ -259,4 +271,70 @@ test('a numbered list with no agent and no box is not an offer', () => {
     '2. Добавить проверку',
     '3. Покрыть тестом',
   ]), null);
+});
+
+// The row that ends a question taking several answers. The real screens are in the
+// shared fixtures above; these are the ways of reading one wrongly.
+const CHECKED = (on, focused) => [
+  'Что делать?',
+  `${on === 0 ? '❯' : ' '} 1. [ ] Раз`,
+  `${on === 1 ? '❯' : ' '} 2. [✔] Два`,
+  `${focused ? '❯' : ' '}    Submit`,
+  '───────────────────────────────',
+  '  3. Chat about this',
+  'Enter to select · ↑/↓ to navigate · Esc to cancel',
+];
+
+test('the submit row is read off a list of checkboxes, pointer and all', () => {
+  assert.deepEqual(detectQuestion(CHECKED(0, false)).submit, { label: 'Submit', focused: false });
+  // With the pointer on it there is nothing to walk and no option carries the
+  // pointer — which is the state this button is one tap in.
+  const on = detectQuestion(CHECKED(-1, true));
+  assert.deepEqual(on.submit, { label: 'Submit', focused: true });
+  assert.equal(on.cursor, -1);
+  // "Next" is the same row on any question of a set but the last, and it is the
+  // widget's own word for it.
+  const next = CHECKED(0, false).map((l) => l.replace('Submit', 'Next'));
+  assert.deepEqual(detectQuestion(next).submit, { label: 'Next', focused: false });
+});
+
+test('a description that says Submit is not the submit row', () => {
+  // The guard is the checkbox. A question answered outright indents its
+  // descriptions under the label — the very shape the submit row has — so without
+  // it a line of prose under the last option would grow a button that ends a
+  // question nobody was being asked to end.
+  const plain = [
+    'Что делать?',
+    '❯ 1. Раз',
+    '     Что-то одно.',
+    '  2. Два',
+    '     Submit',
+    'Enter to select · ↑/↓ to navigate · Esc to cancel',
+  ];
+  assert.equal(detectQuestion(plain).submit, undefined);
+});
+
+test('nothing below the rule is the submit row', () => {
+  // The rule is where the list ends: under it sits `Chat about this`, which the
+  // arrows do not reach at all.
+  const below = CHECKED(0, false).map((l) => (l.includes('Submit') ? '     ' : l));
+  below[5] = '     Submit';
+  assert.equal(detectQuestion(below).submit, undefined);
+});
+
+test('the submit row is reached one step at a time and pressed only when reached', () => {
+  // The page sees a window rather than a list — the widget scrolls its options to
+  // keep the pointer in view — so the distance to the end cannot be counted. A
+  // batch that fell short would tick a box; one that overshot would land on `Chat
+  // about this` under the rule and answer something else entirely.
+  const walking = detectQuestion(CHECKED(0, false));
+  assert.deepEqual(submitKeys(walking), { move: DOWN, commit: '' });
+  const there = detectQuestion(CHECKED(-1, true));
+  assert.deepEqual(submitKeys(there), { move: '', commit: '\r' });
+  // A single-answer menu has no such row, and a menu that has not said how it is
+  // answered gets no button: a digit toggles the box it names, and this row has no
+  // digit of its own.
+  assert.equal(submitKeys({ navigate: 'arrows', options: [] }), null);
+  assert.equal(submitKeys({ navigate: 'digits', submit: { label: 'Submit', focused: true } }), null);
+  assert.equal(submitKeys(null), null);
 });

@@ -35,7 +35,11 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   its button is drawn outlined, walks the pointer onto the field and hands
   over the keyboard without pressing anything. An Enter over the empty field
   reaches the agent as a refusal to answer, which is what "the button sends a
-  cancel" was.
+  cancel" was. A question that takes several answers is toggled rather than
+  answered: those buttons carry ☐/☑ and an Enter on an option flips the box.
+  What ends such a question is a green `⏎ Submit` button of its own — the page
+  walks the pointer onto that row one step at a time and presses Enter only on
+  the screen that shows the pointer on it.
 - **Clipboard exchange.** The ✂ button turns on selection mode: swiping
   stops scrolling, the text selects natively, and Copy / Paste move it to
   the device clipboard and back into the terminal.
