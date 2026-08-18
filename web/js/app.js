@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v166';
+const APP_VERSION = 'v167';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3201,7 +3201,7 @@ function setSelectMode(on) {
     // The screen first, so the mode opens on the frame it was asked for, and the
     // history behind it when the host answers: a copy window that appeared only
     // after a round trip would read as a button that does nothing.
-    drawSnapshot(snapshotText(visibleLines()), 'screen');
+    drawSnapshot(markdownFrom(snapshotText(visibleLines()), term.cols), 'screen');
     snapshotEl.style.fontSize = `${fontSize}px`;
   }
   snapshotEl.hidden = !on;
@@ -3255,7 +3255,10 @@ function tookCapture(text) {
   // drawn from before anything else looks at the text: what the copy window shows
   // is what the clipboard gets, so the picks, the paragraphs and a selection
   // dragged across them all see one string.
-  const lines = markdownFrom(text).split('\n');
+  // `term.cols` is what tells a thematic break from the input box's own frame: the
+  // frame spans the pane, a break does not, and this capture is of this client's
+  // own pane — so the width the page is drawn at is the width it was drawn with.
+  const lines = markdownFrom(text, term.cols).split('\n');
   // The screen is already at the end of what came back, so this replaces rather
   // than appends — and the view stays where it was put, at the bottom.
   //

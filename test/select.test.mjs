@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { snapshotText, chunks, pickedText, markdownFrom, tablesFrom } from '../web/js/select.js';
+import { snapshotText, chunks, pickedText, markdownFrom, tablesFrom, rulesFrom } from '../web/js/select.js';
 
 test('rows become lines', () => {
   assert.equal(snapshotText(['one', 'two']), 'one\ntwo');
@@ -403,4 +403,36 @@ test('the colour reset inside a rejoined URL is not thrown away with it', () => 
   const wrapped = `${link(uri, 'https://example.org/aaa')}\n  ${link(uri, '/bbb')}`
     + `\x1b[38;5;153mmake\x1b[39m`;
   assert.equal(markdownFrom(wrapped), `${uri}\`make\``);
+});
+
+// --- the rule between paragraphs -------------------------------------------
+// Measured over four live panes: a lone line of `─` comes in exactly two lengths —
+// 40, twenty-four times on one pane and always between two paragraphs, and the
+// pane's own width, exactly twice per pane, above and below the `❯`.
+test('a rule between paragraphs is the thematic break it was written as', () => {
+  assert.equal(rulesFrom('текст\n  ────────────────────\nещё', 163), 'текст\n---\nещё');
+});
+
+test("the input box's own frame is left alone, and the width is what says so", () => {
+  const frame = '─'.repeat(51);
+  assert.equal(rulesFrom(`${frame}\n❯ \n${frame}`, 51), `${frame}\n❯ \n${frame}`);
+  // A rule one column short of the pane is still the frame: tmux pads, thumbs
+  // resize, and a break of exactly that width has never been seen.
+  assert.equal(rulesFrom('─'.repeat(50), 51), '─'.repeat(50));
+});
+
+test('with no width given every lone rule reads as a break', () => {
+  assert.equal(rulesFrom('─'.repeat(51)), '---');
+});
+
+test('a rule with anything else on its line is not a break', () => {
+  // A table border carries junctions, a tool line carries text: `tablesFrom` has
+  // had its go by now, and what is left with company on the line stays as it is.
+  assert.equal(rulesFrom('  ─── и текст\n├────┼────┤', 163), '  ─── и текст\n├────┼────┤');
+});
+
+test('a table is still a table, and its borders are not turned into breaks', () => {
+  // Order matters: the tables pass runs first and eats its own borders.
+  const t = ['┌──────┬──────┐', '│ a    │ b    │', '├──────┼──────┤', '│ c    │ d    │', '└──────┴──────┘'].join('\n');
+  assert.equal(markdownFrom(t, 163), ['| a | b |', '| --- | --- |', '| c | d |'].join('\n'));
 });

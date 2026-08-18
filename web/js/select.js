@@ -39,14 +39,38 @@ const CODE_FG = '153';
 // a single newline, which is where the pane wrapped a sentence. Not across a blank
 // line: that is two paragraphs, and joining them would put one pair of marks around
 // both.
-export function markdownFrom(text) {
+export function markdownFrom(text, cols = 0) {
   const src = String(text == null ? '' : text);
   // Two passes, inline then block. The inline one turns attributes into `**`/
   // backticks and runs only when there is an attribute to read; the block one
-  // turns box tables into Markdown tables and runs always, an unstyled pane
-  // drawing a table with no colour in it at all.
+  // turns box tables into Markdown tables and the rules between paragraphs back
+  // into `---`, and runs always — an unstyled pane draws both with no colour in
+  // them at all.
   const inline = src.includes('\x1b') ? convertInline(linksFrom(src)) : src;
-  return tablesFrom(inline);
+  return rulesFrom(tablesFrom(inline), cols);
+}
+
+// A thematic break is drawn as a rule, and a copy of the rule is box glyphs.
+//
+// Measured over four live panes: a lone line of `─` comes in exactly two lengths.
+// **40**, twenty-four times on one pane, always between two paragraphs — that is
+// the `---` an agent wrote, and 40 rather than anything relative, on a pane 163
+// columns wide. And **the pane's own width**, exactly twice per pane, above and
+// below the `❯`: the input box's frame, which is chrome and stays as it is.
+//
+// So the width is what tells them apart, and it is passed in rather than guessed:
+// the page knows its own `cols`, the capture being of its own client's pane. With
+// no width given every lone rule reads as a break, which is what an old page or a
+// test asking for less would get.
+const RULE_ONLY = /^[ \t]*[─━═]{3,}[ \t]*$/;
+
+export function rulesFrom(text, cols = 0) {
+  return String(text == null ? '' : text).split('\n').map((line) => {
+    if (!RULE_ONLY.test(line)) return line;
+    const drawn = line.trim().length;
+    if (cols > 0 && drawn >= cols - 1) return line; // the input box's own frame
+    return '---';
+  }).join('\n');
 }
 
 // A link is an escape sequence too, and the one the SGR reader was blind to.

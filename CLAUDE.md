@@ -1831,7 +1831,19 @@ picture of it.
 
 tmux gives the attributes back when asked, so `CaptureHistory` asks (`-e`) and `markdownFrom` in
 `js/select.js` reads two of them into text. **Bold is `**`**, headers included — an agent's `##`
-is drawn bold and nothing else, so bold is as much of it as can honestly be recovered. **And the
+is drawn bold and nothing else, so bold is as much of it as can honestly be recovered.
+
+**The level of a header is not on the pane, and that was measured rather than assumed** — asked
+for, and answered by four live panes and some 5000 lines of scrollback. No underline anywhere:
+`\x1b[4m` occurs **0** times on every one of them. No rule under a heading either — the lone rules
+are the thematic breaks below, 40 columns wide on a pane of 163 and unrelated to the width of the
+text above them. No colour: every fully styled line opens with `1m` or the dim `2m` of a
+`… +8 lines (ctrl+o to expand)` hint, and nothing else. And no hashes — the three literal `##`
+lines that exist are a `print("## …")` inside displayed source and a command's own stdout. What a
+header looks like is `\x1b[1mЧто сделано\x1b[0m`, a whole line bold, and a level cannot be read
+out of that. Recovering it would mean **claiming** one, which is the failure this section keeps
+refusing. (The Bun-packed binary answers nothing here: its JS is compressed, and the box glyphs a
+grep finds in it belong to Bun's own TOML writer.) **And the
 light blue is a backtick.** That one is a colour rather than a shape, which this file otherwise
 refuses to read a TUI by, and there is no shape to read instead: an inline code span is coloured
 text and nothing more. So it was measured rather than assumed — off four live panes, Claude Code
@@ -1855,10 +1867,12 @@ than like the screen — which is the point: it is what a paste will produce.
 
 Two things this costs. The frame is bigger, escapes being most of a styled line — one frame per
 entry into the mode, and the alternative was a clipboard without the formatting. And the text the
-mode opens on has **no** marks: that is the page's own screen, read out of xterm's buffer where
-the attributes are not, and it is replaced by the host's answer a round trip later (`data-from`
-says which is on screen). A capture that never comes back is a copy window without Markdown in
-it, which is the same failure as a copy window without history — and it says so the same way.
+mode opens on carries **no inline marks**: that is the page's own screen, read out of xterm's buffer
+where the attributes are not, and it is replaced by the host's answer a round trip later
+(`data-from` says which is on screen). The block passes do run on it — a table and a rule are drawn
+in plain text and need no attributes — so what the two texts differ by is bold, code and links. A
+capture that never comes back is a copy window without those, which is the same failure as a copy
+window without history, and it says so the same way.
 
 **A link is an escape sequence too, and the SGR reader was blind to it.** Found by running this
 converter over the owner's own live panes rather than by a report: 72 escape bytes survived a
@@ -1892,6 +1906,17 @@ line later.
 
 A target carrying a paren takes the `<…>` form, or the first `)` would end the link; a sequence the
 capture window cut in half is dropped rather than shown, 2000 lines ending wherever they end.
+
+**A thematic break is drawn as a rule**, and a copy of the rule is box glyphs. Found while looking
+for those header underlines, which is the second Markdown construct that search turned up rather
+than the one it was after. `rulesFrom` puts the `---` back, and the width is what tells a break
+from chrome: measured over the four panes, a lone line of `─` comes in exactly two lengths — **40**,
+twenty-four times on one pane and always between two paragraphs, on a pane 163 columns wide; and
+**the pane's own width**, exactly twice per pane, above and below the `❯`, which is the input box's
+frame and stays as it is. The width is passed in rather than guessed (`term.cols`, this capture
+being of this client's own pane); with none given every lone rule reads as a break, which is what
+a test asking for less gets. A rule with anything else on its line is not a break, and a table's
+borders never reach this pass — `tablesFrom` runs first and eats its own.
 
 **A table is drawn too, and a copy of it is a wall of box glyphs.** `tablesFrom` in
 `js/select.js` is the same job as the inline pass one level up: what the agent wrote as a pipe
