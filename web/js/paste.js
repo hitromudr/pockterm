@@ -9,20 +9,33 @@ function isImage(f) {
   return !!f && String(f.type || '').startsWith('image/');
 }
 
-// pickImage returns the first image in a DataTransfer, or null.
-export function pickImage(data) {
-  if (!data) return null;
-  for (const f of Array.from(data.files || [])) {
-    if (isImage(f)) return f;
-  }
-  // Chrome exposes a pasted screenshot through items, not files.
+// pickImages returns every image in a DataTransfer, in the order it carries
+// them. A drop from a file manager and a picker's selection both arrive as
+// several, and one screenshot is that with a length of one.
+//
+// `files` wins whole when it holds any image: the same picture is exposed
+// through both lists, so collecting from each in turn would attach it twice.
+// The items are the fallback because Chrome exposes a *pasted* screenshot only
+// there.
+export function pickImages(data) {
+  if (!data) return [];
+  const files = Array.from(data.files || []).filter(isImage);
+  if (files.length) return files;
+  const out = [];
   for (const it of Array.from(data.items || [])) {
     if (it.kind === 'file' && String(it.type || '').startsWith('image/')) {
       const f = it.getAsFile && it.getAsFile();
-      if (f) return f;
+      if (f) out.push(f);
     }
   }
-  return null;
+  return out;
+}
+
+// imageFiles filters what a file chooser handed over. `accept="image/*"` is a
+// hint to the picker and not a promise from it — on Android the gallery is one
+// app among several, and a file manager offering "all files" is a tap away.
+export function imageFiles(list) {
+  return Array.from(list || []).filter(isImage);
 }
 
 // carriesFiles answers the dragover question. During a drag the payload is

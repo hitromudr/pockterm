@@ -3,7 +3,7 @@
 // Every case here is a bug that was found on the phone instead of in CI.
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
+import { readdirSync, existsSync } from 'node:fs';
 import { startStand, FAKE_IME } from './stand.mjs';
 import { readFileSync } from 'node:fs';
 
@@ -1998,6 +1998,47 @@ describe('pasting an image', () => {
     // matters is that this paste added a file of its own.
     const saved = readdirSync(stand.uploads).filter((f) => f.endsWith('.png'));
     assert.ok(saved.length >= 1, `uploads holds ${JSON.stringify(saved)}`);
+  });
+
+  test('several screenshots picked at once arrive as one message', async () => {
+    // A message about a screen is often about three of them, and one upload is
+    // one request: `/api/upload` takes a body rather than a form. So a selection
+    // is a request each, one after another, and the paths are typed in a single
+    // write — bracketed paste is what makes that one message to the agent instead
+    // of one per picture.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    // The store's directory is made by the first upload, so a run of this test on
+    // its own finds no directory at all — not an empty one.
+    const shots = () => (existsSync(stand.uploads)
+      ? readdirSync(stand.uploads).filter((f) => f.endsWith('.png')) : []);
+    const before = shots().length;
+    // The pane runs `cat`, so what is typed comes back on the screen and the two
+    // paths can be read off it.
+    await page.click('#term');
+    await page.setInputFiles('#pick-file', ['one.png', 'two.png'].map((name) => ({
+      name, mimeType: 'image/png', buffer: Buffer.from(PNG_B64, 'base64'),
+    })));
+
+    await page.waitForFunction(
+      () => /attached 2 images/.test(document.getElementById('toast').textContent || ''),
+      null, { timeout: 15000 },
+    );
+    const saved = shots();
+    assert.equal(saved.length, before + 2, `uploads holds ${JSON.stringify(saved)}`);
+
+    // Both paths on the screen, and nothing typed between them: they went as one
+    // write, so what the agent is handed names two files in one message.
+    await page.waitForFunction(() => {
+      const seen = document.querySelector('.xterm-rows')?.textContent || '';
+      return (seen.match(/paste-[^\s]+\.png/g) || []).length >= 2;
+    }, null, { timeout: 5000 });
+    const typed = await page.evaluate(() => document.querySelector('.xterm-rows').textContent);
+    const names = (typed.match(/paste-[-0-9a-zA-Z]+\.png/g) || []);
+    assert.ok(names.length >= 2, `the terminal holds ${JSON.stringify(typed.slice(-160))}`);
+    assert.notEqual(names[0], names[1], 'the same file was attached twice');
   });
 });
 

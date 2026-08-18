@@ -1931,6 +1931,33 @@ by the proxy's status code), and it takes a deploy of that role to be in force. 
 names the proxy instead of pasting nginx's HTML into a toast, and logs the failure with
 its status and the size.
 
+## A message about screens is usually about several of them
+
+One upload is one request — `/api/upload` takes a body, not a form — so a selection of
+screenshots is a request each. `attachImages` sends them **one after another**: the phone
+reaches this host down a single tunnel, the proxy in front bounds each body rather than the
+batch, and the paths have to be typed in the order they were picked.
+
+**The paths go out in one write**, once the last upload is in. `term.paste` honours
+bracketed paste, so what the agent is handed is one message naming several files rather
+than one message per picture — and a message per picture is a turn per picture.
+
+Where several can arrive: the file chooser (`multiple`, and on a phone the only such path —
+the clipboard holds one picture and there is nothing to drag a file onto), a drop from a
+desktop file manager, and a paste. `pickImages` reads `files` **whole when it holds any
+image** and falls back to `items` only otherwise: a drop exposes the same picture through
+both lists, and collecting from each in turn uploaded it twice. `imageFiles` filters the
+chooser's own answer, `accept="image/*"` being a hint to the picker rather than a promise
+from it.
+
+Two bounds, both about saying what happened. `ATTACH_MAX` is 10 — a gallery keeps "select
+all" within reach of the thumb that picks two screenshots, and each one is a request and a
+file on this host's disk — and what is left over is **said** rather than dropped quietly.
+And a batch that lost one of its pictures says so against what was picked: the paths that
+did arrive are on screen, so counting them is the only way to notice from a phone. Every
+upload keeps its own journal line, now with `n` and `of` in it, which is what tells a batch
+from three separate pastes.
+
 ## Deploy
 
 A push to `main` builds, tests and hands the binary over, and **the host installs it at

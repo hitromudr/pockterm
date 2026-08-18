@@ -302,7 +302,9 @@
       <button data-key="enter">&#9166;</button>
       <button id="hide" title="Hide the bars">&#9662;</button>
     </div>
-    <input id="pick-file" type="file" accept="image/*" hidden>
+    <!-- `multiple`: several screenshots make one message, and on a phone this
+         picker is the only path that can carry more than one of them. -->
+    <input id="pick-file" type="file" accept="image/*" multiple hidden>
     <!-- The only thing left on screen when everything is hidden. -->
     <button id="show-bars" title="Show the bars" hidden>&#9652;</button>
     <div id="modebar">
@@ -314,7 +316,7 @@
            only way to attach one is to pick it. A button rather than a label
            around the input: the bar's buttons are told not to take focus, and
            on a label that also swallowed the click that opens the picker. -->
-      <button id="pick" title="Attach an image">&#128206;</button>
+      <button id="pick" title="Attach images">&#128206;</button>
       <button id="mode" title="Prompt mode">&#128172;</button>
     </div>
   </div>

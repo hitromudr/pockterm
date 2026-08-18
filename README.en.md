@@ -51,7 +51,9 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   (so does Ctrl+V, or dropping a file): only keystrokes fit through a pty,
   so the image goes to the server, lands as a file under the user's cache
   directory, and the terminal receives its path — which an agent reads
-  anyway.
+  anyway. Several screenshots can be picked at once (📎, up to ten): they
+  upload one after another and their paths are typed in a single write, so the
+  agent gets one message about several files rather than one message each.
 - **Sessions from the UI.** `+` starts one from a fixed preset (`shell`,
   `claude`, `yolo`, `continue`), `✎` renames, `✕` closes in two taps. The page
   never sends a command, only a preset name, and the same Makefile people use
