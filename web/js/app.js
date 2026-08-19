@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v171';
+const APP_VERSION = 'v172';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -427,26 +427,42 @@ foldersBtn.addEventListener('click', () => showFolders(!foldersShown));
 // Opening the presets over the terminal, and — the part that was missing —
 // closing them again. One tap anywhere outside does it, through an invisible
 // scrim that covers the header as well, so the + closes the menu it opened.
+//
+// Two popups hang over this screen now — the presets under `+` and the clip's
+// two sources under 📎 — and **one scrim serves both**. Two would be two
+// answers to what a tap outside does, and they would cover each other; so the
+// scrim belongs to whichever is open, and opening one closes the other. What
+// is open is one fact and lives here.
 const menuScrim = document.getElementById('menu-scrim');
-function setTermMenu(open) {
-  if (!newMenuTerm) return;
+const attachMenu = document.getElementById('attach-menu');
+const pickBtn = document.getElementById('pick');
+let termPopup = null; // 'presets' | 'attach' | null
+function showTermPopup(which) {
+  termPopup = which;
+  menuScrim.hidden = !which;
+  if (newMenuTerm) newMenuTerm.hidden = which !== 'presets';
+  if (newTermBtn) newTermBtn.classList.toggle('on', which === 'presets');
+  if (attachMenu) attachMenu.hidden = which !== 'attach';
+  if (pickBtn) pickBtn.classList.toggle('on', which === 'attach');
   // The + over the terminal is the root: the folder list lives in the drawer,
   // and a folder tapped there must not follow the owner onto another screen.
-  if (open) setPendingDir(null);
-  newMenuTerm.hidden = !open;
-  menuScrim.hidden = !open;
-  newTermBtn.classList.toggle('on', open);
+  if (which === 'presets') setPendingDir(null);
 }
+function setTermMenu(open) {
+  if (!newMenuTerm) return;
+  showTermPopup(open ? 'presets' : null);
+}
+
+keepsTerminalFocus(menuScrim);
+menuScrim.addEventListener('click', () => showTermPopup(null));
 
 if (newTermBtn) {
   keepsTerminalFocus(newTermBtn);
-  keepsTerminalFocus(menuScrim);
   newTermBtn.addEventListener('click', async () => {
-    const opening = newMenuTerm.hidden;
-    setTermMenu(opening);
+    const opening = termPopup !== 'presets';
+    showTermPopup(opening ? 'presets' : null);
     if (opening) await customReady;
   });
-  menuScrim.addEventListener('click', () => setTermMenu(false));
 }
 
 function wirePreset(b) {
@@ -2531,6 +2547,11 @@ function setPanelsHidden(on) {
   panelsHidden = on;
   screenTerm.classList.toggle('panels-hidden', on);
   showBarsBtn.hidden = !on;
+  // A popup hanging off a bar goes with the bar. The clip's own is drawn inside
+  // #modebar and disappears with it, but the scrim it left behind would not:
+  // an invisible sheet over the whole screen, eating the first tap on a
+  // terminal that was just given the whole of it.
+  if (on) showTermPopup(null);
   refit();
 }
 document.getElementById('hide').addEventListener('click', () => setPanelsHidden(true));
@@ -3609,7 +3630,30 @@ pasteTargetEl.addEventListener('blur', () => {
 // several can be chosen on a phone at all: the clipboard holds one picture and
 // there is nothing to drag a file onto. It is also the only path to a document,
 // which is neither on the clipboard nor draggable there.
-document.getElementById('pick').addEventListener('click', () => pickFileEl.click());
+//
+// **The clip asks which source before it opens anything.** `accept` decides
+// which app Android offers and no single value asks for both: `image/*` opens
+// the gallery, where a document cannot be reached at all, and no `accept` opens
+// the file manager, where a screenshot is three taps in. Dropping the filter
+// altogether made documents possible and screenshots — the common case —
+// slower, which is trading one for the other rather than having both.
+//
+// Each answer sets the filter and opens the **same** input: two inputs would be
+// two answers to what has just been picked, and `change` fires on whichever was
+// used. The picker is opened from inside the tap on the source, a browser
+// handing a file chooser to a gesture and to nothing else.
+const ATTACH_SOURCES = [['attach-image', 'image/*'], ['attach-doc', '']];
+keepsTerminalFocus(pickBtn);
+pickBtn.addEventListener('click', () => showTermPopup(termPopup === 'attach' ? null : 'attach'));
+for (const [id, accept] of ATTACH_SOURCES) {
+  const b = document.getElementById(id);
+  keepsTerminalFocus(b);
+  b.addEventListener('click', () => {
+    pickFileEl.accept = accept;
+    showTermPopup(null);
+    pickFileEl.click();
+  });
+}
 pickFileEl.addEventListener('change', () => {
   const files = chosenFiles(pickFileEl.files);
   pickFileEl.value = ''; // so picking the same file twice fires again

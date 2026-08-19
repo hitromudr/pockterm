@@ -2131,23 +2131,56 @@ describe('attaching a file', () => {
   before(async () => { stand = await startStand(); });
   after(async () => { await stand.stop(); });
 
-  test('the attach button opens the picker, and a picked file is uploaded', async () => {
+  test('the clip asks which source, and each opens the picker with its own filter', async () => {
+    // One `accept` cannot ask for both: `image/*` opens the gallery, where a
+    // document cannot be reached at all, and no filter opens the file manager,
+    // where a screenshot is three taps in. So the clip opens a menu, and the
+    // picker itself is opened from inside the tap on a source — a browser hands
+    // a file chooser to a gesture and to nothing else.
     await stand.open();
     await stand.attach();
     const { page } = stand;
 
-    // The picker itself is the app's business; what must hold here is that the
-    // button reaches the input at all. It stopped doing that once, when the
-    // bar's "do not take focus" rule was applied to the label around it.
-    const opened = await page.evaluate(() => new Promise((resolve) => {
-      const input = document.getElementById('pick-file');
-      input.addEventListener('click', (e) => { e.preventDefault(); resolve(true); }, { once: true });
-      document.getElementById('pick').click();
-      setTimeout(() => resolve(false), 1000);
-    }));
-    assert.ok(opened, 'the attach button never reached the file input');
+    await page.click('#pick');
+    await page.waitForSelector('#attach-menu:not([hidden])');
+    // Lit while it is open, like every other lever here.
+    assert.equal(await page.locator('#pick.on').count(), 1);
 
-    // And a picked file goes through the same upload as a paste.
+    for (const [sel, accept] of [['#attach-image', 'image/*'], ['#attach-doc', '']]) {
+      if (await page.locator('#attach-menu[hidden]').count()) {
+        await page.click('#pick');
+        await page.waitForSelector('#attach-menu:not([hidden])');
+      }
+      // The picker is the app's business; what must hold here is that the
+      // source reaches the input at all, and with its own filter on it. The
+      // button stopped reaching it once already, when the bar's "do not take
+      // focus" rule was applied to a label around it.
+      const asked = await page.evaluate((where) => new Promise((resolve) => {
+        const input = document.getElementById('pick-file');
+        input.addEventListener('click', (e) => { e.preventDefault(); resolve(input.accept); }, { once: true });
+        document.querySelector(where).click();
+        setTimeout(() => resolve('the picker never opened'), 1000);
+      }), sel);
+      assert.equal(asked, accept, `${sel} opened the picker with accept=${JSON.stringify(asked)}`);
+      // Gone once a source has been chosen: it stands in front of the bar.
+      await page.waitForSelector('#attach-menu', { state: 'hidden' });
+    }
+
+    // And a tap outside closes it having opened nothing — the scrim covers the
+    // clip as well, so the button that opened the menu dismisses it too.
+    await page.click('#pick');
+    await page.waitForSelector('#attach-menu:not([hidden])');
+    await page.click('#menu-scrim');
+    await page.waitForSelector('#attach-menu', { state: 'hidden' });
+    assert.equal(await page.locator('#pick.on').count(), 0);
+  });
+
+  test('a picked file is uploaded', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    // A picked file goes through the same upload as a paste.
     await page.setInputFiles('#pick-file', {
       name: 'shot.png',
       mimeType: 'image/png',

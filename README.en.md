@@ -49,7 +49,9 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   clipboard.
 - **Files, not only pictures.** A screenshot arrives through Paste (so does
   Ctrl+V, or dropping a file), and 📎 picks anything off the device — a spec, a
-  log, a patch, a note. Only keystrokes fit through a pty, so the bytes go to
+  log, a patch, a note. The clip asks which source first (🖼 pictures,
+  📄 documents), because the filter that opens Android on the gallery is the one
+  that hides every document, and no filter at all buries the screenshots. Only keystrokes fit through a pty, so the bytes go to
   the server, land as a file under the user's cache directory, and the terminal
   receives the path — which an agent reads anyway. An image is recognised by
   its bytes and keeps the extension they earn; anything else keeps the name it

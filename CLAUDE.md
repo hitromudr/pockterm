@@ -2220,6 +2220,28 @@ The store's other bounds are unchanged and now cover more: 0600 (a document hold
 screenshot holds), `MaxBytes` at 10 MB with the proxy's own limit just above it, and the
 24-hour sweep — a file handed to an agent is a scratch file whatever is in it.
 
+**And the clip asks which source, because `accept` cannot ask for both.** Dropping the
+filter was what let a document in, and it made the common case slower: `accept="image/*"`
+opens Android's chooser on the gallery and puts a document out of reach entirely, no
+`accept` opens the file manager and buries a screenshot three taps in. That is trading one
+for the other rather than having both, so 📎 opens a popup — 🖼 Картинки, 📄 Документы — and
+each answer sets the filter and opens the **same** input. Two inputs would be two answers to
+what has just been picked. The picker is opened from inside the tap on a source, a browser
+handing a file chooser to a gesture and to nothing else, which is the same rule
+`askKeyboard` lives by.
+
+Three things it inherits from the popups already here. It is **drawn over the terminal**,
+anchored to `#modebar` itself (`bottom: 100%`) rather than to a number of pixels — the bar is
+padding plus the system inset, and the pager's own 64px guess ended up sitting on the
+composer's ▶. It **shares the one scrim** with the presets under `+`: two would be two
+answers to what a tap outside does, so `showTermPopup` owns which is open and opening one
+closes the other — including `setPanelsHidden`, since a scrim left behind by a popup whose
+bar has just been hidden is an invisible sheet over the whole screen. And **nothing in it
+takes focus** (`keepsTerminalFocus` on the clip, the sources and the scrim). The CSS is two
+ids deep (`#modebar #attach-menu button`) because `#modebar button` matches those buttons
+too, and equal specificity would leave the answer to whichever rule was written last — the
+same trap that drew the mark picker's button as a full-width bar.
+
 ## Deploy
 
 A push to `main` builds, tests and hands the binary over, and **the host installs it at

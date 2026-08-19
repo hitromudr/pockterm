@@ -1336,6 +1336,8 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
      system inset for everything above it. */
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
   background: var(--bar);
+  /* What the clip's popup hangs from. */
+  position: relative;
 }
 #modebar button {
   flex: 1;
@@ -1349,6 +1351,39 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #modebar #select, #modebar #mode { flex: 0 0 48px; font-size: 17px; }
 #modebar #paste { flex: 1; }
 #modebar button.on { background: var(--accent); color: #0b0e14; font-weight: 600; }
+/* The clip's two sources. Anchored to the bar itself (`bottom: 100%`) rather
+   than to a number of pixels: the bar is padding plus the system inset, and
+   every guess in this file about how tall the bars are has cost a release —
+   the pager was pinned 64px above the bottom and ended up on the composer's ▶.
+   Above the scrim (12) for the same reason the presets popup is. */
+#modebar #attach-menu {
+  position: absolute;
+  right: 6px;
+  bottom: calc(100% + 6px);
+  z-index: 13;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 190px;
+  max-width: calc(100% - 12px);
+  padding: 6px;
+  background: var(--bar);
+  border: 1px solid #2a3345;
+  border-radius: 10px;
+}
+/* Two ids deep on purpose: `#modebar button` matches these as well, and equal
+   specificity would leave the answer to whichever rule was written last. */
+#modebar #attach-menu button {
+  flex: 0 0 auto;
+  padding: 12px 10px;
+  font-size: 15px;
+  text-align: left;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 8px;
+}
+#modebar #attach-menu button:active { background: #3a4458; }
 /* Not a control: what is running, for when something looks stale. */
 #versions {
   flex: 0 0 auto;
