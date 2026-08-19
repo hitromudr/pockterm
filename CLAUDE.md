@@ -2152,11 +2152,21 @@ path reported, so "413 при загрузке фото" arrived with nothing in
 beside it — and 413 is a status this server never sends. It comes from the nginx in front,
 whose default body limit is one megabyte: a screenshot is a few hundred kilobytes and went
 through for months, a camera frame is several megabytes and never did. The limit lives in
-the `pockterm_vhost` role in the devops repository (`client_max_body_size 12M`, just above
-`upload.MaxBytes` so an oversized image is refused by this program's own words rather than
+the `pockterm_vhost` role in the devops repository (`client_max_body_size`, just above
+`upload.MaxBytes` so an oversized file is refused by this program's own words rather than
 by the proxy's status code), and it takes a deploy of that role to be in force. The page
 names the proxy instead of pasting nginx's HTML into a toast, and logs the failure with
 its status and the size.
+
+**The two numbers are one setting in two repositories, and only one of them takes effect on
+its own.** Raised to 20 MB / 22 MB on 2026-08-19, for documents — a scanned PDF is what a
+camera frame was to the old bound. Between them lies a range that comes back as a 413 this
+server never sent, so a bump here that is not matched there buys nothing above the proxy's
+number: `MaxBytes` cannot be the answer to "how large may a file be" while something in
+front says less. And the deploys are not the same either — this binary is installed by CI on
+every push to `main`, the vhost by an ansible role run from the laptop
+(`make deploy-pockterm-vhost` in devops, `hosts: control_node`, which is HITRO; the malina
+cannot reach it from inside the sandbox).
 
 ## A message about screens is usually about several of them
 
@@ -2217,7 +2227,8 @@ business transliterating the owner's own names, and what makes a path hazardous 
 punctuation. A name left with nothing in it is no name, and then the image rule stands alone.
 
 The store's other bounds are unchanged and now cover more: 0600 (a document holds whatever a
-screenshot holds), `MaxBytes` at 10 MB with the proxy's own limit just above it, and the
+screenshot holds), `MaxBytes` at 20 MB with the proxy's own limit just above it (see the
+Diagnostics section: the two move together or the higher one is decoration), and the
 24-hour sweep — a file handed to an agent is a scratch file whatever is in it.
 
 **And the clip asks which source, because `accept` cannot ask for both.** Dropping the

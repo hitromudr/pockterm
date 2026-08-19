@@ -18,12 +18,19 @@ import (
 	"unicode"
 )
 
-// MaxBytes caps a single upload. A phone screenshot and a document are well
-// under it; larger is either a mistake or an attempt to fill the disk of a
-// box that also serves git and passwords. The proxy in front has a bound of
-// its own and it is set just above this one, so what is too large is refused
-// in this program's own words rather than by a status code.
-const MaxBytes = 10 << 20
+// MaxBytes caps a single upload. A phone screenshot is a few hundred
+// kilobytes and a camera frame a few megabytes; a scanned document is what
+// pushed this to 20 MB, the owner's own 44-page PDF having arrived at 6 MB.
+// Larger than this is either a mistake or an attempt to fill the disk of a box
+// that also serves git and passwords.
+//
+// **The proxy in front bounds the body too, and its number has to move with
+// this one.** It is set just above (`client_max_body_size` in the
+// `pockterm_vhost` role, devops), so that what is too large is refused in this
+// program's own words rather than by a status code with a page of HTML behind
+// it — raise this alone and everything between the two bounds comes back as a
+// 413 nothing here ever sent.
+const MaxBytes = 20 << 20
 
 // Keep is how long a saved file stays on disk. Nobody comes back to clean
 // up, and the file is only needed while the agent reads it.

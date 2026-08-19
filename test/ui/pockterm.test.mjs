@@ -2296,6 +2296,40 @@ describe('attaching a file', () => {
       return seen.replace(/\s+/g, '').includes(name);
     }, saved[0], { timeout: 5000 });
   });
+
+  test('a batch of documents is one message, and a picture may travel in it', async () => {
+    // The batch was written for screenshots and nothing in it ever asked what a
+    // file was — but "several documents at once" is a question about behaviour,
+    // not about intent, and the answer has to be held to rather than inferred
+    // from a filter that is no longer there. Mixed on purpose: one pick can
+    // carry both, and both are one message to the agent.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    const has = (ext) => (existsSync(stand.uploads)
+      ? readdirSync(stand.uploads).filter((f) => f.endsWith(ext)) : []);
+    const before = has('.txt').length;
+    await page.click('#term');
+    await page.setInputFiles('#pick-file', [
+      { name: 'first.txt', mimeType: 'text/plain', buffer: Buffer.from('first note\n') },
+      { name: 'second.txt', mimeType: 'text/plain', buffer: Buffer.from('second note\n') },
+      { name: 'shot.png', mimeType: 'image/png', buffer: Buffer.from(PNG_B64, 'base64') },
+    ]);
+
+    await page.waitForFunction(
+      () => /attached 3 files/.test(document.getElementById('toast').textContent || ''),
+      null, { timeout: 20000 },
+    );
+    assert.equal(has('.txt').length, before + 2, `uploads holds ${JSON.stringify(has('.txt'))}`);
+
+    // One write: the three paths are on one line, in the order they were
+    // picked, which is what bracketed paste makes a single message out of.
+    await page.waitForFunction(() => {
+      const seen = (document.querySelector('.xterm-rows')?.textContent || '').replace(/\s+/g, '');
+      return /first\.txt.*second\.txt.*shot\.png/.test(seen);
+    }, null, { timeout: 5000 });
+  });
 });
 
 describe('opening a named session', () => {
