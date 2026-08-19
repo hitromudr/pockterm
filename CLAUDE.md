@@ -2168,6 +2168,12 @@ every push to `main`, the vhost by an ansible role run from the laptop
 (`make deploy-pockterm-vhost` in devops, `hosts: control_node`, which is HITRO; the malina
 cannot reach it from inside the sandbox).
 
+Both halves are in force since 2026-08-19, and they were **measured through the door rather
+than read off the two files**: a 13 MB body — over the old proxy bound, under the new one —
+comes back `200` with a path, and 21 MB comes back `400 larger than 20971520 bytes`, which is
+this program's own sentence and not the proxy's HTML. That second answer is the whole point of
+the ordering, and it is the only one of the two that says which bound was reached.
+
 ## A message about screens is usually about several of them
 
 One upload is one request — `/api/upload` takes a body, not a form — so a selection of
