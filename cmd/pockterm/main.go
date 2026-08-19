@@ -290,11 +290,11 @@ func serve() {
 	log.Fatal(http.ListenAndServe(cfg.Listen, h))
 }
 
-// uploader wires the store for images pasted in the browser, or returns nil
-// to leave /api/upload absent. Files land in the user's cache directory: a
-// pasted screenshot is a scratch file, not something to keep next to the
-// service's own data.
-func uploader(cfg config.Config) func(io.Reader) (string, error) {
+// uploader wires the store for what is pasted, dropped or picked in the
+// browser, or returns nil to leave /api/upload absent. Files land in the
+// user's cache directory: a screenshot or a document handed to an agent is a
+// scratch file, not something to keep next to the service's own data.
+func uploader(cfg config.Config) func(io.Reader, string) (string, error) {
 	dir := cfg.UploadDir
 	if dir == "off" {
 		return nil
@@ -302,12 +302,12 @@ func uploader(cfg config.Config) func(io.Reader) (string, error) {
 	if dir == "" {
 		cache, err := os.UserCacheDir()
 		if err != nil {
-			log.Printf("no cache directory, image paste is off: %v", err)
+			log.Printf("no cache directory, uploads are off: %v", err)
 			return nil
 		}
 		dir = filepath.Join(cache, "pockterm", "uploads")
 	}
-	log.Printf("image paste on, saving to %s", dir)
+	log.Printf("uploads on, saving to %s", dir)
 	return upload.Store{Dir: dir}.Save
 }
 

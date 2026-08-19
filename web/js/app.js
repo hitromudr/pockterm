@@ -2,7 +2,7 @@ import { keyBytes, applyCtrl } from './keys.js';
 import { detectPrompt, answerKeys, submitKeys } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from './notify.js';
 import { linkAction } from './link.js';
-import { pickImages, imageFiles, carriesFiles, firstImage } from './paste.js';
+import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
 import { snapshotText, chunks, pickedText, markdownFrom } from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v170';
+const APP_VERSION = 'v171';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3444,23 +3444,35 @@ document.getElementById('copy').addEventListener('click', async () => {
   toast(`copied ${what} (${how}): ${preview(text)}`);
 });
 
-// --- pasting an image ---
-// The pty carries keystrokes, so an image cannot go into the terminal at
+// --- attaching a file ---
+// The pty carries keystrokes, so a file cannot go into the terminal at
 // all. It goes to the server instead, which saves it and answers with a
 // path; the path is what gets typed. Claude Code reads a file mentioned in
 // the prompt, so from the phone this is the same gesture as pasting text.
 //
+// **Not only pictures.** A spec, a log, a patch or a note reaches an agent by
+// exactly the same road, and for a while the page was the only thing refusing
+// to carry them. What a document costs that a screenshot does not is its name:
+// the bytes of a PNG say what they are, while a Makefile, a patch and a note
+// are one content type between them — so the browser's own `File.name` goes
+// with the body and the server keeps what is safe of it.
+//
 // One upload is one request: `/api/upload` takes a body, not a form, so a
-// selection of screenshots is a request each. They go **one after another** and
-// not at once — the phone reaches this host down a single tunnel, the proxy in
-// front bounds each body rather than the batch, and the paths have to be typed in
-// the order they were picked.
-async function uploadImage(file, n, of) {
+// selection is a request each. They go **one after another** and not at once —
+// the phone reaches this host down a single tunnel, the proxy in front bounds
+// each body rather than the batch, and the paths have to be typed in the order
+// they were picked.
+async function uploadFile(file, n, of) {
   const kb = Math.max(1, Math.round((file.size || 0) / 1024));
   toast(of > 1 ? `uploading ${n} of ${of} (${kb} KB)…` : `uploading ${kb} KB…`);
   let res;
   try {
-    res = await fetch(`/api/upload?${tokenQS}`, {
+    // A clipboard blob has no name at all, which is the case the server reads
+    // as "this had better be an image". The pair is assembled rather than
+    // glued: a host with no token leaves `tokenQS` empty.
+    const named = file.name ? `name=${encodeURIComponent(file.name)}` : '';
+    const qs = [tokenQS, named].filter(Boolean).join('&');
+    res = await fetch(`/api/upload${qs ? `?${qs}` : ''}`, {
       method: 'POST',
       headers: { 'Content-Type': file.type || 'application/octet-stream' },
       body: file,
@@ -3500,11 +3512,11 @@ async function uploadImage(file, n, of) {
 // each. What is left over is said rather than dropped quietly.
 const ATTACH_MAX = 10;
 
-// Attach one image or a selection of them. The paths are typed in **one** write
+// Attach one file or a selection of them. The paths are typed in **one** write
 // once the last upload is in: `term.paste` honours bracketed paste, so a batch
 // arrives at the agent as one message with several files in it rather than as one
-// message per screenshot.
-async function attachImages(list) {
+// message per file.
+async function attachFiles(list) {
   const all = Array.from(list || []);
   if (!all.length) return;
   const files = all.slice(0, ATTACH_MAX);
@@ -3513,7 +3525,7 @@ async function attachImages(list) {
   const paths = [];
   const failed = [];
   for (let i = 0; i < files.length; i++) {
-    const { path, why } = await uploadImage(files[i], i + 1, files.length);
+    const { path, why } = await uploadFile(files[i], i + 1, files.length);
     if (path) paths.push(path);
     else failed.push(why);
   }
@@ -3524,9 +3536,9 @@ async function attachImages(list) {
   // what the user types next.
   if (selectMode) setSelectMode(false);
   const what = paths.length > 1
-    ? `attached ${paths.length} images`
+    ? `attached ${paths.length} files`
     : `attached ${paths[0].split('/').pop()}`;
-  // A batch that lost one of its pictures must say so: the paths that did arrive
+  // A batch that lost one of its files must say so: the paths that did arrive
   // are on screen, and counting them against what was picked is the only way to
   // notice from a phone.
   const left = all.length - paths.length;
@@ -3534,20 +3546,20 @@ async function attachImages(list) {
 }
 
 document.addEventListener('paste', (e) => {
-  const images = pickImages(e.clipboardData);
-  if (!images.length) return; // text: leave the terminal's own paste path alone
+  const files = pickFiles(e.clipboardData);
+  if (!files.length) return; // text: leave the terminal's own paste path alone
   e.preventDefault();
-  attachImages(images);
+  attachFiles(files);
 });
 
 // Drag and drop from a desktop file manager, same destination — and a drop is
 // where several files arrive most naturally.
 document.addEventListener('dragover', (e) => { if (carriesFiles(e.dataTransfer)) e.preventDefault(); });
 document.addEventListener('drop', (e) => {
-  const images = pickImages(e.dataTransfer);
-  if (!images.length) return;
+  const files = pickFiles(e.dataTransfer);
+  if (!files.length) return;
   e.preventDefault();
-  attachImages(images);
+  attachFiles(files);
 });
 
 // One way in for pasted text, whichever path produced it.
@@ -3592,15 +3604,16 @@ pasteTargetEl.addEventListener('blur', () => {
   }, 600);
 });
 
-// Attach images from storage. On Android a screenshot is a file, not clipboard
+// Attach files from storage. On Android a screenshot is a file, not clipboard
 // content, so this is the only path that reaches it — and the only one where
 // several can be chosen on a phone at all: the clipboard holds one picture and
-// there is nothing to drag a file onto.
+// there is nothing to drag a file onto. It is also the only path to a document,
+// which is neither on the clipboard nor draggable there.
 document.getElementById('pick').addEventListener('click', () => pickFileEl.click());
 pickFileEl.addEventListener('change', () => {
-  const files = imageFiles(pickFileEl.files);
+  const files = chosenFiles(pickFileEl.files);
   pickFileEl.value = ''; // so picking the same file twice fires again
-  attachImages(files);
+  attachFiles(files);
 });
 
 document.getElementById('paste').addEventListener('click', async () => {
@@ -3627,14 +3640,14 @@ document.getElementById('paste').addEventListener('click', async () => {
     // permission; the image case is worth trying before giving up.
     const image = await clipboardImage();
     report('paste-refused', { error: (e && e.name) || 'error', gotImage: !!image });
-    if (image) { attachImages([image]); return; }
+    if (image) { attachFiles([image]); return; }
     openPasteTarget(`browser refused the clipboard (${(e && e.name) || 'error'}) — paste here`);
     return;
   }
   if (!text) {
     const image = await clipboardImage();
     report('paste', { via: 'image', found: !!image });
-    if (image) { attachImages([image]); return; }
+    if (image) { attachFiles([image]); return; }
     openPasteTarget('clipboard looks empty — paste here');
     return;
   }

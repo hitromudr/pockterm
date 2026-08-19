@@ -47,13 +47,17 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   it, a press on a marked one drops it, a plain tap on text does nothing, and
   Copy hands over what is marked in the order it is on screen. Nothing outside the frozen copy ever reaches the
   clipboard.
-- **Images from the clipboard.** The same Paste button takes a screenshot
-  (so does Ctrl+V, or dropping a file): only keystrokes fit through a pty,
-  so the image goes to the server, lands as a file under the user's cache
-  directory, and the terminal receives its path — which an agent reads
-  anyway. Several screenshots can be picked at once (📎, up to ten): they
-  upload one after another and their paths are typed in a single write, so the
-  agent gets one message about several files rather than one message each.
+- **Files, not only pictures.** A screenshot arrives through Paste (so does
+  Ctrl+V, or dropping a file), and 📎 picks anything off the device — a spec, a
+  log, a patch, a note. Only keystrokes fit through a pty, so the bytes go to
+  the server, land as a file under the user's cache directory, and the terminal
+  receives the path — which an agent reads anyway. An image is recognised by
+  its bytes and keeps the extension they earn; anything else keeps the name it
+  was picked under, reduced to one word a terminal line can carry
+  (`заметки по стенду.md` → `…-заметки-по-стенду.md`), because that extension
+  is what tells an agent what it is holding. Up to ten at a time: they upload
+  one after another and their paths are typed in a single write, so the agent
+  gets one message about several files rather than one message each.
 - **Sessions from the UI.** `+` starts one from a fixed preset (`shell`,
   `claude`, `yolo`, `continue`), `✎` renames, `✕` closes in two taps. The page
   never sends a command, only a preset name, and the same Makefile people use
@@ -198,7 +202,7 @@ URL.
 | `POCKTERM_IDLE` | `30s` | How much silence counts as "finished". |
 | `POCKTERM_NOTIFY_FILE` | a file in the user's config dir | Where the notification switch is remembered; `off` keeps it in memory (lost on restart). |
 | `POCKTERM_PRESETS_FILE` | a file in the user's config dir | Where the custom session buttons are remembered; `off` keeps them in memory. |
-| `POCKTERM_UPLOAD_DIR` | user cache dir | Where pasted images are saved; `off` disables uploads. |
+| `POCKTERM_UPLOAD_DIR` | user cache dir | Where attached files are saved (images and documents alike); `off` disables uploads. |
 | `POCKTERM_SESSION_DIR` | the service's working dir | Where the session Makefile lives (the + button); `off` refuses to start any. |
 
 ## Starting sessions from the phone (the + button)

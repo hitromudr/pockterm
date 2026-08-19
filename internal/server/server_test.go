@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -492,11 +493,11 @@ func TestConcurrentOutputAndPing(t *testing.T) {
 	}
 }
 
-// --- image upload ---
+// --- upload ---
 
 // uploadOptions accepts anything and reports where it "saved" it, so the
 // endpoint can be tested without a disk.
-func uploadOptions(token string, save func(io.Reader) (string, error)) Options {
+func uploadOptions(token string, save func(io.Reader, string) (string, error)) Options {
 	o := testOptions(token)
 	o.SaveUpload = save
 	return o
@@ -504,7 +505,7 @@ func uploadOptions(token string, save func(io.Reader) (string, error)) Options {
 
 func TestUploadReturnsThePath(t *testing.T) {
 	var got []byte
-	srv := httptest.NewServer(Handler(uploadOptions("", func(r io.Reader) (string, error) {
+	srv := httptest.NewServer(Handler(uploadOptions("", func(r io.Reader, name string) (string, error) {
 		var err error
 		got, err = io.ReadAll(r)
 		return "/tmp/paste-1.png", err
@@ -531,8 +532,58 @@ func TestUploadReturnsThePath(t *testing.T) {
 	}
 }
 
+// What the browser called the file is what tells a document from a note, so
+// it has to reach the store — in whatever alphabet it was named in.
+func TestUploadCarriesTheNameToTheStore(t *testing.T) {
+	got := ""
+	srv := httptest.NewServer(Handler(uploadOptions("secret", func(_ io.Reader, name string) (string, error) {
+		got = name
+		return "/tmp/paste-1-" + name, nil
+	})))
+	defer srv.Close()
+
+	// The token rides in the same query, which is what the page assembles.
+	want := "черновик письма.md"
+	resp, err := http.Post(
+		srv.URL+"/api/upload?token=secret&name="+url.QueryEscape(want),
+		"application/octet-stream", strings.NewReader("text"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if got != want {
+		t.Errorf("store was told the name is %q, want %q", got, want)
+	}
+}
+
+// An upload with no name at all is the clipboard path: a screenshot arrives
+// as a blob with nothing to call it, and the store answers that question.
+func TestUploadWithoutANameStillReachesTheStore(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(Handler(uploadOptions("", func(_ io.Reader, name string) (string, error) {
+		called, _ = true, name
+		if name != "" {
+			t.Errorf("name is %q, want it empty", name)
+		}
+		return "/tmp/paste-1.png", nil
+	})))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/upload", "image/png", strings.NewReader("PNGDATA"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if !called {
+		t.Error("an unnamed upload never reached the store")
+	}
+}
+
 func TestUploadRefusalReachesTheClient(t *testing.T) {
-	srv := httptest.NewServer(Handler(uploadOptions("", func(io.Reader) (string, error) {
+	srv := httptest.NewServer(Handler(uploadOptions("", func(io.Reader, string) (string, error) {
 		return "", errors.New("not an image (looks like text/plain)")
 	})))
 	defer srv.Close()
@@ -554,7 +605,7 @@ func TestUploadRefusalReachesTheClient(t *testing.T) {
 
 func TestUploadNeedsTheToken(t *testing.T) {
 	called := false
-	srv := httptest.NewServer(Handler(uploadOptions("secret", func(io.Reader) (string, error) {
+	srv := httptest.NewServer(Handler(uploadOptions("secret", func(io.Reader, string) (string, error) {
 		called = true
 		return "/tmp/x.png", nil
 	})))
@@ -586,7 +637,7 @@ func TestUploadIsAbsentWhenNoStore(t *testing.T) {
 }
 
 func TestUploadRejectsGet(t *testing.T) {
-	srv := httptest.NewServer(Handler(uploadOptions("", func(io.Reader) (string, error) {
+	srv := httptest.NewServer(Handler(uploadOptions("", func(io.Reader, string) (string, error) {
 		return "/tmp/x.png", nil
 	})))
 	defer srv.Close()

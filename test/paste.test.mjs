@@ -1,32 +1,33 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickImages, imageFiles, carriesFiles, firstImage } from '../web/js/paste.js';
+import { pickFiles, chosenFiles, carriesFiles, firstImage } from '../web/js/paste.js';
 
 const png = { type: 'image/png', name: 'screenshot.png' };
 const two = { type: 'image/png', name: 'second.png' };
+const doc = { type: 'application/pdf', name: 'spec.pdf' };
 
 test('a pasted screenshot is found among the files', () => {
-  assert.deepEqual(pickImages({ files: [png] }), [png]);
+  assert.deepEqual(pickFiles({ files: [png] }), [png]);
 });
 
 test('a screenshot offered only as an item is found too', () => {
   const data = { items: [{ kind: 'file', type: 'image/png', getAsFile: () => png }] };
-  assert.deepEqual(pickImages(data), [png]);
+  assert.deepEqual(pickFiles(data), [png]);
 });
 
-test('a selection of screenshots comes back whole, in the order it was carried', () => {
-  assert.deepEqual(pickImages({ files: [png, two] }), [png, two]);
+test('a selection comes back whole, in the order it was carried', () => {
+  assert.deepEqual(pickFiles({ files: [png, two] }), [png, two]);
 });
 
-test('a picture carried in both lists is attached once, not twice', () => {
+test('a file carried in both lists is attached once, not twice', () => {
   // A drop exposes the same file through `files` and through `items`; collecting
   // from each in turn would upload it twice and type its path twice.
   const data = {
     files: [png],
     items: [{ kind: 'file', type: 'image/png', getAsFile: () => png }],
   };
-  assert.deepEqual(pickImages(data), [png]);
+  assert.deepEqual(pickFiles(data), [png]);
 });
 
 test('a plain text paste is left alone', () => {
@@ -34,32 +35,40 @@ test('a plain text paste is left alone', () => {
     files: [],
     items: [{ kind: 'string', type: 'text/plain', getAsFile: () => null }],
   };
-  assert.deepEqual(pickImages(data), []);
+  assert.deepEqual(pickFiles(data), []);
 });
 
-test('a non-image file is not an image', () => {
-  assert.deepEqual(pickImages({ files: [{ type: 'application/pdf', name: 'spec.pdf' }] }), []);
+test('a document is attached the same way a picture is', () => {
+  // The whole point: a spec, a log or a patch reaches an agent as a path just
+  // like a screenshot does, and for a while the page was the only thing
+  // refusing to carry them.
+  assert.deepEqual(pickFiles({ files: [doc] }), [doc]);
+  assert.deepEqual(
+    pickFiles({ items: [{ kind: 'file', type: 'application/pdf', getAsFile: () => doc }] }),
+    [doc],
+  );
 });
 
-test('what is not an image is dropped from a mixed drop, not the whole drop', () => {
-  const data = { files: [{ type: 'application/pdf', name: 'spec.pdf' }, png] };
-  assert.deepEqual(pickImages(data), [png]);
+test('a mixed drop keeps both the picture and the document', () => {
+  assert.deepEqual(pickFiles({ files: [doc, png] }), [doc, png]);
 });
 
 test('an item that refuses to yield a file does not crash the paste', () => {
   const data = { items: [{ kind: 'file', type: 'image/png', getAsFile: () => null }] };
-  assert.deepEqual(pickImages(data), []);
+  assert.deepEqual(pickFiles(data), []);
 });
 
-test('nothing at all is not an image', () => {
-  assert.deepEqual(pickImages(null), []);
-  assert.deepEqual(pickImages({}), []);
+test('nothing at all is nothing to attach', () => {
+  assert.deepEqual(pickFiles(null), []);
+  assert.deepEqual(pickFiles({}), []);
 });
 
-test("the file chooser's own answer is filtered too", () => {
-  // `accept="image/*"` is a hint to the picker, not a promise from it.
-  assert.deepEqual(imageFiles([png, { type: 'text/plain', name: 'notes.txt' }, two]), [png, two]);
-  assert.deepEqual(imageFiles(null), []);
+test("the file chooser's own answer comes back as a list, unfiltered", () => {
+  // The input carries no `accept` any more: one button takes a screenshot and
+  // a spec alike, and what the picker offered is what was meant.
+  assert.deepEqual(chosenFiles([png, { type: 'text/plain', name: 'notes.txt' }, two]),
+    [png, { type: 'text/plain', name: 'notes.txt' }, two]);
+  assert.deepEqual(chosenFiles(null), []);
 });
 
 test('a drag carrying files is accepted before its payload is readable', () => {

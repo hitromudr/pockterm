@@ -19,7 +19,7 @@ var pngBytes = []byte{
 
 func TestSaveWritesAnImage(t *testing.T) {
 	s := Store{Dir: t.TempDir()}
-	path, err := s.Save(bytes.NewReader(pngBytes))
+	path, err := s.Save(bytes.NewReader(pngBytes), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,10 +43,131 @@ func TestSaveWritesAnImage(t *testing.T) {
 	}
 }
 
-func TestSaveRefusesWhatIsNotAnImage(t *testing.T) {
+// An upload nobody named has to be an image: there is nothing to call it
+// otherwise, and nothing in the bytes that would say what it is.
+func TestSaveRefusesWhatIsNeitherNamedNorAnImage(t *testing.T) {
 	s := Store{Dir: t.TempDir()}
-	if _, err := s.Save(strings.NewReader("#!/bin/sh\nrm -rf /\n")); err == nil {
-		t.Fatal("a shell script was accepted as an image")
+	if _, err := s.Save(strings.NewReader("#!/bin/sh\nrm -rf /\n"), ""); err == nil {
+		t.Fatal("an unnamed shell script was accepted")
+	}
+	entries, _ := os.ReadDir(s.Dir)
+	if len(entries) != 0 {
+		t.Errorf("a refused upload left %d file(s) behind", len(entries))
+	}
+}
+
+// A document is taken on its name, because a Makefile, a patch and a note are
+// one content type between them and the extension is what tells them apart.
+func TestSaveWritesANamedDocument(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	body := "%PDF-1.7\nbody of the spec\n"
+	path, err := s.Save(strings.NewReader(body), "спецификация.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(path, "-спецификация.pdf") {
+		t.Errorf("the name the browser gave should be on the file, got %q", path)
+	}
+	if !strings.HasPrefix(filepath.Base(path), "paste-") {
+		t.Errorf("a saved file is still a paste-*, got %q", path)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != body {
+		t.Errorf("stored %q, uploaded %q", got, body)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A document can hold anything a screenshot can.
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("mode is %v, want 0600", info.Mode().Perm())
+	}
+}
+
+// A document with no extension at all is still a document: `Makefile` and
+// `Dockerfile` are names an agent reads.
+func TestSaveKeepsANameWithNoExtension(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	path, err := s.Save(strings.NewReader("all:\n\techo hi\n"), "Makefile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(path, "-Makefile") {
+		t.Errorf("got %q, want a file ending in -Makefile", path)
+	}
+}
+
+// The bytes decide what an image is called, the name only labels it: a name
+// claiming another format does not change what is in the file.
+func TestSaveKeepsTheStemOfANamedImageAndTheExtensionOfItsBytes(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	path, err := s.Save(bytes.NewReader(pngBytes), "shot.jpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(path, "-shot.png") {
+		t.Errorf("got %q, want the sniffed .png under the given stem", path)
+	}
+}
+
+// The name reaches a path and then a line typed into a pane: what could be a
+// directory, an option or a second word is replaced rather than refused.
+func TestSaveFiltersTheNameItIsGiven(t *testing.T) {
+	cases := []struct {
+		name, want string
+	}{
+		{"../../etc/passwd", "-passwd"},
+		{`C:\Users\dms\notes.txt`, "-notes.txt"},
+		{"two words; rm -rf ~.md", "-two-words-rm-rf-.md"},
+		{".hidden.txt", "-hidden.txt"},
+		{"-rf.txt", "-rf.txt"},
+		{strings.Repeat("длинное-имя-", 20) + ".md", ""}, // only the bound is checked below
+	}
+	for _, c := range cases {
+		s := Store{Dir: t.TempDir()}
+		path, err := s.Save(strings.NewReader("text of the note\n"), c.name)
+		if err != nil {
+			// Errorf rather than Fatalf: each case is its own way to be
+			// wrong, and the first one refusing must not hide the rest.
+			t.Errorf("%q: %v", c.name, err)
+			continue
+		}
+		base := filepath.Base(path)
+		if c.want != "" && !strings.HasSuffix(base, c.want) {
+			t.Errorf("%q became %q, want it to end in %q", c.name, base, c.want)
+		}
+		if strings.ContainsAny(base, "/\\ \t\"';|&$*?<>") {
+			t.Errorf("%q became %q, which is not one word on a terminal line", c.name, base)
+		}
+	}
+}
+
+// Long names are cut out of the middle: the extension is the half an agent
+// reads, and the random part is what makes the path unique anyway.
+func TestSaveCutsALongNameButKeepsItsExtension(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	path, err := s.Save(strings.NewReader("text of the note\n"), strings.Repeat("very-long-name-", 20)+".md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(path, ".md") {
+		t.Errorf("got %q, want the extension kept", path)
+	}
+	if got := len([]rune(filepath.Base(path))); got > 120 {
+		t.Errorf("the name came out %d runes long: %q", got, filepath.Base(path))
+	}
+}
+
+// A name made only of what has to go is no name at all, and then the old
+// rule stands: an image or nothing.
+func TestSaveRefusesADocumentWhoseNameFiltersAway(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	if _, err := s.Save(strings.NewReader("text of the note\n"), "../"); err == nil {
+		t.Fatal("a document with nothing left of its name was accepted")
 	}
 	entries, _ := os.ReadDir(s.Dir)
 	if len(entries) != 0 {
@@ -56,7 +177,7 @@ func TestSaveRefusesWhatIsNotAnImage(t *testing.T) {
 
 func TestSaveRefusesAnEmptyBody(t *testing.T) {
 	s := Store{Dir: t.TempDir()}
-	if _, err := s.Save(strings.NewReader("")); err == nil {
+	if _, err := s.Save(strings.NewReader(""), "notes.txt"); err == nil {
 		t.Fatal("an empty upload was accepted")
 	}
 }
@@ -64,7 +185,7 @@ func TestSaveRefusesAnEmptyBody(t *testing.T) {
 func TestSaveRefusesOversize(t *testing.T) {
 	s := Store{Dir: t.TempDir()}
 	big := append(append([]byte{}, pngBytes...), bytes.Repeat([]byte{0}, MaxBytes)...)
-	if _, err := s.Save(bytes.NewReader(big)); err == nil {
+	if _, err := s.Save(bytes.NewReader(big), ""); err == nil {
 		t.Fatal("an image over the cap was accepted")
 	}
 	entries, _ := os.ReadDir(s.Dir)
@@ -85,7 +206,7 @@ func TestSavePrunesOldImages(t *testing.T) {
 	}
 
 	s := Store{Dir: dir}
-	fresh, err := s.Save(bytes.NewReader(pngBytes))
+	fresh, err := s.Save(bytes.NewReader(pngBytes), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +225,7 @@ func TestSaveKeepsImagesInsideTheWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := Store{Dir: dir}
-	if _, err := s.Save(bytes.NewReader(pngBytes)); err != nil {
+	if _, err := s.Save(bytes.NewReader(pngBytes), ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(recent); err != nil {

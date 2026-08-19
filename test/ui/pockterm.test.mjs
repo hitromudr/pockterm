@@ -2126,7 +2126,7 @@ describe('the key bar', () => {
   });
 });
 
-describe('pasting an image', () => {
+describe('attaching a file', () => {
   let stand;
   before(async () => { stand = await startStand(); });
   after(async () => { await stand.stop(); });
@@ -2210,7 +2210,7 @@ describe('pasting an image', () => {
     })));
 
     await page.waitForFunction(
-      () => /attached 2 images/.test(document.getElementById('toast').textContent || ''),
+      () => /attached 2 files/.test(document.getElementById('toast').textContent || ''),
       null, { timeout: 15000 },
     );
     const saved = shots();
@@ -2226,6 +2226,42 @@ describe('pasting an image', () => {
     const names = (typed.match(/paste-[-0-9a-zA-Z]+\.png/g) || []);
     assert.ok(names.length >= 2, `the terminal holds ${JSON.stringify(typed.slice(-160))}`);
     assert.notEqual(names[0], names[1], 'the same file was attached twice');
+  });
+
+  test('a document goes the same road, and keeps the name it was picked under', async () => {
+    // The picker used to ask for `image/*`, and the store used to refuse
+    // anything that did not sniff as a picture — so a spec or a log had no way
+    // in at all. What a document costs that a screenshot does not is its name:
+    // the bytes say nothing about whether this is a note or a Makefile.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#term');
+    await page.setInputFiles('#pick-file', {
+      name: 'заметки по стенду.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from('# note\n\nbody of the note\n'),
+    });
+    await page.waitForFunction(
+      () => /attached/.test(document.getElementById('toast').textContent || ''),
+      null, { timeout: 15000 },
+    );
+
+    const saved = readdirSync(stand.uploads).filter((f) => f.endsWith('.md'));
+    assert.equal(saved.length, 1, `uploads holds ${JSON.stringify(readdirSync(stand.uploads))}`);
+    // The spaces are gone — the path is typed into a pane as one word — and
+    // the alphabet the file was named in is not.
+    assert.match(saved[0], /^paste-[-0-9]+-[0-9]+-заметки-по-стенду\.md$/);
+
+    // The pane runs `cat`, so what was typed comes back on screen: the path is
+    // what the agent is handed, and it has to be the whole of it. Read with the
+    // whitespace out — the pane is 51 columns and the path is longer, so what
+    // is on screen is one name across two rows.
+    await page.waitForFunction((name) => {
+      const seen = document.querySelector('.xterm-rows')?.textContent || '';
+      return seen.replace(/\s+/g, '').includes(name);
+    }, saved[0], { timeout: 5000 });
   });
 });
 

@@ -303,8 +303,10 @@
       <button id="hide" title="Hide the bars">&#9662;</button>
     </div>
     <!-- `multiple`: several screenshots make one message, and on a phone this
-         picker is the only path that can carry more than one of them. -->
-    <input id="pick-file" type="file" accept="image/*" multiple hidden>
+         picker is the only path that can carry more than one of them.
+         No `accept`: a document reaches an agent the same way a picture does,
+         and a filter here is what kept the gallery as the only source. -->
+    <input id="pick-file" type="file" multiple hidden>
     <!-- The only thing left on screen when everything is hidden. -->
     <button id="show-bars" title="Show the bars" hidden>&#9652;</button>
     <div id="modebar">
@@ -313,10 +315,11 @@
            selection bar, so reaching it meant freezing the screen first. -->
       <button id="paste" title="Paste from the clipboard">&#128229; Paste</button>
       <!-- An Android screenshot is a file, not clipboard content, so the
-           only way to attach one is to pick it. A button rather than a label
-           around the input: the bar's buttons are told not to take focus, and
-           on a label that also swallowed the click that opens the picker. -->
-      <button id="pick" title="Attach images">&#128206;</button>
+           only way to attach one is to pick it — and a document has no other
+           way in at all. A button rather than a label around the input: the
+           bar's buttons are told not to take focus, and on a label that also
+           swallowed the click that opens the picker. -->
+      <button id="pick" title="Attach a file">&#128206;</button>
       <button id="mode" title="Prompt mode">&#128172;</button>
     </div>
   </div>

@@ -2161,7 +2161,7 @@ its status and the size.
 ## A message about screens is usually about several of them
 
 One upload is one request — `/api/upload` takes a body, not a form — so a selection of
-screenshots is a request each. `attachImages` sends them **one after another**: the phone
+files is a request each. `attachFiles` sends them **one after another**: the phone
 reaches this host down a single tunnel, the proxy in front bounds each body rather than the
 batch, and the paths have to be typed in the order they were picked.
 
@@ -2171,11 +2171,11 @@ than one message per picture — and a message per picture is a turn per picture
 
 Where several can arrive: the file chooser (`multiple`, and on a phone the only such path —
 the clipboard holds one picture and there is nothing to drag a file onto), a drop from a
-desktop file manager, and a paste. `pickImages` reads `files` **whole when it holds any
-image** and falls back to `items` only otherwise: a drop exposes the same picture through
-both lists, and collecting from each in turn uploaded it twice. `imageFiles` filters the
-chooser's own answer, `accept="image/*"` being a hint to the picker rather than a promise
-from it.
+desktop file manager, and a paste. `pickFiles` reads `files` **whole when it holds
+anything** and falls back to `items` only otherwise: a drop exposes the same file through
+both lists, and collecting from each in turn uploaded it twice. `chosenFiles` is the
+chooser's own answer as a list, and it filters nothing — see the section below for why the
+`accept` went away.
 
 Two bounds, both about saying what happened. `ATTACH_MAX` is 10 — a gallery keeps "select
 all" within reach of the thumb that picks two screenshots, and each one is a request and a
@@ -2184,6 +2184,41 @@ And a batch that lost one of its pictures says so against what was picked: the p
 did arrive are on screen, so counting them is the only way to notice from a phone. Every
 upload keeps its own journal line, now with `n` and `of` in it, which is what tells a batch
 from three separate pastes.
+
+## A document is known by its name, an image by its bytes
+
+The road a screenshot takes is the road anything takes — bytes to `/api/upload`, a path back,
+the path typed into the pane — and for a long time the page and the store were the only
+things refusing to carry a spec, a log or a patch down it. Two levers held it shut, and
+neither was about what an agent can read: `accept="image/*"` on the picker, so the phone
+offered the gallery and nothing else, and an allowlist of sniffed types in `upload.Save`,
+so a `.md` came back as *not an image*.
+
+**What a document costs that a picture does not is its name.** The bytes of a PNG say what
+they are; a Makefile, a patch, a note and a `.csv` are one content type between them
+(`text/plain`, and half the rest is `application/octet-stream`), and the extension is what
+tells an agent which it is holding. So the browser's own `File.name` travels with the body
+(`?name=`, in the query rather than a header — it arrives in whatever alphabet the file was
+named in, and a query string carries that with no encoding to agree on) and the rule became
+two clauses:
+
+- **an image is known by its bytes** and keeps the extension they earn, named or not — a
+  screenshot off the clipboard is a blob with no name at all, and a name claiming otherwise
+  does not change what is in the file, so a PNG called `shot.jpeg` lands as `-shot.png`;
+- **anything else is taken only when the browser names it.** An unnamed non-image is refused
+  exactly as before: there is nothing to call it and nothing in it that would say.
+
+**The name is filtered, never refused.** It becomes a path and is then typed into a pane, so
+`safeName` replaces what could be a directory, an option or a second word — separators, a
+space, a quote, a glyph a shell would read — and cuts a long one out of the middle, keeping
+the extension because that is the half an agent reads. What it does **not** touch is the
+alphabet: `заметки по стенду.md` comes back as `заметки-по-стенду.md`, this program having no
+business transliterating the owner's own names, and what makes a path hazardous being
+punctuation. A name left with nothing in it is no name, and then the image rule stands alone.
+
+The store's other bounds are unchanged and now cover more: 0600 (a document holds whatever a
+screenshot holds), `MaxBytes` at 10 MB with the proxy's own limit just above it, and the
+24-hour sweep — a file handed to an agent is a scratch file whatever is in it.
 
 ## Deploy
 

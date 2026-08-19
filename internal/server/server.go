@@ -83,12 +83,15 @@ type Options struct {
 	// SetNotifyMode stores a new mode. Refusing an unknown one is its job, not
 	// the handler's — the vocabulary belongs to whoever owns the state.
 	SetNotifyMode func(mode string) error
-	PageVersion   string                          // version of the page this binary serves; "" says nothing
-	WheelLines    func() int                      // lines tmux scrolls per wheel notch; nil leaves the page on its default
-	StatusRows    func() int                      // rows tmux's status line takes at the bottom; nil says nothing
-	Static        http.Handler                    // the embedded PWA
-	SaveUpload    func(io.Reader) (string, error) // store a pasted image, return its path; nil disables /api/upload
-	LogClient     func(string)                    // record a line the browser sent; nil disables /api/log
+	PageVersion   string       // version of the page this binary serves; "" says nothing
+	WheelLines    func() int   // lines tmux scrolls per wheel notch; nil leaves the page on its default
+	StatusRows    func() int   // rows tmux's status line takes at the bottom; nil says nothing
+	Static        http.Handler // the embedded PWA
+	// SaveUpload stores what the browser sent under the name it gave (which
+	// may be empty) and returns the path it landed in; nil disables
+	// /api/upload.
+	SaveUpload func(r io.Reader, name string) (string, error)
+	LogClient  func(string) // record a line the browser sent; nil disables /api/log
 	// StartSession creates a session from a fixed preset, in one of the folders
 	// under the projects root ("" or "." meaning the root itself); nil disables
 	// /api/sessions/new.
@@ -279,9 +282,13 @@ func serveNotifyMode(o Options, w http.ResponseWriter, r *http.Request) {
 	}{mode, telegram})
 }
 
-// serveUpload takes an image pasted in the browser and answers with the path
-// it was saved under. The client types that path into the terminal: bytes
-// cannot cross a pty, a filename can.
+// serveUpload takes a file pasted, dropped or picked in the browser and
+// answers with the path it was saved under. The client types that path into
+// the terminal: bytes cannot cross a pty, a filename can.
+//
+// The name rides in the query rather than in a header: it is the browser's
+// own `File.name`, which is in whatever alphabet the file was named in, and a
+// query string carries that with no encoding of its own to agree on.
 func serveUpload(o Options, w http.ResponseWriter, r *http.Request) {
 	if !authOK(o, r) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -292,13 +299,13 @@ func serveUpload(o Options, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		http.Error(w, "post the image as the request body", http.StatusMethodNotAllowed)
+		http.Error(w, "post the file as the request body", http.StatusMethodNotAllowed)
 		return
 	}
-	path, err := o.SaveUpload(r.Body)
+	path, err := o.SaveUpload(r.Body, r.URL.Query().Get("name"))
 	if err != nil {
-		// The message says what was wrong with the image (not an image, too
-		// large); the client shows it verbatim.
+		// The message says what was wrong with the file (unnamed and not an
+		// image, too large); the client shows it verbatim.
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
