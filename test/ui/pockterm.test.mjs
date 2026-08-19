@@ -2028,11 +2028,10 @@ describe('the key bar', () => {
     const right = await at('[data-key="right"]');
     const stop = await at('[data-key="ctrl-c"]');
     const unfold = await at('[data-key="ctrl-o"]');
+    const tab = await at('[data-key="tab"]');
     const ctrl = await at('[data-mod="ctrl"]');
     const altEnter = await at('[data-key="alt-enter"]');
     const enter = await at('[data-key="enter"]');
-    // Prompt mode has its own Accept; this is about the key bar's.
-    const accept = await at('#keybar [data-macro="accept"]');
     const hide = await at('#hide');
 
     const sameColumn = (a, b, what) => {
@@ -2040,23 +2039,24 @@ describe('the key bar', () => {
       assert.ok(a.y < b.y, `${what} are in the wrong order`);
     };
 
-    // Escape holds the top-left corner, ^O sits under it, ^C beside it.
-    assert.ok(esc.x < stop.x && esc.y < unfold.y, 'escape is not the top-left key');
-    sameColumn(esc, unfold, 'escape and ^O');
+    // Escape holds the top-left corner, Tab sits under it, ^C beside it.
+    assert.ok(esc.x < stop.x && esc.y < tab.y, 'escape is not the top-left key');
+    sameColumn(esc, tab, 'escape and Tab');
     assert.ok(Math.abs(esc.y - stop.y) < 2, '^C is not beside escape');
 
     // The arrows keep their cross, a column to the right of those two.
     sameColumn(up, down, 'up and down');
     assert.ok(left.x < down.x, 'left is not to the left of down');
     assert.ok(right.x > down.x, 'right is not to the right of down');
-    assert.ok(stop.x < up.x && unfold.x < left.x, 'the arrows are not right of Esc and ^C');
+    assert.ok(stop.x < up.x && tab.x < left.x, 'the arrows are not right of Esc and ^C');
 
     // The pairs, each asked for by name: Ctrl over the arrow that ends the
     // cross — it took the backspace's place, the keyboard having one of its own
-    // and no ^R at all — the two enters, and accept over the hide toggle.
+    // and no ^R at all — the two enters, and ^O over the hide toggle, in the
+    // cell ✓ (accept) held until 2026-08-19.
     sameColumn(ctrl, right, 'Ctrl and the right arrow');
     sameColumn(altEnter, enter, 'alt+enter and enter');
-    sameColumn(accept, hide, 'accept and hide');
+    sameColumn(unfold, hide, '^O and hide');
 
     // The forward delete gave its key to ^O, and the backspace gave its own to
     // Ctrl: neither is a key this bar carries any more.
@@ -2064,19 +2064,28 @@ describe('the key bar', () => {
     assert.equal(await page.locator('#keybar [data-key="backspace"]').count(), 0);
   });
 
-  test('accept is one tap from the key bar', async () => {
+  test('^O took accept\'s cell, and the macro stayed in prompt mode', async () => {
     await stand.open();
     await stand.attach();
     const { page } = stand;
-    // The macro is right-arrow then Enter — the answer given most often.
-    assert.equal(await page.locator('#keybar [data-macro="accept"]').count(), 1);
+    // ✓ is a right arrow and an Enter — two keys this bar already carries — and
+    // ^O is a byte nothing else on a phone can send. So the key bar has one ^O
+    // and no ✓; the quick row above the composer still has the macro, which is
+    // where a bar with room for two wide buttons can afford it.
+    assert.equal(await page.locator('#keybar [data-key="ctrl-o"]').count(), 1);
+    assert.equal(await page.locator('#keybar [data-macro="accept"]').count(), 0);
+    assert.equal(await page.locator('#quickbar [data-macro="accept"]').count(), 1);
   });
 
-  test('tab and shift-tab are gone', async () => {
+  test('tab has a button again, shift-tab does not', async () => {
     await stand.open();
     await stand.attach();
     const { page } = stand;
-    assert.equal(await page.locator('[data-key="tab"]').count(), 0);
+    // It was dropped as a key "an agent conversation does not use", and that was
+    // a guess: the agent's own input completes a path with it, and the
+    // on-screen keyboard has no Tab at all — which is the question every key on
+    // this bar has to answer.
+    assert.equal(await page.locator('#keybar [data-key="tab"]').count(), 1);
     assert.equal(await page.locator('[data-key="shift-tab"]').count(), 0);
   });
 

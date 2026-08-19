@@ -18,7 +18,9 @@ test('named keys map to escape sequences', () => {
   // no keyboard offers. An unknown name answers with nothing rather than
   // guessing — the same as `delete` below, which left earlier for ^O.
   assert.equal(keyBytes('backspace'), '');
-  // ^O: unfold the collapsed output. It replaced the forward delete on the bar.
+  // ^O: unfold the collapsed output. It replaced the forward delete on the bar,
+  // then ✓ (accept) on 2026-08-19, handing its own cell to Tab — which has a
+  // button again for the first time since the bar was laid out.
   assert.equal(keyBytes('ctrl-o'), '\x0f');
   assert.equal(keyBytes('delete'), '');
   // Answers to a numbered menu, typed without the on-screen keyboard.

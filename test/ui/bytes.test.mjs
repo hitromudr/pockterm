@@ -1,7 +1,7 @@
 // What the terminal actually receives, byte for byte.
 //
 // The rest of the suite looks at the screen; this file looks at the wire. The
-// session runs `stty raw -echo; cat -v`, so every byte that reaches the pty is
+// session runs `stty raw -echo; cat -vT`, so every byte that reaches the pty is
 // echoed in a visible form and the screen becomes a transcript. That turns
 // "the space went nowhere" and "the delete inserted a line" — both reported
 // from the phone — into assertions a machine can make.
@@ -14,7 +14,8 @@ import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { startStand, FAKE_IME } from './stand.mjs';
 
-// How `cat -v` renders what the bar sends.
+// How `cat -vT` renders what the bar sends. The `-T` is what makes the tab
+// assertable at all — see the header of stand.mjs.
 const WIRE = {
   esc: '^[',
   up: '^[[A',
@@ -23,6 +24,7 @@ const WIRE = {
   left: '^[[D',
   'ctrl-c': '^C',
   'ctrl-o': '^O',
+  tab: '^I',
   enter: '^M',
   'alt-enter': '^[^M',
 };
@@ -109,11 +111,19 @@ describe('what the key bar puts on the wire', () => {
     await stand.attach('wire');
     const { page } = stand;
 
+    // The macro lives in prompt mode's quick row since 2026-08-19: on the key
+    // bar it held a cell against two keys that bar already carries, and ^O took
+    // it. The bytes are the same wherever the button is.
     const before = await settled(page);
-    await page.click('#keybar [data-macro="accept"]');
+    await page.click('#mode');
+    await page.waitForSelector('#quickbar [data-macro="accept"]', { state: 'visible' });
+    await page.click('#quickbar [data-macro="accept"]');
     await page.waitForTimeout(400);
     const added = (await transcript(page)).slice(before.length);
     assert.equal(added.replace(/\r?\n/g, ''), '^[[C^M', `accept sent ${JSON.stringify(added)}`);
+    // Back to the key bar: the mode is remembered, and the cases above read it.
+    await page.click('#mode');
+    await page.waitForSelector('#keybar', { state: 'visible' });
   });
 });
 
@@ -181,11 +191,16 @@ describe('an ending key waits for the word', () => {
     await stand.open();
     await stand.attach('wire');
     const { page } = stand;
+    // Prompt mode, because that is where the macro is; the terminal is tapped
+    // after the switch, so the keystroke below still goes to the pty rather than
+    // into the composer the mode just opened.
+    await page.click('#mode');
+    await page.waitForSelector('#quickbar [data-macro="accept"]', { state: 'visible' });
     await page.click('#term');
     await page.waitForTimeout(500);
 
     const before = await transcript(page);
-    await page.click('#keybar [data-macro="accept"]');
+    await page.click('#quickbar [data-macro="accept"]');
     await page.keyboard.press('Z');
     await page.waitForTimeout(700);
     const added = (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');

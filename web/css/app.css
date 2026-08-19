@@ -1177,9 +1177,9 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    and hid the rightmost keys (^C, Enter) behind a horizontal scroll.
    Six columns, two rows, and the positions carry meaning: the arrows form
    their usual cross in the middle — up over down, left and right beside it —
-   Esc and ^C hold the left edge with ^O under them, and the two enters share
-   the column beside accept. What used to be empty slots (and the two tabs
-   nobody needs here) now hold the keys an agent conversation actually uses. */
+   Esc and ^C hold the left edge with Tab under them, the two enters share the
+   column beside ^O, and ^O stands over the hide toggle. What used to be empty
+   slots now hold the keys an agent conversation actually uses. */
 #keybar {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
@@ -1199,8 +1199,8 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 /* A two-part label has to fit the same cell as an arrow. */
 #keybar button.small { font-size: 12px; }
 #keybar button.on { background: var(--accent); color: #0b0e14; }
-/* Accept is a key like the others: an accent block in the middle of the bar
-   only pulls the eye away from the terminal. */
+/* Every key here is drawn the same, ^O and Tab included: an accent block in the
+   middle of the bar only pulls the eye away from the terminal. */
 
 /* Answer buttons for a detected prompt: one per row, above the input.
    Capped height with scroll so a long menu never eats the terminal. */
@@ -1493,7 +1493,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 /* The key bar used to be hidden on a device with a mouse and a real keyboard,
    on the grounds that you just type there. It is shown everywhere now: reported
    from the laptop as there being no arrow block at all, and the bar carries more
-   than arrows — ✓ (accept), Alt+Enter and the way back to the end are not on any
+   than arrows — ^O, Alt+Enter and the way back to the end are not on any
    keyboard. Hiding a control because another way to reach it exists is the kind
    of cleverness that reads as a defect. */
 

@@ -837,7 +837,7 @@ describe('the laptop is a client too', () => {
     // It used to be hidden behind `(hover: hover) and (pointer: fine)`, on the
     // grounds that a real keyboard has the keys. Reported from the laptop as
     // there being no arrow block at all — and the bar carries more than arrows:
-    // ✓ (accept) and Alt+Enter are on no keyboard.
+    // ^O and Alt+Enter are on no keyboard.
     await stand.open();
     await stand.attach();
     const { page } = stand;

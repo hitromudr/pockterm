@@ -277,8 +277,11 @@
     <!-- Two rows, six columns, laid out for a thumb rather than for a
          keyboard: the arrow cross sits in the middle with up above down, the
          two ways out of what the agent is doing hold the left edge, enter the
-         right. Tab and Shift+Tab are gone — this bar answers an agent, it does
-         not complete filenames. -->
+         right. Shift+Tab is not here; Tab is, since 2026-08-19 — it went away
+         on the grounds that this bar answers an agent rather than completing
+         filenames, and both halves of that turned out to be wrong: an agent's
+         own input completes a path with it, and no on-screen keyboard has a Tab
+         at all, which is the one question a key on this bar has to answer. -->
     <div id="keybar">
       <button data-key="esc">Esc</button>
       <button data-key="ctrl-c">^C</button>
@@ -290,12 +293,16 @@
       <button data-mod="ctrl" class="small">Ctrl</button>
       <!-- Over Enter: one sends the message, the other adds a line to it. -->
       <button data-key="alt-enter" class="small">Alt&#9166;</button>
-      <button data-macro="accept">&#10003;</button>
-
-      <!-- Under Esc, in the corner the forward delete had: the agent unfolds
-           the output it collapsed on ^O, and erasing forwards from a phone is
-           what the arrows and backspace already do. -->
+      <!-- ^O — the agent unfolds the output it collapsed. It stood under Esc
+           until 2026-08-19 and took ✓ (accept) here: that macro is a right
+           arrow with an Enter behind it, and prompt mode's own quick row still
+           carries it, while ^O is a byte reachable nowhere else on a phone. -->
       <button data-key="ctrl-o">^O</button>
+
+      <!-- Under Esc, in the corner ^O had: Tab is what an agent's input
+           completes a path with and what a shell completes anything with, and
+           the on-screen keyboard has no Tab to offer. -->
+      <button data-key="tab">Tab</button>
       <button data-key="left">&#8592;</button>
       <button data-key="down">&#8595;</button>
       <button data-key="right">&#8594;</button>

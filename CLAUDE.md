@@ -206,6 +206,17 @@ goes as a control code, the arm is spent. `^R`, `^D`, `^Z`, `^L` are what an
 agent's console asks for and no on-screen keyboard offers; `applyCtrl` in
 `js/keys.js` had been written for this and sat unused.
 
+**The same question moved two more keys on 2026-08-19.** `✓` (accept) is a right
+arrow and an Enter — both already on this bar, one cell apart — so it stopped
+earning a cell of its own and `^O` took it; prompt mode's quick row, which is two
+wide buttons rather than twelve cells, still carries the macro, and the wire tests
+for it now press it there. `^O`'s own cell went to **Tab**, which was removed when
+the bar was laid out on the grounds that "this bar answers an agent, it does not
+complete filenames" — and both halves of that were a guess: the agent's own input
+completes a path with Tab, and no on-screen keyboard has a Tab at all, which is
+the whole of the question above. The READMEs had been listing it in the key bar
+throughout.
+
 **The modifier alone was the wrong answer, and the phone said so within the
 hour**: "Ctrl, letter — and out comes text, with Ctrl still lit". Gboard
 composes, so xterm is handed a whole word when the composition closes —
@@ -258,7 +269,7 @@ Three properties of the latch, each a way it could have gone wrong quietly:
 Another bar key **spends** the arm rather than being modified by it: those keys
 are sequences of their own, and a Ctrl+Esc sending something else is a key nobody
 asked for. `test/ui/bytes.test.mjs` reads all of it off the wire through
-`cat -v` — `^R` from a composed `к`, `^R` from a typed `к`, `^[r` for that last
+`cat -vT` — `^R` from a composed `к`, `^R` from a typed `к`, `^[r` for that last
 case, and the pad staying away with the viewport shortened. Each was checked
 against the defect first: with `onEdit` unwired the composed letter never reaches
 the pty at all.
@@ -326,7 +337,7 @@ much was put back (`restored`).
 **The stand can judge this one.** The composition is faked, but only the part not
 under test: events are dispatched at the real field and `compositionend` is fired
 from a **capture-phase** blur listener, which is where Chrome fires it and ahead
-of xterm's own listener. `test/ui/bytes.test.mjs` reads the pty through `cat -v`:
+of xterm's own listener. `test/ui/bytes.test.mjs` reads the pty through `cat -vT`:
 against the two-line `blur(); focus();` it is `^M`, with the fix `ab^M`.
 
 ## Holding the focus is asking for the keyboard

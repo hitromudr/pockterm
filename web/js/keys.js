@@ -1,6 +1,9 @@
 // Key bar → terminal byte sequences. Pure functions, unit-tested.
 const KEYS = {
   esc: '\x1b',
+  // Tab is back on the bar since 2026-08-19, in the cell ^O had. It left once
+  // as a key "an agent conversation does not use", which was a guess: the
+  // agent's own input completes a path with it. `shift-tab` has no button.
   tab: '\t',
   'shift-tab': '\x1b[Z',
   up: '\x1b[A',
@@ -9,9 +12,11 @@ const KEYS = {
   left: '\x1b[D',
   enter: '\r',
   'ctrl-c': '\x03',
-  // ^O — what an agent TUI reads as "unfold the output you collapsed". It
-  // took the forward delete's key: erasing forwards needs the arrows and
-  // backspace anyway, and this is a thing no on-screen keyboard offers.
+  // ^O — what an agent TUI reads as "unfold the output you collapsed". It took
+  // the forward delete's key first (erasing forwards needs the arrows and
+  // backspace anyway) and ✓'s on 2026-08-19, giving its own to Tab: accept is a
+  // right arrow and an Enter, both of which the bar already has, and prompt
+  // mode's quick row keeps the macro.
   'ctrl-o': '\x0f',
   // Numbered menus are how an agent asks a question in the console, and the
   // on-screen keyboard is exactly the layer where Gboard doubles words.
