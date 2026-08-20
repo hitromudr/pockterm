@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v175';
+const APP_VERSION = 'v176';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3075,12 +3075,11 @@ const PARA_UNBAN = 350; // ms after the finger, when the refusal is lifted
 // cancelled and the browser had it. This is about Chrome's own touch slop, which
 // is what it forgives a long press of its own.
 const PARA_TRAVEL = 14;
-// How long a tap on text waits before it becomes the way out of the mode — the
-// room a second tap needs to arrive and be a double tap. Android's own double-tap
-// window is about this, and the number is a bound on waiting rather than a
-// measurement of the platform: shorter and a real double tap leaves the mode,
-// longer and leaving it reads as a tap that did nothing. See the click handler.
-const TAP_OUT = 300;
+// How long a second tap may take and still be part of a double tap. Generous on
+// purpose: what it costs when two unrelated taps fall inside it is a line
+// highlighted that nobody asked for, and 300 was measured against a thumb and
+// found short — "два средне быстрых тапа" landed either side of it.
+const TAP_PAIR = 500;
 let paraEls = [];
 const picked = new Set();
 let banTimer = null;
@@ -3089,15 +3088,94 @@ let holdFrom = null;
 let holdAt = 0;
 let holdFired = false;
 let holdTouch = false;
-let tapOutTimer = null;
 let lastTapAt = 0;
 
-// Only the timer: the moment of the last tap outlives it on purpose, since it is
-// what the next tap is measured against and `pointerdown` disarms before the click
-// that would read it.
-function cancelTapOut() {
-  clearTimeout(tapOutTimer);
-  tapOutTimer = null;
+// Less than a paragraph, and it has to be this page's own doing.
+//
+// On Android the gesture that selects a word is the **long press**, and this mode
+// has taken it: it marks the paragraph, and the browser's own is refused so that
+// it can. A double tap selects a word on a desktop and nothing at all here —
+// reported as "выделения слова ни при каких тапах не происходит", after a release
+// that had been written on the opposite assumption. Double-tap-to-zoom is off for
+// a `width=device-width` page, so that tap is free, and what it does is ours to
+// decide.
+//
+// The line first, because it is what a script or a run of output is read and
+// pasted in, and the word on a second double tap in the same place — one gesture,
+// two grains, no button. Ours rather than the platform's means it works the same
+// whether Android offers handles for a selection it did not make itself.
+//
+// The picks go when a selection is made: `selectedText` prefers a pick, so a
+// selection standing beside one would be invisible to Copy — the same "one owner
+// per fact" this file keeps.
+function textCaretAt(x, y) {
+  const pos = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null;
+  const node = pos && pos.startContainer;
+  if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+  if (!node.parentElement || !node.parentElement.classList.contains('para')) return null;
+  return { node, at: pos.startOffset, text: node.textContent };
+}
+
+// The line under the finger, its trailing spaces left behind: the pane pads a row
+// to its width and nobody wants the padding in a shell.
+function lineBoundsAt(c) {
+  const from = c.text.lastIndexOf('\n', Math.max(0, c.at - 1)) + 1;
+  let to = c.text.indexOf('\n', c.at);
+  if (to < 0) to = c.text.length;
+  while (to > from && /\s/.test(c.text[to - 1])) to -= 1;
+  return { from, to };
+}
+
+function wordBoundsAt(c) {
+  const line = lineBoundsAt(c);
+  const at = Math.min(Math.max(c.at, line.from), Math.max(line.from, line.to - 1));
+  if (line.to <= line.from || /\s/.test(c.text[at] || ' ')) return line;
+  let from = at;
+  let to = at;
+  while (from > line.from && !/\s/.test(c.text[from - 1])) from -= 1;
+  while (to < line.to && !/\s/.test(c.text[to])) to += 1;
+  return { from, to };
+}
+
+function selectRange(node, from, to) {
+  const range = document.createRange();
+  range.setStart(node, from);
+  range.setEnd(node, to);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  return range.toString();
+}
+
+// What the last double tap took, so the next one over the same line can ask for
+// less of it. Remembered here rather than read back off the selection, which is
+// not ours to keep: a tap on a highlight is how a phone dismisses it, so by the
+// time the pair that should narrow arrives there is nothing standing to compare
+// with — measured on the stand, where the second pair kept re-taking the line.
+let lastGrab = null;
+
+function selectAt(x, y) {
+  const c = textCaretAt(x, y);
+  if (!c) return false;
+  // A selection under `user-select: none` is not drawn, and the ban may be on from
+  // the press that just ended. It is for the browser's long press, which this is
+  // not.
+  clearTimeout(banTimer);
+  banTimer = null;
+  snapshotEl.classList.remove('holding');
+  if (picked.size) clearPicks();
+  const line = lineBoundsAt(c);
+  const again = lastGrab && lastGrab.node === c.node
+    && lastGrab.from === line.from && lastGrab.to === line.to;
+  // The same line again asks for less of it, and once more asks for the whole line
+  // back: a grain nobody can leave is a gesture that has to be undone by leaving
+  // the mode.
+  const want = again && lastGrab.grain === 'line' ? wordBoundsAt(c) : line;
+  const grain = want === line ? 'line' : 'word';
+  const got = selectRange(c.node, want.from, want.to);
+  lastGrab = { node: c.node, from: line.from, to: line.to, grain };
+  report('select-tap', { chars: got.length, grain });
+  return true;
 }
 
 // The copy window is laid out one span per paragraph so a press has something to
@@ -3111,6 +3189,7 @@ function cancelTapOut() {
 let snapshotShown = '';
 function drawSnapshot(text, from) {
   cancelHold();
+  lastGrab = null; // its text node is about to be replaced, and it holds one alive
   picked.clear();
   paraEls = [];
   snapshotShown = text;
@@ -3159,10 +3238,6 @@ function cancelHold() {
 }
 
 snapshotEl.addEventListener('pointerdown', (e) => {
-  // Anything arriving on the copy disarms the way out: the second tap of a double
-  // one, a press that becomes a pick, a drag that scrolls. Before the mouse check,
-  // because a laptop taps too.
-  cancelTapOut();
   // A flag left set eats the next honest tap: a browser that decided the gesture
   // was a scroll sends no click at all, so it is cleared here rather than by the
   // click it is waiting for. Same rule as the tab strip's hold.
@@ -3231,8 +3306,8 @@ snapshotEl.addEventListener('contextmenu', (e) => { if (holdTouch) e.preventDefa
 // Entering starts from a clean slate: Copy must never hand over leftovers.
 function setSelectMode(on) {
   selectMode = on;
-  cancelTapOut();
   lastTapAt = 0; // a tap from the last time the mode was open is not a double tap
+  lastGrab = null;
   dropSelection();
   // The floating controls stand down while the copy is frozen. Both are drawn
   // above it (the stack at z-index 12, the rail at 7) and both are about a pane
@@ -3428,8 +3503,18 @@ snapshotEl.addEventListener('click', (e) => {
   // The click a long press ends in is not a tap, and this is the one place it
   // would cost something: it would leave the mode the pick was made in.
   if (holdFired) { holdFired = false; return; }
-  const sel = insideSnapshot();
-  if (sel) return; // a tap that lands inside a selection is not a way out
+  const onPara = !!(e.target && e.target.closest && e.target.closest('.para'));
+  // The pair is counted before anything else can return: a tap on a highlight used
+  // to leave here, which left the pair that should narrow it measuring against a
+  // tap two gestures old.
+  const now = Date.now();
+  const second = onPara && now - lastTapAt < TAP_PAIR;
+  lastTapAt = now;
+  if (second && selectAt(e.clientX, e.clientY)) return;
+  // A tap on the text a selection lives in is not a way out — that is how a phone
+  // dismisses its own selection menu, and the tap lands on the paragraph under it.
+  // The room around the text stays a way out whatever is highlighted.
+  if (onPara && insideSnapshot()) return;
   // With paragraphs picked, a tap **on text** does nothing at all, and only a tap
   // on the blank room around it starts over. Both used to clear the set, and it
   // cost the owner his mark: the tap that dismisses Android's own selection menu
@@ -3437,47 +3522,26 @@ snapshotEl.addEventListener('click', (e) => {
   // it when it went. What remains a deliberate target is the space no paragraph
   // owns — and the marks otherwise go the way they came, by a press each.
   if (picked.size) {
-    if (e.target && e.target.closest && e.target.closest('.para')) return;
+    if (onPara) return;
     clearPicks();
     toast('picks dropped');
     return;
   }
-  // A tap on text **arms** the way out rather than being it, and the reason is the
-  // gesture it was making impossible. Less than a paragraph is taken the way half a
-  // line has always been taken on a phone — a double tap, which gives a word and
-  // then handles to drag from it — and our own long press cannot do that job: it
-  // picks the paragraph, and the browser's is refused so that it can. So the first
-  // of those two taps was the way out, and the mode was gone before the second
-  // arrived. Reported as exactly that.
-  //
-  // The blank room around the text still leaves at once: it is the deliberate
-  // target the picks above already treat as one, and there is no word there to
-  // select.
-  if (!(e.target && e.target.closest && e.target.closest('.para'))) {
+  // **A tap on text is not a way out of the mode, and the blank room is.** Two
+  // releases went the other way and each cost the gesture that takes less than a
+  // paragraph: the tap that leaves cannot also be the first half of a double tap.
+  // Holding the exit for a window was the second attempt and the thumb answered it
+  // — "два средне быстрых тапа выкидывают", the pair landing either side of 300ms.
+  // A window wide enough for a slow pair is a mode that takes half a second to
+  // leave, and the ways out are in plain sight: `✕ Done`, the room around the text,
+  // Android's own Copy. This is also what a tap does with paragraphs picked, one
+  // branch above, and the two reading alike is worth more than the shortcut.
+  if (!onPara) {
     setSelectMode(false);
     toast('screen is live again');
-    return;
   }
-  // A second tap inside the window is a double tap, and the whole gesture belongs
-  // to the browser: it arms nothing, so the mode stays for as long as the word and
-  // its handles take. Waiting for a selection to appear instead was the first
-  // version and the stand refused it — the exit fired while nothing was selected
-  // yet, which is also how it would fail on a phone whose double tap answers a
-  // moment later than ours. The way out of a double tap is the way out of the mode
-  // anyway: Done, or the blank room.
-  const now = Date.now();
-  const second = now - lastTapAt < TAP_OUT;
-  cancelTapOut();
-  lastTapAt = now;
-  if (second) return;
-  tapOutTimer = setTimeout(() => {
-    tapOutTimer = null;
-    // Asked again rather than assumed: a selection standing here means the browser
-    // answered the press after all, and a tap inside one is not a way out (above).
-    if (insideSnapshot()) return;
-    setSelectMode(false);
-    toast('screen is live again');
-  }, TAP_OUT);
+  // A single tap on text does nothing at all, which is what makes the pair above
+  // safe at any speed a thumb manages.
 });
 
 // Android's own Copy and a desktop Ctrl+C put the selection in the clipboard

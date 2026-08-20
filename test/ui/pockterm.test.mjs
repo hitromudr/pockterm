@@ -1549,63 +1549,104 @@ describe('selection and the clipboard', () => {
     assert.equal(clip, clip.trimEnd(), 'the copy ends in a newline nobody typed');
   });
 
-  test('a tap on text waits for a second one before it leaves the mode', async () => {
-    // Reported as the quick tap throwing you out of the copy mode — and the gesture
-    // it was throwing away is the only one that takes less than a paragraph. A word
-    // comes from a double tap, and the first of its two taps was the way out, so the
-    // mode was gone before the second arrived. Our own long press cannot stand in for
-    // it: that one picks the paragraph, and the browser's is refused so it can.
+  test('a double tap takes a line out of a paragraph, and again the word in it', async () => {
+    // Less than a paragraph had no gesture at all: on Android the word comes from a
+    // long press, and this mode has taken that one for the pick. So the double tap —
+    // which selects nothing on a phone and cannot zoom a `width=device-width` page —
+    // does it here, and the selection is the page's own rather than the platform's.
     await stand.open();
     await stand.attach();
     const { page } = stand;
 
-    // The leading Enter is what makes it a paragraph of its own — same reason as the
-    // pick test above.
+    // Three lines with no blank between them are one paragraph, and the middle one
+    // is what the gesture has to be able to take out of it.
     await page.click('#term');
-    await page.keyboard.type('\ntap probe line\n');
+    await page.keyboard.type('\nalpha_one alpha_two\nbeta_two gamma_three\ndelta_four\n');
     await page.waitForFunction(
-      () => document.querySelector('.xterm-rows')?.textContent?.includes('tap probe line'));
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('delta_four'));
+
+    await page.click('#select');
+    await page.waitForSelector('#snapshot:not([hidden])');
+    await page.waitForSelector('#snapshot[data-from="host"]', { timeout: 5000 });
+    const line = 'beta_two gamma_three';
+    await page.waitForFunction(
+      (w) => [...document.querySelectorAll('#snapshot .para')].some((e) => e.textContent.includes(w)),
+      line, { timeout: 5000 });
+
+    // Aimed by the range of the line itself rather than by a line box: the stand's
+    // pane echoes what is typed and then prints it again, so which box is which is
+    // not something to count on.
+    const at = await page.evaluate((want) => {
+      const el = [...document.querySelectorAll('#snapshot .para')].find((e) => e.textContent.includes(want));
+      el.scrollIntoView({ block: 'center' });
+      const node = el.firstChild;
+      const i = node.textContent.indexOf(want);
+      const r = document.createRange();
+      r.setStart(node, i);
+      r.setEnd(node, i + want.length);
+      const box = r.getClientRects()[0];
+      return { x: Math.round(box.x + 3), y: Math.round(box.y + box.height / 2) };
+    }, line);
 
     const cdp = await page.context().newCDPSession(page);
-    const openCopy = async () => {
-      await page.click('#select');
-      await page.waitForSelector('#snapshot:not([hidden])');
-      await page.waitForSelector('#snapshot[data-from="host"]', { timeout: 5000 });
-      await page.waitForFunction(
-        () => [...document.querySelectorAll('#snapshot .para')]
-          .some((e) => e.textContent.includes('tap probe line')), null, { timeout: 5000 });
-    };
-    const aim = () => page.evaluate(() => {
-      const el = [...document.querySelectorAll('#snapshot .para')]
-        .find((e) => e.textContent.includes('tap probe line'));
-      el.scrollIntoView({ block: 'center' });
-      const r = el.getClientRects()[0];
-      return { x: Math.round(r.x + 4), y: Math.round(r.y + r.height / 2) };
-    });
-    // Well under PARA_HOLD: a press held that long is a pick, which is another test.
-    const tap = async (at) => {
+    const tap = async () => {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
       await page.waitForTimeout(50);
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(80);
     };
+    const held = () => page.evaluate(() => window.getSelection().toString());
 
-    await openCopy();
-    await tap(await aim());
-    assert.ok(await page.locator('#snapshot').isVisible(),
-      'the tap left the mode at once, so a double tap can never happen');
-    // And it still leaves: a frozen screen with no way out of it is what every
-    // report about this mode used to be.
+    // One tap does nothing at all — which is what makes a pair safe at any speed a
+    // thumb manages, and what two releases got wrong by making it the way out.
+    await tap();
+    assert.ok(await page.locator('#snapshot').isVisible(), 'a single tap left the copy mode');
+    assert.equal(await held(), '', 'a single tap selected something');
+
+    await tap();
+    assert.equal(await held(), line, 'the double tap did not take the line');
+
+    // The same place again asks for less of it. The pause is what makes the next two
+    // taps a pair of their own: inside the window every further tap is a second one,
+    // so tapping on without stopping cycles the grain rather than holding it.
+    await page.waitForTimeout(600);
+    await tap();
+    await tap();
+    assert.equal(await held(), 'beta_two', 'the second double tap did not narrow to the word');
+
+    // And Copy hands over what is highlighted, the picks being out of the way.
+    await page.click('#copy');
+    assert.equal((await page.evaluate(() => navigator.clipboard.readText())).trim(), 'beta_two');
+  });
+
+  test('a tap on the room around the text is the way out', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#term');
+    await page.keyboard.type('\nshort line\n');
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('short line'));
+    await page.click('#select');
+    await page.waitForSelector('#snapshot[data-from="host"]', { timeout: 5000 });
+
+    // The room to the right of a short line belongs to the <pre>, not to the span.
+    const at = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('#snapshot .para')].find((e) => e.textContent.includes('short line'));
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getClientRects()[0];
+      const box = document.getElementById('snapshot').getBoundingClientRect();
+      const x = Math.round(Math.min(r.right + 40, box.right - 30));
+      const y = Math.round(r.y + r.height / 2);
+      return { x, y, onPara: !!document.elementFromPoint(x, y)?.classList?.contains('para') };
+    });
+    assert.equal(at.onPara, false, `the tap aimed at a paragraph after all: ${JSON.stringify(at)}`);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+    await page.waitForTimeout(50);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForSelector('#snapshot', { state: 'hidden', timeout: 5000 });
-
-    await openCopy();
-    const at = await aim();
-    await tap(at);
-    await page.waitForTimeout(80);
-    await tap(at);
-    await page.waitForTimeout(700);
-    assert.ok(await page.locator('#snapshot').isVisible(), 'the double tap threw the mode away');
-    await page.click('#sel-done');
-    await page.waitForSelector('#snapshot', { state: 'hidden' });
   });
 
   test('the Markdown the pane drew is in the copy, not the drawing of it', async () => {

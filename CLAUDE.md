@@ -1884,22 +1884,51 @@ Five things that were each a way to be wrong:
 - **The host's answer arrives after the mode opens**, and redrawing the window costs every pick
   made in that round trip. Identical text is left alone — the ordinary case on a pane with no
   history above its screen — and `data-from` says the answer came either way.
-- **A tap on text arms the way out; it is not the way out.** Less than a paragraph is taken by the
-  one gesture that gives a word and then handles to drag from it — a double tap — and both other
-  presses here are spoken for: ours picks the paragraph, and the browser's long press is refused so
-  that it can. So the first of the two taps was the exit, and the mode was gone before the second
-  arrived. Reported as the quick tap throwing you out of the copy mode, and a comment in this file
-  claiming the double tap "still selects a word" was describing a gesture that could not happen.
-  `TAP_OUT` (300ms) is how long a tap waits; a second tap inside it arms nothing at all, because
-  waiting for a selection to appear instead fires the exit while the browser is still answering —
-  which the stand caught. The blank room still leaves at once, being the deliberate target the
-  bullet above already treats as one, and so do `✕ Done` and Android's own Copy.
+- **A tap on text does nothing, and the room around it is the way out.** Two releases went the
+  other way and each cost the same thing: the tap that leaves cannot also be half of a gesture that
+  selects. First it left at once, then it held the exit for 300ms so a pair could form — and the
+  thumb answered that within the hour, "два средне быстрых тапа выкидывают", the two landing either
+  side of the window. A window wide enough for a slow pair is a mode that takes half a second to
+  leave. So a tap on text does what it already did with paragraphs picked — nothing — and the ways
+  out are the ones in plain sight: `✕ Done`, the blank room, Android's own Copy.
 
-`test/ui/pockterm.test.mjs` reads all of it: a selection dragged past the window copies what the
-window holds and nothing after it; a press, a second press elsewhere and a press back on the same
-paragraph leave the picks the pair of them describe; and a tap does not leave the mode at once
-while two taps do not leave it at all. That last one is driven by real touches (CDP
-`Input.dispatchTouchEvent`) — a synthetic click is not a tap and never was.
+## Less than a paragraph is this page's own doing
+
+The pick takes a whole paragraph, and the answer to "how do I take part of one" was wrong twice in
+this file before it was measured. **On Android the gesture that selects a word is the long press** —
+and this mode has taken it: it marks the paragraph, and the browser's own is refused so that it can.
+A double tap selects a word on a desktop and **nothing at all** on the phone, which is what "выделения
+слова ни при каких тапах не происходит" meant. Both earlier answers here were about a gesture that
+could not happen.
+
+So the double tap is free — a `width=device-width` page has no double-tap zoom either — and what it
+does is ours: **the second tap of a pair selects the line under the finger, and a pair over the same
+line again narrows to the word in it** (`selectAt`, `TAP_PAIR` 500ms). The line first because that is
+what a script or a run of output is read and pasted in; the word because a line is not always little
+enough. Nothing is asked of the platform, so it behaves the same whether or not Android offers its
+handles for a selection it did not make itself.
+
+Four things it has to get right, three of them found by the stand:
+
+- **The picks go when a selection is made.** `selectedText` prefers a pick, so a selection standing
+  beside one would be invisible to Copy — the same one-owner rule as everywhere here.
+- **The ban comes off.** A selection under `user-select: none` is not drawn at all, and the class is
+  on from the press that just ended (it is armed at 200ms, and a medium tap is longer than that).
+  It exists to refuse the browser's *long* press, which this is not.
+- **What was taken last is remembered here, not read back off the selection.** A tap on a highlight
+  is how a phone dismisses it, so by the time the pair that should narrow arrives there is nothing
+  standing to compare with — on the stand the second pair kept re-taking the line. `lastGrab` holds
+  the line and the grain, and is dropped when the window is redrawn, its text node going with it.
+- **The pair is counted before any other branch can return.** The early return for "a tap inside a
+  selection is not a way out" used to run first, which left the narrowing pair measuring itself
+  against a tap two gestures old.
+
+Inside the window every further tap is a second one, so tapping on without stopping cycles line,
+word, line — which is why the test pauses between pairs. `test/ui/pockterm.test.mjs` drives it with
+real touches (CDP `Input.dispatchTouchEvent`; a synthetic click is not a tap): a single tap selects
+nothing and leaves the mode standing, a pair takes exactly the middle line of a three-line
+paragraph, a pair over it again takes the first word, Copy hands that word over, and a tap on the
+room beside a short line ends the mode.
 
 ## The pane draws Markdown, and a copy of the drawing has none
 
