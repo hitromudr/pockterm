@@ -1549,6 +1549,65 @@ describe('selection and the clipboard', () => {
     assert.equal(clip, clip.trimEnd(), 'the copy ends in a newline nobody typed');
   });
 
+  test('a tap on text waits for a second one before it leaves the mode', async () => {
+    // Reported as the quick tap throwing you out of the copy mode — and the gesture
+    // it was throwing away is the only one that takes less than a paragraph. A word
+    // comes from a double tap, and the first of its two taps was the way out, so the
+    // mode was gone before the second arrived. Our own long press cannot stand in for
+    // it: that one picks the paragraph, and the browser's is refused so it can.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    // The leading Enter is what makes it a paragraph of its own — same reason as the
+    // pick test above.
+    await page.click('#term');
+    await page.keyboard.type('\ntap probe line\n');
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('tap probe line'));
+
+    const cdp = await page.context().newCDPSession(page);
+    const openCopy = async () => {
+      await page.click('#select');
+      await page.waitForSelector('#snapshot:not([hidden])');
+      await page.waitForSelector('#snapshot[data-from="host"]', { timeout: 5000 });
+      await page.waitForFunction(
+        () => [...document.querySelectorAll('#snapshot .para')]
+          .some((e) => e.textContent.includes('tap probe line')), null, { timeout: 5000 });
+    };
+    const aim = () => page.evaluate(() => {
+      const el = [...document.querySelectorAll('#snapshot .para')]
+        .find((e) => e.textContent.includes('tap probe line'));
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getClientRects()[0];
+      return { x: Math.round(r.x + 4), y: Math.round(r.y + r.height / 2) };
+    });
+    // Well under PARA_HOLD: a press held that long is a pick, which is another test.
+    const tap = async (at) => {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+      await page.waitForTimeout(50);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+
+    await openCopy();
+    await tap(await aim());
+    assert.ok(await page.locator('#snapshot').isVisible(),
+      'the tap left the mode at once, so a double tap can never happen');
+    // And it still leaves: a frozen screen with no way out of it is what every
+    // report about this mode used to be.
+    await page.waitForSelector('#snapshot', { state: 'hidden', timeout: 5000 });
+
+    await openCopy();
+    const at = await aim();
+    await tap(at);
+    await page.waitForTimeout(80);
+    await tap(at);
+    await page.waitForTimeout(700);
+    assert.ok(await page.locator('#snapshot').isVisible(), 'the double tap threw the mode away');
+    await page.click('#sel-done');
+    await page.waitForSelector('#snapshot', { state: 'hidden' });
+  });
+
   test('the Markdown the pane drew is in the copy, not the drawing of it', async () => {
     // Reported as the copy losing Markdown, and that is what it was: what the agent
     // wrote as `**слово**` reaches the pane as an attribute and left the clipboard

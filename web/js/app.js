@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v174';
+const APP_VERSION = 'v175';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3075,6 +3075,12 @@ const PARA_UNBAN = 350; // ms after the finger, when the refusal is lifted
 // cancelled and the browser had it. This is about Chrome's own touch slop, which
 // is what it forgives a long press of its own.
 const PARA_TRAVEL = 14;
+// How long a tap on text waits before it becomes the way out of the mode — the
+// room a second tap needs to arrive and be a double tap. Android's own double-tap
+// window is about this, and the number is a bound on waiting rather than a
+// measurement of the platform: shorter and a real double tap leaves the mode,
+// longer and leaving it reads as a tap that did nothing. See the click handler.
+const TAP_OUT = 300;
 let paraEls = [];
 const picked = new Set();
 let banTimer = null;
@@ -3083,6 +3089,16 @@ let holdFrom = null;
 let holdAt = 0;
 let holdFired = false;
 let holdTouch = false;
+let tapOutTimer = null;
+let lastTapAt = 0;
+
+// Only the timer: the moment of the last tap outlives it on purpose, since it is
+// what the next tap is measured against and `pointerdown` disarms before the click
+// that would read it.
+function cancelTapOut() {
+  clearTimeout(tapOutTimer);
+  tapOutTimer = null;
+}
 
 // The copy window is laid out one span per paragraph so a press has something to
 // land on and a pick has something to mark. The newlines stay inside the spans,
@@ -3143,6 +3159,10 @@ function cancelHold() {
 }
 
 snapshotEl.addEventListener('pointerdown', (e) => {
+  // Anything arriving on the copy disarms the way out: the second tap of a double
+  // one, a press that becomes a pick, a drag that scrolls. Before the mouse check,
+  // because a laptop taps too.
+  cancelTapOut();
   // A flag left set eats the next honest tap: a browser that decided the gesture
   // was a scroll sends no click at all, so it is cleared here rather than by the
   // click it is waiting for. Same rule as the tab strip's hold.
@@ -3211,6 +3231,8 @@ snapshotEl.addEventListener('contextmenu', (e) => { if (holdTouch) e.preventDefa
 // Entering starts from a clean slate: Copy must never hand over leftovers.
 function setSelectMode(on) {
   selectMode = on;
+  cancelTapOut();
+  lastTapAt = 0; // a tap from the last time the mode was open is not a double tap
   dropSelection();
   // The floating controls stand down while the copy is frozen. Both are drawn
   // above it (the stack at z-index 12, the rail at 7) and both are about a pane
@@ -3420,8 +3442,42 @@ snapshotEl.addEventListener('click', (e) => {
     toast('picks dropped');
     return;
   }
-  setSelectMode(false);
-  toast('screen is live again');
+  // A tap on text **arms** the way out rather than being it, and the reason is the
+  // gesture it was making impossible. Less than a paragraph is taken the way half a
+  // line has always been taken on a phone — a double tap, which gives a word and
+  // then handles to drag from it — and our own long press cannot do that job: it
+  // picks the paragraph, and the browser's is refused so that it can. So the first
+  // of those two taps was the way out, and the mode was gone before the second
+  // arrived. Reported as exactly that.
+  //
+  // The blank room around the text still leaves at once: it is the deliberate
+  // target the picks above already treat as one, and there is no word there to
+  // select.
+  if (!(e.target && e.target.closest && e.target.closest('.para'))) {
+    setSelectMode(false);
+    toast('screen is live again');
+    return;
+  }
+  // A second tap inside the window is a double tap, and the whole gesture belongs
+  // to the browser: it arms nothing, so the mode stays for as long as the word and
+  // its handles take. Waiting for a selection to appear instead was the first
+  // version and the stand refused it — the exit fired while nothing was selected
+  // yet, which is also how it would fail on a phone whose double tap answers a
+  // moment later than ours. The way out of a double tap is the way out of the mode
+  // anyway: Done, or the blank room.
+  const now = Date.now();
+  const second = now - lastTapAt < TAP_OUT;
+  cancelTapOut();
+  lastTapAt = now;
+  if (second) return;
+  tapOutTimer = setTimeout(() => {
+    tapOutTimer = null;
+    // Asked again rather than assumed: a selection standing here means the browser
+    // answered the press after all, and a tap inside one is not a way out (above).
+    if (insideSnapshot()) return;
+    setSelectMode(false);
+    toast('screen is live again');
+  }, TAP_OUT);
 });
 
 // Android's own Copy and a desktop Ctrl+C put the selection in the clipboard

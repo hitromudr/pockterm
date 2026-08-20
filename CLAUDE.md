@@ -1884,10 +1884,22 @@ Five things that were each a way to be wrong:
 - **The host's answer arrives after the mode opens**, and redrawing the window costs every pick
   made in that round trip. Identical text is left alone — the ordinary case on a pane with no
   history above its screen — and `data-from` says the answer came either way.
+- **A tap on text arms the way out; it is not the way out.** Less than a paragraph is taken by the
+  one gesture that gives a word and then handles to drag from it — a double tap — and both other
+  presses here are spoken for: ours picks the paragraph, and the browser's long press is refused so
+  that it can. So the first of the two taps was the exit, and the mode was gone before the second
+  arrived. Reported as the quick tap throwing you out of the copy mode, and a comment in this file
+  claiming the double tap "still selects a word" was describing a gesture that could not happen.
+  `TAP_OUT` (300ms) is how long a tap waits; a second tap inside it arms nothing at all, because
+  waiting for a selection to appear instead fires the exit while the browser is still answering —
+  which the stand caught. The blank room still leaves at once, being the deliberate target the
+  bullet above already treats as one, and so do `✕ Done` and Android's own Copy.
 
-`test/ui/pockterm.test.mjs` reads both off the clipboard: a selection dragged past the window
-copies what the window holds and nothing after it, and a press, a second press elsewhere and a
-press back on the same paragraph leave the picks the pair of them describe.
+`test/ui/pockterm.test.mjs` reads all of it: a selection dragged past the window copies what the
+window holds and nothing after it; a press, a second press elsewhere and a press back on the same
+paragraph leave the picks the pair of them describe; and a tap does not leave the mode at once
+while two taps do not leave it at all. That last one is driven by real touches (CDP
+`Input.dispatchTouchEvent`) — a synthetic click is not a tap and never was.
 
 ## The pane draws Markdown, and a copy of the drawing has none
 
