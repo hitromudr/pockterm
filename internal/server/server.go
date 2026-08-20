@@ -4,8 +4,10 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -127,6 +129,49 @@ type Options struct {
 // UI hides its prompt buttons while the pane shows scrollback, so the state
 // has to follow a swipe closely without hammering tmux.
 const modePoll = 400 * time.Millisecond
+
+// How often the socket is pinged, and how long the far end may be silent — see
+// serveWS for why this side does the asking.
+//
+// pingEvery is under every idle timeout worth naming: a minute is the
+// aggressive floor for a consumer gateway, and the proxy in front of this one
+// is set to an hour (`proxy_read_timeout` in the pockterm_vhost role). pongWait
+// is three pings, so one answer lost on the way is not a dropped socket, and
+// the picture of who is attached is at most that stale.
+//
+// Vars rather than consts because the tests shrink them: a test that waits a
+// real minute for a real timeout is a test nobody runs.
+var (
+	pingEvery = 20 * time.Second
+	pongWait  = 60 * time.Second
+	// A ping the kernel will not take inside this is a socket whose buffers are
+	// full, which is a socket nobody is reading.
+	pingWrite = 10 * time.Second
+)
+
+// keepAlive pings the far end until the socket is let go.
+//
+// The write is deliberately not serialized with the others: WriteControl is the
+// one method gorilla documents as safe beside any other, and taking the write
+// mutex here would put the ping behind a PTY write blocked on a socket nobody
+// is reading — the very socket this exists to find.
+func keepAlive(conn *websocket.Conn, done <-chan struct{}) {
+	ticker := time.NewTicker(pingEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(pingWrite)); err != nil {
+				// Closed here so the read loop stops waiting on a socket that
+				// cannot even be written to; it is the one that reports the end.
+				conn.Close()
+				return
+			}
+		}
+	}
+}
 
 func Handler(o Options) http.Handler {
 	mux := http.NewServeMux()
@@ -648,6 +693,41 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 	// replies, causing "concurrent write to websocket connection" panic.
 	var writeMu sync.Mutex
 
+	// The socket is kept alive from this side, because the side that used to do
+	// it cannot while it matters. The page asks `ping` after ten seconds of
+	// silence — but only while it is on screen, a backgrounded page having its
+	// timers throttled to about one firing a minute, which is exactly when a
+	// notification is wanted. And a quiet session carries nothing at all: a mode
+	// frame goes out only when the mode changes, so between two keystrokes this
+	// socket can be silent for hours.
+	//
+	// What that costs was measured rather than argued. Of 515 notices sent to a
+	// page this server believed open, 102 were never acknowledged by any page
+	// (2026-08-20, ten days of the journal: `notify: … to N page(s)` against the
+	// page's own `client: {"event":"notify"…}`), with 60 `socket-stalled` reports
+	// beside them. Something on the way drops an idle connection — a guest
+	// network's gateway is the reported case — `readyState` stays OPEN at both
+	// ends, the write here succeeds into the kernel, and the count says
+	// delivered. A notification lost that way says nothing about itself: no
+	// notice on the phone, a success in the journal.
+	//
+	// A protocol ping answers both halves, and it is the only thing that can:
+	// the browser's network stack replies to it, not the page's JavaScript, so it
+	// works while the page is asleep. It keeps the mapping alive, and a far end
+	// that stops answering trips the read deadline — which is how this server
+	// learns that a socket it is counting is gone.
+	//
+	// The page's own watchdog stays where it is. It answers a different question:
+	// whether the socket in front of somebody looking at it is worth throwing
+	// away now.
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(pongWait))
+	})
+	pinging := make(chan struct{})
+	defer close(pinging)
+	go keepAlive(conn, pinging)
+
 	id := nextID.Add(1)
 	if o.Presence != nil {
 		o.Presence.Watch(target)
@@ -761,8 +841,19 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 	for {
 		mt, data, err := conn.ReadMessage()
 		if err != nil {
+			// A read that ran out of time is the one ending worth a line: the far
+			// end went away without saying so, and until this fires the socket is
+			// counted among the pages a notice was delivered to. Every other error
+			// here is a page that closed, which is ordinary.
+			var timeout net.Error
+			if errors.As(err, &timeout) && timeout.Timeout() {
+				log.Printf("socket gone: %s answered no ping for %s — anything sent into it was counted as delivered", target, pongWait)
+			}
 			return
 		}
+		// Whatever arrived is proof the far end is there — a pong, a keystroke, a
+		// resize. The deadline is about silence, not about pongs.
+		conn.SetReadDeadline(time.Now().Add(pongWait))
 		switch mt {
 		case websocket.BinaryMessage:
 			if _, err := t.File.Write(data); err != nil {

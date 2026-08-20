@@ -438,6 +438,127 @@ func TestPresenceTracksTheClient(t *testing.T) {
 	})
 }
 
+// shortenKeepAlive puts the socket's own clock inside a test's patience. The
+// bounds in force are twenty seconds and a minute, and a test that waits for
+// those is a test nobody runs.
+func shortenKeepAlive(t *testing.T, every, wait time.Duration) {
+	t.Helper()
+	prevEvery, prevWait := pingEvery, pongWait
+	pingEvery, pongWait = every, wait
+	t.Cleanup(func() { pingEvery, pongWait = prevEvery, prevWait })
+}
+
+// readInBackground keeps reading so the connection's control frames are
+// delivered: a ping is answered while reading and nowhere else.
+func readInBackground(c *websocket.Conn) {
+	go func() {
+		for {
+			if _, _, err := c.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
+}
+
+// A socket nobody is using is pinged from this side, which is the only side that
+// can. The page asks after ten seconds of silence, but only while it is on
+// screen — and a quiet session carries no frames at all, so between two
+// keystrokes there was nothing on this socket for hours. Whatever drops an idle
+// connection on the way then leaves a socket both ends still call open, and a
+// notice written into it is counted as delivered.
+func TestServerPingsASocketNobodyIsUsing(t *testing.T) {
+	shortenKeepAlive(t, 40*time.Millisecond, 5*time.Second)
+	srv := testServer(t, "")
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	pings := make(chan struct{}, 4)
+	c.SetPingHandler(func(data string) error {
+		select {
+		case pings <- struct{}{}:
+		default:
+		}
+		// Answered by hand: overriding the handler takes gorilla's own pong with
+		// it, and a ping nobody answers is the next test.
+		return c.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(time.Second))
+	})
+	readInBackground(c)
+
+	select {
+	case <-pings:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a quiet socket was never pinged: nothing holds it open between two keystrokes")
+	}
+}
+
+// A far end that hears the ping and says nothing is let go, and the journal says
+// so. That is what this server had no way to learn: a connection dropped
+// somewhere on the way looks open from here, a write into it succeeds into the
+// kernel, and every notice sent afterwards was reported as delivered to a page
+// that had not existed for hours.
+func TestServerLetsGoOfASocketThatStopsAnswering(t *testing.T) {
+	shortenKeepAlive(t, 20*time.Millisecond, 200*time.Millisecond)
+	var logs safeBuffer
+	defer captureLog(&logs)()
+
+	p := &fakePresence{}
+	opts := testOptions("")
+	opts.Presence = p
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.SetPingHandler(func(string) error { return nil })
+	readInBackground(c)
+
+	eventually(t, "the socket to be let go", func() bool {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return len(p.left) == 1
+	})
+	if !strings.Contains(logs.String(), "socket gone: demo") {
+		t.Fatalf("the end was not written down: %q", logs.String())
+	}
+}
+
+// And a page that answers keeps its socket for as long as it answers — the
+// deadline above is about silence, and a phone in a pocket is not silent by the
+// protocol's measure even when nothing is typed into it for an hour.
+func TestServerKeepsASocketThatAnswers(t *testing.T) {
+	shortenKeepAlive(t, 20*time.Millisecond, 150*time.Millisecond)
+	p := &fakePresence{}
+	opts := testOptions("")
+	opts.Presence = p
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	// gorilla's own handler answers the ping, which is what a browser's network
+	// stack does without asking the page.
+	readInBackground(c)
+
+	// Several pongWaits with nothing typed.
+	time.Sleep(time.Second)
+	p.mu.Lock()
+	left := len(p.left)
+	p.mu.Unlock()
+	if left != 0 {
+		t.Fatalf("an answering socket was dropped %d time(s)", left)
+	}
+}
+
 func TestTokenRequired(t *testing.T) {
 	srv := testServer(t, "s3cret")
 	if _, resp, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil); err == nil || resp == nil || resp.StatusCode != 401 {
