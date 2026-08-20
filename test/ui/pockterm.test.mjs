@@ -1614,6 +1614,19 @@ describe('selection and the clipboard', () => {
     await tap();
     assert.equal(await held(), 'beta_two', 'the second double tap did not narrow to the word');
 
+    // One highlight for one question: a selection is drawn in the same colour a
+    // pick is, both taken from `--marked`. Two kinds of highlight in one window
+    // were reported as exactly that, the browser's own teal being the second.
+    const paint = await page.evaluate(() => {
+      const el = document.querySelector('#snapshot .para');
+      const sel = getComputedStyle(document.getElementById('snapshot'), '::selection').backgroundColor;
+      el.classList.add('picked');
+      const pick = getComputedStyle(el).backgroundColor;
+      el.classList.remove('picked');
+      return { sel, pick };
+    });
+    assert.equal(paint.sel, paint.pick, `the selection and the pick are drawn differently: ${JSON.stringify(paint)}`);
+
     // And Copy hands over what is highlighted, the picks being out of the way.
     await page.click('#copy');
     assert.equal((await page.evaluate(() => navigator.clipboard.readText())).trim(), 'beta_two');

@@ -5,6 +5,9 @@
   --fg: #d8dee9;
   --bar: #151a24;
   --accent: #7aa2f7;
+  /* What is marked for copying, whichever gesture marked it — see #snapshot
+     below. One value, two rules, so the two cannot drift apart. */
+  --marked: rgba(122, 162, 247, 0.28);
   --vvh: 100dvh;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1020,14 +1023,24 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    rather than in a list somewhere: what is picked has to be readable next to what
    is not, with a thumb on top of it. */
 #snapshot .para.picked {
-  background: rgba(122, 162, 247, 0.28);
+  background: var(--marked);
   box-shadow: 0 0 0 1px rgba(122, 162, 247, 0.55);
   border-radius: 2px;
 }
+/* And a selection is drawn in the same colour, because it answers the same
+   question. Two mechanisms live here — a set of paragraphs from a long press, one
+   range of a line or a word from a double tap — and for as long as the second one
+   has existed it wore the browser's own teal, this page never having styled
+   `::selection` at all. Reported as two different kinds of highlight in one
+   window, which is what it was. The ring stays on the pick alone: that is the one
+   difference worth drawing, since a set is something another press adds to. */
+#snapshot::selection, #snapshot ::selection { background: var(--marked); }
 /* While the press is ours the browser gets no selection out of it. Set a beat
    before its own long press fires and given back a beat after the finger lifts,
-   so a plain drag still scrolls and a double tap still selects a word — which is
-   how half a line is taken on a phone. */
+   so a plain drag still scrolls. What it refuses is the browser's word selection,
+   which on Android comes from the long press and is the gesture this mode has
+   taken; less than a paragraph is taken by a double tap instead, and that
+   selection is the page's own — see selectAt in js/app.js. */
 #snapshot.holding, #snapshot.holding .para {
   user-select: none;
   -webkit-user-select: none;
