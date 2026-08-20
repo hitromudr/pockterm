@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v177';
+const APP_VERSION = 'v179';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1350,7 +1350,32 @@ async function renderTabs() {
   // The drawer's rows say the same thing off the same answer: one fetch, so a row
   // and a tab cannot describe one session out of two different moments.
   paintRows(sessions);
+  paintWayBack(state.get(current) === 'asking');
   showCurrentTab(false);
+}
+
+// A question at the live end, while what is on screen is the past.
+//
+// The row of answers is not drawn while the pane is scrolled back, and that rule
+// is sound: the numbers up here belong to an older screen, and pressing one would
+// answer whatever is live now. What it cost was reported as the menu not being
+// drawn at all — and the journal said where the page was at that moment,
+// `{"event":"mode","in":true,"back":24}`, twenty-four lines into the past while
+// the agent was waiting for an answer.
+//
+// So the way back says it, in the vocabulary the strip already uses: the same
+// yellow `!` a tab wears, on the ⇩ that returns to the live end. One tap and the
+// row is there. Nothing else changes — the mark claims a question exists, not that
+// this screen holds it.
+//
+// It wakes the stack, or the mark would be invisible exactly when it matters: the
+// pager fades after `PAGER_IDLE` and a question arriving is not a scroll.
+let liveEndAsking = false;
+function paintWayBack(asking) {
+  liveEndAsking = !!asking;
+  const on = liveEndAsking && scrolledBack;
+  if (on && !toBottomBtn.classList.contains('asking')) wakePager();
+  toBottomBtn.classList.toggle('asking', on);
 }
 
 // The strip is wider than the screen, and nothing ever scrolled it: which tab is
@@ -2544,6 +2569,16 @@ gestureArea.addEventListener('touchend', (e) => {
 let panelsHidden = false;
 const showBarsBtn = document.getElementById('show-bars');
 function setPanelsHidden(on) {
+  // Moving the layout is the other way a keyboard comes up on Android: the
+  // terminal's field keeps the focus from whenever it was last typed into, and
+  // the system puts a keyboard back for whatever holds focus as soon as the page
+  // moves under it. Hiding the bars is a `refit`, so it moves by definition —
+  // reported as our own buttons opening the keyboard, which is what ▾ was doing
+  // to somebody who pressed it to read. The same answer `attach` and the ⇩ give,
+  // and `releaseFocus` carries both bounds: never while the keyboard is up, since
+  // its owner is typing, and never on a desktop, where focus is the only way to
+  // type at all.
+  releaseTerminalFocus();
   panelsHidden = on;
   screenTerm.classList.toggle('panels-hidden', on);
   showBarsBtn.hidden = !on;
@@ -2553,6 +2588,20 @@ function setPanelsHidden(on) {
   // terminal that was just given the whole of it.
   if (on) showTermPopup(null);
   refit();
+}
+// Nothing on a bar takes the focus. The key bar's own keys, the macros, the pad
+// and the pager each said so where they were wired, and the ones left out were
+// exactly the ones reported: ▾ and ▴, and the row with ✂, Paste, 📎 and 💬. Two
+// ways they cost a keyboard, and either is enough — a button that takes the focus
+// and is then hidden with its bar hands it back to the terminal's field, which is
+// the keyboard coming up; and a field that still holds the focus gets one the
+// moment the layout moves. So: no focus taken here, and `setPanelsHidden` gives up
+// what the field was holding.
+//
+// A control that wants a keyboard is unaffected: this refuses the *button* the
+// focus, and 💬 still focuses the composer's field itself.
+for (const b of document.querySelectorAll('#keybar button, #modebar button, #selbar button, #quickbar button, #show-bars')) {
+  keepsTerminalFocus(b);
 }
 document.getElementById('hide').addEventListener('click', () => setPanelsHidden(true));
 showBarsBtn.addEventListener('click', () => setPanelsHidden(false));
@@ -4402,6 +4451,7 @@ function setCopyMode(inMode, back, hist) {
   if (away === scrolledBack) return;
   scrolledBack = away;
   toBottomBtn.hidden = !away;
+  paintWayBack(liveEndAsking);
   // ⇟ goes with the ⇩: at the live end there is nothing below to page to. ⇞ is
   // never hidden — it is the way in, and the stack closes over the two that are.
   pageDownBtn.hidden = !away;
@@ -4847,6 +4897,22 @@ let sawKeyboard = false;
 // shrinks both of them and the ratio never moves. The honest reference is the
 // tallest the viewport has ever been in this orientation.
 const tallestSeen = new Map();
+// What was pressed last, for the line below. A keyboard that comes up when
+// nobody asked for one is the hardest report to act on — every control here is a
+// candidate and a phone has no console — so the page names the button next to the
+// moment. Recorded in the capture phase, before any handler can stop the event,
+// and it is a breadcrumb rather than state: nothing reads it but the journal.
+let lastPress = '';
+let lastPressAt = 0;
+document.addEventListener('pointerdown', (e) => {
+  const el = e.target instanceof Element ? e.target.closest('button, [data-key], [data-macro]') : null;
+  if (!el) return;
+  lastPress = el.id || el.dataset.key || el.dataset.macro || el.className || el.tagName;
+  lastPressAt = Date.now();
+}, true);
+
+let kbWasUp = false;
+
 function measureKeyboard() {
   const w = Math.round(window.innerWidth);
   const h = Math.round(window.visualViewport ? window.visualViewport.height : window.innerHeight);
@@ -4860,6 +4926,13 @@ function measureKeyboard() {
   // got an event for is a keyboard it never saw, and that is exactly what made
   // the ⇩'s focus test fail about one run in three while nothing was wrong.
   document.documentElement.dataset.kb = keyboardUp ? '1' : '0';
+  // Only the moment it appears, and only with what was pressed just before it:
+  // a line per measurement would be a line per resize, and what is wanted is the
+  // name of the control that raised one nobody asked for.
+  if (keyboardUp !== kbWasUp) {
+    kbWasUp = keyboardUp;
+    if (keyboardUp) report('kb', { up: true, after: lastPress, ms: Date.now() - lastPressAt });
+  }
 }
 measureKeyboard();
 if (window.visualViewport) {

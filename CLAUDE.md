@@ -517,6 +517,19 @@ While the pane is scrolled back the page shows the round ⇩ that returns to the
 live end, and no prompt buttons, the numbered lines on screen belonging to the
 past.
 
+**And the ⇩ says when a question is waiting down there.** The rule above is sound
+and it had a hole the size of the thing it protects: an answer row is withheld
+because the menu on screen may be an old one, so a question that arrives while
+somebody is reading back has nothing on screen about it at all. Reported as the
+menu not being drawn, and the journal said where the page was —
+`{"event":"mode","in":true,"back":24}`, twenty-four lines into the past, with the
+agent waiting. So the way back wears the same yellow `!` a tab wears
+(`paintWayBack`), read off the same `state` the strip is coloured from, and one tap
+brings both the live end and its row. The mark claims a question exists, not that
+this screen holds it — and it wakes the stack, or it would be invisible exactly
+when it matters, the pager fading after `PAGER_IDLE` and a question arriving being
+no kind of scroll.
+
 Both used to follow `#{pane_in_mode}`, which is a different state. tmux's own
 `WheelUpPane` enters copy-mode with `-e`, which leaves it again when a scroll
 reaches the bottom — but only when a scroll is what got there. The page's glide

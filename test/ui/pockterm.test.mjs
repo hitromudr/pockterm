@@ -2790,6 +2790,52 @@ describe('a tab says what its session is doing', () => {
     assert.equal(await page.locator('#tabs button.working.done').count(), 0);
   });
 
+  test('scrolled back, the way to the live end says a question is waiting there', async () => {
+    // The row of answers is not drawn while the pane is scrolled back — those
+    // numbers belong to an older screen — and that left a question with nothing
+    // on screen about it at all. Reported as the menu not being drawn, with the
+    // journal showing the page 24 lines into the past at that moment.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+
+    // Something to scroll back through, then a menu, both through the pane: this
+    // is the watcher's own reading of a real screen.
+    for (let i = 0; i < 40; i += 1) stand.tmux(['send-keys', '-t', 'demo', `line ${i}`, 'Enter']);
+    stand.tmux(['send-keys', '-t', 'demo', 'Apply this change?', 'Enter']);
+    stand.tmux(['send-keys', '-t', 'demo', '❯ 1. Yes', 'Enter']);
+    stand.tmux(['send-keys', '-t', 'demo', '  2. No', 'Enter']);
+    await page.waitForFunction(
+      () => !!document.querySelector('#tabs button[data-session="demo"].asking'),
+      null, { timeout: 20000 });
+    // At the live end the mark belongs to the tab and to nothing else: the answer
+    // row is on screen there, which is the thing that answers the question.
+    assert.equal(await page.locator('#to-bottom.asking').count(), 0,
+      'the way back is marked while the way back is not even needed');
+
+    // Into the past by the page's own way in: ⇞ is the one button always on
+    // screen, and a wheel needs a pointer this viewport does not have.
+    await page.click('#page-up');
+    await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 10000 });
+    await page.waitForFunction(
+      () => document.getElementById('to-bottom').classList.contains('asking'),
+      null, { timeout: 10000 });
+    const mark = await page.evaluate(() => {
+      const b = document.getElementById('to-bottom');
+      const s = getComputedStyle(b, '::after');
+      return { content: s.content, colour: s.color, faded: document.getElementById('pager').classList.contains('idle') };
+    });
+    assert.ok(/!/.test(mark.content), `no mark on the way back: ${mark.content}`);
+    assert.equal(mark.colour, 'rgb(255, 210, 63)', `the mark is ${mark.colour}`);
+    // Awake, or the mark would be invisible exactly when it matters.
+    assert.equal(mark.faded, false, 'the stack is faded, so nothing of this is on screen');
+
+    // Back to the live end, and the mark goes with the button: the stand is shared,
+    // and a pane left in the past is what the next test would inherit.
+    await page.click('#to-bottom');
+    await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 10000 });
+  });
+
   test('a waiting agent turns its tab blue, with the mark over its top edge', async () => {
     // The state the answer buttons are drawn from, said on the strip as well: the
     // buttons only exist for the session you are looking at, and the question you
@@ -3430,6 +3476,52 @@ describe('the answer buttons and the pane they are read from', () => {
     await page.waitForTimeout(300);
     assert.equal(await holdsFocus(), false,
       'the terminal kept the focus, which on Android is the keyboard coming back');
+  });
+
+  test('hiding the bars gives the focus up, or the keyboard comes back over the screen', async () => {
+    // Reported from the phone as our own buttons opening the keyboard. ▾ is the one
+    // whose mechanism is not in doubt: it is a `refit`, so the layout moves, and on
+    // Android the system puts a keyboard back for whatever holds the focus the
+    // moment that happens — and the terminal's field holds it from whenever it was
+    // last typed into. The same answer the ⇩ and a session switch give.
+    //
+    // The keyboard is played by the viewport and waited for on `data-kb`, for the
+    // reason the answer-row test states: a page that never saw a keyboard is
+    // outside this rule altogether.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    const holdsFocus = () => page.evaluate(
+      () => document.activeElement === document.querySelector('.xterm-helper-textarea'));
+
+    await page.click('#term');
+    await page.setViewportSize({ width: 390, height: 420 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '1', null, { timeout: 5000 });
+    await page.setViewportSize({ width: 390, height: 780 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '0', null, { timeout: 5000 });
+    assert.equal(await holdsFocus(), true, 'the field had already lost the focus, so this proves nothing');
+
+    // Both halves are watched, because either one alone raises a keyboard: the
+    // button must not take the focus (it is hidden with its bar a moment later, and
+    // a focused element that goes hands the focus back to the field), and the field
+    // must not still be holding it when the layout moves.
+    await page.evaluate(() => {
+      window.__focusLog = [];
+      const name = (el) => (el ? `${el.tagName}${el.id ? `#${el.id}` : ''}` : 'none');
+      document.addEventListener('focusin', (e) => window.__focusLog.push(`in:${name(e.target)}`), true);
+      document.addEventListener('focusout', (e) => window.__focusLog.push(`out:${name(e.target)}`), true);
+    });
+    await page.click('#hide');
+    await page.waitForTimeout(200);
+    const log = await page.evaluate(() => window.__focusLog);
+    assert.ok(!log.some((l) => l === 'in:BUTTON#hide'), `▾ took the focus: ${JSON.stringify(log)}`);
+    assert.ok(log.some((l) => l.startsWith('out:TEXTAREA')), `the field never let go: ${JSON.stringify(log)}`);
+    assert.equal(await holdsFocus(), false,
+      'the terminal kept the focus while the bars went, which on Android is the keyboard coming up');
+
+    // And the bars come back, or the next test inherits a screen with no bars on it.
+    await page.click('#show-bars');
+    await page.waitForSelector('#keybar:not([hidden])', { timeout: 5000 });
   });
 
   test('a question that takes several answers is drawn as the boxes it toggles', async () => {

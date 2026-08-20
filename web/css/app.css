@@ -1106,6 +1106,25 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    plain column: ⇞ is on screen at the live end and the other two are not, so
    the one that is always there has to be the one nearest the thumb — hidden
    is `display: none`, and the flex column closes over it. */
+/* A question waiting at the live end, while the screen shows the past. The row of
+   answers is not drawn then — those numbers belong to an older screen, and
+   pressing one would answer whatever is live now — so the way back carries the
+   news, in the strip's own vocabulary: the same yellow `!`, on the ⇩ that returns.
+   Reported as the menu not being drawn at all, with the journal showing the page
+   twenty-four lines into the past at that moment. */
+#pager #to-bottom.asking::after {
+  content: '!';
+  position: absolute;
+  top: -3px;
+  right: -1px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffd23f;
+  /* Its own outline: it hangs over the circle's edge and whatever the pane drew
+     behind it. */
+  text-shadow: 0 0 3px #0b0e14, 0 0 2px #0b0e14;
+}
 #pager {
   position: absolute;
   /* Clear of the scrollbar's 18px track rather than the 10px every other
@@ -1146,6 +1165,8 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #pager.idle { pointer-events: none; }
 #pager.idle button { opacity: 0; }
 #pager button {
+  /* Relative so the `!` above can hang off the corner of the circle. */
+  position: relative;
   width: 44px;
   height: 44px;
   border: none;
