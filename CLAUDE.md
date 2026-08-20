@@ -2013,17 +2013,64 @@ the block, measured three ways on a tape of this session's own pane at 47 column
   distinct breaks at the pane's own edge, every one between whole words, not one inside a token.
   (At 163 columns almost nothing wraps, which is why this had to be measured on a phone-width pane.)
 - **A paragraph's lines all sit at one indent** — the agent's own margin, two columns — while what is
-  deeper belongs to somebody else: a `⎿` block's output at five, a code block further still. Those
-  breaks are the thing itself and are left alone, as are lists, tables, rules and headers, each of
-  which begins a line of its own.
+  deeper belongs to somebody else: a `⎿` block's output at five. Those breaks are the thing itself and
+  are left alone, as are lists, tables, rules and headers, each of which begins a line of its own.
+  (This bullet also said "a code block further still", and that was wrong — see the section below.)
 - **A sentence after the `●` the agent's speech is marked with continues at the column after the
   marker**: `●` at 0, its continuation at 2, 941 times in that tape. A second `●` is a second
   sentence, not a continuation.
 
 The one break this cannot put back is a token wider than the pane, which has to be cut somewhere: the
-join would put a space inside it. None appeared in the tape — a URL is a link and is rejoined as one
-— and inventing a guard for a shape that has not turned up is how the wrong answers in this file got
-written.
+join would put a space inside it. None appeared in the tape — a URL is a link and is rejoined as one —
+and the shape did turn up later, on a command echo rather than in prose; what came of it is in the
+next section.
+
+## A script is not a paragraph, and the indent could not tell them apart
+
+Reported as a script being impossible to copy, with extra line breaks in what came out. Both halves
+were true and they were the same defect twice: the rule above met a fenced code block, read it as
+prose, and got it wrong in **both** directions at once.
+
+**A code block is drawn at the agent's own margin, not deeper.** That is the measurement the bullet
+above lacked, and it was taken the way this file says to take one — off this program's own pane, by
+printing a shell script through the same renderer that draws everything else and capturing the result
+at 56 columns:
+
+```
+ 2|  #!/bin/sh
+ 2|  set -eu
+ 6|      printf 'эта строка внутри блока намеренно длиннее
+ 2|  панели, чтобы рисовальщик обязан был её перенести\n'
+ 6|      ok=1
+ 2|  fi
+```
+
+Two shapes in that, and each was a symptom. `#!/bin/sh` and `set -eu` are two lines at one indent, so
+the paragraph rule **glued the whole script into a single line**. And a code line carrying its own
+indent wraps back to **the block's margin** — 6 down to 2, shallower than the line it continues, where
+prose continues at the same column — so the rule that wanted the indents equal **left that break in
+the middle of a command**.
+
+**What separates a wrap from a newline is the renderer's own decision, replayed.** It wraps at word
+boundaries and keeps no space, so the next row's first word would have gone on this row unless the row
+plus a space plus that word ran past the pane (`roomRanOut`). If it would have fitted, the renderer
+would not have broken there and the break is the author's. That is what keeps `set -eu` on its own
+line, what tells a dedent (`ok=1` at six, `fi` at two) from a continuation, and what stopped two paths
+listed one per line from being glued into one path — a test that used to assert the gluing now asserts
+the opposite. Rows reach the full width, measured, so the edge is `cols` and not one less.
+
+**The shallower join is taken only on a row that stopped short of the edge, and that bound came from
+the panes.** Run over the owner's own sessions, the first version glued `printf "%-5` to `s USER=…`
+and `cat > fa` to `kebin/sudo` — a space in the middle of a token, which is the one failure worse than
+the break it replaced. Every such row was **exactly 56 columns**: a command echo that runs past the
+width is cut where it lands, and a cut eats nothing. A row that stopped short lost a space to a word
+that did not fit, and putting one back is right. On a full row the two cannot be told apart — a
+sentence ending flush with the edge and a token sliced through look identical, which is what this file
+already said about a cut token — so what is deep keeps its break there. A visible break in a script is
+a worse copy; a wrong space in it is a broken command.
+
+What the copy still carries is the block's own two-column margin, which `sh` does not mind and a
+here-doc terminator would.
 
 **A thematic break is drawn as a rule**, and a copy of the rule is box glyphs. Found while looking
 for those header underlines, which is the second Markdown construct that search turned up rather

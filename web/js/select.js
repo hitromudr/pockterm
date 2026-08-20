@@ -96,7 +96,7 @@ export function unwrapFrom(text, cols = 0) {
   const out = [];
   for (const line of lines) {
     const prev = out.length ? out[out.length - 1] : null;
-    if (prev !== null && joins(prev, line)) {
+    if (prev !== null && joins(prev, line, cols)) {
       const glue = cutToken(prev, line, cols) ? '' : ' ';
       out[out.length - 1] = `${prev.replace(/\s+$/, '')}${glue}${line.trim()}`;
       continue;
@@ -127,19 +127,68 @@ function cutToken(prev, line, cols) {
 
 function indentOf(line) { return /^[ \t]*/.exec(line)[0].length; }
 
-function joins(prev, line) {
+// Whether the renderer had to break where it broke — the one question that
+// separates a wrap from a line somebody wrote.
+//
+// It wraps at word boundaries and keeps no space, so its own decision can be
+// replayed: the next row's first word goes on this row unless the row plus a
+// space plus that word runs past the pane. If it would have fitted, the renderer
+// would not have broken there, and the break is the author's.
+//
+// This is what a copied script was missing. Read by indent alone, `#!/bin/sh`
+// and `set -eu` are two lines at the same margin and were joined into one — the
+// same rule that puts a wrapped sentence back together destroyed every newline in
+// the block. Measured on this program's own pane at 56 columns: rows reach the
+// full width, so the edge is `cols` and not one less.
+//
+// What it cannot answer is two long lines in a row: if the author's line ends
+// near the edge and the next begins with a word that would not have fitted, this
+// says wrap and is wrong. The signal costs nothing where it is silent — with no
+// width to measure against (`cols` 0) the old answer stands.
+function roomRanOut(prev, line, cols) {
+  if (!cols) return true;
+  const word = /^\S+/.exec(line.trim());
+  return drawnLen(prev) + 1 + drawnLen(word ? word[0] : '') > cols;
+}
+
+function joins(prev, line, cols) {
   if (!prev.trim() || !line.trim()) return false;
   const bare = prev.trimStart();
   const next = line.trimStart();
-  // The agent's own column and nothing deeper: below it are a tool's output and a
-  // code block, where a line break is the thing itself.
   const pi = indentOf(prev);
   const ni = indentOf(line);
-  if (pi > 3 || ni > 3) return false;
+  // Deeper than the agent's own margin is something of its own — a tool's output
+  // or an indented line of code — and its breaks are the thing itself.
+  if (ni > 3) return false;
+  if (pi > 3 && ni > 3) return false;
   if (OWN_LINE.test(bare) || /^⎿/.test(bare)) return false;
   if (STARTS_BLOCK.test(next)) return false;
+  if (!roomRanOut(prev, line, cols)) return false;
   const marker = MARKER.exec(prev);
   if (marker) return ni === pi + 2;
+  // A row shallower than the one before it is the other half of the same defect.
+  // A code line carrying its own indent wraps back to **the block's margin**, not
+  // to its own column — measured on this pane at 56 columns:
+  //
+  //   6|      printf 'эта строка внутри блока намеренно длиннее
+  //   2|  панели, чтобы рисовальщик обязан был её перенести\n'
+  //
+  // so a rule that wanted the indents equal left that break where it was, and a
+  // command came out of the clipboard in two pieces. A dedent that is not a wrap
+  // (`ok=1` at six, `fi` at two) is refused by the width above, which is what
+  // makes reading this shape safe at all.
+  //
+  // **Only a row that stopped short of the edge**, though, and that bound was
+  // measured too — by running this over the owner's own panes, where the first
+  // version glued `printf "%-5` to `s USER=…` and `cat > fa` to `kebin/sudo`,
+  // both with a space in the middle of a token. Every such row was **exactly 56
+  // columns**: where a command echo runs past the width it is cut where it lands,
+  // and a cut is a break with nothing eaten. A row that stopped short lost a
+  // space to a word that did not fit, and putting one back is right. On a full
+  // row the two are indistinguishable — the sentence ending flush with the edge
+  // and the token sliced through look identical — so what is deep keeps its
+  // break, where a wrong space is a broken command rather than a missing one.
+  if (pi > 3) return ni <= 2 && !!cols && drawnLen(prev) < cols;
   return ni === pi;
 }
 

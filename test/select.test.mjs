@@ -552,6 +552,36 @@ test('a code block keeps its breaks, being deeper than the margin', () => {
   assert.equal(unwrapFrom(pane), pane);
 });
 
+// --- the script that could not be copied -----------------------------------
+// A fenced block is drawn at the agent's own two-column margin, not deeper —
+// measured on this program's own pane at 56 columns, printing a shell script
+// through the same renderer that draws everything else here. So the paragraph
+// rule met it as prose and the copy came out unusable in both directions at
+// once: the lines it wrote were glued together, and the line the pane wrapped
+// stayed in two pieces.
+test("a script's own lines are not glued into one", () => {
+  const pane = '  #!/bin/sh\n  set -eu\n  for f in *.md; do echo "$f"; done';
+  assert.equal(unwrapFrom(pane, 56), pane);
+});
+
+test('a code line the pane wrapped comes back whole, though its tail is shallower', () => {
+  // The two rows verbatim off that pane: the line sits at six, its continuation at
+  // the block's own margin of two, and the row stops 54 columns into 56 because
+  // `панели,` needed seven more.
+  const pane = "      printf 'эта строка внутри блока намеренно длиннее"
+    + "\n  панели, чтобы рисовальщик обязан был её перенести\\n'";
+  assert.equal(unwrapFrom(pane, 56),
+    "      printf 'эта строка внутри блока намеренно длиннее панели,"
+    + " чтобы рисовальщик обязан был её перенести\\n'");
+});
+
+test('a dedent is not a wrap', () => {
+  // `ok=1` at six and `fi` at two: shallower, like a continuation, and the width
+  // is what tells them apart — `fi` would have fitted with room to spare.
+  const pane = '      ok=1\n  fi';
+  assert.equal(unwrapFrom(pane, 56), pane);
+});
+
 test('a list is a list, and its items are not glued into a sentence', () => {
   const pane = '  - первый пункт\n  - второй пункт\n  1. и нумерованный\n  2. второй';
   assert.equal(unwrapFrom(pane), pane);
@@ -563,9 +593,11 @@ test('a table, a rule and a header are each their own line', () => {
 });
 
 test('the whole of it together: a pane paragraph with marks and a wrapped header', () => {
+  // 33 columns rather than a round number: the first row is 28 wide and `цифры`
+  // needs six more, so this is a pane the renderer really would have broken.
   const src = `  ${H1('Очень длинный')}\n  ${H1('заголовок')}\n\n`
     + '  \x1b[1mВажная\x1b[0m \x1b[1mправка,\x1b[0m без которой\n  цифры читаются неверно.';
-  assert.equal(markdownFrom(src, 47),
+  assert.equal(markdownFrom(src, 33),
     '  # Очень длинный заголовок\n\n  **Важная правка,** без которой цифры читаются неверно.');
 });
 
@@ -579,8 +611,10 @@ test('a token the pane cut at its edge is joined with nothing between', () => {
 });
 
 test('a line ending in a slash well short of the edge is a line of its own text', () => {
-  // Two paths listed one per line: not a cut, and gluing them would invent a path.
-  assert.equal(unwrapFrom('  data/\n  scripts/', 47), '  data/ scripts/');
+  // Two paths listed one per line. Neither half of the join applies: the row ends
+  // seven columns into a pane forty-seven wide, so the renderer never broke here
+  // and there is nothing to put back — gluing them would invent a path.
+  assert.equal(unwrapFrom('  data/\n  scripts/', 47), '  data/\n  scripts/');
 });
 
 test('a sentence that ends exactly at the edge still gets its space', () => {
@@ -594,6 +628,8 @@ test('a sentence that ends exactly at the edge still gets its space', () => {
 test('the marks this file adds do not count towards the edge', () => {
   // They were never on screen; counting them would fire the guard on a row that
   // never reached the edge and glue two words together.
+  // 36 columns: the row is 30 wide as it was drawn and 36 with the marks, so the
+  // guard is off where it should be and would have fired if they counted.
   const a = '  **жирное** и `код` в конце строки/';
-  assert.equal(unwrapFrom(`${a}\n  дальше`, 60), '  **жирное** и `код` в конце строки/ дальше');
+  assert.equal(unwrapFrom(`${a}\n  дальше`, 36), '  **жирное** и `код` в конце строки/ дальше');
 });
