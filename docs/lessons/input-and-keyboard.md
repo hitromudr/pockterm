@@ -1,0 +1,262 @@
+# Keyboard, IME and the key bar
+
+Everything about what the on-screen keyboard does to typed text, and what the key bar has to do about it. These sections were moved out of `CLAUDE.md`, which keeps the
+rule and a pointer; the derivation, the measurements and the dates are here. Read the
+ones your change touches before making it — every one of them was paid for at least
+twice.
+
+## The client is not always a browser
+
+On the owner's phone this once ran inside a WebView in his own Android app
+(`android_client` in the devops repo). A WebView has no asynchronous Clipboard
+API, no Notification API, no file chooser and no PWA install, and it cannot be
+opened in devtools; every clipboard, image and notification bug reported here
+came from that gap. The app injects a bridge — `window.PockNative` with `copy`,
+`read`, `commitInput`, `setImeMode`, `notify` and `appVersion`. The page prefers
+it when present and falls back to browser APIs where there are any; a call the
+installed app does not know returns false rather than throwing, which is how the
+page tells "no" from "this app is older than the request".
+
+`commitInput` ends a composition, which a page cannot do; `setImeMode` asks for
+a different kind of field. Neither is fixable inside the page — see
+`TerminalWebView` in the devops repo for what the app asks the keyboard for. The mode is cycled from the drawer (text → raw →
+raw-strict) and stored; `?ime=` still wins on load but is unreachable inside the
+app, whose address is fixed (`POCKTERM_URL` in `MainActivity`). The URL is read
+once at load, or a lingering `?ime=` undoes every tap. The terminal defaults to
+`raw` since 2026-08-03, measured rather than argued: under app 2.3 a backspace
+arrives as `deleteContentBackward` instead of an `insertCompositionText`
+rewriting the whole word, and the composing region covers the last word rather
+than everything typed. `raw-strict` (`VISIBLE_PASSWORD` + `NO_SUGGESTIONS`,
+app 2.1) brought up **no keyboard at all** — `sawKeyboard:false` for a whole
+session — so the page's default undoes the app's own; a drifting keyboard is bad
+and no keyboard is worse.
+
+**None of that lever exists on the client the owner actually uses.** The phone
+has been a Chrome PWA since at least 2026-08-05 (`"native":false` in the `hello`
+line — check that before explaining anything here by the bridge), and without
+`PockNative` both `setImeMode` and `commitInput` do nothing at all. So the `⌨`
+button cycles a mode, remembers it and changes nothing, and the Enter held in
+`ender.js` waits on its 90ms bound rather than on a commit. This section
+describes the app; the ones below describe the phone.
+
+## The word came back because the field still had it
+
+The drift was read for two releases as the keyboard corrupting what was typed.
+It is not: **the word is written twice**, and the second copy is the keyboard's
+own, offered because the page left the word where the keyboard could find it.
+
+Measured on the owner's phone (Chrome PWA, Gboard, 2026-08-06) at `chars`,
+typing `порт`, a space, then a backspace:
+
+```
+compositionend        "порт"   field="порт"   ← sent, and the field is not cleared
+insertText " "                 field="порт "
+deleteContentBackward          field="порт"
+compositionstart      ""       field="порт"   ← the keyboard re-opens over it
+insertCompositionText "порт"   field="порт"   ← sent a SECOND time
+```
+
+— and the same block for every further space-and-backspace: three presses, three
+copies. That is what `❯ орарь орарл` on the screenshot was. Nothing is corrupted:
+the residue in the field *is* the defect, because what a keyboard finds in a
+field is what it takes for the word being written now.
+
+**The same phone in its other mood opens no composition at all**: 83 keyups and
+zero composition events in half a minute of the same recording, with twelve
+`insertText` spaces growing the field 4 → 16 and never shrinking. Different
+route, same residue — which is why the fix is about the field rather than about
+compositions, and why another keyboard mode would have needed two.
+
+`fieldHygiene` in `web/js/imefield.js` empties the field once an edit is over,
+and the two bounds are the whole of it. **Never while a composition is open** —
+what is in the field then is being written. **Never in the same task as the
+event** — xterm reads the field on a `setTimeout(0)` scheduled from
+`compositionend`, so a clear that ran first would send an empty string, and
+sending nothing is worse than sending twice. It reads, replaces and sends
+nothing; the one operation is emptying a field the keyboard has finished with,
+which keeps it from becoming a fifth author in the buffer that "One owner for
+typing" in `app.js` exists to prevent.
+
+**Whether the rule did anything is its own question, with two silent wrong
+answers**: never wired (xterm's textarea not yet there when `keepEmpty` is
+called) and wired but never firing look identical from a phone, and both look
+like the drift. `field-guard` says which at load, `field-clear` reports the first
+clear with its length. On the owner's phone, v133: `{"wired":true}`,
+`{"len":6,"first":true}`.
+
+**Measured again with the log on, and the defect is gone.** 316 events, the field
+emptied fourteen times and never grew past 8 where the day before it ran to 16
+and kept going. The number that decides it: eight `compositionstart`, seven of
+them over an empty field. A keyboard that finds nothing has no previous word to
+offer.
+
+The eighth is a different animal, and it must not be fixed by widening the rule.
+Gboard sometimes **restarts a composition without ending the one before** —
+`compositionupdate` with `len:0`, no `compositionend`, then a fresh
+`compositionstart` over the character the previous region left, with the next
+region appended rather than replacing it (field 1 → 3 on a two-character
+update). Nothing ended, so by its own bounds the field is still the keyboard's.
+xterm sends a composition at `compositionend`, so the character sitting there has
+*not* been sent: clearing it would lose a keystroke. A recording at `chars` did
+not reproduce any loss (`слово1 слово2 слово3` typed and arrived, with the
+space-and-backspace in the middle of it), and the restart is rare — two of eight
+in one run, none in the next. Unmeasured cost is not a reason to widen a rule
+against a keystroke that might simply vanish.
+
+## The bar carries what the keyboard cannot
+
+Every key on the bar earns its cell against one question: does the on-screen
+keyboard already do this? Erasing does, so the backspace left on 2026-08-12 and
+its cell went to **Ctrl as a latch** — one tap arms it, the next character typed
+goes as a control code, the arm is spent. `^R`, `^D`, `^Z`, `^L` are what an
+agent's console asks for and no on-screen keyboard offers; `applyCtrl` in
+`js/keys.js` had been written for this and sat unused.
+
+**The same question moved two more keys on 2026-08-19.** `✓` (accept) is a right
+arrow and an Enter — both already on this bar, one cell apart — so it stopped
+earning a cell of its own and `^O` took it; prompt mode's quick row, which is two
+wide buttons rather than twelve cells, still carries the macro, and the wire tests
+for it now press it there. `^O`'s own cell went to **Tab**, which was removed when
+the bar was laid out on the grounds that "this bar answers an agent, it does not
+complete filenames" — and both halves of that were a guess: the agent's own input
+completes a path with Tab, and no on-screen keyboard has a Tab at all, which is
+the whole of the question above. The READMEs had been listing it in the key bar
+throughout.
+
+**The modifier alone was the wrong answer, and the phone said so within the
+hour**: "Ctrl, letter — and out comes text, with Ctrl still lit". Gboard
+composes, so xterm is handed a whole word when the composition closes —
+`compositionend` with len 3, 5, 7, 8, 9 and only twice len 1 (2026-08-12). There
+is no keystroke to modify; a latch waiting for one character waits for something
+this keyboard does not send.
+
+So Ctrl also opens **a pad of the control keys themselves** (`#ctrlpad`), which
+asks the keyboard for nothing: `^A ^E ^K ^U ^W ^R ^L ^D ^Z ^P`, one tap each,
+closing on use — a pad left open covers the output it was opened over. The two
+share one state: arming shows the pad *and* latches the next character, and they
+must not disagree about whether Ctrl is on.
+
+**And the keyboard can be made to hand the letter over, which is what the pad
+stood in for.** A composition can be ended by moving the focus (`endEditByBlur`,
+written for the held Enter), and a composition that has ended is a letter xterm
+sends at once. With Ctrl armed, the first edit inside a composition is ended a
+task later (`ctrlSawEdit`), the letter arrives at `onData`, and the latch turns
+it into a control code. Arming also ends a word already in flight: it goes as the
+typing it is, and the next letter then arrives in a field of its own. Which
+question is asked of the field rule (`fieldHygiene`'s `onEdit`, beside
+`onCompose`), not of a listener of its own.
+
+**The layout is the other half.** The owner's keyboard is Russian, and a page can
+switch neither layout nor language — there is no API in the browser or in
+Android. So `applyCtrl` reads a Cyrillic letter **by the key it sits on**: `к` is
+where `r` is, so Ctrl+`к` is `^R`, which is what a terminal does one layer down,
+applying Ctrl to the keycode rather than to the letter the layout produced.
+Letters only: `х ъ ж э б ю` sit on brackets and punctuation and pass through
+untouched. A test checks that every key the pad offers has a Cyrillic letter
+reaching it.
+
+**So the pad is now for a screen with no keyboard on it** — reading back through
+output with the bars away, where `^C` still has to be reachable. With a keyboard
+up the letter comes from there (`keyboardUp`, the page's own measurement), so on
+a desktop the pad behaves exactly as before.
+
+Three properties of the latch, each a way it could have gone wrong quietly:
+
+- **Spent, not sticky, and visible while armed.** A latch left on turns a
+  sentence into control codes with nothing on screen reacting until one of them
+  means something. The button lights with the same `on` class every lever here
+  uses, and the test asserts the class goes out when the arm is used.
+- **One character only.** A paste and a composed word arrive as several, and
+  turning the first into a control code would mangle the rest.
+- **A mouse report neither is typing nor spends the arm.** xterm hands the wheel
+  to the same callback as the keyboard, so a scroll between arming and typing
+  would otherwise leave the latch quietly off.
+
+Another bar key **spends** the arm rather than being modified by it: those keys
+are sequences of their own, and a Ctrl+Esc sending something else is a key nobody
+asked for. `test/ui/bytes.test.mjs` reads all of it off the wire through
+`cat -vT` — `^R` from a composed `к`, `^R` from a typed `к`, `^[r` for that last
+case, and the pad staying away with the viewport shortened. Each was checked
+against the defect first: with `onEdit` unwired the composed letter never reaches
+the pty at all.
+
+## The bar's Enter waits for the keyboard's word
+
+Gboard holds the word being typed as a composing region. Only the app can end
+that (`PockNative.commitInput()`), and calling it before Enter was necessary and
+not sufficient: the committed text reaches the page in a later task, so an Enter
+in the same tick overtook it — the line went without its last word, and the word
+turned up after the newline.
+
+`web/js/ender.js` holds the key: released a moment after input arrives, or after
+90ms when nothing was being composed. Both bounds matter — a commit can arrive in
+more than one chunk, and an Enter that sometimes does nothing is worse than the
+defect. Only keys that end an input go through it (`enter`, `alt-enter`, the
+`accept` macro); `esc` and `ctrl-c` interrupt one and must not wait. The bridge
+cannot say whether anything was composing, so the page waits on the data rather
+than on the answer.
+
+**A browser was assumed not to need any of it, which stopped being true when the
+phone stopped being the app.** `commitPendingInput` answered `false` without a
+bridge, and the ender reads `false` as "nothing to wait for" — so on a Chrome PWA
+the wait never happened and the 90ms bound never applied. Reported as the last
+word not being sent while **dictating by voice**: dictation is one long composing
+region, so the word is always still in the field when the Enter goes. Typing by
+thumb hides it, a word ending often enough that the field is usually empty.
+
+A page cannot ask Android to restart the input, but it can end a composition the
+ordinary way: taking the focus off the field makes the keyboard finish the word
+and fire `compositionend`, which xterm forwards to the pty; focus goes straight
+back, so the keyboard stays up. `commitComposition` chooses between the two and
+answers **false when nothing is being composed** — the right answer rather than a
+missing one, since what was typed has already gone as key events. Whether a word
+is being composed is asked of `keepEmpty` in `js/imefield.js`, which hands back
+`isComposing` — the one owner of that fact.
+
+The device answers with a line per Enter (`ender`): what was asked, whether a
+composition was open, how much the field held. "The last word did not go" and
+"there was nothing to wait for" are the same thing from a thumb, and that line
+separates them — dictating, `asked:true composing:true` with 41, 46 and 67
+characters held. It lives behind `🔍 Input log`: a line per Enter is a request per
+Enter, and that is not the price of typing once the answer is known.
+
+## The blur that ends the word is the blur that wipes it
+
+For one release the blur did not merely delay the word — it **destroyed it**.
+Reported as "the last word is not sent" again, and the journal said the wait had
+happened this time (`ender asked:true composing:true len:4`, 2026-08-08), with a
+`compositionend` carrying the word above it and no data event after it at all.
+
+Both halves of the mechanism are xterm's own, and a blur runs them in the order
+that loses. `_handleTextAreaBlur` is literally `this.textarea.value = ""`, and
+`compositionend` schedules a `setTimeout(…, 0)` that reads the field and sends
+**what is in it then**. The word was ended, wiped and read as nothing.
+
+`endEditByBlur` in `js/ender.js` puts back what xterm wiped, inside our own call,
+before the task that reads it runs. It is the one write to that field on this
+page and deliberately **not an edit**: the value goes back to exactly what the
+keyboard left, nothing is read out and nothing is sent. Owners are unchanged —
+xterm still sends, `fieldHygiene`'s deferred clear still empties after the read.
+A field a browser did not wipe gets no write at all, and the journal carries how
+much was put back (`restored`).
+
+**The stand can judge this one.** The composition is faked, but only the part not
+under test: events are dispatched at the real field and `compositionend` is fired
+from a **capture-phase** blur listener, which is where Chrome fires it and ahead
+of xterm's own listener. `test/ui/bytes.test.mjs` reads the pty through `cat -vT`:
+against the two-line `blur(); focus();` it is `^M`, with the fix `ab^M`.
+
+## Holding the focus is asking for the keyboard
+
+The general rule is in `CLAUDE.md` ("Focus is the keyboard on Android"); two places
+learned it first. `attach` — a session
+switch kept raising the keyboard for somebody who had just put it away, and
+nothing on that path focuses anything. And the ⇩ that goes back to the live end,
+reported as the scroll arrow bringing the keyboard up over the output it had just
+returned to: leaving copy-mode is exactly a layout moving.
+
+The way back is unchanged — tapping the terminal asks for a keyboard and gets
+one. The stand has no soft keyboard, so the tests assert the lever (does the
+textarea still hold focus) with the keyboard played by the viewport and waited
+for on `data-kb`. `keepsTerminalFocus` stays on the ⇩ itself: it hides a moment
+later, and hiding a focused element hands focus back to whatever had it before.
