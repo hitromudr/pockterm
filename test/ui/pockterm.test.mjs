@@ -2254,11 +2254,12 @@ describe('attaching a file', () => {
   after(async () => { await stand.stop(); });
 
   test('the clip asks which source, and each opens the picker with its own filter', async () => {
-    // One `accept` cannot ask for both: `image/*` opens the gallery, where a
-    // document cannot be reached at all, and no filter opens the file manager,
-    // where a screenshot is three taps in. So the clip opens a menu, and the
-    // picker itself is opened from inside the tap on a source — a browser hands
-    // a file chooser to a gesture and to nothing else.
+    // One `accept` cannot ask for all of them: `image/*` opens the gallery,
+    // where a document cannot be reached at all, no filter opens the file
+    // manager, where a screenshot is three taps in, and `capture` opens the
+    // camera instead of a chooser. So the clip opens a menu, and the picker
+    // itself is opened from inside the tap on a source — a browser hands a file
+    // chooser to a gesture and to nothing else.
     await stand.open();
     await stand.attach();
     const { page } = stand;
@@ -2268,22 +2269,35 @@ describe('attaching a file', () => {
     // Lit while it is open, like every other lever here.
     assert.equal(await page.locator('#pick.on').count(), 1);
 
-    for (const [sel, accept] of [['#attach-image', 'image/*'], ['#attach-doc', '']]) {
+    // The camera first, and the gallery straight after it on purpose: one input
+    // serves all three, so `capture` is state left behind by whoever tapped
+    // last, and the gallery opening the camera is what that looks like.
+    const sources = [
+      ['#attach-photo', 'image/*', 'environment'],
+      ['#attach-image', 'image/*', null],
+      ['#attach-doc', '', null],
+    ];
+    for (const [sel, accept, capture] of sources) {
       if (await page.locator('#attach-menu[hidden]').count()) {
         await page.click('#pick');
         await page.waitForSelector('#attach-menu:not([hidden])');
       }
       // The picker is the app's business; what must hold here is that the
-      // source reaches the input at all, and with its own filter on it. The
+      // source reaches the input at all, and with its own pair on it. The
       // button stopped reaching it once already, when the bar's "do not take
-      // focus" rule was applied to a label around it.
+      // focus" rule was applied to a label around it. A desktop has no camera,
+      // so `capture` is asserted as the attribute and nothing more.
       const asked = await page.evaluate((where) => new Promise((resolve) => {
         const input = document.getElementById('pick-file');
-        input.addEventListener('click', (e) => { e.preventDefault(); resolve(input.accept); }, { once: true });
+        input.addEventListener('click', (e) => {
+          e.preventDefault();
+          resolve({ accept: input.accept, capture: input.getAttribute('capture') });
+        }, { once: true });
         document.querySelector(where).click();
-        setTimeout(() => resolve('the picker never opened'), 1000);
+        setTimeout(() => resolve({ accept: 'the picker never opened', capture: null }), 1000);
       }), sel);
-      assert.equal(asked, accept, `${sel} opened the picker with accept=${JSON.stringify(asked)}`);
+      assert.equal(asked.accept, accept, `${sel} opened the picker with accept=${JSON.stringify(asked.accept)}`);
+      assert.equal(asked.capture, capture, `${sel} opened the picker with capture=${JSON.stringify(asked.capture)}`);
       // Gone once a source has been chosen: it stands in front of the bar.
       await page.waitForSelector('#attach-menu', { state: 'hidden' });
     }

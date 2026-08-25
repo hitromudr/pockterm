@@ -103,15 +103,32 @@ screenshot holds), `MaxBytes` at 20 MB with the proxy's own limit just above it 
 Diagnostics section: the two move together or the higher one is decoration), and the
 24-hour sweep — a file handed to an agent is a scratch file whatever is in it.
 
-**And the clip asks which source, because `accept` cannot ask for both.** Dropping the
+**And the clip asks which source, because `accept` cannot ask for all of them.** Dropping the
 filter was what let a document in, and it made the common case slower: `accept="image/*"`
 opens Android's chooser on the gallery and puts a document out of reach entirely, no
 `accept` opens the file manager and buries a screenshot three taps in. That is trading one
-for the other rather than having both, so 📎 opens a popup — 🖼 Картинки, 📄 Документы — and
-each answer sets the filter and opens the **same** input. Two inputs would be two answers to
-what has just been picked. The picker is opened from inside the tap on a source, a browser
-handing a file chooser to a gesture and to nothing else, which is the same rule
-`askKeyboard` lives by.
+for the other rather than having both, so 📎 opens a popup — 📷 Снять фото, 🖼 Картинки,
+📄 Документы — and each answer sets the pair and opens the **same** input. Two inputs would
+be two answers to what has just been picked. The picker is opened from inside the tap on a
+source, a browser handing a file chooser to a gesture and to nothing else, which is the same
+rule `askKeyboard` lives by.
+
+The third source, added 2026-08-25, is the camera: `capture="environment"` on the same
+`image/*` input skips the chooser and opens it directly, so what is in front of the phone
+reaches the agent without a trip through the gallery. Two things about it are worth keeping.
+It is **a request, not a guarantee** — a desktop has no camera and ignores the attribute,
+which is why the stand asserts the attribute and nothing more, and why the phone is the
+judge here as everywhere else. And because the input is shared, **`capture` is state that
+outlives the tap**: every source sets both halves and the other two remove the attribute
+rather than emptying it, or the gallery opens the camera for whoever chose it last. That is
+the same "one owner per fact" the composition state is held by — the input's configuration
+belongs to the source being tapped, not to the one before it. The browser test walks the
+camera and the gallery in that order for exactly this reason.
+
+What the camera does hit is the size bound described above: a screenshot is a few hundred
+kilobytes, a camera frame is several megabytes, and 413 from the proxy was first seen with a
+photo. It is refused in this program's own words up to 22 MB and by the proxy above that;
+nothing about the new source changes those numbers.
 
 Three things it inherits from the popups already here. It is **drawn over the terminal**,
 anchored to `#modebar` itself (`bottom: 100%`) rather than to a number of pixels — the bar is

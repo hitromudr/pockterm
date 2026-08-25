@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v179';
+const APP_VERSION = 'v180';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3801,24 +3801,39 @@ pasteTargetEl.addEventListener('blur', () => {
 // which is neither on the clipboard nor draggable there.
 //
 // **The clip asks which source before it opens anything.** `accept` decides
-// which app Android offers and no single value asks for both: `image/*` opens
-// the gallery, where a document cannot be reached at all, and no `accept` opens
-// the file manager, where a screenshot is three taps in. Dropping the filter
-// altogether made documents possible and screenshots — the common case —
+// which app Android offers and no single value asks for all of them: `image/*`
+// opens the gallery, where a document cannot be reached at all, and no `accept`
+// opens the file manager, where a screenshot is three taps in. Dropping the
+// filter altogether made documents possible and screenshots — the common case —
 // slower, which is trading one for the other rather than having both.
 //
-// Each answer sets the filter and opens the **same** input: two inputs would be
+// A photo is the third: `capture` on an `image/*` input skips the chooser and
+// hands the tap to the camera, so what is in front of the phone reaches the
+// agent without being saved to the gallery and picked out of it afterwards.
+// It is a request rather than a guarantee — a desktop has no camera and
+// ignores it, which is also why the stand can only assert the attribute.
+//
+// Each answer sets the pair and opens the **same** input: two inputs would be
 // two answers to what has just been picked, and `change` fires on whichever was
-// used. The picker is opened from inside the tap on the source, a browser
-// handing a file chooser to a gesture and to nothing else.
-const ATTACH_SOURCES = [['attach-image', 'image/*'], ['attach-doc', '']];
+// used. One input means the pair is state that outlives the tap, so every
+// source sets **both** halves — `capture` is removed rather than left empty,
+// or the gallery would open the camera for whoever chose it last. The picker is
+// opened from inside the tap on the source, a browser handing a file chooser to
+// a gesture and to nothing else.
+const ATTACH_SOURCES = [
+  ['attach-photo', 'image/*', 'environment'],
+  ['attach-image', 'image/*', ''],
+  ['attach-doc', '', ''],
+];
 keepsTerminalFocus(pickBtn);
 pickBtn.addEventListener('click', () => showTermPopup(termPopup === 'attach' ? null : 'attach'));
-for (const [id, accept] of ATTACH_SOURCES) {
+for (const [id, accept, capture] of ATTACH_SOURCES) {
   const b = document.getElementById(id);
   keepsTerminalFocus(b);
   b.addEventListener('click', () => {
     pickFileEl.accept = accept;
+    if (capture) pickFileEl.setAttribute('capture', capture);
+    else pickFileEl.removeAttribute('capture');
     showTermPopup(null);
     pickFileEl.click();
   });
