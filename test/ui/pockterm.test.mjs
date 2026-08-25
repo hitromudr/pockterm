@@ -2311,6 +2311,27 @@ describe('attaching a file', () => {
     assert.equal(await page.locator('#pick.on').count(), 0);
   });
 
+  test('a picker that hands back no file says so', async () => {
+    // The first photo taken from the camera (2026-08-25) never arrived, and
+    // nothing on screen or in the journal said where it stopped: an upload line
+    // is written only once there is a file. A `change` carrying an empty list is
+    // an answer with no file in it, and from a thumb that is indistinguishable
+    // from a tap that did nothing.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    await page.evaluate(() => {
+      document.getElementById('toast').textContent = '';
+      document.getElementById('pick-file').dispatchEvent(new Event('change'));
+    });
+    await page.waitForFunction(
+      () => /nothing came back/.test(document.getElementById('toast').textContent || ''),
+      null,
+      { timeout: 5000 },
+    );
+  });
+
   test('a picked file is uploaded', async () => {
     await stand.open();
     await stand.attach();

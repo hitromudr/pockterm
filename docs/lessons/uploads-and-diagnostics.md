@@ -125,6 +125,18 @@ the same "one owner per fact" the composition state is held by — the input's c
 belongs to the source being tapped, not to the one before it. The browser test walks the
 camera and the gallery in that order for exactly this reason.
 
+**A tap on a source is written down, and so is what came back.** The first photo taken this
+way did not arrive, and the journal could not say where it stopped: an upload line is written
+only once there is a file, so "the camera never opened", "it was closed without a shot" and
+"it came back with nothing" were one silence — the only trace was `{"event":"kb","after":
+"attach-photo","ms":19734}`, a keyboard rising twenty seconds later, which says the owner went
+somewhere and came back and nothing else. So `pick` is written on the tap (with the pair it
+set), `picked` on the answer with the count, and a dismissed chooser is `cancelled: true`. A
+`pick` with nothing after it is now its own diagnosis: the app never handed the page an answer
+at all. On screen the same gap is a toast — `attachFiles` returns silently on an empty list
+because a paste and a drop call it too, so the one path that *asked* for a file says so
+itself.
+
 What the camera does hit is the size bound described above: a screenshot is a few hundred
 kilobytes, a camera frame is several megabytes, and 413 from the proxy was first seen with a
 photo. It is refused in this program's own words up to 22 MB and by the proxy above that;

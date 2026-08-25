@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v180';
+const APP_VERSION = 'v181';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3827,6 +3827,16 @@ const ATTACH_SOURCES = [
 ];
 keepsTerminalFocus(pickBtn);
 pickBtn.addEventListener('click', () => showTermPopup(termPopup === 'attach' ? null : 'attach'));
+//
+// The source is written down, and so is what came back, because the first photo
+// taken this way (2026-08-25) never arrived and the journal could not say where
+// it stopped: an upload line is written only once there is a file, so "the
+// camera never opened", "it was closed without a shot" and "it came back with
+// nothing" were one silence. Three lines now tell them apart — `pick` on the
+// tap, `picked` on the answer, and `cancelled` for a chooser dismissed — and a
+// `pick` with nothing after it is the app never handing the page an answer at
+// all, which is its own diagnosis.
+let pickSource = '';
 for (const [id, accept, capture] of ATTACH_SOURCES) {
   const b = document.getElementById(id);
   keepsTerminalFocus(b);
@@ -3834,15 +3844,26 @@ for (const [id, accept, capture] of ATTACH_SOURCES) {
     pickFileEl.accept = accept;
     if (capture) pickFileEl.setAttribute('capture', capture);
     else pickFileEl.removeAttribute('capture');
+    pickSource = id;
+    report('pick', { source: id, accept, capture });
     showTermPopup(null);
     pickFileEl.click();
   });
 }
 pickFileEl.addEventListener('change', () => {
   const files = chosenFiles(pickFileEl.files);
+  report('picked', { source: pickSource, n: files.length });
   pickFileEl.value = ''; // so picking the same file twice fires again
+  // An answer with no file in it is not the same as no answer, and from a thumb
+  // both look like the tap did nothing. `attachFiles` returns on an empty list
+  // by design — it is called from a paste and a drop as well — so the one path
+  // that asked for a file says so itself.
+  if (!files.length) { toast('nothing came back from the picker'); return; }
   attachFiles(files);
 });
+// Chrome fires this when the chooser is dismissed without a pick. It is the
+// difference between the owner changing their mind and a file going missing.
+pickFileEl.addEventListener('cancel', () => report('picked', { source: pickSource, n: 0, cancelled: true }));
 
 document.getElementById('paste').addEventListener('click', async () => {
   let text = '';
