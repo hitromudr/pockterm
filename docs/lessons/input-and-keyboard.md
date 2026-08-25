@@ -260,3 +260,44 @@ one. The stand has no soft keyboard, so the tests assert the lever (does the
 textarea still hold focus) with the keyboard played by the viewport and waited
 for on `data-kb`. `keepsTerminalFocus` stays on the ⇩ itself: it hides a moment
 later, and hiding a focused element hands focus back to whatever had it before.
+
+### Every control pressed to read, and the journal that named them
+
+Taking no focus was applied first and read as the whole answer, so the release
+arrived one control at a time: the answer row, then ▾ with the ✂/📥/📎 row, and
+the keys themselves were left alone each time on the grounds that they take no
+focus. They still held it. Reported again 2026-08-25 — the bars' own buttons
+opening the keyboard — and this time the page had already said which ones. `kb`
+is written the moment the keyboard is measured up, with the name of whatever
+button was pressed last and how long ago (`measureKeyboard`, `lastPress`), and a
+week of it reads:
+
+| `after` | raises within 600ms of the press | what it is |
+|---|---|---|
+| `working` `done` `BUTTON` `typing` | 55 | the tab strip, by state class |
+| `enter` `ctrl-o` `down` `right` `ctrl-c` `up` `left` | 42 | the key bar |
+| `pick` `attach-image` `attach-photo` | 9 + 22 slower | the clip and its sources |
+| `mode` | 5 | 💬, which asks for one on purpose |
+
+So the release is on every one of them now (`releaseForBarKey`): the bar's keys,
+the macros, the control pad, 📎 and the four sources. Two exceptions, and both are
+about typing rather than reading — the Ctrl latch, which is spent by the next
+letter the keyboard puts in that very field, and 💬, which is the button whose job
+is a keyboard.
+
+**The release has to be inside the touch, before the layout moves.** `attach`
+gave the focus up in a frame callback after `fitNow()`, which is the move itself:
+the journal shows `switch blurred:true` with a `kb up` line 176ms behind it in the
+same second. Blurring after the system has decided to raise a keyboard is not
+blurring at all. It is the first thing `attach` does now, and the `switch` line is
+still written from there.
+
+**Two bounds beyond `releaseFocus`'s own two**, and both are a word in flight: a
+composition open belongs to the keyboard, and so does a field it has left
+something in — xterm empties that field on losing the focus and reads it a task
+later (`endEditByBlur` above), so a blur there sends the word nowhere. This is
+what lets the bar's own ⏎ take the same release as the arrows.
+
+`test/ui/pockterm.test.mjs` covers the lever with the keyboard played by the
+viewport: ↓ gives the focus up and the byte still goes out, a field with a word in
+it is left alone, Ctrl keeps the focus and the pad it opens gives it up.

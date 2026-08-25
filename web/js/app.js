@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v182';
+const APP_VERSION = 'v183';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -1206,14 +1206,30 @@ async function stepBackFrom(closed, beside) {
 }
 
 function attach(name) {
-  // Nothing here touches focus, and that is the whole point.
+  // The keyboard reappearing on a switch is not this code focusing anything: on
+  // Android the textarea keeps focus after the keyboard is dismissed, and the
+  // WebView re-shows it for a focused element when the layout moves. That is why
+  // it only started after the first tap on the input — before that nothing held
+  // focus. So when a soft keyboard is known to exist and is currently down, the
+  // terminal gives up focus — `releaseTerminalFocus`, which the ⇩ shares for the
+  // same reason.
   //
-  // Focus and the keyboard are not the same thing on Android: dismissing the
-  // keyboard with the back gesture leaves the textarea focused. Restoring
-  // "the focus it had" therefore raised the keyboard for someone who had just
-  // put it away — which is what a switch kept doing. The tab buttons do not
-  // take focus (see keepsTerminalFocus), so whatever state the switch found
-  // simply stays.
+  // **First, and not in the frame callback where this used to sit.** Everything
+  // below moves the layout — `term.reset`, the strip, `fitNow` — and a focus given
+  // up after the move is given up after the keyboard is already on its way: the
+  // journal shows `switch blurred:true` and a `kb up` line 176ms behind it in the
+  // same second (2026-08-25). The blur has to be inside the touch that asked for
+  // the switch.
+  //
+  // The line stays in the journal, from here rather than from the frame: what it
+  // says is what the switch found, and "the field was not holding it" and "it was
+  // given up" are the two answers this whole area is judged by.
+  report('switch', { keyboardUp, sawKeyboard, blurred: releaseTerminalFocus() });
+  // Nothing else here touches focus, and that is the whole point. Restoring "the
+  // focus it had" is what a switch used to do, and it raised the keyboard for
+  // somebody who had just put it away: focus and the keyboard are not the same
+  // thing on Android, and dismissing one leaves the other where it was. The tab
+  // buttons take no focus of their own either (see keepsTerminalFocus).
   // Close any current socket first (switching tabs) so its output stops
   // writing into the terminal we're about to reuse for another session — and
   // with it any reconnect a close armed, which would otherwise open a second
@@ -1247,14 +1263,6 @@ function attach(name) {
     // Size first, then the socket: tmux redraws immediately on attach.
     fitNow();
     connect();
-    // The keyboard reappearing on a switch is not this code focusing
-    // anything: on Android the textarea keeps focus after the keyboard is
-    // dismissed, and the WebView re-shows it for a focused element when the
-    // layout moves. That is why it only started after the first tap on the
-    // input — before that nothing held focus. So when a soft keyboard is
-    // known to exist and is currently down, the terminal gives up focus —
-    // `releaseTerminalFocus`, which the ⇩ shares for the same reason.
-    report('switch', { keyboardUp, sawKeyboard, blurred: releaseTerminalFocus() });
   });
 }
 
@@ -2090,6 +2098,10 @@ if (ctrlPad) {
       // Closed on use: a pad left open covers the output it was opened over, and
       // the next control key is one tap on Ctrl away.
       armCtrl(false);
+      // The pad exists for a screen with no keyboard on it, so it above all must
+      // not summon one: the field it does not need is holding the focus, and
+      // closing the pad is itself a layout move. See releaseForBarKey.
+      releaseForBarKey(b);
     });
   });
 }
@@ -2176,6 +2188,40 @@ function releaseTerminalFocus() {
   return releaseFocus(term.textarea);
 }
 
+// And the same answer for a key pressed on a bar.
+//
+// Reported from the phone twice: our own buttons opening the keyboard. The first
+// time it was ▾ and the row with ✂ Paste 📎 💬 (`setPanelsHidden` above), and the
+// keys themselves were left as they were because they take no focus — which is
+// only half of the rule. The terminal's field keeps the focus from whenever it
+// was last typed into; dismissing a keyboard does not take it away, and the
+// system puts one back for whatever holds the focus the moment the layout moves
+// under it. A menu key does move it: ↓ walks the agent's options, the answer row
+// is redrawn against the new screen and the floaters lift over it. Measured
+// 2026-08-25 in the journal — `kb up:true after:"down" ms:137`, four times in one
+// minute, with nothing focused but the field.
+//
+// Nothing on these bars needs the focus to do its work: a key goes out over the
+// socket, not through the field. Two exceptions stay out of here — the Ctrl latch,
+// which is spent by the *next* letter the keyboard types into that very field, and
+// the composer's 💬, which asks for a keyboard on purpose.
+//
+// Two bounds beyond `releaseFocus`'s own, and both are about a word in flight: a
+// composition open is the keyboard's, and so is a field it has left something in.
+// xterm empties that field when it loses the focus and reads it a task later, so a
+// blur here would send the word nowhere at all — which is what `endEditByBlur`
+// exists for. The keys that end an input come through here too (the bar's ⏎), and
+// this is what keeps them from paying for the release with the last word.
+function releaseForBarKey(el) {
+  if (fieldGuard.isComposing()) return false;
+  if (term.textarea && term.textarea.value) return false;
+  const gave = releaseTerminalFocus();
+  // The pad hides itself on use, and a focused element that goes hands the focus
+  // back to whatever had it before — the field, which is the keyboard.
+  releaseFocus(el);
+  return gave;
+}
+
 // --- key bar ---
 // Make the keyboard hand over the word it is still composing before a key
 // from this bar reaches the pty.
@@ -2240,7 +2286,10 @@ document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
     if (ends) enders.press(keyBytes(b.dataset.key));
     else sendInput(keyBytes(b.dataset.key));
     // No focus() here: the press already kept it, and calling it for someone
-    // who was only reading would raise the keyboard over the screen.
+    // who was only reading would raise the keyboard over the screen. It is given
+    // up instead — taking none was not enough, see releaseForBarKey — and after
+    // the key rather than before it, because `enders` reads the field.
+    releaseForBarKey(b);
   });
 });
 
@@ -2650,6 +2699,9 @@ document.querySelectorAll('button[data-macro]').forEach((b) => {
     const macro = b.dataset.macro;
     if (macro === 'enter' || macro === 'accept') enders.press(MACROS[macro]);
     else send(MACROS[macro]);
+    // And the same release the key bar's own keys give: ✓ and ⏹ are pressed to
+    // move what is on screen, which is the layout moving under a focused field.
+    releaseForBarKey(b);
   });
 });
 
@@ -3834,7 +3886,16 @@ const ATTACH_SOURCES = [
   ['attach-doc', '', ''],
 ];
 keepsTerminalFocus(pickBtn);
-pickBtn.addEventListener('click', () => showTermPopup(termPopup === 'attach' ? null : 'attach'));
+pickBtn.addEventListener('click', () => {
+  // Measured in the journal over the week to 2026-08-25: `attach-image` is the
+  // second most frequent name on a `kb up` line after the tab strip, and 📎 is on
+  // it too. Nothing on this path types — the chooser hands back files and their
+  // paths go out as text — so the field's focus is given up here, before the panel
+  // that comes back from the gallery moves the layout under it. See
+  // releaseForBarKey for the rule and its two bounds.
+  releaseForBarKey(pickBtn);
+  showTermPopup(termPopup === 'attach' ? null : 'attach');
+});
 //
 // The source is written down, and so is what came back, because the first photo
 // taken this way (2026-08-25) never arrived and the journal could not say where
@@ -3854,6 +3915,7 @@ for (const [id, accept, capture] of ATTACH_SOURCES) {
     else pickFileEl.removeAttribute('capture');
     pickSource = id;
     report('pick', { source: id, accept, capture });
+    releaseForBarKey(b);
     showTermPopup(null);
     pickFileEl.click();
   });

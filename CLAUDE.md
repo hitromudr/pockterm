@@ -44,11 +44,16 @@ them instead of deriving them again.
   layout moves under it. Hence three levers: a control takes no focus
   (`keepsTerminalFocus`); anything that moves the layout gives it up
   (`releaseTerminalFocus`, `releaseFocus`, which also takes the pressed
-  element); and a control that wants a keyboard asks **inside the touch** by
-  giving the focus up and taking it again (`askKeyboard`) — focusing what is
-  already focused raises nothing. Two bounds on giving it up: never while the
-  keyboard is up, since its owner is typing, and never on a desktop, where
-  focus is the only way to type at all. `sawKeyboard` tells the two machines
+  element, `releaseForBarKey` for every key and button pressed to read); and a
+  control that wants a keyboard asks **inside the touch** by giving the focus up
+  and taking it again (`askKeyboard`) — focusing what is already focused raises
+  nothing. **Giving it up is inside the touch as well**, before the move rather
+  than after it: `attach` blurred in a frame callback behind its own `fitNow`,
+  and a blur behind the move is no blur at all. Two bounds on giving it up:
+  never while the keyboard is up, since its owner is typing, and never on a
+  desktop, where focus is the only way to type at all. Two more where a word is
+  in flight — a composition open, or a field the keyboard has left something in
+  (`endEditByBlur`). `sawKeyboard` tells the two machines
   apart, learned by watching a keyboard appear rather than guessed from the
   user agent.
 - **The keyboard is measured, not assumed** (`measureKeyboard`: the viewport,

@@ -2246,6 +2246,82 @@ describe('the key bar', () => {
     assert.equal(await page.locator('#keybar [data-key="alt-enter"]').count(), 1);
     assert.equal(await page.locator('#keybar [data-key="enter"]').count(), 1);
   });
+
+  test('a key gives the focus up, or the keyboard comes back over the pane', async () => {
+    // Reported from the phone 2026-08-25 — the bars' own buttons opening the
+    // keyboard again — and named by the page itself in the journal: four `kb up`
+    // lines inside one minute, `after:"down"` and `after:"right"`, 137-243ms behind
+    // the press. The keys were left as they were when ▾ and the ✂/📥/📎 row were
+    // given the release, on the grounds that they take no focus. That is half the
+    // rule: the terminal's field keeps the focus from whenever it was last typed
+    // into, and Android raises a keyboard for whatever holds it as soon as the
+    // layout moves under it — walking an agent's menu with ↓ moves it by
+    // definition.
+    //
+    // The keyboard is played by the viewport and waited for on the page's own
+    // `data-kb`, as in the answer row's test: a page that never saw one is outside
+    // this rule altogether, and the viewport reads short before the page hears of
+    // it.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    const holdsFocus = () => page.evaluate(
+      () => document.activeElement === document.querySelector('.xterm-helper-textarea'));
+
+    await page.click('#term');
+    await page.setViewportSize({ width: 390, height: 420 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '1', null, { timeout: 5000 });
+    await page.setViewportSize({ width: 390, height: 780 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '0', null, { timeout: 5000 });
+    assert.equal(await holdsFocus(), true, 'the field had already lost the focus, so this proves nothing');
+
+    // The bytes are read off the socket rather than the pty: what is being asserted
+    // is that the release did not cost the keystroke it was pressed for, and the
+    // stand's pane answers an arrow with nothing at all.
+    await page.evaluate(() => {
+      window.__barKeys = [];
+      if (window.__barHooked) return;
+      window.__barHooked = true;
+      const native = WebSocket.prototype.send;
+      WebSocket.prototype.send = function (data) {
+        if (typeof data !== 'string') {
+          (window.__barKeys || (window.__barKeys = [])).push(new TextDecoder().decode(data));
+        }
+        return native.call(this, data);
+      };
+    });
+    await page.click('#keybar [data-key="down"]');
+    await page.waitForTimeout(200);
+    assert.equal(await holdsFocus(), false,
+      'the key bar left the focus on the field, which on Android is the keyboard coming back');
+    assert.ok((await page.evaluate(() => window.__barKeys.join(''))).includes('\x1b[B'),
+      'the release cost the key it was pressed for');
+
+    // The bound that keeps the release from paying for itself with a word: a field
+    // the keyboard has left something in is the keyboard's, and xterm empties that
+    // field when it loses the focus and reads it a task later (see endEditByBlur).
+    await page.click('#term');
+    assert.equal(await holdsFocus(), true, 'the tap on the terminal gave nothing back to type into');
+    await page.evaluate(() => { document.querySelector('.xterm-helper-textarea').value = 'сло'; });
+    await page.click('#keybar [data-key="esc"]');
+    await page.waitForTimeout(200);
+    assert.equal(await holdsFocus(), true, 'the blur took the word the keyboard was still holding');
+    await page.evaluate(() => { document.querySelector('.xterm-helper-textarea').value = ''; });
+
+    // Ctrl is the exception on this bar, and it is one on purpose: the latch is
+    // spent by the next letter the keyboard types into that very field, so the
+    // button that arms it must leave the focus where it is.
+    await page.click('#keybar [data-mod="ctrl"]');
+    await page.waitForTimeout(150);
+    assert.equal(await holdsFocus(), true, 'arming Ctrl took away the field the latch is spent in');
+
+    // And the pad it opens is not an exception: it exists for a screen with no
+    // keyboard on it, so it above all must not summon one.
+    await page.click('#ctrlpad button[data-ctrl="l"]');
+    await page.waitForTimeout(200);
+    assert.equal(await holdsFocus(), false,
+      'the control pad kept the focus and would raise a keyboard over the output it was opened over');
+  });
 });
 
 describe('attaching a file', () => {
