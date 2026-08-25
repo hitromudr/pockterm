@@ -10,6 +10,14 @@ import (
 )
 
 // A one-pixel PNG: enough bytes for the sniffer to recognise the format.
+// The head of an mp4: a `ftyp` box, which is what http.DetectContentType reads
+// to answer video/mp4. Measured rather than assumed — the same call answers
+// application/octet-stream for a QuickTime brand it does not know.
+var mp4Bytes = append([]byte{
+	0x00, 0x00, 0x00, 0x18, 'f', 't', 'y', 'p', 'm', 'p', '4', '2',
+	0x00, 0x00, 0x00, 0x00, 'm', 'p', '4', '2', 'i', 's', 'o', 'm',
+}, make([]byte, 40)...)
+
 var pngBytes = []byte{
 	0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a,
 	0x00, 0x00, 0x00, 0x0d, 'I', 'H', 'D', 'R',
@@ -172,6 +180,27 @@ func TestSaveRefusesADocumentWhoseNameFiltersAway(t *testing.T) {
 	entries, _ := os.ReadDir(s.Dir)
 	if len(entries) != 0 {
 		t.Errorf("a refused upload left %d file(s) behind", len(entries))
+	}
+}
+
+// A film picked from the gallery is a document as far as this package is
+// concerned: the bytes are sniffed as video, which is not in byType, so what
+// decides is the name the browser gave it. Worth a test of its own because the
+// clip offers `video/*` as a source of its own, and "the source exists but the
+// store refuses what it hands over" is the failure that would follow.
+func TestSaveTakesAVideoByItsName(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	path, err := s.Save(bytes.NewReader(mp4Bytes), "VID_20260825_120958.mp4")
+	if err != nil {
+		t.Fatalf("a named video was refused: %v", err)
+	}
+	if !strings.HasSuffix(path, ".mp4") {
+		t.Errorf("kept as %q, wanted the browser's own extension", filepath.Base(path))
+	}
+	// And unnamed it is refused, for the same reason a note is: there is no
+	// extension to give an agent, and nothing in the bytes supplies one.
+	if _, err := s.Save(bytes.NewReader(mp4Bytes), ""); err == nil {
+		t.Error("an unnamed video was accepted")
 	}
 }
 

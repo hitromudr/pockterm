@@ -137,6 +137,22 @@ at all. On screen the same gap is a toast — `attachFiles` returns silently on 
 because a paste and a drop call it too, so the one path that *asked* for a file says so
 itself.
 
+**A film is a source, not a new kind of upload** (2026-08-25). `video/*` opens the same
+gallery on the films instead of the stills, and what comes back travels the document path:
+the bytes sniff as `video/mp4` or `video/webm`, neither is in `byType`, so what decides is the
+name the browser gave it — a film with no name is refused exactly as a note with no name is,
+there being no extension to hand an agent. That is measured rather than assumed: the same
+`http.DetectContentType` answers `application/octet-stream` for a QuickTime brand it does not
+know. Two tests hold the pair together, one in the store (`TestSaveTakesAVideoByItsName`) and
+one through the page, because "the source exists and the store refuses what it hands over"
+would be a button that always fails.
+
+What a film meets first is the size bound, and it meets it routinely — a phone shoots several
+megabytes a second, so 20 MB is a clip of a few seconds. The refusal now reads `larger than 20
+MB` rather than a count of bytes, for the same reason the rest of this file exists: it is read
+in a toast, on a phone, by a thumb. Raising it is two repositories in the order given below,
+the proxy first.
+
 What the camera does hit is the size bound described above: a screenshot is a few hundred
 kilobytes, a camera frame is several megabytes, and 413 from the proxy was first seen with a
 photo. It is refused in this program's own words up to 22 MB and by the proxy above that;

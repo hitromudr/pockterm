@@ -327,19 +327,21 @@
            bar's buttons are told not to take focus, and on a label that also
            swallowed the click that opens the picker. -->
       <button id="pick" title="Attach a file">&#128206;</button>
-      <!-- Three sources, one clip. Which app Android offers is decided by
-           `accept` and `capture`, and no single pair asks for all three: with
+      <!-- Four sources, one clip. Which app Android offers is decided by
+           `accept` and `capture`, and no single pair asks for all of them: with
            `image/*` the chooser opens on the gallery and a document cannot be
-           reached at all, without it the file manager opens and a screenshot
-           is three taps in, and `capture` skips the chooser altogether and
-           opens the camera. So the clip asks first, and each answer opens the
-           same input with its own pair.
+           reached at all, `video/*` opens the same gallery on the films, without
+           either the file manager opens and a screenshot is three taps in, and
+           `capture` skips the chooser altogether and opens the camera. So the
+           clip asks first, and each answer opens the same input with its own
+           pair.
            Drawn over the terminal rather than in the flow, like every other
            panel here: a row appearing above the bar would shorten the pane and
            tmux would redraw to the new height. -->
       <div id="attach-menu" hidden>
         <button id="attach-photo" type="button">&#128247; Снять фото</button>
         <button id="attach-image" type="button">&#128444;&#65039; Картинки</button>
+        <button id="attach-video" type="button">&#127916; Видео</button>
         <button id="attach-doc" type="button">&#128196; Документы</button>
       </div>
       <button id="mode" title="Prompt mode">&#128172;</button>

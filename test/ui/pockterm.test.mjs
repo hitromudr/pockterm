@@ -2275,6 +2275,7 @@ describe('attaching a file', () => {
     const sources = [
       ['#attach-photo', 'image/*', 'environment'],
       ['#attach-image', 'image/*', null],
+      ['#attach-video', 'video/*', null],
       ['#attach-doc', '', null],
     ];
     for (const [sel, accept, capture] of sources) {
@@ -2345,6 +2346,37 @@ describe('attaching a file', () => {
     });
     await page.waitForFunction(
       () => /attached/.test(document.getElementById('toast').textContent || ''),
+      null,
+      { timeout: 5000 },
+    );
+  });
+
+  test('a picked video is uploaded', async () => {
+    // The clip offers films as a source of their own, and this is the whole path
+    // behind that button: the browser names the file, the server sniffs video
+    // out of the bytes, and because video is not an image it is kept as the
+    // document it is — by that name. A source whose files the store refuses
+    // would be a button that always fails, which is why this is asserted here
+    // and not only in the store's own tests.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    // The head of an mp4 — a `ftyp` box — padded out to something with a size.
+    const mp4 = Buffer.concat([
+      Buffer.from([
+        0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32,
+        0x00, 0x00, 0x00, 0x00, 0x6d, 0x70, 0x34, 0x32, 0x69, 0x73, 0x6f, 0x6d,
+      ]),
+      Buffer.alloc(64),
+    ]);
+    await page.setInputFiles('#pick-file', {
+      name: 'VID_20260825_120958.mp4',
+      mimeType: 'video/mp4',
+      buffer: mp4,
+    });
+    await page.waitForFunction(
+      () => /attached .*\.mp4/.test(document.getElementById('toast').textContent || ''),
       null,
       { timeout: 5000 },
     );

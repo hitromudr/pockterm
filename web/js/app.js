@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v181';
+const APP_VERSION = 'v182';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -3813,6 +3813,13 @@ pasteTargetEl.addEventListener('blur', () => {
 // It is a request rather than a guarantee — a desktop has no camera and
 // ignores it, which is also why the stand can only assert the attribute.
 //
+// A film is the fourth, and it is a source rather than a new kind of upload:
+// `video/*` opens the gallery on the films instead of the stills, and what is
+// picked travels the same path as a document — named by the browser, sniffed by
+// the server, capped by the same `upload.MaxBytes`. The cap is what will be met
+// first: a phone shoots several megabytes a second, so 20 MB is a short clip,
+// and the refusal is the server's own words rather than anything guessed here.
+//
 // Each answer sets the pair and opens the **same** input: two inputs would be
 // two answers to what has just been picked, and `change` fires on whichever was
 // used. One input means the pair is state that outlives the tap, so every
@@ -3823,6 +3830,7 @@ pasteTargetEl.addEventListener('blur', () => {
 const ATTACH_SOURCES = [
   ['attach-photo', 'image/*', 'environment'],
   ['attach-image', 'image/*', ''],
+  ['attach-video', 'video/*', ''],
   ['attach-doc', '', ''],
 ];
 keepsTerminalFocus(pickBtn);

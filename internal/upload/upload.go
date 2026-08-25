@@ -127,7 +127,11 @@ func (s Store) Save(r io.Reader, name string) (string, error) {
 	}
 	if written > MaxBytes {
 		os.Remove(f.Name())
-		return "", fmt.Errorf("larger than %d bytes", MaxBytes)
+		// Megabytes rather than bytes: this is shown in a toast on a phone, and
+		// a film is the file that meets this bound routinely — a phone shoots
+		// several megabytes a second, so the number is read far more often than
+		// it used to be.
+		return "", fmt.Errorf("larger than %d MB", MaxBytes>>20)
 	}
 
 	s.prune()
