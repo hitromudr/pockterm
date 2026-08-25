@@ -43,8 +43,11 @@ const MaxBytes = 100 << 20
 //
 // It is a multiple of MaxBytes rather than a share of the disk on purpose: what
 // is being bounded is this program's appetite, not the machine's capacity, and a
-// bound read off free space would grow silently on a bigger disk.
-const MaxTotal = 1 << 30
+// bound read off free space would grow silently on a bigger disk. A hundred
+// uploads at the cap, the owner's number on 2026-08-25 — the disk it sits on is
+// 457 GB with a third of that in use, so what this bounds is a runaway, not a
+// day's work.
+const MaxTotal = 10 << 30
 
 // Keep is how long a saved file stays on disk. Nobody comes back to clean
 // up, and the file is only needed while the agent reads it.

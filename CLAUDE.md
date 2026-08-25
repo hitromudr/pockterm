@@ -295,7 +295,7 @@ release.
   `pockterm_vhost` role in devops and `upload.MaxBytes` here, 105 MB against 100 MB so an
   oversized file is refused in this program's own words. They are two repositories and two
   deploys: a bump here alone buys nothing, and the proxy is raised first.
-- **The store has a size as well as an age** (`MaxTotal` 1 GiB beside `Keep` 24h): one upload
+- **The store has a size as well as an age** (`MaxTotal` 10 GiB beside `Keep` 24h): one upload
   may be 100 MB now, so the oldest files leave when the directory outgrows the cap — and the
   file just saved is never one of them, its path having been handed to the page.
 - **One upload is one request**, sent one after another, with the paths typed in one write

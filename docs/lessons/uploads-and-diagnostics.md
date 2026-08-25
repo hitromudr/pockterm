@@ -111,7 +111,8 @@ screenshot holds), `MaxBytes` with the proxy's own limit just above it (see the 
 section: the two move together or the higher one is decoration), and the 24-hour sweep — a
 file handed to an agent is a scratch file whatever is in it.
 
-**Since 100 MB the store also has a size** (`MaxTotal`, 1 GiB). `Keep` answers "how long",
+**Since 100 MB the store also has a size** (`MaxTotal`, 10 GiB — a hundred uploads at the
+cap, raised from the first GiB on the owner's number the same day). `Keep` answers "how long",
 which was the whole of the arithmetic while a file was a screenshot: a day of them is a few
 tens of megabytes. A day of film is not, and the disk under this directory carries git and
 passwords too. So age is swept first, then the oldest of what is left leaves until the total
