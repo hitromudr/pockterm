@@ -292,14 +292,18 @@ release.
   (`journalctl -u pockterm | grep client:`) — the environment at load, every copy, paste and
   upload, refusals included with their status and size.
 - **A 413 is the proxy, not this server.** `client_max_body_size` lives in the
-  `pockterm_vhost` role in devops and `upload.MaxBytes` here, 22 MB against 20 MB so an
+  `pockterm_vhost` role in devops and `upload.MaxBytes` here, 105 MB against 100 MB so an
   oversized file is refused in this program's own words. They are two repositories and two
-  deploys: a bump here alone buys nothing.
+  deploys: a bump here alone buys nothing, and the proxy is raised first.
+- **The store has a size as well as an age** (`MaxTotal` 1 GiB beside `Keep` 24h): one upload
+  may be 100 MB now, so the oldest files leave when the directory outgrows the cap — and the
+  file just saved is never one of them, its path having been handed to the page.
 - **One upload is one request**, sent one after another, with the paths typed in one write
   (`ATTACH_MAX` 10, and whatever is left over is said rather than dropped).
 - **An image is known by its bytes, anything else by the name the browser gave it** (`?name=`,
-  `safeName`, which filters punctuation and keeps the alphabet). Files are 0600 and swept
-  after 24 hours; 📎 asks which source and opens the same input inside the tap.
+  `safeName`, which filters punctuation and keeps the alphabet) — a film included, video not
+  being an image to this store. Files are 0600 and swept after 24 hours; 📎 asks which source
+  and opens the same input inside the tap.
 
 ## Deploy
 

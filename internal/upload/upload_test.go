@@ -223,6 +223,68 @@ func TestSaveRefusesOversize(t *testing.T) {
 	}
 }
 
+// A store with a size of its own, which is what keeps a day of films off the
+// disk: Keep answers "how long", and while a file was a screenshot that was
+// enough arithmetic — a day of them is tens of megabytes. One upload may now be
+// 100 MB, so the total is bounded too, and the oldest files are what leave.
+func TestSaveKeepsTheStoreUnderItsTotal(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	// 300 bytes of room, four files of ~130: two of them cannot stay.
+	s := Store{Dir: dir, Total: 300, Now: func() time.Time { return now }}
+	body := append(append([]byte{}, pngBytes...), bytes.Repeat([]byte{0}, 100)...)
+	var paths []string
+	for i := 0; i < 4; i++ {
+		p, err := s.Save(bytes.NewReader(body), "")
+		if err != nil {
+			t.Fatalf("upload %d refused: %v", i, err)
+		}
+		paths = append(paths, p)
+		// Ages them apart: what leaves is decided by mtime, and four files
+		// written in the same millisecond have no oldest.
+		if err := os.Chtimes(p, now, now.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var total int64
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += info.Size()
+	}
+	if total > 300 {
+		t.Errorf("the store holds %d bytes, over its own cap of 300", total)
+	}
+	// The last upload is the one whose path was just handed out: an agent opens
+	// it a second later, so it is the one file the sweep may not take.
+	if _, err := os.Stat(paths[len(paths)-1]); err != nil {
+		t.Errorf("the newest upload was swept: %v", err)
+	}
+	// And what left is the oldest, not an arbitrary one.
+	if _, err := os.Stat(paths[0]); err == nil {
+		t.Error("the oldest upload stayed while the store was over its cap")
+	}
+}
+
+// The bound above must not eat the file that has just arrived, even when that
+// one file is the whole store. A cap smaller than the upload is the case that
+// used to be arithmetic nobody wrote down.
+func TestSaveKeepsTheFileItJustSaved(t *testing.T) {
+	dir := t.TempDir()
+	s := Store{Dir: dir, Total: 1}
+	path, err := s.Save(bytes.NewReader(pngBytes), "")
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("the path handed to the page is gone: %v", err)
+	}
+}
+
 func TestSavePrunesOldImages(t *testing.T) {
 	dir := t.TempDir()
 	stale := filepath.Join(dir, "paste-old.png")

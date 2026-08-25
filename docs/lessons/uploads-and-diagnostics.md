@@ -26,13 +26,21 @@ its status and the size.
 
 **The two numbers are one setting in two repositories, and only one of them takes effect on
 its own.** Raised to 20 MB / 22 MB on 2026-08-19, for documents — a scanned PDF is what a
-camera frame was to the old bound. Between them lies a range that comes back as a 413 this
+camera frame was to the old bound — and to 100 MB / 105 MB on 2026-08-25, for film. The
+order is not free: raise the proxy first and lower this program first, so that at every
+moment in between the app's number is the lower of the two and the refusal keeps its words. Between them lies a range that comes back as a 413 this
 server never sent, so a bump here that is not matched there buys nothing above the proxy's
 number: `MaxBytes` cannot be the answer to "how large may a file be" while something in
 front says less. And the deploys are not the same either — this binary is installed by CI on
-every push to `main`, the vhost by an ansible role run from the laptop
-(`make deploy-pockterm-vhost` in devops, `hosts: control_node`, which is HITRO; the malina
-cannot reach it from inside the sandbox).
+every push to `main`, the vhost by an ansible role against HITRO
+(`hosts: control_node`). That role does run from the malina, which the note here used to
+deny: the sandbox has no direct route to HITRO, but `~/.ssh/config` rewrites the inventory's
+address to `127.0.0.1:2201`, the forward the `sandbox_forward` role keeps — so
+`ansible-playbook … deploy_pockterm.yml -e pockterm_vhost_enabled=true --limit control_node`
+reaches it. Measured on 2026-08-25 by raising the pair: `--check --diff` first, then the run,
+`nginx -t` and reload in the handlers, and the live file read back afterwards. Limiting to
+`control_node` is not optional from here — the same playbook's first play targets RPI5, whose
+inventory name does not resolve on this machine.
 
 Both halves are in force since 2026-08-19, and they were **measured through the door rather
 than read off the two files**: a 13 MB body — over the old proxy bound, under the new one —
@@ -99,9 +107,21 @@ business transliterating the owner's own names, and what makes a path hazardous 
 punctuation. A name left with nothing in it is no name, and then the image rule stands alone.
 
 The store's other bounds are unchanged and now cover more: 0600 (a document holds whatever a
-screenshot holds), `MaxBytes` at 20 MB with the proxy's own limit just above it (see the
-Diagnostics section: the two move together or the higher one is decoration), and the
-24-hour sweep — a file handed to an agent is a scratch file whatever is in it.
+screenshot holds), `MaxBytes` with the proxy's own limit just above it (see the Diagnostics
+section: the two move together or the higher one is decoration), and the 24-hour sweep — a
+file handed to an agent is a scratch file whatever is in it.
+
+**Since 100 MB the store also has a size** (`MaxTotal`, 1 GiB). `Keep` answers "how long",
+which was the whole of the arithmetic while a file was a screenshot: a day of them is a few
+tens of megabytes. A day of film is not, and the disk under this directory carries git and
+passwords too. So age is swept first, then the oldest of what is left leaves until the total
+fits. Two details are load-bearing. The cap is a multiple of `MaxBytes` rather than a share
+of free space — what is bounded is this program's appetite, not the machine's capacity, and a
+bound read off the disk would grow silently on a bigger one. And **the file just saved is
+named to the sweep, not deduced from mtime**: its path is about to be handed to the page, an
+agent opens it a second later, and a single upload the size of the whole cap would otherwise
+delete itself. `TestSaveKeepsTheFileItJustSaved` is that case; it fails if the exemption goes
+away.
 
 **And the clip asks which source, because `accept` cannot ask for all of them.** Dropping the
 filter was what let a document in, and it made the common case slower: `accept="image/*"`
@@ -148,15 +168,17 @@ one through the page, because "the source exists and the store refuses what it h
 would be a button that always fails.
 
 What a film meets first is the size bound, and it meets it routinely — a phone shoots several
-megabytes a second, so 20 MB is a clip of a few seconds. The refusal now reads `larger than 20
-MB` rather than a count of bytes, for the same reason the rest of this file exists: it is read
-in a toast, on a phone, by a thumb. Raising it is two repositories in the order given below,
-the proxy first.
+megabytes a second, so the 20 MB in force when the source was added held a clip of a few
+seconds. That is what raised the pair to 100 MB / 105 MB the same day, on the owner's number,
+with the store's own cap (above) added in the same change so that "not filling the disk" is a
+property rather than an intention. The refusal reads `larger than 100 MB` rather than a count
+of bytes, for the same reason the rest of this file exists: it is read in a toast, on a phone,
+by a thumb.
 
 What the camera does hit is the size bound described above: a screenshot is a few hundred
 kilobytes, a camera frame is several megabytes, and 413 from the proxy was first seen with a
-photo. It is refused in this program's own words up to 22 MB and by the proxy above that;
-nothing about the new source changes those numbers.
+photo. It is refused in this program's own words up to the proxy's number and by the proxy
+above that; nothing about the new source changes which of the two speaks.
 
 Three things it inherits from the popups already here. It is **drawn over the terminal**,
 anchored to `#modebar` itself (`bottom: 100%`) rather than to a number of pixels — the bar is

@@ -13,24 +13,38 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
 )
 
-// MaxBytes caps a single upload. A phone screenshot is a few hundred
-// kilobytes and a camera frame a few megabytes; a scanned document is what
-// pushed this to 20 MB, the owner's own 44-page PDF having arrived at 6 MB.
-// Larger than this is either a mistake or an attempt to fill the disk of a box
-// that also serves git and passwords.
+// MaxBytes caps a single upload. A phone screenshot is a few hundred kilobytes,
+// a camera frame a few megabytes, a scanned document about six; what pushed this
+// to 100 MB is film — a phone writes several megabytes a second, so the 20 MB
+// this was before held a clip of a few seconds.
 //
 // **The proxy in front bounds the body too, and its number has to move with
 // this one.** It is set just above (`client_max_body_size` in the
 // `pockterm_vhost` role, devops), so that what is too large is refused in this
 // program's own words rather than by a status code with a page of HTML behind
 // it — raise this alone and everything between the two bounds comes back as a
-// 413 nothing here ever sent.
-const MaxBytes = 20 << 20
+// 413 nothing here ever sent. The proxy goes first when both are raised, this
+// program first when both are lowered: either way the app's number is the lower
+// of the two at every moment in between.
+const MaxBytes = 100 << 20
+
+// MaxTotal caps the whole store, and it is the bound that matters now that one
+// upload may be 100 MB. `Keep` alone answers "how long", which was enough while
+// a file was a screenshot: a day of them is a few tens of megabytes. A day of
+// films is not, and the disk under this directory also carries git and
+// passwords — so the store has a size of its own, and the oldest files leave
+// when it is exceeded.
+//
+// It is a multiple of MaxBytes rather than a share of the disk on purpose: what
+// is being bounded is this program's appetite, not the machine's capacity, and a
+// bound read off free space would grow silently on a bigger disk.
+const MaxTotal = 1 << 30
 
 // Keep is how long a saved file stays on disk. Nobody comes back to clean
 // up, and the file is only needed while the agent reads it.
@@ -54,6 +68,16 @@ var byType = map[string]string{
 type Store struct {
 	Dir string
 	Now func() time.Time // nil means time.Now
+	// Total caps the directory; zero means MaxTotal. A field because a test
+	// that had to write a gigabyte to reach the real one would not be run.
+	Total int64
+}
+
+func (s Store) total() int64 {
+	if s.Total <= 0 {
+		return MaxTotal
+	}
+	return s.Total
 }
 
 func (s Store) now() time.Time {
@@ -134,7 +158,7 @@ func (s Store) Save(r io.Reader, name string) (string, error) {
 		return "", fmt.Errorf("larger than %d MB", MaxBytes>>20)
 	}
 
-	s.prune()
+	s.prune(f.Name())
 	return f.Name(), nil
 }
 
@@ -200,23 +224,63 @@ func stemOf(name string) string {
 	return strings.TrimSuffix(name, extOf(name))
 }
 
-// prune drops images older than Keep. Doing it on the way in keeps the
-// store free of timers: uploads are the only thing that grows this
-// directory, so they are also the only moment it needs sweeping.
-func (s Store) prune() {
+// prune drops what is older than Keep, then what does not fit in MaxTotal.
+// Doing it on the way in keeps the store free of timers: uploads are the only
+// thing that grows this directory, so they are also the only moment it needs
+// sweeping.
+//
+// Two bounds because they answer different questions and a film breaks the
+// first one's arithmetic: a day of screenshots was tens of megabytes, a day of
+// films is gigabytes. Age goes first — a file nobody came back for in 24 hours
+// is gone whatever the total is — and only then does size take the oldest of
+// what is left.
+//
+// **The file just saved is never taken**, and it is named rather than deduced
+// from the times: its path is about to be handed to the page, and an agent opens
+// it a second later. "The newest by mtime" is not the same file — a store whose
+// timestamps were set by anything but this program's own writes has a newer one
+// — and a single upload the size of the whole cap would then delete itself.
+func (s Store) prune(keep string) {
 	entries, err := os.ReadDir(s.Dir)
 	if err != nil {
 		return
 	}
+	type item struct {
+		name string
+		mod  time.Time
+		size int64
+	}
 	cutoff := s.now().Add(-Keep)
+	base := filepath.Base(keep)
+	var kept []item
+	var total int64
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
 		info, err := e.Info()
-		if err != nil || info.ModTime().After(cutoff) {
+		if err != nil {
 			continue
 		}
-		os.Remove(filepath.Join(s.Dir, e.Name()))
+		total += info.Size()
+		if e.Name() == base {
+			continue // counted, never a candidate
+		}
+		if !info.ModTime().After(cutoff) {
+			os.Remove(filepath.Join(s.Dir, e.Name()))
+			total -= info.Size()
+			continue
+		}
+		kept = append(kept, item{e.Name(), info.ModTime(), info.Size()})
+	}
+	limit := s.total()
+	if total <= limit {
+		return
+	}
+	sort.Slice(kept, func(i, j int) bool { return kept[i].mod.Before(kept[j].mod) })
+	for i := 0; i < len(kept) && total > limit; i++ {
+		if os.Remove(filepath.Join(s.Dir, kept[i].name)) == nil {
+			total -= kept[i].size
+		}
 	}
 }
