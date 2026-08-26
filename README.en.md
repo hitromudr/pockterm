@@ -548,3 +548,18 @@ The link in a message carries no token.
 ```bash
 make check    # gofmt, vet, go tests, node --test
 ```
+
+### The pane's font
+
+The pane is drawn in a font carried in the binary:
+`web/fonts/pockterm-mono-{400,700}.woff2` — the system `Noto Sans Mono`, cut down
+to what a terminal draws and renamed. Otherwise the machine picks the face, and
+one screen comes out in three of them (Courier New on Windows, `Noto Sans Mono` on
+the phone, `DejaVu Sans Mono` on Linux) with three cell widths. The system names
+stay in `--mono` behind the embedded one: `✳ ❯ ✓` are not in the subset and fall
+through to a face that has them, as they always did.
+
+Rebuild with `make font-subset` (needs `fonttools`, `python3-brotli`,
+`fonts-noto-core`). Both files are committed and are not rebuilt by `make check`:
+a build that regenerated them would look like a new binary to CI. Licence: OFL
+1.1, `web/fonts/OFL.txt`.

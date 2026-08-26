@@ -7,6 +7,12 @@
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="vendor/xterm.css">
   <link rel="stylesheet" href="css/app.css">
+  <!-- The pane's font. Preloaded because the stylesheet only asks for it once
+       the first row is being drawn, and until it arrives the pane is drawn in
+       whatever the machine has — one screen in three typefaces is what the
+       embedded font is here to stop. Bold is left to the stylesheet: it is the
+       rarer half of a pane. -->
+  <link rel="preload" href="fonts/pockterm-mono-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>pockterm</title>
 </head>

@@ -8,20 +8,49 @@
   /* What is marked for copying, whichever gesture marked it — see #snapshot
      below. One value, two rules, so the two cannot drift apart. */
   --marked: rgba(122, 162, 247, 0.28);
-  /* One monospace stack for the pane and for the frozen copy of it, read from
-     here by both (js/app.js hands it to xterm, #snapshot below uses it). xterm's
-     own default is `courier-new, courier, monospace`, and Courier New ships on
-     Windows alone: the phone and the Linux desktop fell through to their
-     sans-serif mono, the Windows desktop drew a thin serif face — one screen in
-     two typefaces depending on where it was opened. The sans-serif faces are
-     named first so the two that already looked right keep the font they had,
-     and Windows lands on Consolas rather than on the fallthrough. Only a face
-     that is what `monospace` itself resolves to belongs among those first names:
-     one that merely travels with some app (Roboto Mono, deliberately absent)
-     would change the look on a machine that was never the problem. */
-  --mono: 'DejaVu Sans Mono', 'Noto Sans Mono', 'Droid Sans Mono',
-          'Liberation Mono', Consolas, 'Cascadia Mono', Menlo, monospace;
+  /* The pane's font, and the frozen copy of the pane reads the same three names
+     (js/app.js hands them to xterm, #snapshot below uses --mono).
+
+     Named at all because xterm's own default is `courier-new, courier,
+     monospace`, and Courier New ships on Windows alone: the phone and the Linux
+     desktop fell through to their sans-serif mono while Windows drew a thin
+     serif face. Named a system face at a time, one screen still came out in
+     three typefaces and three cell widths — Noto Sans Mono on the phone, DejaVu
+     Sans Mono on Linux, Consolas on Windows — because a stack does not carry a
+     font, it picks whatever the machine happens to have. So the font travels in
+     the binary (web/fonts, cut and renamed by tools/subset-font.py) and the
+     system faces stay behind it: a glyph the subset does not have — ✳ ❯ ✓ among
+     them — falls through to a face that does, exactly as it did before.
+
+     Split in three because xterm measures the cell once, from what the stack
+     resolves to at that moment, and an embedded font arrives after that: the
+     pane starts on --mono-system and is handed --mono when the file is actually
+     ready. Two values that differ by one name is what makes xterm measure
+     again — it ignores an option equal to the one it already holds. */
+  --mono-embedded: 'Pockterm Mono';
+  --mono-system: 'DejaVu Sans Mono', 'Noto Sans Mono', 'Droid Sans Mono',
+                 'Liberation Mono', Consolas, 'Cascadia Mono', Menlo, monospace;
+  --mono: var(--mono-embedded), var(--mono-system);
   --vvh: 100dvh;
+}
+/* Both weights, because xterm draws bold text with the font rather than by
+   thickening it, and a synthesised bold is a different width in a grid of cells.
+   `swap` rather than `block`: an unreadable pane for up to three seconds reads as
+   a terminal that has hung, and the swap is what js/app.js waits for before it
+   has xterm measure the cell again. Licence: web/fonts/OFL.txt. */
+@font-face {
+  font-family: 'Pockterm Mono';
+  src: url('../fonts/pockterm-mono-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pockterm Mono';
+  src: url('../fonts/pockterm-mono-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 /* The hidden attribute must always win over an id's display rule

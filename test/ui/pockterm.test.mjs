@@ -1312,13 +1312,13 @@ describe('selection and the clipboard', () => {
   test('the pane and the frozen copy of it are drawn in one font', async () => {
     // Reported from the Windows desktop as an ugly font, and it was a different
     // font: xterm asks for `courier-new, courier, monospace` unless told
-    // otherwise, and Courier New ships on Windows alone — the phone and the Linux
-    // desktop fell through to their sans-serif mono, Windows drew a thin serif
-    // face. The stack is named once (`--mono` in css/app.css) and read twice, so
-    // what is asserted here is that both readers got it and that neither of them
-    // is back on Courier. The copy window matters as much as the pane: it is a
-    // frozen picture of the same screen, and a picture in another typeface reads
-    // as a different screen.
+    // otherwise, and Courier New ships on Windows alone. Naming the system faces
+    // instead only moved the problem — one screen still came out in Noto Sans
+    // Mono on the phone, DejaVu Sans Mono here and Consolas there, because a
+    // stack picks whatever the machine has. So the face travels in the binary,
+    // and this asserts the pane ends up on it: the file resolved, xterm measured
+    // the cell again, and the frozen copy of the pane reads the same names — a
+    // picture of the screen in another typeface reads as another screen.
     await stand.open();
     await stand.attach();
     const { page } = stand;
@@ -1327,25 +1327,68 @@ describe('selection and the clipboard', () => {
     await page.keyboard.type('one font for both');
     await page.waitForFunction(
       () => document.querySelector('.xterm-rows')?.textContent?.includes('one font for both'));
+
+    // The pane starts on the system faces on purpose — xterm measures the cell
+    // once, before a font file can have arrived — so this waits for the swap
+    // rather than reading the family once and calling it a failure.
+    const plain = (v) => v.replace(/["']/g, '').replace(/\s+/g, ' ').trim();
+    const swapped = () => page.waitForFunction(() => {
+      const want = getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      const got = getComputedStyle(document.querySelector('.xterm-rows')).fontFamily;
+      const flat = (v) => v.replace(/["']/g, '').replace(/\s+/g, ' ').trim();
+      return !!flat(want) && flat(got) === flat(want);
+    }, null, { timeout: 10000 });
+    try {
+      await swapped();
+    } catch (_) {
+      // A bare timeout here says nothing about which half failed, and both
+      // halves are silent by design: a face that never loaded and a swap that
+      // never happened leave the same readable pane in the wrong font.
+      const now = await page.evaluate(() => ({
+        pane: getComputedStyle(document.querySelector('.xterm-rows')).fontFamily,
+        embedded: getComputedStyle(document.documentElement).getPropertyValue('--mono-embedded').trim(),
+      }));
+      assert.fail(`the pane stayed in ${now.pane} instead of taking ${now.embedded}; `
+        + `the journal says ${JSON.stringify((stand.serverLog().match(/\{"event":"font".*/) || ['nothing'])[0])}`);
+    }
+
     await page.click('#select');
     await page.waitForSelector('#snapshot:not([hidden])');
-    const font = await page.evaluate(() => ({
-      pane: getComputedStyle(document.querySelector('.xterm-rows')).fontFamily,
-      copy: getComputedStyle(document.getElementById('snapshot')).fontFamily,
-      named: getComputedStyle(document.documentElement).getPropertyValue('--mono'),
-    }));
+    const font = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+      const embedded = root.getPropertyValue('--mono-embedded').trim();
+      return {
+        pane: getComputedStyle(document.querySelector('.xterm-rows')).fontFamily,
+        copy: getComputedStyle(document.getElementById('snapshot')).fontFamily,
+        named: root.getPropertyValue('--mono'),
+        system: root.getPropertyValue('--mono-system'),
+        embedded,
+        // Whether the file is really there, as against merely asked for: a face
+        // that failed to load leaves the name in the stack and the pane in the
+        // next font along.
+        loaded: document.fonts.check(`14px ${embedded}`),
+        loadedBold: document.fonts.check(`bold 14px ${embedded}`),
+      };
+    });
     await page.click('#sel-done');
     await page.waitForSelector('#snapshot', { state: 'hidden' });
 
-    // Quotes and line breaks are the stylesheet's own formatting, and computed
-    // style normalises them differently from the source.
-    const plain = (v) => v.replace(/["']/g, '').replace(/\s+/g, ' ').trim();
     assert.ok(plain(font.named), 'the stylesheet names no --mono for the two to read');
+    assert.equal(font.loaded, true, `${font.embedded} never loaded, so the pane is on a system face`);
+    assert.equal(font.loadedBold, true, `${font.embedded} has no bold, which xterm draws with`);
     assert.equal(plain(font.pane), plain(font.copy),
       `the pane is drawn in ${font.pane} and the copy in ${font.copy}`);
     assert.equal(plain(font.pane), plain(font.named),
       `the pane is drawn in ${font.pane} and the stylesheet says ${font.named}`);
+    assert.ok(plain(font.pane).startsWith(plain(font.embedded)),
+      `the embedded face is not the first name on the pane: ${font.pane}`);
+    assert.notEqual(plain(font.named), plain(font.system),
+      'the two values are identical, so xterm would ignore the second one and never measure again');
     assert.ok(!/courier/i.test(font.pane), `the pane is still drawn in ${font.pane}`);
+    // The device has no console, so which font the pane ended up in is a
+    // question the journal answers rather than a screenshot.
+    assert.match(stand.serverLog(), /"event":"font".*"embedded":true/,
+      'nothing in the journal says the embedded font went on');
   });
 
   test('the frozen copy holds more than the screen, and scrolls through it', async () => {

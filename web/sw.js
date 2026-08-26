@@ -1,6 +1,6 @@
 // Version-stamped static cache. Bump VERSION on any static change:
 // the old cache is dropped on activate.
-const VERSION = 'v184';
+const VERSION = 'v185';
 const PRECACHE = [
   '/',
   '/css/app.css',
@@ -21,6 +21,12 @@ const PRECACHE = [
   '/js/bar.js',
   '/js/link.js',
   '/js/compose.js',
+  // The pane's own font, cut down and carried here so the same screen is the
+  // same screen on every machine — see --mono in css/app.css. Precached because
+  // an installed PWA with no network would otherwise draw the pane in whatever
+  // the device has, which is the thing this file exists to stop.
+  '/fonts/pockterm-mono-400.woff2',
+  '/fonts/pockterm-mono-700.woff2',
   '/vendor/xterm.js',
   '/vendor/xterm.css',
   '/vendor/addon-fit.js',

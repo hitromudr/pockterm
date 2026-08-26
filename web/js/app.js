@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v184';
+const APP_VERSION = 'v185';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -81,24 +81,31 @@ async function fetchSessions() {
 // --- terminal (created once, reused across sessions) ---
 let fontSize = 14;
 try { fontSize = parseInt(localStorage.getItem('pt-font'), 10) || 14; } catch (_) {}
-// The pane's font is named in the stylesheet (`--mono` in css/app.css) and read
+// The pane's font is named in the stylesheet (`--mono*` in css/app.css) and read
 // from there, because the frozen copy of the pane is drawn by that stylesheet and
-// the pane itself by this option: one stack, two consumers. Left to itself xterm
-// asks for `courier-new, courier, monospace`, and Courier New ships on Windows
-// alone — the phone and the Linux desktop fell through to a sans-serif mono while
-// the Windows desktop drew a thin serif face.
-const monoStack = (() => {
+// the pane itself by this option: one set of names, two consumers. Left to itself
+// xterm asks for `courier-new, courier, monospace`, and Courier New ships on
+// Windows alone — the phone and the Linux desktop fell through to a sans-serif
+// mono while the Windows desktop drew a thin serif face.
+//
+// Collapsed on the way out because the stylesheet wraps the list over two lines,
+// and this string is handed to a canvas font as readily as to a declaration.
+function monoNames(name) {
   try {
-    const named = getComputedStyle(document.documentElement).getPropertyValue('--mono').trim();
-    // Collapsed because the stylesheet wraps the stack over two lines, and this
-    // string is handed to a canvas font as readily as to a CSS declaration.
-    if (named) return named.replace(/\s+/g, ' ');
-  } catch (_) {}
-  // A generic rather than a copy of the stack: a copy is a second owner, and the
-  // one that drifts is the one that decides.
-  return 'monospace';
-})();
-const term = new Terminal({ fontFamily: monoStack, fontSize, scrollback: 5000, theme: { background: '#0b0e14' } });
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim().replace(/\s+/g, ' ');
+  } catch (_) { return ''; }
+}
+// A generic rather than a copy of the list: a copy is a second owner, and the one
+// that drifts is the one that decides.
+const monoSystem = monoNames('--mono-system') || 'monospace';
+const monoStack = monoNames('--mono') || monoSystem;
+const monoEmbedded = monoNames('--mono-embedded');
+// Started on the system faces even though the embedded one is what should draw
+// it: xterm measures the cell once, from whatever the stack resolves to at that
+// moment, and a font file that has not arrived yet resolves to nothing. Handing
+// it the full list below — a value that differs by one name, which is what makes
+// xterm measure again — is what puts the embedded face on the pane.
+const term = new Terminal({ fontFamily: monoSystem, fontSize, scrollback: 5000, theme: { background: '#0b0e14' } });
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
 // The terminal's own box. Everything drawn over the pane lives inside it — the
@@ -107,6 +114,30 @@ term.loadAddon(fit);
 // repeat rather than rows taken from tmux.
 const termBox = document.getElementById('term');
 term.open(termBox);
+
+// And the embedded face goes on as soon as the file is really there. Waited for
+// rather than assumed: `font-display: swap` means the pane is readable in the
+// meantime, and a file that never arrives (a cache miss with no network, a
+// stripped build) must leave the pane on the system faces rather than on a
+// measurement taken against a font nobody has. `check` after `load` because
+// `load` resolves either way — it reports what happened, it does not promise a
+// face. Both weights, since xterm draws bold with the font rather than by
+// thickening it, and a synthesised bold is a different width in a grid of cells.
+//
+// The journal line is the whole answer to "which font is this actually in",
+// which is otherwise a question about a screenshot: the device has no console.
+if (monoEmbedded && monoStack !== monoSystem && window.document.fonts && document.fonts.load) {
+  const faces = [`${fontSize}px ${monoEmbedded}`, `bold ${fontSize}px ${monoEmbedded}`];
+  Promise.all(faces.map((f) => document.fonts.load(f)))
+    .then(() => {
+      const ready = document.fonts.check(faces[0]);
+      report('font', { embedded: ready, family: monoEmbedded, size: fontSize });
+      if (!ready) return;
+      term.options.fontFamily = monoStack;
+      refit();
+    })
+    .catch((e) => report('font', { embedded: false, error: String((e && e.message) || e).slice(0, 120) }));
+}
 
 // What xterm leaves in its own field is what the keyboard reads as the word
 // being typed, and that is where a typed word came back a second time. Emptied

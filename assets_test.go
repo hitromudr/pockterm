@@ -1,6 +1,9 @@
 package pockterm
 
 import (
+	"bytes"
+	"mime"
+	"path"
 	"regexp"
 	"testing"
 )
@@ -65,7 +68,99 @@ func TestOneMonoStackAndNoCourier(t *testing.T) {
 	if !regexp.MustCompile(`new Terminal\(\{[^}]*fontFamily`).Match(js) {
 		t.Error("the terminal is built without a fontFamily, so xterm's Courier default stands")
 	}
-	if !regexp.MustCompile(`getPropertyValue\('--mono'\)`).Match(js) {
+	if !regexp.MustCompile(`monoNames\('--mono'\)`).Match(js) {
 		t.Error("app.js does not read --mono, so the stack has two owners")
 	}
+}
+
+// The font the pane is drawn in travels in this binary, so what the stylesheet
+// asks for and what the service worker keeps offline both have to be the file
+// that is actually embedded. The defect this catches has three shapes, and none
+// of them fails a build: a stylesheet naming a path that is not there (the pane
+// silently falls back to a system face), a face missing from the precache list
+// (an installed PWA with no network draws it in whatever the device has, which
+// is the thing the embedded font exists to stop), and a rebuild that renamed the
+// files.
+func TestEmbeddedFontIsAskedFor(t *testing.T) {
+	css, err := Web.ReadFile("web/css/app.css")
+	if err != nil {
+		t.Fatalf("reading the embedded app.css: %v", err)
+	}
+	sw, err := Web.ReadFile("web/sw.js")
+	if err != nil {
+		t.Fatalf("reading the embedded sw.js: %v", err)
+	}
+
+	// Every url() inside a @font-face, resolved the way a browser resolves it:
+	// against the stylesheet's own directory.
+	faces := regexp.MustCompile(`(?s)@font-face\s*\{.*?\}`).FindAll(css, -1)
+	if len(faces) != 2 {
+		t.Fatalf("app.css declares %d faces, want the two weights xterm draws with", len(faces))
+	}
+	seen := 0
+	for _, face := range faces {
+		m := regexp.MustCompile(`url\('([^']+)'\)`).FindSubmatch(face)
+		if m == nil {
+			t.Errorf("a @font-face asks for no file at all: %s", face)
+			continue
+		}
+		asked := path.Join("web/css", string(m[1]))
+		b, err := Web.ReadFile(asked)
+		if err != nil {
+			t.Errorf("app.css asks for %s, which is not in the binary: %v", asked, err)
+			continue
+		}
+		// woff2 and not a renamed ttf: the format() in the stylesheet is a
+		// promise a browser holds the file to.
+		if !bytes.HasPrefix(b, []byte("wOF2")) {
+			t.Errorf("%s is not woff2 (starts with %q)", asked, b[:min(4, len(b))])
+		}
+		if len(b) < 10<<10 {
+			t.Errorf("%s is %d bytes — too small to be a face with Cyrillic in it", asked, len(b))
+		}
+		if !bytes.Contains(sw, []byte("/"+path.Base(asked))) {
+			t.Errorf("%s is not in the service worker's precache list", path.Base(asked))
+		}
+		seen++
+	}
+	if seen != 2 {
+		t.Errorf("%d of the two faces resolved to a file in the binary", seen)
+	}
+
+	// The licence travels with the font, which is what OFL 1.1 asks of a
+	// derivative — and the subset is a derivative.
+	if _, err := Web.ReadFile("web/fonts/OFL.txt"); err != nil {
+		t.Errorf("the font is embedded without its licence: %v", err)
+	}
+
+	// Three names, not one: the pane starts on --mono-system because xterm
+	// measures the cell before the file arrives, and is handed --mono afterwards.
+	// Collapsing them back into a single value is what would leave the pane
+	// measured against a font nobody had yet.
+	for _, name := range []string{"--mono-embedded", "--mono-system", "--mono"} {
+		if !regexp.MustCompile(`(?m)^\s*` + name + `:`).Match(css) {
+			t.Errorf("app.css names no %s", name)
+		}
+	}
+	if !regexp.MustCompile(`--mono:\s*var\(--mono-embedded\),\s*var\(--mono-system\)`).Match(css) {
+		t.Error("--mono is not the embedded name followed by the system ones")
+	}
+	if !regexp.MustCompile(`fontFamily: monoSystem`).Match(mustRead(t, "web/js/app.js")) {
+		t.Error("the pane is built on the full stack, so the cell is measured before the font arrives")
+	}
+
+	// The type is a courtesy rather than a requirement, but a wrong one is the
+	// sort of thing that only shows up on a host that has no /etc/mime.types.
+	if got := mime.TypeByExtension(".woff2"); got != "font/woff2" {
+		t.Errorf("mime says %q for .woff2, want font/woff2", got)
+	}
+}
+
+func mustRead(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := Web.ReadFile(name)
+	if err != nil {
+		t.Fatalf("reading the embedded %s: %v", name, err)
+	}
+	return b
 }
