@@ -8,6 +8,19 @@
   /* What is marked for copying, whichever gesture marked it — see #snapshot
      below. One value, two rules, so the two cannot drift apart. */
   --marked: rgba(122, 162, 247, 0.28);
+  /* One monospace stack for the pane and for the frozen copy of it, read from
+     here by both (js/app.js hands it to xterm, #snapshot below uses it). xterm's
+     own default is `courier-new, courier, monospace`, and Courier New ships on
+     Windows alone: the phone and the Linux desktop fell through to their
+     sans-serif mono, the Windows desktop drew a thin serif face — one screen in
+     two typefaces depending on where it was opened. The sans-serif faces are
+     named first so the two that already looked right keep the font they had,
+     and Windows lands on Consolas rather than on the fallthrough. Only a face
+     that is what `monospace` itself resolves to belongs among those first names:
+     one that merely travels with some app (Roboto Mono, deliberately absent)
+     would change the look on a machine that was never the problem. */
+  --mono: 'DejaVu Sans Mono', 'Noto Sans Mono', 'Droid Sans Mono',
+          'Liberation Mono', Consolas, 'Cascadia Mono', Menlo, monospace;
   --vvh: 100dvh;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1006,7 +1019,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-family: courier-new, courier, monospace;
+  font-family: var(--mono);
   line-height: 1.2;
   color: var(--fg);
   background: var(--bg);

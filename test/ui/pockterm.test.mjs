@@ -1309,6 +1309,45 @@ describe('selection and the clipboard', () => {
   before(async () => { stand = await startStand(); });
   after(async () => { await stand.stop(); });
 
+  test('the pane and the frozen copy of it are drawn in one font', async () => {
+    // Reported from the Windows desktop as an ugly font, and it was a different
+    // font: xterm asks for `courier-new, courier, monospace` unless told
+    // otherwise, and Courier New ships on Windows alone — the phone and the Linux
+    // desktop fell through to their sans-serif mono, Windows drew a thin serif
+    // face. The stack is named once (`--mono` in css/app.css) and read twice, so
+    // what is asserted here is that both readers got it and that neither of them
+    // is back on Courier. The copy window matters as much as the pane: it is a
+    // frozen picture of the same screen, and a picture in another typeface reads
+    // as a different screen.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#term');
+    await page.keyboard.type('one font for both');
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('one font for both'));
+    await page.click('#select');
+    await page.waitForSelector('#snapshot:not([hidden])');
+    const font = await page.evaluate(() => ({
+      pane: getComputedStyle(document.querySelector('.xterm-rows')).fontFamily,
+      copy: getComputedStyle(document.getElementById('snapshot')).fontFamily,
+      named: getComputedStyle(document.documentElement).getPropertyValue('--mono'),
+    }));
+    await page.click('#sel-done');
+    await page.waitForSelector('#snapshot', { state: 'hidden' });
+
+    // Quotes and line breaks are the stylesheet's own formatting, and computed
+    // style normalises them differently from the source.
+    const plain = (v) => v.replace(/["']/g, '').replace(/\s+/g, ' ').trim();
+    assert.ok(plain(font.named), 'the stylesheet names no --mono for the two to read');
+    assert.equal(plain(font.pane), plain(font.copy),
+      `the pane is drawn in ${font.pane} and the copy in ${font.copy}`);
+    assert.equal(plain(font.pane), plain(font.named),
+      `the pane is drawn in ${font.pane} and the stylesheet says ${font.named}`);
+    assert.ok(!/courier/i.test(font.pane), `the pane is still drawn in ${font.pane}`);
+  });
+
   test('the frozen copy holds more than the screen, and scrolls through it', async () => {
     // Reported from the phone as the copy window not scrolling, which is exactly
     // what it did: the frozen copy was the visible screen and nothing else, so it

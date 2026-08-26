@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v183';
+const APP_VERSION = 'v184';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -81,7 +81,24 @@ async function fetchSessions() {
 // --- terminal (created once, reused across sessions) ---
 let fontSize = 14;
 try { fontSize = parseInt(localStorage.getItem('pt-font'), 10) || 14; } catch (_) {}
-const term = new Terminal({ fontSize, scrollback: 5000, theme: { background: '#0b0e14' } });
+// The pane's font is named in the stylesheet (`--mono` in css/app.css) and read
+// from there, because the frozen copy of the pane is drawn by that stylesheet and
+// the pane itself by this option: one stack, two consumers. Left to itself xterm
+// asks for `courier-new, courier, monospace`, and Courier New ships on Windows
+// alone — the phone and the Linux desktop fell through to a sans-serif mono while
+// the Windows desktop drew a thin serif face.
+const monoStack = (() => {
+  try {
+    const named = getComputedStyle(document.documentElement).getPropertyValue('--mono').trim();
+    // Collapsed because the stylesheet wraps the stack over two lines, and this
+    // string is handed to a canvas font as readily as to a CSS declaration.
+    if (named) return named.replace(/\s+/g, ' ');
+  } catch (_) {}
+  // A generic rather than a copy of the stack: a copy is a second owner, and the
+  // one that drifts is the one that decides.
+  return 'monospace';
+})();
+const term = new Terminal({ fontFamily: monoStack, fontSize, scrollback: 5000, theme: { background: '#0b0e14' } });
 const fit = new FitAddon.FitAddon();
 term.loadAddon(fit);
 // The terminal's own box. Everything drawn over the pane lives inside it — the
