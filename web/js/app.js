@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v185';
+const APP_VERSION = 'v186';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -127,10 +127,13 @@ term.open(termBox);
 // The journal line is the whole answer to "which font is this actually in",
 // which is otherwise a question about a screenshot: the device has no console.
 if (monoEmbedded && monoStack !== monoSystem && window.document.fonts && document.fonts.load) {
-  const faces = [`${fontSize}px ${monoEmbedded}`, `bold ${fontSize}px ${monoEmbedded}`];
-  Promise.all(faces.map((f) => document.fonts.load(f)))
+  // Only the letters are waited for. The marks are a second family behind them in
+  // the stack (see --mono-marks) and the browser fetches that one when a character
+  // picks it; the cell is measured off the primary face, which is this one.
+  const face = `${fontSize}px ${monoEmbedded}`;
+  document.fonts.load(face)
     .then(() => {
-      const ready = document.fonts.check(faces[0]);
+      const ready = document.fonts.check(face);
       report('font', { embedded: ready, family: monoEmbedded, size: fontSize });
       if (!ready) return;
       term.options.fontFamily = monoStack;

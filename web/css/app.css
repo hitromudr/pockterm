@@ -8,36 +8,60 @@
   /* What is marked for copying, whichever gesture marked it — see #snapshot
      below. One value, two rules, so the two cannot drift apart. */
   --marked: rgba(122, 162, 247, 0.28);
-  /* The pane's font, and the frozen copy of the pane reads the same three names
+  /* The pane's font, and the frozen copy of the pane reads the same names
      (js/app.js hands them to xterm, #snapshot below uses --mono).
 
      Named at all because xterm's own default is `courier-new, courier,
      monospace`, and Courier New ships on Windows alone: the phone and the Linux
      desktop fell through to their sans-serif mono while Windows drew a thin
-     serif face. Named a system face at a time, one screen still came out in
-     three typefaces and three cell widths — Noto Sans Mono on the phone, DejaVu
-     Sans Mono on Linux, Consolas on Windows — because a stack does not carry a
-     font, it picks whatever the machine happens to have. So the font travels in
-     the binary (web/fonts, cut and renamed by tools/subset-font.py) and the
-     system faces stay behind it: a glyph the subset does not have — ✳ ❯ ✓ among
-     them — falls through to a face that does, exactly as it did before.
+     serif face. Naming the good system faces instead only moved the problem —
+     one screen still came out in three typefaces and three cell widths (Droid
+     Sans Mono on the phone, DejaVu Sans Mono on Linux, Consolas on Windows),
+     because a stack does not carry a font, it picks whatever the machine has.
+     So the faces travel in the binary (web/fonts, cut and renamed by
+     tools/subset-font.py).
 
-     Split in three because xterm measures the cell once, from what the stack
-     resolves to at that moment, and an embedded font arrives after that: the
-     pane starts on --mono-system and is handed --mono when the file is actually
-     ready. Two values that differ by one name is what makes xterm measure
+     Two embedded families, because no one face has everything a pane shows.
+     --mono-embedded is Droid Sans Mono, which is what Android's own `monospace`
+     resolves to and the look this was asked to keep; it has 632 of these
+     characters and no box drawing at all. --mono-marks fills the rest from
+     DejaVu Sans Mono — box drawing, blocks, shapes, arrows, ✓ ✳ ❯ ❄ ☀ ★ ⇩ —
+     rescaled onto the same 600/1000 cell. On the phone those already came from
+     a fallback face rather than from the mono, so this is the same substitution
+     made the same everywhere. The system names still come last: ⏵ is in neither
+     file, and a character in no embedded face has to come from somewhere.
+
+     Split rather than one value because xterm measures the cell once, from what
+     the stack resolves to at that moment, and an embedded font arrives after
+     that: the pane starts on --mono-system and is handed --mono when the file is
+     actually ready. Two values that differ by a name is what makes xterm measure
      again — it ignores an option equal to the one it already holds. */
   --mono-embedded: 'Pockterm Mono';
+  --mono-marks: 'Pockterm Marks';
   --mono-system: 'DejaVu Sans Mono', 'Noto Sans Mono', 'Droid Sans Mono',
                  'Liberation Mono', Consolas, 'Cascadia Mono', Menlo, monospace;
-  --mono: var(--mono-embedded), var(--mono-system);
+  --mono: var(--mono-embedded), var(--mono-marks), var(--mono-system);
   --vvh: 100dvh;
 }
-/* Both weights, because xterm draws bold text with the font rather than by
-   thickening it, and a synthesised bold is a different width in a grid of cells.
-   `swap` rather than `block`: an unreadable pane for up to three seconds reads as
+/* `swap` rather than `block`: an unreadable pane for up to three seconds reads as
    a terminal that has hung, and the swap is what js/app.js waits for before it
-   has xterm measure the cell again. Licence: web/fonts/OFL.txt. */
+   has xterm measure the cell again.
+
+   One weight for the letters, and bold is the browser's to synthesise. Droid
+   Sans Mono has no bold — neither does Android, where this pane has looked like
+   this all along — and borrowing one from another face would put a different
+   typeface on every line the agent emphasises. Synthesising does not widen the
+   cell: the advance comes from the face either way. The marks ship both weights
+   because DejaVu has them.
+
+   No `unicode-range` here on purpose: the two families are ordered in --mono
+   instead, so a character is looked for in Pockterm Mono first and in Pockterm
+   Marks only if it is not there. A range would have to be kept in step with what
+   the subsets actually hold, and the marks file is fetched lazily either way —
+   a browser loads a family when a character picks it.
+
+   Licences: third_party/fonts/LICENSE-droid.txt (Droid Sans Mono, Apache 2.0)
+   and web/fonts/LICENSE-dejavu.txt (DejaVu Sans Mono). */
 @font-face {
   font-family: 'Pockterm Mono';
   src: url('../fonts/pockterm-mono-400.woff2') format('woff2');
@@ -46,8 +70,15 @@
   font-display: swap;
 }
 @font-face {
-  font-family: 'Pockterm Mono';
-  src: url('../fonts/pockterm-mono-700.woff2') format('woff2');
+  font-family: 'Pockterm Marks';
+  src: url('../fonts/pockterm-marks-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pockterm Marks';
+  src: url('../fonts/pockterm-marks-700.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;

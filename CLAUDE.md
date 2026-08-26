@@ -88,11 +88,12 @@ them instead of deriving them again.
   gives a shared window) or the binary itself in
   `~/.local/share/claude/versions`. Every guess about it here has cost a
   release.
-- **The pane carries its own font.** A stack names candidates and takes whichever the
+- **The pane carries its own fonts.** A stack names candidates and takes whichever the
   machine has, so one screen came out in three typefaces and three cell widths — Courier
-  New on Windows, `Noto Sans Mono` on the phone, `DejaVu Sans Mono` on Linux. The face
-  travels in the binary (`web/fonts`, `tools/subset-font.py`) and the system names stay
-  behind it for the glyphs the subset does not have. `--mono-system` builds the pane and
+  New on Windows, Droid Sans Mono on the phone, `DejaVu Sans Mono` on Linux. Two subsets
+  travel in the binary (`web/fonts`, `tools/subset-font.py`): the letters, and the marks
+  the letters have not got. Their **order in `--mono`** is what picks between them, and
+  the system names stay last for what neither holds. `--mono-system` builds the pane and
   `--mono` replaces it once the file has loaded, because xterm measures the cell once and
   ignores an option equal to the one it holds.
 - **Check a test against the defect first.** A test that passes with the fix
@@ -131,7 +132,7 @@ release.
 | Notifications | `docs/lessons/notifications.md` |
 | Selection, the copy window, Markdown | `docs/lessons/selection-and-markdown.md` |
 | Uploads, limits, the journal | `docs/lessons/uploads-and-diagnostics.md` |
-| The font the pane is drawn in | `docs/lessons/the-pane-font.md` |
+| The fonts the pane is drawn in | `docs/lessons/the-pane-font.md` |
 | The installer | `docs/lessons/install-and-deploy.md` |
 
 ## Keyboard, IME and the key bar
@@ -318,22 +319,28 @@ release.
   being an image to this store. Files are 0600 and swept after 24 hours; 📎 asks which source
   and opens the same input inside the tap.
 
-## The font the pane is drawn in
+## The fonts the pane is drawn in
 
 `docs/lessons/the-pane-font.md`
 
-- **The face is in the binary** (`web/fonts/pockterm-mono-{400,700}.woff2`, cut and renamed
-  from the system Noto Sans Mono by `tools/subset-font.py`, `make font-subset`, OFL in
-  `web/fonts/OFL.txt`), because a stack picks whatever the machine has — including the cell
-  width. Both weights: xterm draws bold with the font.
-- **The system names stay behind it.** `✳ ❯ ✓ ⏵ ❄ ☀ ⇩` are not in Noto Sans Mono, and two of
-  them are what the agent's TUI and the composer draw; they fall through as they always did.
+- **Two subsets are in the binary**, because a stack picks whatever the machine has —
+  including the cell width. `pockterm-mono-400.woff2` is the letters, from Droid Sans Mono
+  (the face Android's own `monospace` resolves to, kept as `third_party/fonts` since it is
+  nowhere else, Apache 2.0); `pockterm-marks-{400,700}.woff2` is what that face has not got,
+  from DejaVu Sans Mono, rescaled onto the same 600/1000 cell. Rebuilt by
+  `tools/subset-font.py` (`make font-subset`), never by `build`.
+- **The order in `--mono` is the mechanism**, not `unicode-range`: letters, then marks, then
+  the system names for what neither holds (`⏵`). A range would have to be kept in step with
+  what the subsets contain, and a browser fetches a family only when a character picks it.
+- **Bold for the letters is synthesised.** Droid Sans Mono has no bold, as on the phone;
+  borrowing one would put another typeface on every emphasised line. The marks ship both.
 - **Three variables, one stack.** `--mono-system` is what the pane is built on, `--mono` is
   what it is handed once `document.fonts.check` says the file is there — xterm measures the
   cell once and ignores an option equal to the one it holds. `#snapshot` reads `--mono`.
-- **Both files are in the service worker's precache list**, or an installed PWA offline draws
-  the pane in whatever the device has. `TestEmbeddedFontIsAskedFor` resolves every `url()` in
-  the stylesheet against the binary; the journal's `font` line says which face went on.
+- **All three files are in the service worker's precache list**, or an installed PWA offline
+  draws the pane in whatever the device has. `TestEmbeddedFontIsAskedFor` resolves every
+  `url()` in the stylesheet against the binary; the journal's `font` line says which face
+  went on.
 
 ## Deploy
 

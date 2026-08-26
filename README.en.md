@@ -549,17 +549,27 @@ The link in a message carries no token.
 make check    # gofmt, vet, go tests, node --test
 ```
 
-### The pane's font
+### The pane's fonts
 
-The pane is drawn in a font carried in the binary:
-`web/fonts/pockterm-mono-{400,700}.woff2` — the system `Noto Sans Mono`, cut down
-to what a terminal draws and renamed. Otherwise the machine picks the face, and
-one screen comes out in three of them (Courier New on Windows, `Noto Sans Mono` on
-the phone, `DejaVu Sans Mono` on Linux) with three cell widths. The system names
-stay in `--mono` behind the embedded one: `✳ ❯ ✓` are not in the subset and fall
-through to a face that has them, as they always did.
+The pane is drawn in fonts carried in the binary — otherwise the machine picks the
+face, and one screen comes out in three of them (Courier New on Windows, Droid Sans
+Mono on the phone, `DejaVu Sans Mono` on Linux) with three cell widths.
+
+There are two, because no single face has everything a pane shows:
+
+- `pockterm-mono-400.woff2` — the letters, from Droid Sans Mono, the face
+  Android's own `monospace` resolves to. The source is kept as
+  `third_party/fonts/DroidSansMono.ttf`: Google Fonts dropped it and Debian ships
+  only its CJK fallback. Apache 2.0.
+- `pockterm-marks-{400,700}.woff2` — what that face has not got: box drawing,
+  blocks, shapes, arrows, `✓ ✳ ❯ ❄ ☀ ★ ⇩`. From the system DejaVu Sans Mono,
+  rescaled onto the same 600/1000 cell.
+
+The order in `--mono` is the mechanism: letters, then marks, then the system names
+— `⏵` is in neither file. Bold for the letters is synthesised by the browser: Droid
+Sans Mono has no bold weight, as on the phone.
 
 Rebuild with `make font-subset` (needs `fonttools`, `python3-brotli`,
-`fonts-noto-core`). Both files are committed and are not rebuilt by `make check`:
-a build that regenerated them would look like a new binary to CI. Licence: OFL
-1.1, `web/fonts/OFL.txt`.
+`fonts-dejavu-core`). The files are committed and are not rebuilt by `make check`:
+a build that regenerated them would look like a new binary to CI. Licences:
+`third_party/fonts/LICENSE-droid.txt` and `web/fonts/LICENSE-dejavu.txt`.

@@ -1357,17 +1357,18 @@ describe('selection and the clipboard', () => {
     const font = await page.evaluate(() => {
       const root = getComputedStyle(document.documentElement);
       const embedded = root.getPropertyValue('--mono-embedded').trim();
+      const marks = root.getPropertyValue('--mono-marks').trim();
       return {
         pane: getComputedStyle(document.querySelector('.xterm-rows')).fontFamily,
         copy: getComputedStyle(document.getElementById('snapshot')).fontFamily,
         named: root.getPropertyValue('--mono'),
         system: root.getPropertyValue('--mono-system'),
         embedded,
+        marks,
         // Whether the file is really there, as against merely asked for: a face
         // that failed to load leaves the name in the stack and the pane in the
         // next font along.
         loaded: document.fonts.check(`14px ${embedded}`),
-        loadedBold: document.fonts.check(`bold 14px ${embedded}`),
       };
     });
     await page.click('#sel-done');
@@ -1375,7 +1376,6 @@ describe('selection and the clipboard', () => {
 
     assert.ok(plain(font.named), 'the stylesheet names no --mono for the two to read');
     assert.equal(font.loaded, true, `${font.embedded} never loaded, so the pane is on a system face`);
-    assert.equal(font.loadedBold, true, `${font.embedded} has no bold, which xterm draws with`);
     assert.equal(plain(font.pane), plain(font.copy),
       `the pane is drawn in ${font.pane} and the copy in ${font.copy}`);
     assert.equal(plain(font.pane), plain(font.named),
@@ -1389,6 +1389,34 @@ describe('selection and the clipboard', () => {
     // question the journal answers rather than a screenshot.
     assert.match(stand.serverLog(), /"event":"font".*"embedded":true/,
       'nothing in the journal says the embedded font went on');
+  });
+
+  test('the marks the letters have not got come from the second embedded family', async () => {
+    // The primary face is Droid Sans Mono — the one Android's own `monospace`
+    // resolves to, which is the look this was asked to keep — and it has no box
+    // drawing, no ● and no ✳ at all. Those used to fall through to a system face,
+    // which is the per-machine typeface the embedded font exists to stop, so a
+    // second family carries them. Ordered in --mono rather than split by
+    // unicode-range, and the proof that the order works is the browser fetching
+    // that family: it loads one only when a character picks it.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    const marks = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--mono-marks').trim());
+    assert.ok(marks, 'the stylesheet names no --mono-marks');
+    // Nothing has drawn one yet, so the family must not be loaded — otherwise
+    // this test would pass without the stack having done anything.
+    assert.equal(await page.evaluate((f) => document.fonts.check(`14px ${f}`), marks), false,
+      `${marks} was already loaded before anything asked for a mark`);
+
+    await page.click('#term');
+    // Box drawing, a shape, and the two the agent's TUI and this page draw.
+    await page.keyboard.type('─│┌●✳❯✓');
+    await page.waitForFunction(
+      () => (document.querySelector('.xterm-rows')?.textContent || '').includes('✳'));
+    await page.waitForFunction((f) => document.fonts.check(`14px ${f}`), marks, { timeout: 10000 });
   });
 
   test('the frozen copy holds more than the screen, and scrolls through it', async () => {
