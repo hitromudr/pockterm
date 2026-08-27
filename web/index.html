@@ -240,11 +240,20 @@
            the history, `reset` puts a terminal that has been left in some mode by a
            killed program back to itself.
 
-           **The order is the layout.** A grid fills rows left to right and moves a
-           span that does not fit to the next row, leaving the cells behind it empty
-           — so the wide entries are placed where they start or finish a row, and
-           the eighteen commands come to twenty-four cells exactly. Adding one means
-           counting again; a hole is what tells you it was not counted.
+           **The order is the layout, and it is arithmetic.** A grid fills rows left
+           to right and moves a span that does not fit to the next row, leaving the
+           cells behind it empty — so every row here sums to four: `1+1+1+1`, `2+1+1`,
+           `2+2` or `3+1`. Twenty-five commands and the ▴ come to forty cells, ten
+           rows, no holes. Two consequences: adding a command means counting again,
+           and because each row sums to four exactly, the landscape grid of eight
+           columns fills without holes too — any two of these rows make one of those.
+
+           **Three of them are this host's, not Linux's.** `vcgencmd` is Raspberry Pi
+           firmware: temperature, throttling and the V3D clock come from there, and
+           on the fleet's x86 machines those three buttons answer "command not
+           found". They are here because this pad's host is the RPi5; the portable
+           reading of the same fact (`/sys/class/thermal`, `sensors`) is a line of
+           noise where these are a line of answer.
 
            `--no-pager` on the unit list is not decoration: systemctl hands its
            output to `less` whenever it does not fit one screen, and on a phone that
@@ -262,17 +271,24 @@
         <button class="wide" data-cmd="ls -al --color">ls -al --color</button>
         <button data-cmd="cd ..">cd ..</button>
         <button data-cmd="cd ~">cd ~</button>
-        <button data-cmd="uname -a">uname -a</button>
+        <button class="wide" data-cmd="curl eth0.me">curl eth0.me</button>
         <button data-cmd="df -h">df -h</button>
         <button data-cmd="free -h">free -h</button>
+        <button class="wider" data-cmd="ip -br a | grep -E '^[ew]'">ip -br a | grep -E '^[ew]'</button>
+        <button data-cmd="ip -br a">ip -br a</button>
+        <button class="wide" data-cmd="vcgencmd measure_temp">vcgencmd measure_temp</button>
+        <button class="wide" data-cmd="vcgencmd get_throttled">vcgencmd get_throttled</button>
+        <button class="wider" data-cmd="vcgencmd measure_clock v3d">vcgencmd measure_clock v3d</button>
+        <button data-cmd="uname -a">uname -a</button>
+        <button class="wide" data-cmd="netstat -tupln">netstat -tupln</button>
         <button data-cmd="tmux ls">tmux ls</button>
+        <button data-cmd="docker ps">docker ps</button>
+        <button class="wide" data-cmd="systemctl --failed">systemctl --failed</button>
         <button data-cmd="git status">git status</button>
         <button data-cmd="history 20">history 20</button>
-        <button data-cmd="ps uaxf">ps uaxf</button>
-        <button data-cmd="ip -br a">ip -br a</button>
-        <button class="wide" data-cmd="netstat -tupln">netstat -tupln</button>
-        <button class="wide" data-cmd="systemctl --failed">systemctl --failed</button>
         <button class="wider" data-cmd="systemctl -t service --no-pager">systemctl -t service --no-pager</button>
+        <button data-cmd="ps uaxf">ps uaxf</button>
+        <button class="wider" data-cmd="journalctl -p err -n 20 --no-pager">journalctl -p err -n 20 --no-pager</button>
         <button id="cmd-hide" title="Hide the commands">&#9652;</button>
       </div>
       <!-- What was sent from the composer before. Over the terminal and never

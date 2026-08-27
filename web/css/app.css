@@ -1389,8 +1389,11 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   z-index: 4;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  padding: 6px;
+  /* Tighter than the bars below: ten rows of commands are what twenty-five of them
+     come to, and the gaps are what decides whether that is half the pane or two
+     thirds of it. */
+  gap: 5px;
+  padding: 5px;
   /* A floor under the geometry rather than a cap on the list: with a keyboard up
      in landscape the pane is a dozen rows, and a pad taller than the pane it is
      drawn over would leave nothing to read at all. Scrolls instead — the same
@@ -1408,7 +1411,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 /* In the pane's own typeface: the label is the command, and the one thing it has
    to promise is that what goes out is what is written on it. */
 #cmdpad button {
-  padding: 12px 4px;
+  padding: 10px 4px;
   font-family: var(--mono);
   font-size: 12px;
   color: var(--fg);

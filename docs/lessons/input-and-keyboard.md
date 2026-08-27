@@ -189,7 +189,7 @@ already do this?*) answers it for a different reason than usual — a keyboard c
 type `ls -la`, and that is eight taps with a hyphen behind a shift, on a device
 where the keyboard covers half the pane while you find it.
 
-So `#cmdpad`: eighteen commands and a ▴, four columns, in the pane's own typeface
+So `#cmdpad`: twenty-five commands and a ▴, four columns, in the pane's own typeface
 because the label **is** what goes out. It borrows three things rather than
 re-deciding them, and each was paid for elsewhere in this file:
 
@@ -210,23 +210,37 @@ so the mirror image is also the only place it works. The way in is `$` in the
 pane's top-right corner (`#cmds`), which fades with the pager and for the same
 reason: a 44px circle parked over the first line costs the pane a line to have.
 
-**Eight commands was the first answer and it lasted an hour.** "Кнопок мало,
-надо в 2 раза больше" — so `ls`, `cd -` and the rest of what a keyboard types in
-two taps went, and what a phone cannot reasonably type came in: `ps uaxf`,
-`netstat -tupln`, `systemctl --failed`, `systemctl -t service --no-pager`,
-`ip -br a`, `uname -a`, `free -h`, `uptime`, `tmux ls`, `history 20`,
-`ls -al --color`. Three things that list decides:
+**Eight commands was the first answer and it lasted an hour**, and eighteen
+lasted about as long. "Кнопок мало, надо в 2 раза больше" took out `ls` and
+`cd -` — what a keyboard types in two taps — and brought in what a phone cannot
+reasonably type: `ps uaxf`, `netstat -tupln`, `systemctl --failed`,
+`systemctl -t service --no-pager`, `uname -a`, `free -h`, `uptime`, `tmux ls`,
+`history 20`, `ls -al --color`. Then "ты 5 кнопок скомуниздил, а было бы ровно"
+— counted off the *cells* the wide entries eat, which is the right way to count
+here — and the list grew to fill them: `curl eth0.me`, `docker ps`,
+`ip -br a | grep -E '^[ew]'`, `vcgencmd measure_temp`, `vcgencmd get_throttled`,
+`vcgencmd measure_clock v3d`, `journalctl -p err -n 20 --no-pager`.
+
+Four things that list decides:
 
 - **The label is the promise, so the grid bends to the words.** Three entries do
   not fit a cell and take two or three of them (`wide`, `wider`); a label cut
   short by an ellipsis is a button that says one thing and sends another. The
   browser test asserts every label against its own `data-cmd` **and** that none is
   drawn clipped — the second half is what catches a list grown past its columns.
-- **The order is the layout.** A grid moves a span that does not fit to the next
-  row and leaves the cells behind it empty, so the wide entries are placed where
-  they start or finish a row: eighteen commands and the ▴ come to twenty-four
-  cells exactly. Adding one means counting again, and a hole is what tells you it
-  was not counted.
+- **The order is the layout, and it is arithmetic.** A grid moves a span that
+  does not fit to the next row and leaves the cells behind it empty, so every row
+  is made to sum to four: `1+1+1+1`, `2+1+1`, `2+2` or `3+1`. Twenty-five commands
+  and the ▴ come to forty cells, ten rows, no holes. And because each row sums to
+  four exactly, the landscape grid of **eight** columns fills without holes too —
+  any two of these rows make one of those. Adding a command means counting again,
+  and a hole is what tells you it was not counted.
+- **Three buttons are this host's, not Linux's.** `vcgencmd` is Raspberry Pi
+  firmware — temperature, throttling and the V3D clock come from it, and on the
+  fleet's x86 machines those three answer "command not found". They are here
+  because this pad's host is the RPi5, and because the portable reading of the same
+  fact is a line of noise (`/sys/class/thermal` in millidegrees) or twelve lines of
+  it (`sensors`) where these are a line of answer.
 - **A pager is a trap here, so the pad refuses to walk into one.** systemctl hands
   its output to `less` whenever it does not fit a screen, and this pad has no `q`;
   hence `--no-pager` on the unit list, and hence no `git log` or `git diff` at all
