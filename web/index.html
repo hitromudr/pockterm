@@ -240,6 +240,13 @@
            3 on a phone, 6, 8, 12 as the screen grows. The grid is therefore always
            exactly full, at every width.
 
+           **`fc -l -20` rather than `history 20`, and that was measured.** In an
+           interactive bash on this host `history` prints all 201 lines it holds and
+           `history 20` prints twenty — but in zsh the number is where to start, not
+           how many, so `history 20` there means "from event 20 to the end", which is
+           what "выводит всю историю" was. `fc -l -20` means the last twenty in both,
+           and the pad has no way of knowing which shell a pane is running.
+
            The rule that decides the list is still that **the label is the command**:
            what goes out is what is written on the button, so `|cat` where a pager
            would otherwise open — systemctl and journalctl hand their output to
@@ -278,17 +285,17 @@
         <button data-cmd="uname -a">uname -a</button>
         <button data-cmd="vcgencmd measure_temp">vcgencmd measure_temp</button>
         <button data-cmd="vcgencmd get_throttled">vcgencmd get_throttled</button>
-        <button data-cmd="vcgencmd measure_clock v3d">vcgencmd measure_clock v3d</button>
         <button data-cmd="ip -br a|grep '^[ew]'">ip -br a|grep '^[ew]'</button>
+        <button data-cmd="ip -br a">ip -br a</button>
         <button data-cmd="curl eth0.me">curl eth0.me</button>
         <button data-cmd="netstat -tupln">netstat -tupln</button>
         <button data-cmd="systemctl --failed">systemctl --failed</button>
-        <button data-cmd="systemctl -t service|cat">systemctl -t service|cat</button>
         <button data-cmd="journalctl -p err -n20|cat">journalctl -p err -n20|cat</button>
         <button data-cmd="ps uaxf">ps uaxf</button>
         <button data-cmd="docker ps">docker ps</button>
         <button data-cmd="tmux ls">tmux ls</button>
         <button data-cmd="git status">git status</button>
+        <button data-cmd="fc -l -20">fc -l -20</button>
         <button id="cmd-hide" title="Hide the commands">&#9652;</button>
       </div>
       <!-- What was sent from the composer before. Over the terminal and never

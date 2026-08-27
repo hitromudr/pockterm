@@ -17,9 +17,11 @@
 - **Панель команд сверху.** `$` в верхнем углу панели открывает двадцать три
   целых команды, а не байта: `clear`, `reset`, `pwd`, `ls -al --color`, `cd ..`,
   `cd ~`, `df -h`, `free -h`, `uptime`, `uname -a`, `vcgencmd measure_temp`,
-  `vcgencmd get_throttled`, `vcgencmd measure_clock v3d`, `ip -br a|grep '^[ew]'`,
-  `curl eth0.me`, `netstat -tupln`, `systemctl --failed`, `systemctl -t service|cat`,
-  `journalctl -p err -n20|cat`, `ps uaxf`, `docker ps`, `tmux ls`, `git status`.
+  `vcgencmd get_throttled`, `ip -br a|grep '^[ew]'`, `ip -br a`, `curl eth0.me`,
+  `netstat -tupln`, `systemctl --failed`, `journalctl -p err -n20|cat`, `ps uaxf`,
+  `docker ps`, `tmux ls`, `git status`, `fc -l -20`. Последняя — это последние
+  двадцать команд: в zsh `history 20` значит «начиная с события 20», то есть почти
+  всю историю, а `fc -l -20` в обеих оболочках значит одно и то же.
   Кнопки одного размера, подпись переносится второй строкой, а число ячеек —
   двадцать четыре вместе с `▴`: оба числа колонок, которые использует вёрстка
   (3 на телефоне, 6 на широком экране), — делители двадцати четырёх, поэтому

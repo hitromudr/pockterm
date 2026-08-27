@@ -219,7 +219,13 @@ reasonably type: `ps uaxf`, `netstat -tupln`, `systemctl --failed`,
 — counted off the *cells* the wide entries eat, which is the right way to count
 here — and the list grew to fill them: `curl eth0.me`, `docker ps`,
 `ip -br a|grep '^[ew]'`, `vcgencmd measure_temp`, `vcgencmd get_throttled`,
-`vcgencmd measure_clock v3d`, `journalctl -p err -n20|cat`.
+`journalctl -p err -n20|cat`.
+
+Two of those went the next day on the owner's word — `vcgencmd measure_clock v3d`
+and `systemctl -t service|cat` — and `ip -br a`, dropped for the arithmetic, came
+back beside its filtered twin: the bridges and the veths are sometimes exactly what
+is being looked for. Twenty-three commands either way, which is what keeps the
+count at twenty-four cells.
 
 **And then the spans went, which is the part worth keeping.** Equal cells with a
 `span 2` here and a `span 3` there fit a phone and fall apart on a laptop: the
@@ -254,6 +260,15 @@ Three things that list decides:
   a label is never shortened, never elided and never edited apart from its own
   `data-cmd` — the test reads one against the other, and reads the boxes for a
   label that does not fit the cell it is drawn in.
+- **`fc -l -20`, not `history 20`, and the difference was measured rather than
+  reasoned about.** Reported as "хистори так не работает почему-то выводит всю
+  историю". In an interactive bash on this host `history` prints all 201 lines it
+  holds and `history 20` prints twenty — so bash was never the problem. In zsh the
+  number is *where to start*, not how many: `history 20` there means "from event 20
+  to the end", which is the whole history minus nineteen lines. `fc -l -20` is the
+  last twenty in both, and this pad has no way of knowing which shell a pane is
+  running — tmux's `default-shell` here is bash, the agents' panes are bash, and a
+  session started by hand is whatever the owner's `SHELL` says.
 - **A pager cannot be walked into.** systemctl and journalctl hand their output to
   `less` whenever it does not fit a screen, and this pad has no `q`: hence `|cat`
   on both, which is also what let those two labels fit two lines. `git log` and
