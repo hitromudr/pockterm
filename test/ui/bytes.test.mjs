@@ -522,6 +522,57 @@ describe('the console pad', () => {
     assert.equal(added, '', `the wire holds ${JSON.stringify(added)}`);
   });
 
+  test('every label is the command it sends', async () => {
+    // The one promise the pad makes, and the reason the grid bends to the words
+    // rather than the other way round: two commands take two cells and one takes
+    // three. A label cut short by an ellipsis — or edited apart from its own
+    // `data-cmd` — is a button that says one thing and sends another, which is the
+    // defect this whole file exists to catch one layer down.
+    const { page } = stand;
+    const wrong = await page.$$eval('#cmdpad button[data-cmd]', (els) => els
+      .filter((el) => el.textContent.trim() !== el.dataset.cmd)
+      .map((el) => [el.textContent.trim(), el.dataset.cmd]));
+    assert.deepEqual(wrong, [], 'a label and its command disagree');
+    // And every one of them fits the cell it was given, which is what the spans
+    // are for: a label wider than its button is the same lie, drawn by the browser.
+    const clipped = await page.$$eval('#cmdpad button[data-cmd]', (els) => els
+      .filter((el) => el.scrollWidth > el.clientWidth + 1)
+      .map((el) => el.dataset.cmd));
+    assert.deepEqual(clipped, [], 'a label is drawn cut short');
+  });
+
+  test('with the bars away the opener is still there', async () => {
+    // Reported from the phone the day the pad shipped: with the bottom bars hidden
+    // the `$` did not appear. It had been put in the `panels-hidden` group on the
+    // reasoning that "hide the bars" means the pane and one way back — and reading
+    // with the bars away is exactly when a `clear` is wanted. A closed pad costs
+    // the pane nothing, so there was never anything to hide.
+    const { page } = stand;
+    const before = await transcript(page);
+    const rows = await page.evaluate(() => document.querySelectorAll('.xterm-rows > div').length);
+    await page.click('#keybar #hide');
+    await page.waitForSelector('#show-bars', { state: 'visible' });
+    assert.equal(await page.locator('#cmds').isVisible(), true, 'the opener went with the bars');
+
+    await openPad(page);
+    await page.click('#cmdpad [data-cmd="pwd"]');
+    await page.waitForSelector('#cmdpad', { state: 'hidden' });
+    await page.waitForTimeout(400);
+    const added = (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+    assert.equal(added, 'pwd^M', `the wire holds ${JSON.stringify(added)}`);
+
+    // And the bars come back, for whatever runs after this — waited for on the
+    // pane's own height rather than on the keybar being on screen. `refit` lands a
+    // task later, so the case after this one read the pane mid-resize and measured
+    // the hidden-bars height as its baseline: 45 rows before, 36 after, and the
+    // failure it reported was the pad's.
+    await page.click('#show-bars');
+    await page.waitForSelector('#keybar', { state: 'visible' });
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('.xterm-rows > div').length === n, rows,
+      { timeout: 10000 });
+  });
+
   test('showing it does not shorten the pane', async () => {
     // The rule this app keeps re-learning: a panel in the flow shrinks the
     // terminal, tmux redraws to the new height, and what the page reads changes

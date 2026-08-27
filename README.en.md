@@ -14,12 +14,15 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   key it sits on (`Ctrl` `к` is `^R`, as in a terminal on a laptop) — and
   ends the composition itself, or the letter would stay with the keyboard.
   The `^A ^E ^K …` pad opens when there is no keyboard on screen.
-- **A console pad at the top.** `$` in the pane's top corner opens `clear`,
-  `reset`, `pwd`, `ls`, `ls -la`, `cd ..`, `git status`, `df -h` — whole lines
-  rather than bytes. It is at the top because a shell writes at the bottom: over
-  the last rows it would cover the answer to the very command it sent. With the
-  agent's own input box on screen the first tap only asks, `clear` typed in there
-  being a message to Claude rather than a command.
+- **A console pad at the top.** `$` in the pane's top corner opens eighteen whole
+  commands rather than bytes: `clear`, `reset`, `pwd`, `ls -al --color`, `cd ..`,
+  `cd ~`, `uname -a`, `df -h`, `free -h`, `uptime`, `tmux ls`, `git status`,
+  `history 20`, `ps uaxf`, `ip -br a`, `netstat -tupln`, `systemctl --failed`,
+  `systemctl -t service --no-pager`. The label **is** the command, so the grid
+  bends to the words rather than the other way round. It is at the top because a
+  shell writes at the bottom: over the last rows it would cover the answer to the
+  very command it sent. With the agent's own input box on screen the first tap only
+  asks, `clear` typed in there being a message to Claude rather than a command.
 - **History under the thumb.** A swipe scrolls tmux's history, `⇞`/`⇟` move a
   screen at a time, and the bar down the right says where in the output you are
   — drag it to go anywhere. It is drawn over the terminal rather than beside it:

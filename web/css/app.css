@@ -1136,11 +1136,12 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #screen-term.panels-hidden #composer,
 #screen-term.panels-hidden #quickbar,
 #screen-term.panels-hidden #selbar,
-#screen-term.panels-hidden #modebar,
-/* The pad's opener goes with the bars: "hide the bars" means the pane and one
-   way back, and a circle left in the other corner is not that. The pad itself is
-   closed by setPanelsHidden, so its state and its looks cannot disagree. */
-#screen-term.panels-hidden #cmds { display: none !important; }
+#screen-term.panels-hidden #modebar { display: none !important; }
+/* The opener does **not** go with them, and that was measured the hard way: it
+   was hidden here on the reasoning that "hide the bars" means the pane and one way
+   back — and the phone reported the opposite within the hour. Reading with the
+   bars away is exactly when `clear` is wanted, and the pad costs the pane nothing
+   while it is closed. The other corner already keeps ▴ for the bars themselves. */
 /* The scrollbar: where in the output the pane is, and the way to anywhere else.
    Over the terminal rather than beside it — a bar in the flow narrows the pane,
    tmux redraws to the new width, and the page ends up reading a screen its own
@@ -1387,18 +1388,29 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   top: 0;
   z-index: 4;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   padding: 6px;
+  /* A floor under the geometry rather than a cap on the list: with a keyboard up
+     in landscape the pane is a dozen rows, and a pad taller than the pane it is
+     drawn over would leave nothing to read at all. Scrolls instead — the same
+     answer #answers gives to a menu of forty options. */
+  max-height: 60vh;
+  overflow-y: auto;
   background: var(--bar);
   border-bottom: 1px solid #2a3345;
 }
+/* The words decide the grid, not the other way round: three commands do not fit a
+   cell, and a label cut short by an ellipsis breaks the one promise this pad makes
+   — that what goes out is what is written on the button. */
+#cmdpad button.wide { grid-column: span 2; }
+#cmdpad button.wider { grid-column: span 3; }
 /* In the pane's own typeface: the label is the command, and the one thing it has
    to promise is that what goes out is what is written on it. */
 #cmdpad button {
   padding: 12px 4px;
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 12px;
   color: var(--fg);
   background: #232a38;
   border: none;
@@ -1713,7 +1725,9 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   /* Width is what a landscape phone has and height is what it has not: five
      columns puts the pad in two rows instead of three, which is the difference
      between covering a third of the pane and covering a fifth. */
-  #cmdpad { grid-template-columns: repeat(5, 1fr); }
-  #cmdpad button { padding: 8px 4px; font-size: 12px; }
+  /* Width is what a landscape phone has and height is what it has not: eight
+     columns puts nineteen commands and the spans in three rows instead of six. */
+  #cmdpad { grid-template-columns: repeat(8, 1fr); }
+  #cmdpad button { padding: 8px 4px; font-size: 11px; }
   .bar { padding: 4px 8px; }
 }

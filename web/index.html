@@ -228,23 +228,51 @@
            prompt, the command, its answer — so a pad over the last rows would cover
            the very thing every button here is pressed to see.
 
-           Three columns because these are words, not keys; ten of them at a phone's
-           width would be labels nobody can read. Its last cell is ▴, the mirror of
-           the key bar's ▾: a pad you can only leave by running something is a trap.
+           **The label is the command**, in the pane's own typeface, and that is the
+           one promise this pad makes: what goes out is what is written on the
+           button. So the grid is what bends to the words rather than the other way
+           round — four columns, and the three commands that do not fit a cell take
+           two or three of them (`wide`, `wider`). A browser test asserts every
+           label against its own `data-cmd`.
 
            `clear` and `reset` are both here on purpose. They look like one button
            twice and are not: `clear` scrolls the screen away and tmux keeps it in
            the history, `reset` puts a terminal that has been left in some mode by a
-           killed program back to itself. -->
+           killed program back to itself.
+
+           **The order is the layout.** A grid fills rows left to right and moves a
+           span that does not fit to the next row, leaving the cells behind it empty
+           — so the wide entries are placed where they start or finish a row, and
+           the eighteen commands come to twenty-four cells exactly. Adding one means
+           counting again; a hole is what tells you it was not counted.
+
+           `--no-pager` on the unit list is not decoration: systemctl hands its
+           output to `less` whenever it does not fit one screen, and on a phone that
+           is a pane waiting for a `q` this pad has no key for. The two that page by
+           nature and cannot be talked out of it — `git log`, `git diff` — are
+           deliberately absent for the same reason.
+
+           Its last cell is ▴, where the key bar's ▾ sits in its own: a pad you can
+           only leave by running something is a trap. -->
       <div id="cmdpad" hidden>
         <button data-cmd="clear">clear</button>
         <button data-cmd="reset">reset</button>
         <button data-cmd="pwd">pwd</button>
-        <button data-cmd="ls">ls</button>
-        <button data-cmd="ls -la">ls -la</button>
+        <button data-cmd="uptime">uptime</button>
+        <button class="wide" data-cmd="ls -al --color">ls -al --color</button>
         <button data-cmd="cd ..">cd ..</button>
-        <button data-cmd="git status">git status</button>
+        <button data-cmd="cd ~">cd ~</button>
+        <button data-cmd="uname -a">uname -a</button>
         <button data-cmd="df -h">df -h</button>
+        <button data-cmd="free -h">free -h</button>
+        <button data-cmd="tmux ls">tmux ls</button>
+        <button data-cmd="git status">git status</button>
+        <button data-cmd="history 20">history 20</button>
+        <button data-cmd="ps uaxf">ps uaxf</button>
+        <button data-cmd="ip -br a">ip -br a</button>
+        <button class="wide" data-cmd="netstat -tupln">netstat -tupln</button>
+        <button class="wide" data-cmd="systemctl --failed">systemctl --failed</button>
+        <button class="wider" data-cmd="systemctl -t service --no-pager">systemctl -t service --no-pager</button>
         <button id="cmd-hide" title="Hide the commands">&#9652;</button>
       </div>
       <!-- What was sent from the composer before. Over the terminal and never

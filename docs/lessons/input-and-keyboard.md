@@ -189,7 +189,7 @@ already do this?*) answers it for a different reason than usual — a keyboard c
 type `ls -la`, and that is eight taps with a hyphen behind a shift, on a device
 where the keyboard covers half the pane while you find it.
 
-So `#cmdpad`: eight commands and a ▴, three columns, in the pane's own typeface
+So `#cmdpad`: eighteen commands and a ▴, four columns, in the pane's own typeface
 because the label **is** what goes out. It borrows three things rather than
 re-deciding them, and each was paid for elsewhere in this file:
 
@@ -209,6 +209,38 @@ drawn over the last rows would cover the answer to whichever button was pressed 
 so the mirror image is also the only place it works. The way in is `$` in the
 pane's top-right corner (`#cmds`), which fades with the pager and for the same
 reason: a 44px circle parked over the first line costs the pane a line to have.
+
+**Eight commands was the first answer and it lasted an hour.** "Кнопок мало,
+надо в 2 раза больше" — so `ls`, `cd -` and the rest of what a keyboard types in
+two taps went, and what a phone cannot reasonably type came in: `ps uaxf`,
+`netstat -tupln`, `systemctl --failed`, `systemctl -t service --no-pager`,
+`ip -br a`, `uname -a`, `free -h`, `uptime`, `tmux ls`, `history 20`,
+`ls -al --color`. Three things that list decides:
+
+- **The label is the promise, so the grid bends to the words.** Three entries do
+  not fit a cell and take two or three of them (`wide`, `wider`); a label cut
+  short by an ellipsis is a button that says one thing and sends another. The
+  browser test asserts every label against its own `data-cmd` **and** that none is
+  drawn clipped — the second half is what catches a list grown past its columns.
+- **The order is the layout.** A grid moves a span that does not fit to the next
+  row and leaves the cells behind it empty, so the wide entries are placed where
+  they start or finish a row: eighteen commands and the ▴ come to twenty-four
+  cells exactly. Adding one means counting again, and a hole is what tells you it
+  was not counted.
+- **A pager is a trap here, so the pad refuses to walk into one.** systemctl hands
+  its output to `less` whenever it does not fit a screen, and this pad has no `q`;
+  hence `--no-pager` on the unit list, and hence no `git log` or `git diff` at all
+  — those two page by nature and cannot be talked out of it.
+
+**The opener does not go away with the bars, and that was measured the hard
+way.** It shipped in the `panels-hidden` group on the reasoning that "hide the
+bars" means the pane and one way back — and the phone answered within the hour:
+"и без нижней открытой меню верхняя кнопка не появляется". Reading with the bars
+away is exactly when a `clear` is wanted, and a closed pad costs the pane nothing;
+the other corner already keeps ▴ for the bars themselves. A test hides the bars,
+presses a command through the pad and reads it off the wire — and puts the bars
+back **by the pane's height**, because `refit` lands a task later and the case
+after it measured the hidden-bars height as its own baseline.
 
 **And a command is not a keystroke: it is a line typed into whatever the pane
 happens to be.** One of the things it can be is the agent's own input box, where
