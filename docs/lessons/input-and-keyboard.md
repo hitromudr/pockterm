@@ -189,7 +189,7 @@ already do this?*) answers it for a different reason than usual — a keyboard c
 type `ls -la`, and that is eight taps with a hyphen behind a shift, on a device
 where the keyboard covers half the pane while you find it.
 
-So `#cmdpad`: twenty-five commands and a ▴, four columns, in the pane's own typeface
+So `#cmdpad`: twenty-three commands and a ▴, cells of one size, in the pane's own typeface
 because the label **is** what goes out. It borrows three things rather than
 re-deciding them, and each was paid for elsewhere in this file:
 
@@ -218,23 +218,47 @@ reasonably type: `ps uaxf`, `netstat -tupln`, `systemctl --failed`,
 `history 20`, `ls -al --color`. Then "ты 5 кнопок скомуниздил, а было бы ровно"
 — counted off the *cells* the wide entries eat, which is the right way to count
 here — and the list grew to fill them: `curl eth0.me`, `docker ps`,
-`ip -br a | grep -E '^[ew]'`, `vcgencmd measure_temp`, `vcgencmd get_throttled`,
-`vcgencmd measure_clock v3d`, `journalctl -p err -n 20 --no-pager`.
+`ip -br a|grep '^[ew]'`, `vcgencmd measure_temp`, `vcgencmd get_throttled`,
+`vcgencmd measure_clock v3d`, `journalctl -p err -n20|cat`.
 
-Four things that list decides:
+**And then the spans went, which is the part worth keeping.** Equal cells with a
+`span 2` here and a `span 3` there fit a phone and fall apart on a laptop: the
+columns are 400px wide, nothing needs the extra room, and what is left is three
+different kinds of button in one panel — reported off a desktop screen, and
+correctly. The answer is not a cleverer arithmetic of spans but the absence of
+them: one cell per command, a label that takes a second line when it is long, a
+fixed height so every cell is identical in both directions, and **twenty-four
+cells** — twenty-three commands and the ▴. Every column count the stylesheet uses
+is a divisor of twenty-four (3 on a phone, 6, 8, 12 as the screen grows), so the
+last row is full at every width. The test measures the drawn boxes rather than
+reading the CSS, because what was wrong was the drawing.
 
-- **The label is the promise, so the grid bends to the words.** Three entries do
-  not fit a cell and take two or three of them (`wide`, `wider`); a label cut
-  short by an ellipsis is a button that says one thing and sends another. The
-  browser test asserts every label against its own `data-cmd` **and** that none is
-  drawn clipped — the second half is what catches a list grown past its columns.
-- **The order is the layout, and it is arithmetic.** A grid moves a span that
-  does not fit to the next row and leaves the cells behind it empty, so every row
-  is made to sum to four: `1+1+1+1`, `2+1+1`, `2+2` or `3+1`. Twenty-five commands
-  and the ▴ come to forty cells, ten rows, no holes. And because each row sums to
-  four exactly, the landscape grid of **eight** columns fills without holes too —
-  any two of these rows make one of those. Adding a command means counting again,
-  and a hole is what tells you it was not counted.
+Two things a wrapped label needed, neither of them obvious:
+
+- **The line may only be given up at a space.** Line breaking is allowed after a
+  hyphen, so `systemctl --failed` came out as "systemctl --" over "failed" and
+  `grep -E` was cut between the two — a label that reads as a different command.
+  Each word gets a span that refuses to break.
+- **A flex container swallows the whitespace between its items.** The first
+  attempt appended those word-spans straight to the button, which centres its
+  label with flex — and drew `ls-al--color`. They live inside one wrapper span
+  now, where they are ordinary inline text again and `textContent` is still
+  exactly the command.
+
+Three things that list decides:
+
+- **The label is the promise.** What goes out is what is written on the button, so
+  a label is never shortened, never elided and never edited apart from its own
+  `data-cmd` — the test reads one against the other, and reads the boxes for a
+  label that does not fit the cell it is drawn in.
+- **A pager cannot be walked into.** systemctl and journalctl hand their output to
+  `less` whenever it does not fit a screen, and this pad has no `q`: hence `|cat`
+  on both, which is also what let those two labels fit two lines. `git log` and
+  `git diff` page by nature and are absent for the same reason.
+- **The order is a walk, not a grid.** Where the rows break depends on how wide the
+  screen is — three columns or twelve — so what sits next to what cannot be
+  arranged; what can is the sequence. Moving about, then disks and memory, then the
+  machine, its heat, its network, its services, its processes, and git.
 - **Three buttons are this host's, not Linux's.** `vcgencmd` is Raspberry Pi
   firmware — temperature, throttling and the V3D clock come from it, and on the
   fleet's x86 machines those three answer "command not found". They are here

@@ -522,23 +522,82 @@ describe('the console pad', () => {
     assert.equal(added, '', `the wire holds ${JSON.stringify(added)}`);
   });
 
-  test('every label is the command it sends', async () => {
-    // The one promise the pad makes, and the reason the grid bends to the words
-    // rather than the other way round: two commands take two cells and one takes
-    // three. A label cut short by an ellipsis — or edited apart from its own
-    // `data-cmd` — is a button that says one thing and sends another, which is the
-    // defect this whole file exists to catch one layer down.
+  test('every label is the command it sends, and every cell is the same size', async () => {
+    // Two promises in one case, because they are the same promise seen twice: what
+    // goes out is what is written on the button, and a button is only readable if
+    // its label fits it. The list has been rewritten three times now — eight
+    // commands, eighteen, twenty-three — and each rewrite is where a label and a
+    // `data-cmd` drift apart or a cell stops holding its words.
     const { page } = stand;
+    // Measured with the pad **open**, which is not a detail: a hidden grid has no
+    // boxes to read (every cell is 0x0, and 0x0 cells are all the same size) and
+    // `grid-template-columns` comes back as the words `repeat(3, 1fr)` rather than
+    // as pixels. The first draft of this case asserted all of that against a closed
+    // pad and passed while asserting nothing.
+    await openPad(page);
     const wrong = await page.$$eval('#cmdpad button[data-cmd]', (els) => els
       .filter((el) => el.textContent.trim() !== el.dataset.cmd)
       .map((el) => [el.textContent.trim(), el.dataset.cmd]));
     assert.deepEqual(wrong, [], 'a label and its command disagree');
-    // And every one of them fits the cell it was given, which is what the spans
-    // are for: a label wider than its button is the same lie, drawn by the browser.
-    const clipped = await page.$$eval('#cmdpad button[data-cmd]', (els) => els
-      .filter((el) => el.scrollWidth > el.clientWidth + 1)
-      .map((el) => el.dataset.cmd));
-    assert.deepEqual(clipped, [], 'a label is drawn cut short');
+
+    // Nothing overflows the cell it is drawn in. Horizontally that cannot happen
+    // any more — the labels wrap — so the reading that matters is the vertical one:
+    // a command needing a third line is a label drawn outside its own button.
+    const spilling = await page.$$eval('#cmdpad button', (els) => els
+      .filter((el) => el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)
+      .map((el) => el.dataset.cmd || el.id));
+    assert.deepEqual(spilling, [], 'a label does not fit its cell');
+
+    // And all of them are the same size. This is what the spans cost: a `span 2`
+    // fits a phone and reads as three different kinds of button on a laptop, which
+    // is how it was reported. Measured rather than asserted about the CSS, because
+    // what was wrong was the drawing.
+    const boxes = await page.$$eval('#cmdpad button', (els) => els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return [Math.round(r.width), Math.round(r.height)];
+    }));
+    const [w, h] = boxes[0];
+    const odd = boxes.filter(([bw, bh]) => Math.abs(bw - w) > 1 || Math.abs(bh - h) > 1);
+    assert.deepEqual(odd, [], `cells differ in size; the first is ${w}x${h}`);
+
+    // The count divides the columns, so the last row is never a part-row. Both
+    // numbers are read off the page: the grid is what the stylesheet decided at
+    // this width, and the cells are what the markup holds.
+    const shape = async () => page.evaluate(() => {
+      const cells = [...document.querySelectorAll('#cmdpad button')].map((el) => {
+        const r = el.getBoundingClientRect();
+        return [Math.round(r.width), Math.round(r.height)];
+      });
+      const cols = getComputedStyle(document.getElementById('cmdpad'))
+        .gridTemplateColumns.split(' ').length;
+      return { cells, cols };
+    });
+    const here = await shape();
+    assert.equal(here.cells.length % here.cols, 0,
+      `${here.cells.length} cells over ${here.cols} columns leaves a part-row`);
+
+    // And the same two readings at a width where the stylesheet uses another column
+    // count, because that is where it was reported from: a laptop, where the spans
+    // this replaced had nothing to do with the room available. The pane's own height
+    // is what the viewport is put back by — `refit` lands a task later, and the case
+    // after this one measures rows.
+    const rows = await page.evaluate(() => document.querySelectorAll('.xterm-rows > div').length);
+    await page.setViewportSize({ width: 1024, height: 780 });
+    await page.waitForTimeout(400);
+    const wide = await shape();
+    assert.ok(wide.cols > here.cols, `the grid stayed at ${wide.cols} columns on a wide screen`);
+    assert.equal(wide.cells.length % wide.cols, 0,
+      `${wide.cells.length} cells over ${wide.cols} columns leaves a part-row`);
+    const [ww, wh] = wide.cells[0];
+    const wideOdd = wide.cells.filter(([bw, bh]) => Math.abs(bw - ww) > 1 || Math.abs(bh - wh) > 1);
+    assert.deepEqual(wideOdd, [], `cells differ in size at ${wide.cols} columns`);
+
+    await page.setViewportSize({ width: 390, height: 780 });
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('.xterm-rows > div').length === n, rows,
+      { timeout: 10000 });
+    await page.click('#cmd-hide');
+    await page.waitForSelector('#cmdpad', { state: 'hidden' });
   });
 
   test('with the bars away the opener is still there', async () => {

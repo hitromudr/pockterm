@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v189';
+const APP_VERSION = 'v190';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -2223,6 +2223,29 @@ function asksFirst(b) {
 
 if (cmdPad) {
   cmdPad.querySelectorAll('button[data-cmd]').forEach((b) => {
+    // A long command takes a second line, and where that line breaks is not the
+    // browser's business: line breaking is allowed after a hyphen, so `systemctl
+    // --failed` came out as "systemctl --" over "failed" and `grep -E` was cut
+    // between the two. Each word gets a span of its own that refuses to break, and
+    // the spaces between them stay text — so `textContent` is still exactly the
+    // command, which is what the label promises and what the test reads.
+    // One element holds the whole label, and each word inside it gets a span that
+    // refuses to break. The wrapper is not decoration: the button is a flex box (it
+    // centres a label of one line in the same box a label of two fills), and a flex
+    // container drops the whitespace between its items — the first attempt appended
+    // the words straight to the button and drew `ls-al--color`. Inside one item they
+    // are ordinary inline text again, spaces and all, so `textContent` is still
+    // exactly the command.
+    const label = document.createElement('span');
+    label.className = 'cmd';
+    b.dataset.cmd.split(' ').forEach((w, i) => {
+      if (i) label.append(' ');
+      const span = document.createElement('span');
+      span.textContent = w;
+      label.append(span);
+    });
+    b.textContent = '';
+    b.append(label);
     keepsTerminalFocus(b);
     b.addEventListener('click', () => {
       if (asksFirst(b)) return;

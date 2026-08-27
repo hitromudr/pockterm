@@ -14,20 +14,22 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   key it sits on (`Ctrl` `к` is `^R`, as in a terminal on a laptop) — and
   ends the composition itself, or the letter would stay with the keyboard.
   The `^A ^E ^K …` pad opens when there is no keyboard on screen.
-- **A console pad at the top.** `$` in the pane's top corner opens twenty-five
-  whole commands rather than bytes: `clear`, `reset`, `pwd`, `uptime`,
-  `ls -al --color`, `cd ..`, `cd ~`, `curl eth0.me`, `df -h`, `free -h`,
-  `ip -br a | grep -E '^[ew]'`, `ip -br a`, `vcgencmd measure_temp`,
-  `vcgencmd get_throttled`, `vcgencmd measure_clock v3d`, `uname -a`,
-  `netstat -tupln`, `tmux ls`, `docker ps`, `systemctl --failed`, `git status`,
-  `history 20`, `systemctl -t service --no-pager`, `ps uaxf`,
-  `journalctl -p err -n 20 --no-pager`. The label **is** the command, so the grid
-  bends to the words rather than the other way round — every row sums to exactly
-  four cells. It is at the top because a shell writes at the bottom: over the last
-  rows it would cover the answer to the very command it sent. With the agent's own
-  input box on screen the first tap only asks, `clear` typed in there being a
-  message to Claude rather than a command. The three `vcgencmd` buttons are
-  Raspberry Pi firmware and answer "command not found" elsewhere.
+- **A console pad at the top.** `$` in the pane's top corner opens twenty-three
+  whole commands rather than bytes: `clear`, `reset`, `pwd`, `ls -al --color`,
+  `cd ..`, `cd ~`, `df -h`, `free -h`, `uptime`, `uname -a`,
+  `vcgencmd measure_temp`, `vcgencmd get_throttled`, `vcgencmd measure_clock v3d`,
+  `ip -br a|grep '^[ew]'`, `curl eth0.me`, `netstat -tupln`, `systemctl --failed`,
+  `systemctl -t service|cat`, `journalctl -p err -n20|cat`, `ps uaxf`, `docker ps`,
+  `tmux ls`, `git status`. Every button is the same size, a long label takes a
+  second line, and the pad has twenty-four cells counting the `▴`: every column
+  count the stylesheet uses — 3 on a phone, 6, 8, 12 as the screen grows — divides
+  twenty-four, so the last row is always full. The label **is** the command, which
+  is why `|cat` stands where a pager would otherwise open. It is at the top because
+  a shell writes at the bottom: over the last rows it would cover the answer to the
+  very command it sent. With the agent's own input box on screen the first tap only
+  asks, `clear` typed in there being a message to Claude rather than a command. The
+  three `vcgencmd` buttons are Raspberry Pi firmware and answer "command not found"
+  elsewhere.
 - **History under the thumb.** A swipe scrolls tmux's history, `⇞`/`⇟` move a
   screen at a time, and the bar down the right says where in the output you are
   — drag it to go anywhere. It is drawn over the terminal rather than beside it:

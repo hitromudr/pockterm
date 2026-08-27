@@ -228,67 +228,67 @@
            prompt, the command, its answer — so a pad over the last rows would cover
            the very thing every button here is pressed to see.
 
-           **The label is the command**, in the pane's own typeface, and that is the
-           one promise this pad makes: what goes out is what is written on the
-           button. So the grid is what bends to the words rather than the other way
-           round — four columns, and the three commands that do not fit a cell take
-           two or three of them (`wide`, `wider`). A browser test asserts every
-           label against its own `data-cmd`.
+           **Every button is the same size, and the count is a number that divides.**
+           That is the third layout and the first one that holds. Cells of equal
+           width with a `span 2` here and a `span 3` there fit a phone and fall apart
+           on a laptop, where the columns are 400px wide and the spans read as three
+           different kinds of button — reported off a desktop screen, and correctly.
+           So: no spans, one cell each, a label that wraps to a second line when the
+           command is long, and a fixed height so every cell is identical in both
+           directions. **Twenty-four cells** — twenty-three commands and the ▴ — and
+           every column count the stylesheet ever uses is a divisor of twenty-four:
+           3 on a phone, 6, 8, 12 as the screen grows. The grid is therefore always
+           exactly full, at every width.
+
+           The rule that decides the list is still that **the label is the command**:
+           what goes out is what is written on the button, so `|cat` where a pager
+           would otherwise open — systemctl and journalctl hand their output to
+           `less` whenever it does not fit a screen, and this pad has no `q`. The two
+           that page by nature and cannot be talked out of it (`git log`, `git diff`)
+           are absent for the same reason. A browser test asserts every label against
+           its own `data-cmd`, that none overflows the cell it is drawn in, and that
+           all twenty-four cells are the same size.
 
            `clear` and `reset` are both here on purpose. They look like one button
            twice and are not: `clear` scrolls the screen away and tmux keeps it in
            the history, `reset` puts a terminal that has been left in some mode by a
            killed program back to itself.
 
-           **The order is the layout, and it is arithmetic.** A grid fills rows left
-           to right and moves a span that does not fit to the next row, leaving the
-           cells behind it empty — so every row here sums to four: `1+1+1+1`, `2+1+1`,
-           `2+2` or `3+1`. Twenty-five commands and the ▴ come to forty cells, ten
-           rows, no holes. Two consequences: adding a command means counting again,
-           and because each row sums to four exactly, the landscape grid of eight
-           columns fills without holes too — any two of these rows make one of those.
-
-           **Three of them are this host's, not Linux's.** `vcgencmd` is Raspberry Pi
+           **Three buttons are this host's, not Linux's.** `vcgencmd` is Raspberry Pi
            firmware: temperature, throttling and the V3D clock come from there, and
-           on the fleet's x86 machines those three buttons answer "command not
-           found". They are here because this pad's host is the RPi5; the portable
-           reading of the same fact (`/sys/class/thermal`, `sensors`) is a line of
-           noise where these are a line of answer.
+           on the fleet's x86 machines those three answer "command not found". They
+           are here because this pad's host is the RPi5; the portable reading of the
+           same fact is a line of noise (`/sys/class/thermal`, in millidegrees) or
+           twelve lines of it (`sensors`) where these are a line of answer.
 
-           `--no-pager` on the unit list is not decoration: systemctl hands its
-           output to `less` whenever it does not fit one screen, and on a phone that
-           is a pane waiting for a `q` this pad has no key for. The two that page by
-           nature and cannot be talked out of it — `git log`, `git diff` — are
-           deliberately absent for the same reason.
-
-           Its last cell is ▴, where the key bar's ▾ sits in its own: a pad you can
-           only leave by running something is a trap. -->
+           The order is a walk rather than a grid: where the rows break depends on how
+           wide the screen is, so what is next to what cannot be arranged — what can
+           is the sequence. Moving about, then the disks and memory, then the machine
+           itself, its heat, its network, its services, its processes, and git. -->
       <div id="cmdpad" hidden>
         <button data-cmd="clear">clear</button>
         <button data-cmd="reset">reset</button>
         <button data-cmd="pwd">pwd</button>
-        <button data-cmd="uptime">uptime</button>
-        <button class="wide" data-cmd="ls -al --color">ls -al --color</button>
+        <button data-cmd="ls -al --color">ls -al --color</button>
         <button data-cmd="cd ..">cd ..</button>
         <button data-cmd="cd ~">cd ~</button>
-        <button class="wide" data-cmd="curl eth0.me">curl eth0.me</button>
         <button data-cmd="df -h">df -h</button>
         <button data-cmd="free -h">free -h</button>
-        <button class="wider" data-cmd="ip -br a | grep -E '^[ew]'">ip -br a | grep -E '^[ew]'</button>
-        <button data-cmd="ip -br a">ip -br a</button>
-        <button class="wide" data-cmd="vcgencmd measure_temp">vcgencmd measure_temp</button>
-        <button class="wide" data-cmd="vcgencmd get_throttled">vcgencmd get_throttled</button>
-        <button class="wider" data-cmd="vcgencmd measure_clock v3d">vcgencmd measure_clock v3d</button>
+        <button data-cmd="uptime">uptime</button>
         <button data-cmd="uname -a">uname -a</button>
-        <button class="wide" data-cmd="netstat -tupln">netstat -tupln</button>
-        <button data-cmd="tmux ls">tmux ls</button>
-        <button data-cmd="docker ps">docker ps</button>
-        <button class="wide" data-cmd="systemctl --failed">systemctl --failed</button>
-        <button data-cmd="git status">git status</button>
-        <button data-cmd="history 20">history 20</button>
-        <button class="wider" data-cmd="systemctl -t service --no-pager">systemctl -t service --no-pager</button>
+        <button data-cmd="vcgencmd measure_temp">vcgencmd measure_temp</button>
+        <button data-cmd="vcgencmd get_throttled">vcgencmd get_throttled</button>
+        <button data-cmd="vcgencmd measure_clock v3d">vcgencmd measure_clock v3d</button>
+        <button data-cmd="ip -br a|grep '^[ew]'">ip -br a|grep '^[ew]'</button>
+        <button data-cmd="curl eth0.me">curl eth0.me</button>
+        <button data-cmd="netstat -tupln">netstat -tupln</button>
+        <button data-cmd="systemctl --failed">systemctl --failed</button>
+        <button data-cmd="systemctl -t service|cat">systemctl -t service|cat</button>
+        <button data-cmd="journalctl -p err -n20|cat">journalctl -p err -n20|cat</button>
         <button data-cmd="ps uaxf">ps uaxf</button>
-        <button class="wider" data-cmd="journalctl -p err -n 20 --no-pager">journalctl -p err -n 20 --no-pager</button>
+        <button data-cmd="docker ps">docker ps</button>
+        <button data-cmd="tmux ls">tmux ls</button>
+        <button data-cmd="git status">git status</button>
         <button id="cmd-hide" title="Hide the commands">&#9652;</button>
       </div>
       <!-- What was sent from the composer before. Over the terminal and never

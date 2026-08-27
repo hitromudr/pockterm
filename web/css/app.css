@@ -1388,10 +1388,20 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   top: 0;
   z-index: 4;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  /* Tighter than the bars below: ten rows of commands are what twenty-five of them
-     come to, and the gaps are what decides whether that is half the pane or two
-     thirds of it. */
+  /* Every column count this stylesheet uses divides twenty-four, which is how many
+     cells the pad has: 3 here, 6, 8 and 12 as the screen grows (below). So the last
+     row is never a part-row, at any width.
+
+     Spans are what this replaced. A `span 2` for a long label fits a phone and
+     falls apart on a laptop — 400px columns and three different kinds of button —
+     reported off a desktop screen. Equal cells and a label that wraps instead. */
+  grid-template-columns: repeat(3, 1fr);
+  /* Every row the height of the tallest, so a label that needs a third line at some
+     width does not make its own row taller than the others: `fr` rows in a grid of
+     indefinite height all take the largest row's height. 44px is the floor, which is
+     what a thumb needs. Without this the eight-column layout drew three rows of
+     three different heights — equal cells is the whole point of this grid. */
+  grid-auto-rows: minmax(44px, 1fr);
   gap: 5px;
   padding: 5px;
   /* A floor under the geometry rather than a cap on the list: with a keyboard up
@@ -1403,32 +1413,55 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   background: var(--bar);
   border-bottom: 1px solid #2a3345;
 }
-/* The words decide the grid, not the other way round: three commands do not fit a
-   cell, and a label cut short by an ellipsis breaks the one promise this pad makes
-   — that what goes out is what is written on the button. */
-#cmdpad button.wide { grid-column: span 2; }
-#cmdpad button.wider { grid-column: span 3; }
+/* Six, eight, twelve — the other divisors of twenty-four. Each step is taken only
+   where the cell it leaves is no narrower than the phone's own (about 116px), since
+   that width is what two lines of the longest command need; a column count that
+   made cells narrower would push a third line into every one of them. */
+@media (min-width: 760px) { #cmdpad { grid-template-columns: repeat(6, 1fr); } }
+@media (min-width: 1000px) { #cmdpad { grid-template-columns: repeat(8, 1fr); } }
+@media (min-width: 1500px) { #cmdpad { grid-template-columns: repeat(12, 1fr); } }
 /* In the pane's own typeface: the label is the command, and the one thing it has
    to promise is that what goes out is what is written on it. */
 #cmdpad button {
-  padding: 10px 4px;
+  /* Identical in both directions: the width comes from the grid, the height from
+     here, and a label of one line is centred in the same box a label of two fills.
+     44px is also the size a thumb needs. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 4px;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: center;
+  /* Wraps rather than being cut: an ellipsis in the middle of a command is a
+     button that says one thing and sends another. Two lines are what the cell
+     holds, and a browser test asserts nothing overflows it. */
+  white-space: normal;
+  overflow-wrap: break-word;
   color: var(--fg);
   background: #232a38;
   border: none;
   border-radius: 6px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
+/* A wider cell can carry the same text at the size the rest of the app is read
+   at. Kept in step with the column steps above. */
+@media (min-width: 760px) { #cmdpad button { font-size: 12px; } }
+/* The label is one flex item — a flex container would swallow the spaces between
+   several — and inside it one span per word, each refusing to break. Without that
+   the browser gives the line up after a hyphen: `systemctl --` over `failed`,
+   `grep -` over `E`, which reads as a different command. See the loop in
+   js/app.js that builds them. */
+#cmdpad button .cmd { white-space: normal; }
+#cmdpad button .cmd span { white-space: nowrap; }
 #cmdpad button:active { background: var(--accent); color: #0b0e14; }
 /* Asked once, when the agent's own input box is on screen: the next tap sends the
    line to Claude as a message rather than to a shell as a command. The same
    colours the drawer's removals arm in — one confirmation, one look. */
 #cmdpad button.armed { color: #ffb4b4; background: #3a2530; }
 /* The way out without running anything, and the mirror of the key bar's ▾. */
-#cmd-hide { font-family: inherit; font-size: 18px; }
+#cmd-hide { font-family: inherit; font-size: 16px; }
 
 #answers {
   position: absolute;
@@ -1728,9 +1761,14 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   /* Width is what a landscape phone has and height is what it has not: five
      columns puts the pad in two rows instead of three, which is the difference
      between covering a third of the pane and covering a fifth. */
-  /* Width is what a landscape phone has and height is what it has not: eight
-     columns puts nineteen commands and the spans in three rows instead of six. */
-  #cmdpad { grid-template-columns: repeat(8, 1fr); }
-  #cmdpad button { padding: 8px 4px; font-size: 11px; }
+  /* Width is what a landscape phone has and height is what it has not: six
+     columns puts the twenty-four cells in four rows instead of eight, and six is a
+     divisor too, so the last row stays full. */
+  #cmdpad { grid-template-columns: repeat(6, 1fr); }
+  /* Back to the phone's own size here, and not for the look: at 12px the cell holds
+     sixteen characters, `measure_clock v3d` is seventeen, and that one label takes a
+     third line — which every row then takes with it, and four rows of three lines do
+     not fit the 60vh a landscape phone has. */
+  #cmdpad button { min-height: 38px; font-size: 11px; }
   .bar { padding: 4px 8px; }
 }

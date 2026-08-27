@@ -150,10 +150,10 @@ release.
   (`#cmdpad`, opened by `$` in the corner opposite the pager, which stays when the bars are
   hidden): a shell writes at the bottom, so a pad over the last rows would cover the answer to
   whatever it just sent. Absolute inside `#term` and closed on use like `#ctrlpad`. The label
-  **is** the command, so the grid bends to the words (`wide`, `wider`, and the order is the
-  layout) and nothing that pages without `--no-pager` belongs on it — and where the agent's own
-  input box is on screen the first tap only asks (`hasInputBox`), because `clear` typed into that
-  box is a turn sent to Claude.
+  **is** the command, so it wraps rather than being cut (at spaces only, inside one flex item),
+  cells are one size, the count is 24 and every column count used divides it — and nothing that
+  pages without `|cat` belongs on it. Where the agent's own input box is on screen the first tap
+  only asks (`hasInputBox`), because `clear` typed into that box is a turn sent to Claude.
 - **The bar carries only what no on-screen keyboard offers**: Ctrl as a latch spent on one
   character, `#ctrlpad` for a screen with no keyboard, Tab, `^O`. `applyCtrl` in `js/keys.js`
   applies Ctrl to the keycode, so a Cyrillic letter is read by the key it sits on.
