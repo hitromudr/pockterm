@@ -629,6 +629,17 @@ func serveKill(o Options, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unreadable request", http.StatusBadRequest)
 		return
 	}
+	// This server's own client sessions are nobody's to close from a page. The
+	// list below never carries one, so this refuses something already
+	// unreachable — the same belt orderer wears for the same reason: the name
+	// reaches a tmux command line, and closing a client out from under another
+	// page drops its socket with nothing anywhere saying why. Closing the
+	// *session* takes its clients along, which is a different thing and is what
+	// the owner means by the button (see session.Close).
+	if tmuxcmd.IsClientSession(req.Name) {
+		http.Error(w, "no such session", http.StatusNotFound)
+		return
+	}
 	sessions, err := o.ListSessions()
 	if err != nil {
 		http.Error(w, "cannot list sessions", http.StatusInternalServerError)

@@ -884,6 +884,181 @@ func TestRenameWorks(t *testing.T) {
 	}
 }
 
+// The endpoint that ends processes had no test at all until 2026-08-27, while
+// the two beside it — rename and new — have had one each from the start. These
+// are its scenarios, one per refusal, because every one of them is a way for a
+// name to reach a tmux command line that closes things.
+
+func TestKillOnlyTouchesAListedSession(t *testing.T) {
+	called := ""
+	o := testOptions("")
+	o.KillSession = func(name string) error { called = name; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	// testOptions lists exactly one session, "demo".
+	resp, err := http.Post(srv.URL+"/api/sessions/kill", "application/json",
+		strings.NewReader(`{"name":"not-listed"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", resp.StatusCode)
+	}
+	if called != "" {
+		t.Errorf("a name the server does not list reached tmux: %q", called)
+	}
+}
+
+// A page cannot close another page's client session. The list it is shown never
+// has one in it, so this is a second lock on the same door — closing a client
+// out from under a page drops its socket with nothing anywhere saying why, and
+// what the owner means by closing a tab is the session, which takes its clients
+// with it.
+func TestKillRefusesAClientSession(t *testing.T) {
+	called := ""
+	o := testOptions("")
+	o.ListSessions = func() ([]tmuxcmd.Session, error) {
+		return []tmuxcmd.Session{
+			{Name: "demo", Windows: 1},
+			{Name: tmuxcmd.ClientName(4), Windows: 1, Group: "demo"},
+		}, nil
+	}
+	o.KillSession = func(name string) error { called = name; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/kill", "application/json",
+		strings.NewReader(`{"name":"`+tmuxcmd.ClientName(4)+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", resp.StatusCode)
+	}
+	if called != "" {
+		t.Errorf("a client session reached tmux: %q", called)
+	}
+}
+
+func TestKillWorks(t *testing.T) {
+	called := ""
+	o := testOptions("")
+	o.KillSession = func(name string) error { called = name; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/kill", "application/json",
+		strings.NewReader(`{"name":"demo"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if called != "demo" {
+		t.Errorf("closed %q", called)
+	}
+}
+
+// The refusal is the toast: there is no log to open on a phone, so what tmux
+// said has to travel back as the body rather than as a status alone.
+func TestKillRefusalReachesThePage(t *testing.T) {
+	o := testOptions("")
+	o.KillSession = func(string) error { return errors.New("can't find session: demo") }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/kill", "application/json",
+		strings.NewReader(`{"name":"demo"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "can't find session") {
+		t.Errorf("body %q says nothing about why", body)
+	}
+}
+
+func TestKillNeedsTheToken(t *testing.T) {
+	called := ""
+	o := testOptions("secret")
+	o.KillSession = func(name string) error { called = name; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/kill", "application/json",
+		strings.NewReader(`{"name":"demo"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized || called != "" {
+		t.Fatalf("status %d, closed %q", resp.StatusCode, called)
+	}
+}
+
+// With no way to close a session configured the endpoint is not there at all,
+// rather than there and silently doing nothing.
+func TestKillAbsentWhenNotWired(t *testing.T) {
+	srv := httptest.NewServer(Handler(testOptions("")))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/kill", "application/json",
+		strings.NewReader(`{"name":"demo"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", resp.StatusCode)
+	}
+}
+
+// A GET must not close anything: it is the method a link, a prefetch or a
+// crawler uses, and this one ends processes.
+func TestKillRejectsGet(t *testing.T) {
+	called := ""
+	o := testOptions("")
+	o.KillSession = func(name string) error { called = name; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/sessions/kill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed || called != "" {
+		t.Fatalf("status %d, closed %q", resp.StatusCode, called)
+	}
+}
+
+func TestKillRefusesAnUnreadableRequest(t *testing.T) {
+	called := ""
+	o := testOptions("")
+	o.KillSession = func(name string) error { called = name; return nil }
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/kill", "application/json",
+		strings.NewReader(`{"name":`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest || called != "" {
+		t.Fatalf("status %d, closed %q", resp.StatusCode, called)
+	}
+}
+
 func TestNoticeReachesTheAttachedPage(t *testing.T) {
 	// The watcher decides; the page only renders. That handover is this
 	// frame, and before it existed the page guessed from the byte stream —
