@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v192';
+const APP_VERSION = 'v193';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -2495,8 +2495,16 @@ document.getElementById('term').addEventListener('click', (e) => {
   // menu being answered, and the pad — which exists for a screen with no
   // keyboard on it — brought one up on every key. Only the menu's own text field
   // asks for a keyboard, and it asks for itself (see openForTyping).
+  //
+  // **And the console pad was the fourth, one day after it shipped.** Reported
+  // from the phone as "тапы по новому меню опять активируют клавиатуру", and the
+  // journal named it outright: `kb up:true after:"cmds" ms:193`, the same for
+  // `cmd-hide`. Its buttons take no focus and give up what the field holds — and
+  // none of that survives this handler handing the focus straight back a moment
+  // later. Anything drawn inside #term has to be named here; the list is the
+  // mechanism, not a set of exceptions.
   if (e.target instanceof Element
-    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad')) return;
+    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds')) return;
   term.focus();
   refit();
 });

@@ -2213,18 +2213,77 @@ describe('switching sessions', () => {
   after(async () => { await stand.stop(); });
 
   test('nothing but a tap on the terminal takes focus', async () => {
+    // The list is the point of this case, and it used to be four selectors long —
+    // `#hide`, `#show-bars`, one bar key, one tab. The console pad shipped on
+    // 2026-08-27 and raised the keyboard on every tap the next morning: "тапы по
+    // новому меню опять активируют клавиатуру. и так по вкладке. вообще надо все
+    // проверить". So this walks the whole surface of the terminal screen instead,
+    // and a new control that is not in it is a control nobody checked.
+    //
+    // What is measured is the terminal's **own** field holding the focus, by
+    // identity rather than by tag: the composer is a textarea too, and 💬 is
+    // supposed to focus it. On Android a focused field is a keyboard — either at
+    // once, or at the next thing that moves the layout, which is why the report
+    // arrives as "sometimes".
     await stand.open();
     await stand.attach('one');
     const { page } = stand;
-    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    const onPane = () => page.evaluate(() =>
+      document.activeElement === document.querySelector('.xterm-helper-textarea'));
+    const drop = () => page.evaluate(() => document.activeElement && document.activeElement.blur());
 
-    // Every one of these used to focus something and raise the keyboard.
-    for (const sel of ['#hide', '#show-bars', '[data-key="esc"]', '#tabs button:not(.active)']) {
+    // Each entry is a tap and what it leaves behind: the ones that open something
+    // are followed by the tap that closes it, because the closing tap is a control
+    // too — `cmd-hide` was named in the journal beside `cmds`.
+    const taps = [
+      // The console pad: its opener, a command, and the ▴ that leaves it.
+      '#cmds', '#cmdpad button[data-cmd="pwd"]',
+      '#cmds', '#cmd-hide',
+      // The key bar, including the latch and the pad it opens.
+      '[data-key="esc"]', '[data-key="up"]', '[data-key="tab"]', '[data-key="ctrl-o"]',
+      '#keybar [data-mod="ctrl"]', '#ctrlpad [data-ctrl="a"]',
+      // Hiding the bars and coming back.
+      '#hide', '#show-bars',
+      // The strip, and the + at the end of it with the popup it opens.
+      '#tabs button:not(.active)', '#new-term', '#menu-scrim',
+      // The clip's own popup, opened from the row that also carries ✂ and 💬.
+      '#pick', '#menu-scrim',
+      // Selection mode, and the way out of it.
+      '#select', '#sel-done',
+    ];
+    for (const sel of taps) {
+      await drop();
       await page.click(sel);
       await page.waitForTimeout(200);
-      const tag = await page.evaluate(() => document.activeElement && document.activeElement.tagName);
-      assert.notEqual(tag, 'TEXTAREA', `${sel} grabbed focus`);
+      assert.equal(await onPane(), false, `${sel} left the pane's field holding the focus`);
     }
+
+    // The pager is inside #term like the pad, and it fades a few seconds after the
+    // last touch on the pane — untouchable while faded, on purpose — so it is woken
+    // the way a thumb wakes it. That tap is the one control here that is *supposed*
+    // to take the focus, which is why it is not in the list above.
+    await page.click('#term');
+    await drop();
+    await page.click('#page-up');
+    await page.waitForTimeout(200);
+    assert.equal(await onPane(), false, '#page-up left the pane\'s field holding the focus');
+    // ⇩ is not here: it only exists once the pane has history, which the stand's
+    // `cat` never produces. Its own focus rule has its own case in scroll.test.mjs —
+    // it is where this whole area was reported from.
+
+    // And the one control that is about typing does take a field — the composer's,
+    // not the pane's. Both halves matter: 💬 opening nothing is a keyboard that
+    // never comes for someone who asked, and 💬 focusing the pane instead would put
+    // the keys through to tmux behind the message being written.
+    await drop();
+    await page.click('#mode');
+    await page.waitForTimeout(200);
+    assert.equal(await onPane(), false, '💬 focused the pane rather than the composer');
+    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id),
+      'prompt', '💬 opened no field to type into');
+    // Back to the keys, for whatever runs after this: 💬 is a toggle.
+    await page.click('#mode');
+    await page.waitForSelector('#keybar', { state: 'visible' });
   });
 
   test('a switch leaves the keyboard as it found it', async () => {

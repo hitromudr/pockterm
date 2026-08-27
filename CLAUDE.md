@@ -39,6 +39,11 @@ them instead of deriving them again.
   `#ctrlpad`, `#pager`, `#scrollbar`, the sent list and `#snapshot` are
   `position: absolute` inside `#term`, drawn over the last rows they repeat. A
   browser test asserts `#{pane_height}` does not move when one is shown.
+- **Anything drawn inside `#term` must be named in the click handler's skip list**
+  (`#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds`): the handler focuses the pane, so a
+  control that takes no focus and even releases the field's still gets the focus handed back a
+  moment later — which on Android is the keyboard. Four of the six names were added after the
+  same report. `nothing but a tap on the terminal takes focus` walks the whole surface.
 - **Focus is the keyboard on Android.** The system raises one for whatever
   *takes* focus, and raises one again for whatever *holds* focus as soon as the
   layout moves under it. Hence three levers: a control takes no focus

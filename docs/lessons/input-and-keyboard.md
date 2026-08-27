@@ -426,3 +426,34 @@ what lets the bar's own ⏎ take the same release as the arrows.
 `test/ui/pockterm.test.mjs` covers the lever with the keyboard played by the
 viewport: ↓ gives the focus up and the byte still goes out, a field with a word in
 it is left alone, Ctrl keeps the focus and the pad it opens gives it up.
+
+### The list inside #term is the mechanism, not a set of exceptions
+
+`#term`'s own click handler focuses the pane — that is how a tap types into it —
+and it skips whatever is drawn *over* the pane by name:
+`#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds`. Four of those six were
+added after the same report, from four different controls: ⇩ and the rail, then
+the answer row, then the control pad, then the console pad on 2026-08-27, the
+morning after it shipped — "тапы по новому меню опять активируют клавиатуру".
+
+The shape of the defect is always the same, and it is why `keepsTerminalFocus` and
+`releaseForBarKey` on the control itself are not enough: the button takes no focus
+and even gives up what the field was holding, and then the click bubbles to this
+handler, which hands the focus straight back. On Android that is the keyboard, at
+once or at the next thing that moves the layout.
+
+**The journal named it in one line**, which is what it is for:
+`{"event":"kb","up":true,"after":"cmds","ms":193}` and the same for `cmd-hide` —
+`lastPress` is recorded in the capture phase for exactly this. The long-gap lines
+in the same run (`after:"session done" ms:87803`, `after:"paste" ms:3785`) are the
+tail of it rather than three more defects: a field left holding the focus gets a
+keyboard again at every later layout move, so the report arrives as "и так по
+вкладке" and as "sometimes".
+
+`nothing but a tap on the terminal takes focus` in `test/ui/pockterm.test.mjs` was
+four selectors long when this happened, which is how a new control slipped past
+it. It walks the whole surface now — the pad, its opener, its ▴, the bar keys, the
+latch and the pad it opens, ▾/▴, the strip, +, 📎, ✂ and the way out of each — and
+measures the pane's own field by identity, since the composer is a textarea too and
+💬 is supposed to focus it. Checked against the defect: with the two names taken out
+of the list again, the case fails on `#cmds`.
