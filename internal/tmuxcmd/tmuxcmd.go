@@ -259,6 +259,49 @@ func NameConflict(name string, sessions []Session) error {
 	return nil
 }
 
+// ClientsHolding names this server's own client sessions that share a group
+// with target, and so keep its windows alive after target itself is killed.
+//
+// Killing a session does not kill a window another session in the group still
+// holds. The page attaches through `new-session -t <name>` (see Attach), so
+// while any page has a session open there is a second member of its group —
+// and `kill-session -t =<name>` then closes the tab while leaving the pane's
+// process running, invisibly: client sessions are hidden from the list, so
+// nothing on the phone says the agent is still there. Measured on a private
+// tmux server 2026-08-27, tmux 3.5a: after the target was killed the client
+// session was still attached and the pane's process still had its pid. It goes
+// away only when the last page lets its socket go, which for a backgrounded PWA
+// this server pings every twenty seconds can be hours. The group's name is held
+// for that whole time as well, so the freed name cannot be reused (the session
+// Makefile's `free` looks for `(group <name>)` too).
+//
+// Keyed off the target's own group rather than its name: tmux names a group
+// after the session it was created from and never renames it, so a renamed work
+// session no longer matches the group its clients are in.
+//
+// Only client sessions are named. Two user sessions cannot end up in one group
+// through this server, and if a hand-made one ever did, closing a tab must not
+// take somebody else's windows with it.
+func ClientsHolding(target string, sessions []Session) []string {
+	group := ""
+	for _, s := range sessions {
+		if s.Name == target {
+			group = s.Group
+			break
+		}
+	}
+	if group == "" {
+		return nil
+	}
+	var held []string
+	for _, s := range sessions {
+		if s.Group == group && IsClientSession(s.Name) {
+			held = append(held, s.Name)
+		}
+	}
+	return held
+}
+
 // CapturePane returns the argv printing the visible text of session's
 // current pane. This is how the notifier reads a screen nobody has open:
 // plain text, no escapes, one line per terminal row.

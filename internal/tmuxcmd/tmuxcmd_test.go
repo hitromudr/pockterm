@@ -415,3 +415,48 @@ func TestCancelModeTypesNothing(t *testing.T) {
 		}
 	}
 }
+
+func TestClientsHolding(t *testing.T) {
+	// What the host looked like on 2026-08-27, before the target was killed:
+	// the work session and the page's own client, in one group.
+	sessions := []Session{
+		{Name: "xnt-lr", Group: "xnt-lr"},
+		{Name: "pockterm-client-122", Group: "xnt-lr"},
+		{Name: "xnt-mk"},
+		{Name: "pockterm-client-131", Group: "aml"},
+		{Name: "aml", Group: "aml"},
+	}
+	got := ClientsHolding("xnt-lr", sessions)
+	if !reflect.DeepEqual(got, []string{"pockterm-client-122"}) {
+		t.Fatalf("got %v", got)
+	}
+	// A session nobody has open holds nothing: killing it takes its window
+	// with it, and there is no second member to keep the group alive.
+	if got := ClientsHolding("xnt-mk", sessions); got != nil {
+		t.Fatalf("xnt-mk holds %v", got)
+	}
+	// The group is keyed off the target's own group rather than its name,
+	// because tmux names a group after the session it was created from and
+	// never renames it: rename the work session and the two stop matching.
+	renamed := []Session{
+		{Name: "lendrail", Group: "xnt-lr"},
+		{Name: "pockterm-client-122", Group: "xnt-lr"},
+	}
+	if got := ClientsHolding("lendrail", renamed); !reflect.DeepEqual(got, []string{"pockterm-client-122"}) {
+		t.Fatalf("after a rename, got %v", got)
+	}
+	// A name nothing in the list carries: nothing to kill beside it.
+	if got := ClientsHolding("gone", sessions); got != nil {
+		t.Fatalf("gone holds %v", got)
+	}
+	// Only this server's own clients. Two user sessions cannot share a group
+	// through pockterm, and if one ever did, closing a tab must not take the
+	// other's window with it.
+	shared := []Session{
+		{Name: "one", Group: "one"},
+		{Name: "two", Group: "one"},
+	}
+	if got := ClientsHolding("one", shared); got != nil {
+		t.Fatalf("a user session was picked up: %v", got)
+	}
+}

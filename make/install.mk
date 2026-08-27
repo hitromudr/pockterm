@@ -1,4 +1,4 @@
-.PHONY: install uninstall qr test-install test-deploy test-repro test-sh
+.PHONY: install uninstall qr test-install test-deploy test-sessions-mk test-repro test-sh
 
 install: ## Install on this machine (binary, token, systemd unit)
 	sudo bash deploy/install.sh
@@ -20,8 +20,11 @@ test-install: ## Exercise deploy/install.sh in temporary paths
 test-deploy: ## Exercise deploy/pockterm-deploy (stubbed systemctl and curl)
 	bash test/deploy_test.sh
 
+test-sessions-mk: ## Exercise the kill target of deploy/sessions.mk.example (private tmux)
+	bash test/sessions_mk_test.sh
+
 # Not in test-sh: it is two real cross-compiles, and CI already builds once.
 test-repro: ## Check that the same source builds to the same bytes
 	bash test/repro_test.sh
 
-test-sh: test-install test-deploy ## Run both shell test suites
+test-sh: test-install test-deploy test-sessions-mk ## Run the shell test suites

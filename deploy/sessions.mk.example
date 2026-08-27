@@ -48,7 +48,7 @@ PREFIX ?=
 # started from a phone.
 KIND ?=
 
-.PHONY: help shell claude yolo continue ls kill
+.PHONY: help shell claude yolo continue custom ls kill
 
 # spawn,<command>[,<prefix>] — start a fresh <prefix>-N session detached.
 # The prefix defaults to "claude"; `shell` passes its own so the two do not
@@ -173,7 +173,41 @@ custom: ## New session running CMD (the drawer's custom buttons)
 ls: ## List sessions, hiding the clients pockterm attaches with
 	@tmux ls 2>/dev/null | grep -v '^pockterm-client-' || echo "no sessions"
 
+# close,<session> — close a session and the client sessions holding its windows.
+#
+# The second half is not tidiness. pockterm attaches with `new-session -t <name>`,
+# so while any page has that session open there is a second member of its group,
+# and `kill-session` closes one session only: the window another member still
+# holds stays open with its process running. Closing from here would then leave
+# exactly what closing from the phone left before 2026-08-27 — the session gone,
+# the agent working on, and nothing in `make ls` saying so, client sessions being
+# hidden from it. The server does the same thing in internal/session/close.go,
+# where the measurement is written down.
+#
+# The group's name, not the session's: tmux names a group after the session it
+# was created from and never renames it, so a renamed session no longer matches
+# the group its clients are in. A session nobody has open has no group at all,
+# and then this is the one kill it always was.
+#
+# The clients go first. Killing the session first leaves the window standing on a
+# client alone, and a page attached to that draws a live tab for a session tmux
+# has already forgotten.
+#
+# Only sessions this server names for itself are touched. Two sessions of the
+# owner's own cannot share a group through pockterm, and if a hand-made pair ever
+# did, closing one must not take the other's windows with it.
+define close
+n="$(1)"; \
+grp=$$(tmux ls -F '#{session_name} #{session_group}' 2>/dev/null | awk -v n="$$n" '$$1==n {print $$2}'); \
+if [ -n "$$grp" ]; then \
+	tmux ls -F '#{session_name} #{session_group}' 2>/dev/null \
+		| awk -v g="$$grp" '$$2==g && $$1 ~ /^pockterm-client-/ {print $$1}' \
+		| while read -r c; do tmux kill-session -t "=$$c" 2>/dev/null || true; done; \
+fi; \
+tmux kill-session -t "=$$n" 2>/dev/null
+endef
+
 kill: ## Kill one session: make kill NAME=claude-2
 	@if [ -z "$(NAME)" ]; then echo "usage: make kill NAME=<session>  (see: make ls)"; \
-	 elif tmux kill-session -t "=$(NAME)" 2>/dev/null; then echo "killed $(NAME)"; \
+	 elif $(call close,$(NAME)); then echo "killed $(NAME)"; \
 	 else echo "no session $(NAME)"; fi

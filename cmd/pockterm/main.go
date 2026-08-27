@@ -384,13 +384,36 @@ func folders(cfg config.Config) func() (string, []string, error) {
 	}
 }
 
-// killer closes a session. Everything it touches has already been checked
-// against the list the server itself produced.
+// killer closes a session, and with it the client sessions holding its windows
+// open. Everything it touches has already been checked against the list the
+// server itself produced.
+//
+// Why the second half exists — an agent going on working in a window with no tab
+// anywhere — is in session.Close, which does the sequencing. This is only the
+// runner and the journal line: a phone has nothing to open when a close half
+// works, so the host says what it closed.
 func killer(name string) error {
-	argv := session.Kill(name)
-	out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
+	// The list with this server's own client sessions still in it: they are what
+	// holds the window, and listSessions takes them out.
+	sessions, err := listAllSessions()
 	if err != nil {
-		return fmt.Errorf("could not close: %s", firstLine(string(out)))
+		return fmt.Errorf("could not read the sessions")
+	}
+	done, err := session.Close(name, sessions, func(argv []string) error {
+		out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("could not close: %s", firstLine(string(out)))
+		}
+		return nil
+	})
+	for _, client := range done.Clients {
+		log.Printf("closing %s: closed the client session %s that held its window", name, client)
+	}
+	for _, client := range done.Stuck {
+		log.Printf("closing %s: client session %s would not close (usually already gone with its page's socket)", name, client)
+	}
+	if err != nil {
+		return err
 	}
 	log.Printf("closed session %s", name)
 	return nil
@@ -703,15 +726,28 @@ func leaveMode(id int64) error {
 // exits non-zero and prints nothing to stdout; that is not an error here,
 // just an empty list, so the parse result is returned regardless.
 func listSessions() ([]tmuxcmd.Session, error) {
-	argv := tmuxcmd.ListSessions()
-	out, _ := exec.Command(argv[0], argv[1:]...).Output()
+	all, err := listAllSessions()
+	if err != nil {
+		return nil, err
+	}
 	var visible []tmuxcmd.Session
-	for _, s := range tmuxcmd.ParseSessions(string(out)) {
+	for _, s := range all {
 		if !tmuxcmd.IsClientSession(s.Name) {
 			visible = append(visible, s)
 		}
 	}
 	return visible, nil
+}
+
+// listAllSessions is the same list with this server's own client sessions still
+// in it. Everything the page is shown goes through listSessions above, which
+// takes them out; the one caller that needs them is the one closing a session,
+// because a client session is what keeps that session's window — and the process
+// in it — alive after the session itself is gone. See tmuxcmd.ClientsHolding.
+func listAllSessions() ([]tmuxcmd.Session, error) {
+	argv := tmuxcmd.ListSessions()
+	out, _ := exec.Command(argv[0], argv[1:]...).Output()
+	return tmuxcmd.ParseSessions(string(out)), nil
 }
 
 // sessionLister is the list the page gets: the same sessions, with each pane's
