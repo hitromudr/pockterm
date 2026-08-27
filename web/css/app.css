@@ -1413,13 +1413,11 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   background: var(--bar);
   border-bottom: 1px solid #2a3345;
 }
-/* Six, eight, twelve — the other divisors of twenty-four. Each step is taken only
-   where the cell it leaves is no narrower than the phone's own (about 116px), since
-   that width is what two lines of the longest command need; a column count that
-   made cells narrower would push a third line into every one of them. */
+/* Six is the only other column count used, and it is deliberately the only one:
+   twelve columns fit on a laptop and drew twenty-four labels nobody wants to read
+   — "нафига ты так намельчил". Six by four is the shape, and the room a wider
+   screen has goes into the button rather than into more of them. */
 @media (min-width: 760px) { #cmdpad { grid-template-columns: repeat(6, 1fr); } }
-@media (min-width: 1000px) { #cmdpad { grid-template-columns: repeat(8, 1fr); } }
-@media (min-width: 1500px) { #cmdpad { grid-template-columns: repeat(12, 1fr); } }
 /* In the pane's own typeface: the label is the command, and the one thing it has
    to promise is that what goes out is what is written on it. */
 #cmdpad button {
@@ -1445,9 +1443,12 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   border: none;
   border-radius: 6px;
 }
-/* A wider cell can carry the same text at the size the rest of the app is read
-   at. Kept in step with the column steps above. */
+/* What the extra room buys: the label, at the size the rest of the app is read at.
+   The last step is the key bar's own 15px and its 44px cell — asked for in those
+   words, "размером как нижние кнопки" — and it waits for 1300px because at 760px six
+   columns are 120px wide and `measure_clock` alone is thirteen characters. */
 @media (min-width: 760px) { #cmdpad button { font-size: 12px; } }
+@media (min-width: 1300px) { #cmdpad button { font-size: 15px; min-height: 48px; } }
 /* The label is one flex item — a flex container would swallow the spaces between
    several — and inside it one span per word, each refusing to break. Without that
    the browser gives the line up after a hyphen: `systemctl --` over `failed`,

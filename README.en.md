@@ -21,9 +21,10 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   `ip -br a|grep '^[ew]'`, `curl eth0.me`, `netstat -tupln`, `systemctl --failed`,
   `systemctl -t service|cat`, `journalctl -p err -n20|cat`, `ps uaxf`, `docker ps`,
   `tmux ls`, `git status`. Every button is the same size, a long label takes a
-  second line, and the pad has twenty-four cells counting the `▴`: every column
-  count the stylesheet uses — 3 on a phone, 6, 8, 12 as the screen grows — divides
-  twenty-four, so the last row is always full. The label **is** the command, which
+  second line, and the pad has twenty-four cells counting the `▴`: both column
+  counts the stylesheet uses — 3 on a phone, 6 beyond it — divide twenty-four, so
+  the last row is always full, and the room a wider screen has goes into the button
+  (the key bar's own size past 1300px) rather than into more columns. The label **is** the command, which
   is why `|cat` stands where a pager would otherwise open. It is at the top because
   a shell writes at the bottom: over the last rows it would cover the answer to the
   very command it sent. With the agent's own input box on screen the first tap only

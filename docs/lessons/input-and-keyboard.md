@@ -228,9 +228,12 @@ different kinds of button in one panel — reported off a desktop screen, and
 correctly. The answer is not a cleverer arithmetic of spans but the absence of
 them: one cell per command, a label that takes a second line when it is long, a
 fixed height so every cell is identical in both directions, and **twenty-four
-cells** — twenty-three commands and the ▴. Every column count the stylesheet uses
-is a divisor of twenty-four (3 on a phone, 6, 8, 12 as the screen grows), so the
-last row is full at every width. The test measures the drawn boxes rather than
+cells** — twenty-three commands and the ▴. The stylesheet uses two column counts, both
+divisors of twenty-four — 3 on a phone, 6 beyond it — so the last row is full at
+every width. Twelve was there for one release and read as twenty-four labels
+nobody wants to read ("нафига ты так намельчил"): a wider screen puts its room
+into the button, not into more of them, and past 1300px the cell is the key bar's
+own 15px on 48px. The test measures the drawn boxes rather than
 reading the CSS, because what was wrong was the drawing.
 
 Two things a wrapped label needed, neither of them obvious:
