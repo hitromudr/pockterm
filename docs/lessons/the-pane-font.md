@@ -134,3 +134,41 @@ established as the embedded face rather than a coincidence.
 and the system DejaVu, the three `.woff2` files are committed, and a build that
 regenerated them would make every push look like a new binary — which is what CI
 uses to decide whether to restart anybody's terminal.
+
+## And the bars are drawn in them too
+
+Asked for on 2026-08-27, once the console pad had shipped in the pane's own fonts
+and the key bar six pixels below it had not: "шрифты в нижнем и верхнем меню сделай
+как в самом поктерме встроенные". It is the same rule as the pane's, one layer out
+— `system-ui` is a stack, so `Esc` and `Ctrl` came out in Roboto on the phone, in
+Cantarell on a desktop and in Segoe on Windows, and none of them matched the pane
+they sit against.
+
+So `--mono` on `#keybar`, `#modebar`, `#quickbar`, `#selbar`, the pager's buttons
+and ▴, which is Pockterm Mono, then Pockterm Marks, then the system names.
+
+What still falls through, read off the subsets rather than assumed — `getBestCmap`
+on the two `.woff2` files:
+
+- **⏹ (U+23F9) and ☰ (U+2630) are in neither face.** DejaVu Sans Mono has no
+  either, so the quick row's stop and the header's drawer come from the system as
+  they always did. Two glyphs on two buttons; the alternative was to change what
+  they are drawn as, and the look is the owner's to change.
+- **No emoji is, and none can be**: 📥 📎 💬 📋 keep coming from the system's colour
+  font, which is what the stack's last names are for.
+- **✂ (U+2702) was the one glyph this took away rather than steadied**, and it went
+  back the same hour: it *is* in the marks, so it drew from there — monochrome,
+  where a phone's own stack had been handing it to the colour font. `#select` asks
+  for the emoji form by name now, the way the tab marks already do. Nothing else on
+  these bars has a colour form at all, which is why it is the only exception.
+
+The composer's field is deliberately not in the list: it is where the owner writes
+Russian prose to an agent, and prose is not a control.
+
+**And it cost a test its guard.** `the marks the letters have not got come from the
+second embedded family` proved the stack's order by watching the family arrive:
+nothing had drawn a mark yet, so it must not be loaded, and typing one must fetch
+it. The key bar's own ↑ ↓ ← → and ⏎ *are* marks, so the family is now asked for the
+moment the terminal screen appears and there is no "before" left to read. The order
+is asserted outright instead — which is the stronger reading anyway: what a browser
+has loaded says nothing about which name comes first.

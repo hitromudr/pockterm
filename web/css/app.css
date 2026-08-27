@@ -1309,6 +1309,40 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    invisible button that still swallowed taps would take them from the pane
    underneath, which is where the finger was aiming. */
 #cmds.idle { opacity: 0; pointer-events: none; }
+/* The controls are drawn in the pane's own fonts — the two that travel in the
+   binary — and not in whatever the system offers.
+   Asked for in those words, and it is the same rule the pane was given: a stack of
+   system names means the same screen comes out in Droid Sans Mono on the phone,
+   DejaVu Sans Mono on a Linux desktop and Courier New on Windows, and here it also
+   meant the bars disagreed with the pane six pixels below them. --mono is Pockterm
+   Mono, then Pockterm Marks, then the system names for what neither holds.
+
+   What still falls through, measured off the subsets rather than assumed: ⏹ on the
+   quick row and ☰ in the header are in neither face (DejaVu Sans Mono has no
+   U+23F9, no U+2630), and no emoji is — 📥 📎 💬 📋 come from the system's colour
+   font as they always did. Everything else on these bars is in the marks: the
+   arrows, ⏎, ▾ ▴ ▶, ✂ ✓ ✕, ⇞ ⇟ ⇩.
+
+   The composer's field is deliberately not here: it is where the owner writes
+   Russian prose to an agent, and prose is not a control. */
+#keybar button,
+#modebar button,
+#quickbar button,
+#selbar button,
+#pager button,
+#show-bars {
+  font-family: var(--mono);
+}
+/* Except ✂, which the marks do have and which is therefore the one glyph this
+   change would have taken *away* from the colour font — asked back in one word,
+   "верни цветные". So the scissors ask for the emoji form by name, the way the
+   tab marks and the drawer's grid already do (.kind above); the rest of these
+   bars carry nothing with a colour form at all. */
+#select {
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', system-ui, sans-serif;
+  font-variant-emoji: emoji;
+}
+
 /* Grid so all keys fit at any width; a flex row overflowed narrow phones
    and hid the rightmost keys (^C, Enter) behind a horizontal scroll.
    Six columns, two rows, and the positions carry meaning: the arrows form
@@ -1462,7 +1496,9 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    colours the drawer's removals arm in — one confirmation, one look. */
 #cmdpad button.armed { color: #ffb4b4; background: #3a2530; }
 /* The way out without running anything, and the mirror of the key bar's ▾. */
-#cmd-hide { font-family: inherit; font-size: 16px; }
+/* The ▴ is in the marks, like the ▾ it mirrors on the key bar, so it keeps the
+   pad's own stack rather than borrowing the interface font. */
+#cmd-hide { font-size: 16px; }
 
 #answers {
   position: absolute;

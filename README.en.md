@@ -586,6 +586,14 @@ The order in `--mono` is the mechanism: letters, then marks, then the system nam
 — `⏵` is in neither file. Bold for the letters is synthesised by the browser: Droid
 Sans Mono has no bold weight, as on the phone.
 
+The bars are drawn in the same two families — the keys, the modes, the pager, the
+console pad: `system-ui` is a stack too, so `Esc` and `Ctrl` came out in whatever
+face the machine had and disagreed with the pane six pixels below them. Only `⏹`
+and `☰` fall through (neither family has them), and the emoji, which no mono subset
+could carry; `✂` is in the marks but is deliberately kept in colour (`#select` asks
+for the emoji form by name). The composer's field is deliberately not in the list: prose is
+written there.
+
 Rebuild with `make font-subset` (needs `fonttools`, `python3-brotli`,
 `fonts-dejavu-core`). The files are committed and are not rebuilt by `make check`:
 a build that regenerated them would look like a new binary to CI. Licences:

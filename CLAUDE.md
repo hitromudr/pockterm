@@ -345,6 +345,10 @@ release.
 - **Three variables, one stack.** `--mono-system` is what the pane is built on, `--mono` is
   what it is handed once `document.fonts.check` says the file is there — xterm measures the
   cell once and ignores an option equal to the one it holds. `#snapshot` reads `--mono`.
+- **The bars are drawn in the same two families** (`--mono` on `#keybar`, `#modebar`,
+  `#quickbar`, `#selbar`, the pager and the console pad): `system-ui` is a stack too, so the
+  controls disagreed with the pane six pixels below them. ⏹, ☰ and every emoji still fall
+  through — neither face has them.
 - **All three files are in the service worker's precache list**, or an installed PWA offline
   draws the pane in whatever the device has. `TestEmbeddedFontIsAskedFor` resolves every
   `url()` in the stylesheet against the binary; the journal's `font` line says which face

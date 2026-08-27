@@ -1396,27 +1396,48 @@ describe('selection and the clipboard', () => {
     // resolves to, which is the look this was asked to keep — and it has no box
     // drawing, no ● and no ✳ at all. Those used to fall through to a system face,
     // which is the per-machine typeface the embedded font exists to stop, so a
-    // second family carries them. Ordered in --mono rather than split by
-    // unicode-range, and the proof that the order works is the browser fetching
-    // that family: it loads one only when a character picks it.
+    // second family carries them, ordered in --mono rather than split by
+    // unicode-range.
+    //
+    // This case used to prove the order by watching the family arrive: nothing had
+    // drawn a mark, so it must not be loaded, and typing one must fetch it. That
+    // guard is gone as of 2026-08-27, when the bars were drawn in the same two
+    // families — the key bar's own ↑ ↓ ← → and ⏎ are marks, so the family is asked
+    // for the moment the terminal screen appears and there is no "before" left to
+    // read. The order is asserted outright instead of being inferred from it, which
+    // is the stronger reading anyway: what a browser has loaded says nothing about
+    // which name comes first.
     await stand.open();
     await stand.attach();
     const { page } = stand;
+    const plain = (v) => v.replace(/["']/g, '').replace(/\s+/g, ' ').trim();
 
-    const marks = await page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue('--mono-marks').trim());
-    assert.ok(marks, 'the stylesheet names no --mono-marks');
-    // Nothing has drawn one yet, so the family must not be loaded — otherwise
-    // this test would pass without the stack having done anything.
-    assert.equal(await page.evaluate((f) => document.fonts.check(`14px ${f}`), marks), false,
-      `${marks} was already loaded before anything asked for a mark`);
+    const named = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+      return {
+        mono: root.getPropertyValue('--mono'),
+        embedded: root.getPropertyValue('--mono-embedded').trim(),
+        marks: root.getPropertyValue('--mono-marks').trim(),
+      };
+    });
+    assert.ok(plain(named.marks), 'the stylesheet names no --mono-marks');
+    const order = plain(named.mono).split(',').map((n) => n.trim());
+    assert.equal(order[0], plain(named.embedded), `--mono starts with ${order[0]}`);
+    assert.equal(order[1], plain(named.marks), `the marks are not second in --mono: ${order[1]}`);
+    assert.ok(order.length > 2, 'no system name is left for what neither family holds');
 
+    // Both files really arrived, as against merely being named: a face that failed
+    // to load leaves the name in the stack and the mark in the next font along.
+    for (const family of [named.embedded, named.marks]) {
+      await page.waitForFunction((f) => document.fonts.check(`14px ${f}`), family, { timeout: 10000 });
+    }
+
+    // And the pane draws them: box drawing, a shape, and the two the agent's TUI
+    // and this page draw.
     await page.click('#term');
-    // Box drawing, a shape, and the two the agent's TUI and this page draw.
     await page.keyboard.type('─│┌●✳❯✓');
     await page.waitForFunction(
       () => (document.querySelector('.xterm-rows')?.textContent || '').includes('✳'));
-    await page.waitForFunction((f) => document.fonts.check(`14px ${f}`), marks, { timeout: 10000 });
   });
 
   test('the frozen copy holds more than the screen, and scrolls through it', async () => {
