@@ -1,5 +1,5 @@
 import { keyBytes, applyCtrl } from './keys.js';
-import { detectPrompt, answerKeys, submitKeys } from './detect.js';
+import { detectPrompt, answerKeys, submitKeys, hasInputBox } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from './notify.js';
 import { linkAction } from './link.js';
 import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v186';
+const APP_VERSION = 'v187';
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
@@ -2157,6 +2157,102 @@ if (ctrlPad) {
   });
 }
 
+// --- the console pad ---
+//
+// Whole command lines, over the pane's first rows. The mirror of the control pad
+// above: one sends the bytes no on-screen keyboard has, this sends the words
+// nobody should have to spell out on one — `ls -la` is eight taps and a hyphen a
+// phone keyboard hides behind a shift.
+//
+// Three things it borrows rather than re-deciding, each of them paid for
+// elsewhere in this file: it is absolute inside #term, because a panel in the
+// flow shortens the pane and tmux redraws under the page; its buttons take no
+// focus and give up what the field holds (keepsTerminalFocus, releaseForBarKey),
+// because on Android a layout that moves under a focused field is a keyboard
+// coming up; and it closes on use, because a pad left open covers the rows the
+// command it just sent is about to write into.
+//
+// It is at the *top* of the pane, and that is not symmetry for its own sake: a
+// shell writes at the bottom — the prompt, the line, its answer — so a pad of
+// commands drawn over the last rows would cover the answer to whichever button
+// was pressed.
+const cmdPad = document.getElementById('cmdpad');
+const cmdsBtn = document.getElementById('cmds');
+const cmdHide = document.getElementById('cmd-hide');
+
+function showCmdPad(on) {
+  if (!cmdPad) return;
+  cmdPad.hidden = !on;
+  // The opener stands where the pad's own first row goes, so it is not there
+  // while the pad is: two controls in one 44px square is one of them nobody can
+  // press on purpose.
+  if (cmdsBtn) cmdsBtn.hidden = on;
+  disarmCmd();
+}
+
+// A command is a line typed into whatever the pane happens to be, and one of the
+// things it can be is the agent's own input box — where `clear` is not a command
+// at all but a turn sent to Claude, paid for in tokens and answered in prose.
+// This page already knows how to tell that box apart (hasInputBox, the same
+// reading the answer row is built on), so the tap is not refused, it is asked
+// about: the first one arms, the second sends. The two-tap rule and its four
+// seconds are the drawer's, for the reason stated there — on a phone the wrong
+// tap is one thumb away, and a control that sometimes asks and sometimes does not
+// is a control nobody can trust.
+//
+// Refusing outright was the other candidate and it is worse: an agent session
+// left at a shell prompt still shows the box it printed before it exited, so the
+// pad would be dead exactly where the owner can see it should work.
+let cmdArmed = null;
+let cmdArmTimer = null;
+function disarmCmd() {
+  if (cmdArmed) cmdArmed.classList.remove('armed');
+  cmdArmed = null;
+  clearTimeout(cmdArmTimer);
+}
+function asksFirst(b) {
+  if (cmdArmed === b) return false;
+  if (!hasInputBox(visibleLines())) return false;
+  disarmCmd();
+  cmdArmed = b;
+  b.classList.add('armed');
+  toast(`в панели агент — ещё раз, и «${b.dataset.cmd}» уйдёт ему сообщением`);
+  cmdArmTimer = setTimeout(disarmCmd, ARM_MS);
+  return true;
+}
+
+if (cmdPad) {
+  cmdPad.querySelectorAll('button[data-cmd]').forEach((b) => {
+    keepsTerminalFocus(b);
+    b.addEventListener('click', () => {
+      if (asksFirst(b)) return;
+      // Ctrl is a latch for the next character typed, and a command line is not
+      // that character: spent here, the same way a bar key spends it.
+      if (ctrlArmed) armCtrl(false);
+      sendInput(`${b.dataset.cmd}\r`);
+      // The journal is the instrument: a line that went out from a button is a
+      // line the pane's history cannot be read back to a cause without.
+      report('cmd', { cmd: b.dataset.cmd });
+      showCmdPad(false);
+      releaseForBarKey(b);
+    });
+  });
+}
+if (cmdsBtn) {
+  keepsTerminalFocus(cmdsBtn);
+  cmdsBtn.addEventListener('click', () => {
+    showCmdPad(true);
+    releaseForBarKey(cmdsBtn);
+  });
+}
+if (cmdHide) {
+  keepsTerminalFocus(cmdHide);
+  cmdHide.addEventListener('click', () => {
+    showCmdPad(false);
+    releaseForBarKey(cmdHide);
+  });
+}
+
 term.onData((d) => {
   // A mouse report is not typing, and it must not spend the arm either: a
   // scroll between arming Ctrl and typing the letter would otherwise leave the
@@ -2687,6 +2783,9 @@ function setPanelsHidden(on) {
   // an invisible sheet over the whole screen, eating the first tap on a
   // terminal that was just given the whole of it.
   if (on) showTermPopup(null);
+  // And the console pad with them: hiding the bars is asking for the pane, and a
+  // pad over its first rows is the opposite of that.
+  if (on) showCmdPad(false);
   refit();
 }
 // Nothing on a bar takes the focus. The key bar's own keys, the macros, the pad
@@ -3467,6 +3566,10 @@ function setSelectMode(on) {
   // copy window — the corner and an 18px strip down its right edge — from the one
   // gesture this mode has.
   termBox.classList.toggle('selecting', on);
+  // The pad stands down with them, and by its own state rather than by CSS alone:
+  // a panel hidden by a class would come back on leaving the mode, over a screen
+  // the owner had moved on from.
+  if (on) showCmdPad(false);
   if (on) {
     // The screen first, so the mode opens on the frame it was asked for, and the
     // history behind it when the host answers: a copy window that appeared only
@@ -4406,6 +4509,10 @@ function showPager(on) {
   if (!pagerEl) return;
   pagerEl.classList.toggle('idle', !on);
   if (showBarsBtn) showBarsBtn.classList.toggle('slid', !on);
+  // The console pad's opener stands over the pane's own first line and answers
+  // the same question the stack does — it is wanted while the pane is being
+  // touched and it is a line of output the rest of the time.
+  if (cmdsBtn) cmdsBtn.classList.toggle('idle', !on);
 }
 function wakePager() {
   showPager(true);

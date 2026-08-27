@@ -1136,7 +1136,11 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #screen-term.panels-hidden #composer,
 #screen-term.panels-hidden #quickbar,
 #screen-term.panels-hidden #selbar,
-#screen-term.panels-hidden #modebar { display: none !important; }
+#screen-term.panels-hidden #modebar,
+/* The pad's opener goes with the bars: "hide the bars" means the pane and one
+   way back, and a circle left in the other corner is not that. The pad itself is
+   closed by setPanelsHidden, so its state and its looks cannot disagree. */
+#screen-term.panels-hidden #cmds { display: none !important; }
 /* The scrollbar: where in the output the pane is, and the way to anywhere else.
    Over the terminal rather than beside it — a bar in the flow narrows the pane,
    tmux redraws to the new width, and the page ends up reading a screen its own
@@ -1231,6 +1235,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    that is not moving here, and what they would do is take the drags the copy
    window needs — see setSelectMode. */
 #term.selecting #pager, #term.selecting #scrollbar { display: none; }
+#term.selecting #cmds, #term.selecting #cmdpad { display: none; }
 #pager button { transition: opacity 0.25s ease; }
 /* Untouchable while faded, and the room the buttons keep is untouchable with
    them: a column of invisible buttons that still swallowed taps would take them
@@ -1280,6 +1285,29 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    back when a scroll brings the stack up, on the same quarter second the fade
    takes, so the two never share the slot. */
 #show-bars.slid { right: 22px; }
+/* The console pad's opener, in the corner of the pane opposite the one ▴ holds.
+   Clear of the scrollbar's 18px track like the pager, and faded with the pager by
+   the same handler (showPager): the pane's first line is text somebody is reading,
+   and a button parked over it permanently is a line the pane does not get. */
+#cmds {
+  position: absolute;
+  right: 22px;
+  top: 10px;
+  z-index: 12;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 22px;
+  font-family: var(--mono);
+  font-size: 18px;
+  color: var(--fg);
+  background: #232a38cc;
+  transition: opacity 0.25s ease;
+}
+/* Untouchable while faded, for the reason the pager's own buttons are: an
+   invisible button that still swallowed taps would take them from the pane
+   underneath, which is where the finger was aiming. */
+#cmds.idle { opacity: 0; pointer-events: none; }
 /* Grid so all keys fit at any width; a flex row overflowed narrow phones
    and hid the rightmost keys (^C, Enter) behind a horizontal scroll.
    Six columns, two rows, and the positions carry meaning: the arrows form
@@ -1343,6 +1371,49 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   border-radius: 6px;
 }
 #ctrlpad button:active { background: var(--accent); color: #0b0e14; }
+
+/* The console pad: whole commands, over the pane's *first* rows. Same placement
+   rule as #ctrlpad above and for the same reason — absolute, opaque, inside
+   #term — because a panel in the flow makes tmux redraw to a shorter pane.
+
+   The top rather than the bottom: a shell writes at the bottom, so a pad of
+   commands drawn there would cover the answer to whichever one was pressed. And
+   three columns rather than five, because these are words: `git status` in a
+   fifth of a phone's width is a label nobody can read. */
+#cmdpad {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 6px;
+  background: var(--bar);
+  border-bottom: 1px solid #2a3345;
+}
+/* In the pane's own typeface: the label is the command, and the one thing it has
+   to promise is that what goes out is what is written on it. */
+#cmdpad button {
+  padding: 12px 4px;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--fg);
+  background: #232a38;
+  border: none;
+  border-radius: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#cmdpad button:active { background: var(--accent); color: #0b0e14; }
+/* Asked once, when the agent's own input box is on screen: the next tap sends the
+   line to Claude as a message rather than to a shell as a command. The same
+   colours the drawer's removals arm in — one confirmation, one look. */
+#cmdpad button.armed { color: #ffb4b4; background: #3a2530; }
+/* The way out without running anything, and the mirror of the key bar's ▾. */
+#cmd-hide { font-family: inherit; font-size: 18px; }
 
 #answers {
   position: absolute;
@@ -1639,5 +1710,10 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   #answers button { padding: 8px 10px; }
   #composer { padding-top: 4px; }
   #composer textarea { max-height: 30vh; }
+  /* Width is what a landscape phone has and height is what it has not: five
+     columns puts the pad in two rows instead of three, which is the difference
+     between covering a third of the pane and covering a fifth. */
+  #cmdpad { grid-template-columns: repeat(5, 1fr); }
+  #cmdpad button { padding: 8px 4px; font-size: 12px; }
   .bar { padding: 4px 8px; }
 }

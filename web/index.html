@@ -215,6 +215,38 @@
         <button data-ctrl="z">^Z</button>
         <button data-ctrl="p">^P</button>
       </div>
+      <!-- The console pad: whole commands where the pad above sends bytes.
+           Its mirror, and deliberately so — the bar at the bottom of the screen
+           carries what no keyboard has, and this carries what a thumb should not
+           have to spell out on one. Same placement rule as #ctrlpad and #answers,
+           and for the same reason: absolute inside #term, opaque, over the rows it
+           repeats, because a panel in the flow shortens the pane and tmux redraws
+           under the page.
+
+           At the top of the pane rather than the bottom, which is the whole of why
+           it can be a pad of commands at all: a shell writes at the bottom — the
+           prompt, the command, its answer — so a pad over the last rows would cover
+           the very thing every button here is pressed to see.
+
+           Three columns because these are words, not keys; ten of them at a phone's
+           width would be labels nobody can read. Its last cell is ▴, the mirror of
+           the key bar's ▾: a pad you can only leave by running something is a trap.
+
+           `clear` and `reset` are both here on purpose. They look like one button
+           twice and are not: `clear` scrolls the screen away and tmux keeps it in
+           the history, `reset` puts a terminal that has been left in some mode by a
+           killed program back to itself. -->
+      <div id="cmdpad" hidden>
+        <button data-cmd="clear">clear</button>
+        <button data-cmd="reset">reset</button>
+        <button data-cmd="pwd">pwd</button>
+        <button data-cmd="ls">ls</button>
+        <button data-cmd="ls -la">ls -la</button>
+        <button data-cmd="cd ..">cd ..</button>
+        <button data-cmd="git status">git status</button>
+        <button data-cmd="df -h">df -h</button>
+        <button id="cmd-hide" title="Hide the commands">&#9652;</button>
+      </div>
       <!-- What was sent from the composer before. Over the terminal and never
            beside it, for the same reason the answer row is: a list in the flow
            shortens the pane, tmux redraws, and what the page is reading changes
@@ -255,6 +287,17 @@
         <button id="page-down" title="A page forward" hidden>&#8671;</button>
         <button id="page-up" title="A page back">&#8670;</button>
       </div>
+      <!-- The way into the console pad above, in the corner of the pane opposite
+           the one ▴ holds at the bottom of it. Inside #term for the same reason
+           the pager is: the terminal's box ends where the bars begin, whatever
+           the bars happen to be doing, and a corner measured off the viewport is
+           a guess about how tall they are.
+
+           `$` rather than a chevron: a triangle says something opens, this says
+           what — a shell prompt is what the buttons behind it are for. It fades
+           with the pager and comes back with it, because a 44px circle standing
+           permanently over the pane's own first line costs a line to have. -->
+      <button id="cmds" title="Console commands">$</button>
     </div>
     <!-- Quick macros for prompt mode. No plain Enter here: the composer's ▶
          sends, and the key bar owns Esc and ^C — one key, one place. -->

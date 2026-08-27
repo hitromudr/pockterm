@@ -180,6 +180,58 @@ case, and the pad staying away with the viewport shortened. Each was checked
 against the defect first: with `onEdit` unwired the composed letter never reaches
 the pty at all.
 
+## The console pad: whole lines, and at the top of the pane
+
+Asked for from the phone on 2026-08-27, in one sentence: the same thing as the key
+bar, but above, with `clear`, `reset`, `pwd` and the rest of what a console is
+typed at. The question the bar's own keys are judged by (*does the keyboard
+already do this?*) answers it for a different reason than usual — a keyboard can
+type `ls -la`, and that is eight taps with a hyphen behind a shift, on a device
+where the keyboard covers half the pane while you find it.
+
+So `#cmdpad`: eight commands and a ▴, three columns, in the pane's own typeface
+because the label **is** what goes out. It borrows three things rather than
+re-deciding them, and each was paid for elsewhere in this file:
+
+- **Absolute inside `#term`**, opaque, over the rows it covers — a panel in the
+  flow shortens the pane, tmux redraws to the new height, and what the page reads
+  changes under it. Both new tests assert `#{pane_height}` and the row count do
+  not move when it is shown.
+- **No focus taken, and what the field holds given up** (`keepsTerminalFocus`,
+  `releaseForBarKey`): on Android a layout that moves under a focused field is a
+  keyboard coming up, which is what ▾ and the ✂ row were reported for.
+- **Closed on use**, like `#ctrlpad`, and ▴ to leave without running anything — a
+  pad you can only leave by sending something is a trap.
+
+**The top rather than the bottom is the one decision that is not symmetry.** A
+shell writes at the bottom: the prompt, the line, its answer. A pad of commands
+drawn over the last rows would cover the answer to whichever button was pressed —
+so the mirror image is also the only place it works. The way in is `$` in the
+pane's top-right corner (`#cmds`), which fades with the pager and for the same
+reason: a 44px circle parked over the first line costs the pane a line to have.
+
+**And a command is not a keystroke: it is a line typed into whatever the pane
+happens to be.** One of the things it can be is the agent's own input box, where
+`clear` is not a command at all — it is a turn sent to Claude, paid for in tokens
+and answered in prose. The page already knows how to tell that box apart (the ❯
+and its non-breaking space; `hasInputBox` in `js/detect.js`, exported for this and
+agreeing with `internal/detect/composer.go`), so the tap is asked about rather
+than refused: the first arms the button, the second sends, four seconds, the
+drawer's own two-tap rule and its reasoning — on a phone the wrong tap is one
+thumb away.
+
+Refusing outright was the other candidate and it is worse: an agent session left
+at a shell prompt still shows the box the agent printed before it exited, so the
+pad would be dead exactly where the owner can see it should work.
+
+`test/ui/bytes.test.mjs` reads the wire through `cat -vT` — `pwd^M` and nothing
+else, ▴ sending nothing — and `pwd` is deliberate: `clear` and `reset` are on the
+pad because they put a screen right, and a screen put right in the middle of a
+test that reads the screen is a failure nobody can read. The asking is measured in
+`test/ui/pockterm.test.mjs` against a pane with the box printed into it, and it
+was checked against the defect first: with the guard neutered the first tap sends,
+and that test fails.
+
 ## The bar's Enter waits for the keyboard's word
 
 Gboard holds the word being typed as a composing region. Only the app can end

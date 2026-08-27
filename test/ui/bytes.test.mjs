@@ -458,3 +458,83 @@ describe('the Ctrl latch', () => {
     await page.waitForFunction(() => document.documentElement.dataset.kb === '0', null, { timeout: 5000 });
   });
 });
+
+// The console pad, on the wire: whole lines rather than bytes.
+//
+// It is the mirror of the Ctrl pad above and shares its two failure modes —
+// something extra on the wire, and a panel that shortens the pane it is drawn
+// over — so it is measured the same way, off a session that echoes every byte it
+// is sent.
+describe('the console pad', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['wire'], raw: true }); });
+  after(async () => { await stand.stop(); });
+
+  const transcript = (page) =>
+    page.evaluate(() => (document.querySelector('.xterm-rows')?.textContent || '').replace(/\s+$/, ''));
+
+  // The opener fades a few seconds after the last touch on the pane and is
+  // untouchable while faded — on purpose, so it costs the pane no line — which
+  // means a test has to wake it the way a thumb does.
+  async function openPad(page) {
+    await page.click('#term');
+    await page.click('#cmds');
+    await page.waitForSelector('#cmdpad', { state: 'visible' });
+  }
+
+  test('a command goes out as itself, with its Enter behind it', async () => {
+    await stand.open();
+    await stand.attach('wire');
+    const { page } = stand;
+    await page.click('#term');
+    await page.waitForTimeout(400);
+
+    // `pwd` rather than `clear` or `reset`: those two are on the pad because they
+    // put a screen right, and a screen put right in the middle of a test that
+    // reads the screen is a failure nobody can read. This one prints a line
+    // wherever it lands.
+    const before = await transcript(page);
+    await openPad(page);
+    await page.click('#cmdpad [data-cmd="pwd"]');
+    await page.waitForTimeout(400);
+    const added = (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+    assert.equal(added, 'pwd^M', `the wire holds ${JSON.stringify(added)}`);
+
+    // Closed on use: a pad left open covers the rows the command it just sent is
+    // about to write into.
+    await page.waitForSelector('#cmdpad', { state: 'hidden' });
+    // And the way in is back, which is the other half of that: while the pad is
+    // open the opener stands where its own first row is drawn.
+    await page.waitForSelector('#cmds', { state: 'attached' });
+    assert.equal(await page.locator('#cmds').isVisible(), true, 'the way back in went away with the pad');
+  });
+
+  test('▴ closes it and sends nothing', async () => {
+    // A pad you can only leave by running something is a trap, which is the
+    // mirror of the key bar's own ▾.
+    const { page } = stand;
+    const before = await transcript(page);
+    await openPad(page);
+    await page.click('#cmd-hide');
+    await page.waitForSelector('#cmdpad', { state: 'hidden' });
+    await page.waitForTimeout(300);
+    const added = (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+    assert.equal(added, '', `the wire holds ${JSON.stringify(added)}`);
+  });
+
+  test('showing it does not shorten the pane', async () => {
+    // The rule this app keeps re-learning: a panel in the flow shrinks the
+    // terminal, tmux redraws to the new height, and what the page reads changes
+    // under it. Absolute, over the first rows.
+    const { page } = stand;
+    const rows = () => page.evaluate(() => document.querySelectorAll('.xterm-rows > div').length);
+    const was = await rows();
+    await openPad(page);
+    await page.waitForTimeout(400);
+    assert.equal(await rows(), was, 'the pad changed the terminal height');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('cmdpad')).position),
+      'absolute', 'the pad is in the flow');
+    await page.click('#cmd-hide');
+    await page.waitForSelector('#cmdpad', { state: 'hidden' });
+  });
+});

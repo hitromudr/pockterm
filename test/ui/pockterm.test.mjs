@@ -3907,3 +3907,74 @@ describe('the answer buttons and the pane they are read from', () => {
       () => document.querySelectorAll('#answers button').length >= 2, null, { timeout: 15000 });
   });
 });
+
+// The console pad and the pane it is drawn over.
+//
+// What the pad sends is measured on the wire in bytes.test.mjs, against a session
+// with no agent in it — one tap, one command, and that case is what keeps this one
+// from passing for the wrong reason. Here is the other half: the pane where the
+// same tap would not be a command at all.
+describe('the console pad over an agent', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['demo'] }); });
+  after(async () => { await stand.stop(); });
+
+  const screen = (page) =>
+    page.evaluate(() => document.querySelector('.xterm-rows')?.textContent || '');
+
+  async function openPad(page) {
+    // The opener fades after the last touch and is untouchable while faded, so it
+    // is woken the way a thumb wakes it.
+    await page.click('#term');
+    await page.click('#cmds');
+    await page.waitForSelector('#cmdpad', { state: 'visible' });
+  }
+
+  test('the pad takes no rows from the pane it is drawn over', async () => {
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    const height = () => Number(stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_height}']).trim());
+    const before = height();
+    assert.ok(before > 12, `the pane is ${before} rows, too short to tell anything`);
+
+    await openPad(page);
+    await page.waitForTimeout(600);
+    assert.equal(height(), before, 'the pad took rows from the pane');
+    await page.click('#cmd-hide');
+    await page.waitForSelector('#cmdpad', { state: 'hidden' });
+    assert.equal(height(), before, 'closing it moved the pane');
+  });
+
+  test('with the agent\'s own box on screen the first tap only asks', async () => {
+    // `clear` typed into that box is not a command run anywhere: it is a turn sent
+    // to Claude, paid for in tokens and answered in prose. The box is what the page
+    // already reads to decide whether a digit may be typed (hasInputBox), and here
+    // it decides whether a line may be sent without asking.
+    //
+    // The non-breaking space after the ❯ is the whole of the reading — a menu
+    // pointer draws an ordinary one — so it goes out as an escape rather than as
+    // the character: invisible in the source is exactly what it must not be here.
+    const { page } = stand;
+    stand.tmux(['send-keys', '-t', 'demo', '\u276f\u00a0', 'Enter']);
+    await page.waitForFunction(
+      () => (document.querySelector('.xterm-rows')?.textContent || '').includes('\u276f'),
+      null, { timeout: 15000 });
+
+    await openPad(page);
+    const pwd = page.locator('#cmdpad [data-cmd="pwd"]');
+    await pwd.click();
+    await page.waitForTimeout(500);
+    assert.ok(!(await screen(page)).includes('pwd'), 'the line went to the agent on the first tap');
+    assert.equal(await pwd.evaluate((el) => el.classList.contains('armed')), true,
+      'nothing on the button said it was asking');
+    // And the pad stays up: the second tap has to be on the same button.
+    assert.equal(await page.locator('#cmdpad').isVisible(), true, 'the pad closed on the question');
+
+    await pwd.click();
+    await page.waitForFunction(
+      () => (document.querySelector('.xterm-rows')?.textContent || '').includes('pwd'),
+      null, { timeout: 15000 });
+    await page.waitForSelector('#cmdpad', { state: 'hidden' });
+  });
+});

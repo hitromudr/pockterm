@@ -506,3 +506,15 @@ export function submitKeys(menu) {
   if (menu.submit.focused) return { move: '', commit: '\r' };
   return { move: '\x1b[B', commit: '' };
 }
+
+// Is the agent's own input box on screen?
+//
+// The same reading detectOffer makes above — the composer's ❯ and its
+// non-breaking space — and the same fact internal/detect/composer.go answers on
+// the host. Exported because something other than the answer row asks it now:
+// the console pad sends whole command lines, and a pane showing that box is a
+// pane where `clear` is a message to Claude rather than a command to a shell.
+// Both callers read one screen, so both read it the same way.
+export function hasInputBox(lines) {
+  return lines.some((l) => COMPOSER.test(stripAnsi(l)));
+}

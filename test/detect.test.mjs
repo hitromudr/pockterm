@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  detectQuestion, detectOffer, detectPrompt, answerKeys, submitKeys,
+  detectQuestion, detectOffer, detectPrompt, answerKeys, submitKeys, hasInputBox,
 } from '../web/js/detect.js';
 
 // The cases are shared with the Go detector (internal/detect), which drives
@@ -337,4 +337,26 @@ test('the submit row is reached one step at a time and pressed only when reached
   assert.equal(submitKeys({ navigate: 'arrows', options: [] }), null);
   assert.equal(submitKeys({ navigate: 'digits', submit: { label: 'Submit', focused: true } }), null);
   assert.equal(submitKeys(null), null);
+});
+
+// --- is the agent's own box on screen at all ---
+//
+// Asked by the console pad rather than by the answer row: what it decides is
+// whether `clear` typed into this pane runs somewhere or is sent to Claude as a
+// message. The reading is detectOffer's own — the ❯ and the non-breaking space
+// after it — and it is exported so there is one of it.
+test('the agent\'s input box is recognised on its own', () => {
+  assert.equal(hasInputBox(OFFER), true, 'the box under the offer was not seen');
+  // A menu pointer is the same glyph with an ordinary space, which is the whole
+  // rule: a pane driving a menu is not a pane with a box waiting for a message.
+  assert.equal(hasInputBox(['❯ 1. Yes', '  2. No']), false, 'a menu pointer read as the box');
+  // And a shell is what the pad is for.
+  assert.equal(hasInputBox([
+    'dms@ai:~/work/pockterm (main) $ ls',
+    'Makefile  README.md  web',
+    'dms@ai:~/work/pockterm (main) $ ',
+  ]), false, 'a shell prompt read as the agent');
+  // Something typed into the box does not make it stop being one: the pad has to
+  // ask about a half-written message just as much as about an empty box.
+  assert.equal(hasInputBox(['❯\u00a0а можно и так']), true);
 });
