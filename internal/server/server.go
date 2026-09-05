@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/hitromudr/pockterm/internal/proto"
+	"github.com/hitromudr/pockterm/internal/push"
 	"github.com/hitromudr/pockterm/internal/session"
 	"github.com/hitromudr/pockterm/internal/term"
 	"github.com/hitromudr/pockterm/internal/tmuxcmd"
@@ -123,6 +124,28 @@ type Options struct {
 	Buttons      func() []session.Custom
 	SetButtons   func([]session.Custom) ([]session.Custom, error)
 	ResetButtons func() ([]session.Custom, error)
+
+	// Web Push. PushKey is the VAPID public key a browser needs before it can
+	// subscribe at all; Subscribe and Unsubscribe are how a device joins and
+	// leaves; PushDevices reports how many are subscribed and whether this one
+	// is among them.
+	//
+	// nil leaves /api/push absent, and a page that gets a 404 there keeps
+	// drawing notices from the socket frame — which is all this ever had, and
+	// which reaches nothing once Android suspends the page. The two are
+	// deliberately exclusive on the page's side: whichever can deliver owns the
+	// drawing, or one finish arrives twice.
+	PushKey     func() string
+	Subscribe   func(sub push.Subscription) error
+	Unsubscribe func(endpoint string) error
+	PushDevices func(endpoint string) (here bool, total int)
+	// PushTest sends a probe to every subscribed device after the given delay.
+	//
+	// The delay is the whole point: the failure this channel exists for happens
+	// while the app is *not* on screen, and a probe that arrives while the owner
+	// is looking at the settings panel proves nothing about it. Ten seconds is
+	// enough to press the button and put the phone down.
+	PushTest func(delay time.Duration) error
 }
 
 // modePoll is how often a client's pane is checked for tmux copy-mode. The
@@ -181,6 +204,9 @@ func Handler(o Options) http.Handler {
 	mux.HandleFunc("/api/log", func(w http.ResponseWriter, r *http.Request) { serveLog(o, w, r) })
 	mux.HandleFunc("/api/presence", func(w http.ResponseWriter, r *http.Request) { servePresence(o, w, r) })
 	mux.HandleFunc("/api/notify", func(w http.ResponseWriter, r *http.Request) { serveNotifyMode(o, w, r) })
+	mux.HandleFunc("/api/push", func(w http.ResponseWriter, r *http.Request) { servePush(o, w, r) })
+	mux.HandleFunc("/api/push/off", func(w http.ResponseWriter, r *http.Request) { servePushOff(o, w, r) })
+	mux.HandleFunc("/api/push/test", func(w http.ResponseWriter, r *http.Request) { servePushTest(o, w, r) })
 	mux.HandleFunc("/api/dirs", func(w http.ResponseWriter, r *http.Request) { serveDirs(o, w, r) })
 	mux.HandleFunc("/api/presets", func(w http.ResponseWriter, r *http.Request) { servePresets(o, w, r) })
 	mux.HandleFunc("/api/sessions/new", func(w http.ResponseWriter, r *http.Request) { serveNewSession(o, w, r) })
@@ -325,6 +351,124 @@ func serveNotifyMode(o Options, w http.ResponseWriter, r *http.Request) {
 		Mode     string `json:"mode"`
 		Telegram bool   `json:"telegram"`
 	}{mode, telegram})
+}
+
+// servePush hands out the key a browser subscribes with, and takes the
+// subscription it comes back with.
+//
+// The key is public and the same for every device — it is what ties a
+// subscription to this server, and a browser will not create one without it.
+// The subscription that comes back is not a secret of ours either: it lets
+// somebody notify that device, not read what was sent, which is encrypted to
+// keys only the device holds.
+func servePush(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.PushKey == nil || o.PushKey() == "" {
+		// Not an error: a host without push is a host where the page keeps doing
+		// what it did before, and it has to be able to tell the difference.
+		http.Error(w, "push is off on this host", http.StatusNotFound)
+		return
+	}
+	if r.Method == http.MethodPost {
+		if o.Subscribe == nil {
+			http.Error(w, "push is off on this host", http.StatusNotFound)
+			return
+		}
+		var body struct {
+			Subscription push.Subscription `json:"subscription"`
+			Device       string            `json:"device"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&body); err != nil {
+			http.Error(w, "expected {\"subscription\": …}", http.StatusBadRequest)
+			return
+		}
+		sub := body.Subscription
+		sub.Device = body.Device
+		if err := o.Subscribe(sub); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	here, total := false, 0
+	if o.PushDevices != nil {
+		here, total = o.PushDevices(r.URL.Query().Get("endpoint"))
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Key     string `json:"key"`
+		Here    bool   `json:"here"`
+		Devices int    `json:"devices"`
+	}{o.PushKey(), here, total})
+}
+
+// servePushOff forgets one subscription: the owner switching notifications off,
+// or a browser that has just replaced the subscription it had.
+func servePushOff(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.Unsubscribe == nil {
+		http.Error(w, "push is off on this host", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "post {\"endpoint\": …}", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Endpoint string `json:"endpoint"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&body); err != nil || body.Endpoint == "" {
+		http.Error(w, "expected {\"endpoint\": …}", http.StatusBadRequest)
+		return
+	}
+	if err := o.Unsubscribe(body.Endpoint); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// servePushTest asks for a probe to be pushed, after a delay long enough to put
+// the phone down.
+//
+// A probe raised by the page tests the system channel; this tests the path that
+// was actually broken — the server reaching a device whose page is suspended.
+// They are different questions, and only one of them can be answered while
+// looking at the screen.
+func servePushTest(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.PushTest == nil {
+		http.Error(w, "push is off on this host", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "post {\"delay\": …}", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Delay int `json:"delay"` // seconds
+	}
+	// A missing body is a probe now: the field is a convenience, not a contract.
+	_ = json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body)
+	if body.Delay < 0 {
+		body.Delay = 0
+	}
+	if body.Delay > 60 {
+		body.Delay = 60
+	}
+	if err := o.PushTest(time.Duration(body.Delay) * time.Second); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // serveUpload takes a file pasted, dropped or picked in the browser and

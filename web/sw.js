@@ -1,6 +1,6 @@
 // Version-stamped static cache. Bump VERSION on any static change:
 // the old cache is dropped on activate.
-const VERSION = 'v195';
+const VERSION = 'v196';
 const PRECACHE = [
   '/',
   '/css/app.css',
@@ -52,6 +52,71 @@ self.addEventListener('activate', (e) => {
       Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
+});
+
+// The picture on every notice, the same file the page names. Kept here as well
+// because a push arrives at a worker with no page running: nothing else in this
+// file can be asked what the notice should look like.
+const NOTIFY_ICON = '/icons/icon-192-notify.png';
+
+// A notice for a device whose page is not running — the only kind that reaches a
+// phone in a pocket.
+//
+// Android suspends a backgrounded PWA: it stops answering the socket's ping, the
+// server closes it a minute later, and everything written into it in between was
+// counted as delivered and drawn nowhere. Measured on 2026-09-05, and it is why
+// this listener exists. The push wakes this worker instead, with no page
+// involved at all.
+//
+// The server decides everything about the notice and this draws it. The tag is
+// the one the page would have used (`pockterm-<kind>:<session>`), so a notice
+// raised here and one raised by a page replace each other rather than stacking;
+// `renotify` is what makes a replacement alert again instead of arriving in
+// silence.
+//
+// `userVisibleOnly` was promised at subscribe time, so every push shows
+// something: a payload that fails to parse still gets a notice, because the
+// alternative is Chrome drawing its own "this site was updated in the
+// background" over the top of a broken one.
+self.addEventListener('push', (e) => {
+  let notice = {};
+  try {
+    notice = e.data ? e.data.json() : {};
+  } catch (_) { notice = {}; }
+  const title = String(notice.title || 'pockterm');
+  const session = String(notice.session || '');
+  const tag = String(notice.tag || 'pockterm-done');
+  e.waitUntil(self.registration.showNotification(title, {
+    body: String(notice.body || ''),
+    tag,
+    renotify: true,
+    icon: NOTIFY_ICON,
+    badge: NOTIFY_ICON,
+    data: { session },
+  }));
+});
+
+// A subscription the push service replaced under us. The browser hands out a new
+// endpoint — on a renewal, or when it decides the old one is stale — and the
+// server's copy stops working from that moment, silently. Resubscribing here
+// keeps the phone reachable without waiting for the page to be opened.
+self.addEventListener('pushsubscriptionchange', (e) => {
+  e.waitUntil((async () => {
+    try {
+      const key = e.oldSubscription && e.oldSubscription.options
+        ? e.oldSubscription.options.applicationServerKey : null;
+      if (!key) return;
+      const sub = await self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: key,
+      });
+      await fetch('/api/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON() }),
+      });
+    } catch (_) { /* the page resubscribes on its next load */ }
+  })());
 });
 
 // A notice raised from here is tapped here too.

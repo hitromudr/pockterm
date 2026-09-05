@@ -38,6 +38,18 @@ type Config struct {
 	// NotifyFile: empty means a file under the user's config directory, "off"
 	// keeps them in memory and loses them on the next restart.
 	PresetsFile string // POCKTERM_PRESETS_FILE
+
+	// Web Push: the VAPID key pair and the devices subscribed to it. Both are
+	// files because both outlive the process by months — the public half of the
+	// key is baked into every subscription a browser made, and CI installs a new
+	// binary several times a working day. "off" turns push off entirely, which
+	// is the state for anyone who does not want the browser's push service in
+	// the path at all.
+	VapidFile string // POCKTERM_VAPID_FILE
+	PushFile  string // POCKTERM_PUSH_FILE
+	// Who a push service should complain to about this sender. RFC 8292 wants a
+	// mailto: or an https URL; empty names the program.
+	PushSubject string // POCKTERM_PUSH_SUBJECT
 }
 
 func FromEnv(getenv func(string) string) (Config, error) {
@@ -58,6 +70,9 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		Idle:           idle,
 		NotifyFile:     getenv("POCKTERM_NOTIFY_FILE"),
 		PresetsFile:    getenv("POCKTERM_PRESETS_FILE"),
+		VapidFile:      getenv("POCKTERM_VAPID_FILE"),
+		PushFile:       getenv("POCKTERM_PUSH_FILE"),
+		PushSubject:    getenv("POCKTERM_PUSH_SUBJECT"),
 	}
 	if err := c.validate(); err != nil {
 		return Config{}, err

@@ -2986,6 +2986,50 @@ describe('the notification channel, checked without waiting for an agent', () =>
 
     assert.deepEqual(stand.pageErrors, []);
   });
+
+  test('the host hands out a key to subscribe with, and the page says what came of it', async () => {
+    // The key is what a browser needs before it can subscribe at all, and it is
+    // the same key for every device: generated once and kept, because it is
+    // baked into every subscription there is. A new one at startup would leave
+    // every phone silently unreachable — and CI restarts this binary several
+    // times a working day.
+    const { page } = stand;
+    await stand.open();
+    const key = await page.evaluate(async () => {
+      const res = await fetch('/api/push');
+      if (!res.ok) return `status ${res.status}`;
+      return (await res.json()).key;
+    });
+    assert.match(String(key), /^[A-Za-z0-9_-]{80,}$/, `the host handed out ${key}`);
+
+    // Whether the subscription itself succeeds is not this stand's to decide —
+    // a headless Chromium has no push service behind it — but the attempt has to
+    // leave a line either way. A silent failure here is the whole class of bug
+    // this channel was built to end.
+    for (let i = 0; i < 100 && !/"event":"push"/.test(stand.serverLog()); i++) {
+      await page.waitForTimeout(50);
+    }
+    const said = (stand.serverLog().match(/\{"event":"push".*/) || [''])[0];
+    assert.match(said, /"ok":(true|false)/, `the page never said what became of the subscription: ${said}`);
+    if (/"ok":false/.test(said)) {
+      assert.match(said, /"(reason|error)":/, `a failure with no reason in it: ${said}`);
+    }
+  });
+
+  test('a subscription that did not happen leaves the drawing with the page', async () => {
+    // The two channels are exclusive on this side — whichever can deliver owns
+    // the drawing, or one finish arrives twice — so the state has to be readable
+    // rather than inferred. A headless Chromium has no push service behind it,
+    // which makes this stand the case that must not go silent: no subscription,
+    // and the page still drawing its own notices.
+    const { page } = stand;
+    await stand.open();
+    for (let i = 0; i < 100 && !/"event":"push"/.test(stand.serverLog()); i++) {
+      await page.waitForTimeout(50);
+    }
+    const owns = await page.evaluate(() => document.documentElement.dataset.push || '');
+    assert.equal(owns, 'no', 'the drawing was handed to a worker that cannot deliver here');
+  });
 });
 
 describe('a new version on the server', () => {

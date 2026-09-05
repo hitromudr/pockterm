@@ -179,3 +179,58 @@ tap said rather than only on the journal.
 the phone and two desktops — and `notify … ok:true` from a laptop in another room reads
 exactly like the phone in a pocket. Every client line now carries `dev`, a short random tag
 per install kept in `pt-device`; nothing else about the device is derived from it.
+
+**A backgrounded PWA cannot be reached down its own socket, and the server could
+not tell.** Android suspends it: the page stops answering, `keepAlive` gets no pong for
+60 seconds and closes the connection — and everything written into it in between was
+counted as delivered. The journal already carried the words, written for exactly this
+case and never read as an answer: `done yarr to 1 page(s), 0 showing it` at 13:22:33 on
+2026-09-05, no acknowledgement from any page, `socket gone: yarr answered no ping for
+1m0s — anything sent into it was counted as delivered` at 13:23:25. The same event with
+the PWA on screen (`done natal`, 13:37:21) was acknowledged in the same second and
+`notify-shade` reported `live:1`. Nothing about permissions, nothing about the shade: the
+frame never arrived.
+
+**So there is a third channel, and it is the only one that reaches a phone in a
+pocket.** `internal/push` speaks Web Push: RFC 8291 encryption in the RFC 8188 aes128gcm
+coding, RFC 8292 for the authorization, and no library — the whole of it is checked
+against the worked example in RFC 8291 §5, byte for byte, including the intermediate
+values from its Appendix A. A round trip against ourselves would pass with the two key
+derivations in the wrong order and every real device would discard the message in
+silence, which is why the RFC's own numbers are in the test file.
+
+**The key pair is a file, not a startup value** (`~/.config/pockterm/vapid.json`, 0600,
+`POCKTERM_VAPID_FILE`). Its public half is baked into every subscription a browser ever
+made: generating a new one leaves every device unreachable and tells nobody, and CI
+installs a new binary several times a working day. The subscriptions live beside it
+(`push.json`, `POCKTERM_PUSH_FILE`), keyed by endpoint and by the install's own `dev`
+tag — a browser hands out a new endpoint whenever it renews, and without the second key
+one phone quietly becomes five subscriptions, four of them silent. A broken file is an
+error rather than a fresh start: starting over would cost every subscription there is.
+
+**One event, one drawing.** With a subscription in place the page stops drawing notices
+from the socket frame and the service worker draws the push instead — the same tag, so
+the two cannot stack, and `renotify` so a replacement still alerts. Two channels
+rendering one event is one finish arriving twice, and with a shared tag the second
+arrives silently. Which one owns it is on the root element as `data-push`, beside
+`data-kb`: from outside, "the page is drawing them" and "the worker is" look identical
+until one of them stops.
+
+**Being on screen is the same question it was for Telegram.** The push goes out when
+nobody has that session visible, which is the rule the other out-of-band channel already
+followed. The send is a goroutine: it is the one part of this path that talks to the
+internet, and a push service taking twenty seconds must not hold up the watcher's next
+poll. A service answering 404 or 410 has forgotten the subscription, so this end forgets
+it too; anything else leaves it alone.
+
+**The probe that matters is the delayed one** (`/api/push/test`, ten seconds). A notice
+raised while the settings panel is open says nothing about the failure this channel
+exists for, which happens with the app off screen. Ten seconds is enough to press the
+button and put the phone down.
+
+**What the path costs.** The push service — Google's FCM for Chrome — sees that a device
+was notified and when; the body is encrypted to keys only that device holds, and the
+server signs with its own. Nothing else about the session travels. `POCKTERM_VAPID_FILE=off`
+or `POCKTERM_PUSH_FILE=off` turns the whole channel off, and the page is told so by a 404
+on `/api/push` — at which point it goes back to drawing notices from the frame, which is
+what it did before and which reaches nothing once the phone suspends it.

@@ -143,6 +143,12 @@ export async function startStand({
     // machine running the tests: a run would edit the owner's own buttons and
     // start from whatever the run before it left behind.
     POCKTERM_PRESETS_FILE: join(dir, 'buttons.json'),
+    // The push key pair and the devices subscribed to it, for the same reason
+    // again — and one more: the key pair is what every real subscription of the
+    // owner's is made against, and a test run that regenerated it would leave
+    // his phone unreachable until the page was opened again.
+    POCKTERM_VAPID_FILE: join(dir, 'vapid.json'),
+    POCKTERM_PUSH_FILE: join(dir, 'push.json'),
     // How much silence counts as "finished". Two seconds instead of thirty so a
     // test can watch a tab go from working to done inside one run — the same
     // threshold the notification uses, and the state the strip is coloured by.

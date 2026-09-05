@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v195';
+const APP_VERSION = 'v196';
 
 // Which install a journal line came from.
 //
@@ -1967,7 +1967,14 @@ function onControl(raw) {
   let c = null;
   try { c = JSON.parse(raw); } catch (_) { return; }
   if (c && c.type === 'mode') setCopyMode(!!c.in, c.back | 0, c.hist | 0);
-  if (c && c.type === 'notify') show(noticeFrom(c));
+  if (c && c.type === 'notify') {
+    // Drawn here only while nothing else can draw it. With a subscription in
+    // place the same event is arriving as a push, and the worker will show it —
+    // including the times this page never sees the frame at all, which is the
+    // whole reason push exists.
+    if (pushOwns) report('notify', { via: 'push', tag: (noticeFrom(c) || {}).tag || '' });
+    else show(noticeFrom(c));
+  }
   // What is behind the screen, for the copy window that asked for it.
   if (c && c.type === 'capture') tookCapture(c.text);
   // What tmux does per wheel notch, asked of tmux rather than assumed: the
@@ -4337,6 +4344,10 @@ function armPermissionAsk() {
       .then((perm) => {
         report('notify-permission', { permission: perm, asked: 'first-touch' });
         renderBell();
+        // A subscription needs a granted permission, and this is the moment one
+        // is granted: without arming here the device stays unsubscribed until
+        // the page is loaded again.
+        if (perm === 'granted') armPush();
       })
       .catch((e) => report('notify-permission', { error: (e && e.name) || 'error', asked: 'first-touch' }));
   }, { once: true, passive: true, capture: true });
@@ -4370,6 +4381,7 @@ bellBtn.addEventListener('click', async () => {
   try {
     applyMode(await sendMode(want));
     report('notify-mode', { mode: notifyMode, tg: notifyTG });
+    if (notifyMode !== 'off') armPush();
     toast(notifyMode === 'off' ? 'notifications off'
       : notifyMode === 'pwa+tg' ? 'notifications: this page + telegram' : 'notifications: this page');
   } catch (e) {
@@ -4385,6 +4397,122 @@ renderBell();
 // A WebView has no Notification API at all, so the app carries them.
 function nativeNotifier() {
   return !!(window.PockNative && typeof window.PockNative.notify === 'function');
+}
+
+// --- Web Push: the channel that reaches this device when the page is not running
+//
+// The socket cannot do it and never could. Android suspends a backgrounded PWA:
+// it stops answering the server's ping, the socket is closed a minute later, and
+// every frame written into it in between was counted as delivered and drawn
+// nowhere — measured on the owner's phone on 2026-09-05, `done yarr` sent "to 1
+// page(s)" at 13:22:33 and acknowledged by nobody, `socket gone` at 13:23:25.
+//
+// A push is delivered by the browser's own push service, which wakes the service
+// worker with no page involved. That is why the worker draws it (see the `push`
+// listener in sw.js) and why, once this page is subscribed, it stops drawing
+// notices from the socket frame itself: two channels rendering one event is one
+// finish arriving twice, and the tag would make the second silently replace the
+// first. Whichever can deliver owns the drawing.
+let pushOwns = false;
+let pushArming = false;
+let pushDevices = 0;
+
+// Which channel owns the drawing, on the root element beside `data-kb` and
+// `data-size`. A diagnostic first — the device has no console — and the one
+// thing a browser test can read without a push service behind it: "the page is
+// still drawing its own notices" and "the worker is" look identical from the
+// outside until one of them fails.
+function markPush() {
+  document.documentElement.dataset.push = pushOwns ? 'yes' : 'no';
+}
+markPush();
+
+// The server's VAPID key as bytes, which is the form subscribe() wants.
+//
+// Not `keyBytes` — that name is taken by the key bar's own, the one that turns
+// "Escape" into the byte a pty reads. Two of them in one module is a page that
+// does not evaluate at all, which from a phone looks like a machine with no tmux
+// sessions on it.
+function serverKeyBytes(key) {
+  const pad = '='.repeat((4 - (key.length % 4)) % 4);
+  const raw = atob((key + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+// Whether a subscription the browser already holds was made for this server's
+// key. A key pair is per install and outlives the process, but a restored
+// backup or a second host on the same origin would leave a subscription no push
+// from here can use — and the failure is silent, which is the one failure this
+// whole file exists to stop.
+function sameKey(sub, key) {
+  const have = sub && sub.options && sub.options.applicationServerKey;
+  if (!have) return false;
+  const a = new Uint8Array(have);
+  const b = serverKeyBytes(key);
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+// armPush subscribes this device, or explains in the journal why it did not.
+//
+// Called on load, and again whenever the permission or the mode changes: a
+// subscription needs a granted permission, and the permission is asked for at
+// the first touch.
+async function armPush() {
+  if (pushArming) return;
+  pushArming = true;
+  try {
+    if (!swReg || !('PushManager' in window)) {
+      report('push', { ok: false, reason: 'no push in this browser' });
+      return;
+    }
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const res = await fetch(`/api/push?${tokenQS}`);
+    if (res.status === 404) {
+      // A host with push off. Not a failure: the page keeps drawing notices from
+      // the frame, which is what it did before this existed.
+      pushOwns = false;
+      markPush();
+      report('push', { ok: false, reason: 'push is off on the host' });
+      return;
+    }
+    if (!res.ok) throw new Error(`the host answered ${res.status}`);
+    const { key } = await res.json();
+    if (!key) throw new Error('the host has no key');
+    let sub = await swReg.pushManager.getSubscription();
+    if (sub && !sameKey(sub, key)) {
+      // A subscription for somebody else's key is worse than none: it looks
+      // healthy from here and every push against it is refused.
+      try { await sub.unsubscribe(); } catch (_) { /* it is going anyway */ }
+      sub = null;
+    }
+    if (!sub) {
+      sub = await swReg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: serverKeyBytes(key),
+      });
+    }
+    const saved = await fetch(`/api/push?${tokenQS}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: sub.toJSON(), device: device() }),
+    });
+    if (!saved.ok) throw new Error(`the host refused the subscription: ${saved.status}`);
+    const state = await saved.json();
+    pushDevices = state.devices || 0;
+    pushOwns = true;
+    markPush();
+    report('push', { ok: true, devices: pushDevices, endpoint: String(sub.endpoint || '').slice(-12) });
+  } catch (e) {
+    pushOwns = false;
+    markPush();
+    report('push', { ok: false, error: (e && e.message) || 'error' });
+  } finally {
+    pushArming = false;
+  }
 }
 
 // A frame arrived, so a notice is wanted: the server decided that, reading the
@@ -4452,6 +4580,10 @@ function show(notice) {
 // A tap here raises one notice and then asks the shade what it is holding, so
 // the two failures separate: nothing sent (no permission, no worker) from sent
 // and swallowed (the system channel for the installed app, "Do not disturb").
+// Long enough to press the button and put the phone down, short enough that
+// nobody wonders whether it is coming.
+const PROBE_DELAY = 10;
+
 const notifyTestBtn = document.getElementById('notify-test');
 const notifyNoteEl = document.getElementById('notify-note');
 
@@ -4507,8 +4639,33 @@ notifyTestBtn.addEventListener('click', async () => {
     },
   });
   report('notify-test', { via, ok: via !== 'none' });
-  notifyNote(via === 'none' ? 'этот браузер не может показать уведомление' : 'пробное уведомление отправлено');
+  if (via === 'none') {
+    notifyNote('этот браузер не может показать уведомление');
+    return;
+  }
+  // And the other half, which is the half that was broken: a notice the *server*
+  // pushes to this device. It is delayed on purpose — the failure happens while
+  // the app is off screen, and a probe that arrives while the settings panel is
+  // open proves nothing about it.
+  if (!pushOwns) {
+    notifyNote('пробное уведомление отправлено. Push не подключён: в фоне уведомлений не будет');
+    return;
+  }
+  try {
+    const res = await fetch(`/api/push/test?${tokenQS}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delay: PROBE_DELAY }),
+    });
+    if (!res.ok) throw new Error(`the host answered ${res.status}`);
+    report('notify-test', { push: true, delay: PROBE_DELAY });
+    notifyNote(`пробное уведомление отправлено. Через ${PROBE_DELAY} с сервер пришлёт push — сверните приложение, чтобы проверить фон`);
+  } catch (e) {
+    report('notify-test', { push: false, error: (e && e.message) || 'error' });
+    notifyNote('пробное уведомление отправлено, но push сервер не принял');
+  }
 });
+
 
 // A new page on the server: say so, and let the owner take it.
 //
@@ -5345,7 +5502,7 @@ if ('serviceWorker' in navigator) {
   // `ready` rather than the register() promise, because a worker installed by a
   // previous load is already there and register() would hand back one that has
   // not taken control yet.
-  navigator.serviceWorker.ready.then((r) => { swReg = r; }).catch(() => {});
+  navigator.serviceWorker.ready.then((r) => { swReg = r; armPush(); }).catch(() => {});
   // A tap on a notice raised by the worker arrives here when this page is still
   // open. The worker knows which session the notice was about and this page
   // knows what it is showing, so the switch happens on this side.

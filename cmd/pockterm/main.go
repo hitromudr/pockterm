@@ -19,9 +19,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/hitromudr/pockterm"
 	"github.com/hitromudr/pockterm/internal/config"
+	"github.com/hitromudr/pockterm/internal/push"
 	"github.com/hitromudr/pockterm/internal/server"
 	"github.com/hitromudr/pockterm/internal/session"
 	"github.com/hitromudr/pockterm/internal/setup"
@@ -41,6 +43,7 @@ const usage = `pockterm — mobile web terminal for your tmux sessions
 
 Environment: POCKTERM_LISTEN, POCKTERM_TOKEN, POCKTERM_PUBLIC_URL,
 POCKTERM_TG_*, POCKTERM_IDLE, POCKTERM_NOTIFY_FILE, POCKTERM_PRESETS_FILE,
+POCKTERM_VAPID_FILE, POCKTERM_PUSH_FILE, POCKTERM_PUSH_SUBJECT,
 POCKTERM_UPLOAD_DIR
 and POCKTERM_SESSION_DIR.
 See the README.
@@ -221,6 +224,7 @@ func serve() {
 	notices := server.NewNotices()
 	pref := notifyPref(cfg)
 	buttons := customButtons(cfg)
+	pusher := pushChannel(cfg)
 	h := server.Handler(server.Options{
 		Token:        cfg.Token,
 		ListSessions: sessionLister(cfg),
@@ -231,7 +235,7 @@ func serve() {
 		LeaveMode:  leaveMode,
 		ScrollTo:   scrollTo,
 		Capture:    capture,
-		Presence:   notifier(cfg, notices, pref),
+		Presence:   notifier(cfg, notices, pref, pusher),
 		Notices:    notices,
 		NotifyMode: func() (string, bool) { return string(pref.Mode()), cfg.Notify() },
 		SetNotifyMode: func(m string) error {
@@ -246,6 +250,56 @@ func serve() {
 			}
 			log.Printf("notifications: %s", mode)
 			return nil
+		},
+		PushKey: func() string {
+			if pusher == nil {
+				return ""
+			}
+			return pusher.keys.Public
+		},
+		Subscribe: func(sub push.Subscription) error {
+			if pusher == nil {
+				return errors.New("push is off on this host")
+			}
+			if err := pusher.store.Add(sub); err != nil {
+				return err
+			}
+			log.Printf("push: subscribed %s, %d device(s)", short(sub.Endpoint), pusher.store.Count())
+			return nil
+		},
+		Unsubscribe: func(endpoint string) error {
+			if pusher == nil {
+				return errors.New("push is off on this host")
+			}
+			if err := pusher.store.Remove(endpoint); err != nil {
+				return err
+			}
+			log.Printf("push: unsubscribed %s, %d device(s) left", short(endpoint), pusher.store.Count())
+			return nil
+		},
+		PushTest: func(delay time.Duration) error {
+			if pusher == nil {
+				return errors.New("push is off on this host")
+			}
+			if pusher.store.Count() == 0 {
+				return errors.New("no device is subscribed")
+			}
+			// After the delay and not now: the failure this channel exists for
+			// happens while the app is off screen, so the probe has to arrive
+			// then. AfterFunc rather than a goroutine with a sleep — the same
+			// thing, said in one line, and it needs no shutdown of its own since
+			// the process is the lifetime of the probe.
+			time.AfterFunc(delay, func() {
+				pusher.send(watch.Done, "проверка", "🔔 pockterm", "Проверка push-канала. Это сообщение прислал сервер.")
+			})
+			log.Printf("push: probe in %s to %d device(s)", delay, pusher.store.Count())
+			return nil
+		},
+		PushDevices: func(endpoint string) (bool, int) {
+			if pusher == nil {
+				return false, 0
+			}
+			return endpoint != "" && pusher.store.Has(endpoint), pusher.store.Count()
 		},
 		PageVersion: pockterm.PageVersion(),
 		WheelLines:  wheelLines,
@@ -499,7 +553,7 @@ func firstLine(s string) string {
 // the background. Telegram is optional; the watcher is not, because the page
 // no longer works out on its own when a run ended — it renders what it is
 // told, and there has to be someone to tell it.
-func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref) server.Presence {
+func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref, pusher *pushOut) server.Presence {
 	var bot *telegram.Client
 	if cfg.Notify() {
 		bot = &telegram.Client{Token: cfg.TGToken, Chat: cfg.TGChat, API: cfg.TGAPI}
@@ -548,6 +602,15 @@ func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref) serv
 					Body:    body,
 				}, func(id int64) bool { return viewers.Watching(e.Session, id) })
 				log.Printf("notify: %s %s to %d page(s), %d showing it", e.Kind, e.Session, sent, skipped)
+				// And to the devices themselves, which is the half a suspended
+				// page cannot do: the frame above reaches a page that is running,
+				// the push reaches the phone in a pocket. Being on screen is the
+				// same question it is for Telegram — a notice about what the owner
+				// is looking at is noise — and the send is a goroutine because it
+				// is the one part of this path that talks to the internet.
+				if pusher != nil && !e.OnScreen {
+					go pusher.send(e.Kind, e.Session, title, body)
+				}
 			}
 			// Telegram is one recipient, and for it being on screen is the whole
 			// question: a message about what the owner is looking at is noise.
@@ -599,6 +662,121 @@ func customButtons(cfg config.Config) *session.Buttons {
 		log.Printf("custom buttons: %d, from %s", n, path)
 	}
 	return b
+}
+
+// pushOut is the Web Push half of the notification path: the one that reaches a
+// device whose page is not running.
+//
+// It exists because the socket half cannot. A backgrounded PWA on Android is
+// suspended — it stops answering the server's ping, the socket is closed a
+// minute later, and everything written into it in between was counted as
+// delivered and drawn nowhere. See internal/push for the measurement.
+//
+// Nil means push is off on this host, and the page is told so by a 404 on
+// /api/push. That is not a failure state: it is what this program did before,
+// and a page that knows push is unavailable keeps drawing notices from the
+// frame itself.
+type pushOut struct {
+	keys  *push.Keys
+	store *push.Store
+	cli   *push.Client
+}
+
+// pushChannel loads the key pair and the subscriptions, both from the user's
+// config directory beside the notification switch — and for the same reason:
+// they outlive the process, and CI installs a new binary several times a day.
+// A new key pair would quietly invalidate every subscription there is.
+func pushChannel(cfg config.Config) *pushOut {
+	if cfg.VapidFile == "off" || cfg.PushFile == "off" {
+		log.Printf("push is off: POCKTERM_%s_FILE=off", map[bool]string{true: "VAPID", false: "PUSH"}[cfg.VapidFile == "off"])
+		return nil
+	}
+	keysPath, subsPath := cfg.VapidFile, cfg.PushFile
+	if keysPath == "" || subsPath == "" {
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			// Without somewhere to keep the key pair there is no push at all: one
+			// generated per start is one every device would have to subscribe to
+			// again, and none of them would know to.
+			log.Printf("no config directory, push is off: %v", err)
+			return nil
+		}
+		if keysPath == "" {
+			keysPath = filepath.Join(dir, "pockterm", "vapid.json")
+		}
+		if subsPath == "" {
+			subsPath = filepath.Join(dir, "pockterm", "push.json")
+		}
+	}
+	keys, err := push.LoadKeys(keysPath)
+	if err != nil {
+		log.Printf("push is off: %v", err)
+		return nil
+	}
+	store, err := push.OpenStore(subsPath)
+	if err != nil {
+		log.Printf("push is off: %v", err)
+		return nil
+	}
+	log.Printf("push on, %d device(s) subscribed, keys in %s", store.Count(), keysPath)
+	return &pushOut{keys: keys, store: store, cli: &push.Client{Keys: keys, Subject: cfg.PushSubject}}
+}
+
+// send delivers one event to every subscribed device.
+//
+// Called from a goroutine, because this is the one part of the notification
+// path that talks to the internet: a push service that takes twenty seconds to
+// answer must not hold up the watcher's next poll.
+//
+// A subscription the service calls gone is forgotten here rather than retried
+// forever — a browser hands out a new endpoint whenever it renews, and the old
+// one answers 410 from then on.
+func (p *pushOut) send(kind watch.Kind, session, title, body string) {
+	subs := p.store.List()
+	if len(subs) == 0 {
+		return
+	}
+	payload, err := push.Payload{
+		Title: title,
+		Body:  body,
+		// The same tag the page would have used, so a notice raised by the
+		// worker replaces the one a page raised and not the other way round.
+		Tag:     "pockterm-" + string(kind) + ":" + session,
+		Session: session,
+	}.JSON()
+	if err != nil {
+		log.Printf("push: %v", err)
+		return
+	}
+	sent, gone := 0, 0
+	for _, sub := range subs {
+		switch err := p.cli.Send(sub, payload); {
+		case err == nil:
+			sent++
+		case push.Gone(err):
+			gone++
+			if err := p.store.Remove(sub.Endpoint); err != nil {
+				log.Printf("push: %v", err)
+			}
+		default:
+			log.Printf("push: %v", err)
+		}
+	}
+	log.Printf("push: %s %s to %d device(s), %d gone", kind, session, sent, gone)
+}
+
+// short names a subscription in the journal without printing the whole
+// endpoint: the tail is what distinguishes two subscriptions, and the head is
+// the same push service every time.
+func short(endpoint string) string {
+	if i := strings.LastIndex(endpoint, "/"); i >= 0 && i+1 < len(endpoint) {
+		tail := endpoint[i+1:]
+		if len(tail) > 12 {
+			tail = tail[:12] + "…"
+		}
+		return tail
+	}
+	return endpoint
 }
 
 func notifyPref(cfg config.Config) *watch.Pref {

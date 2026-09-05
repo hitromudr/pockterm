@@ -18,6 +18,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/hitromudr/pockterm/internal/push"
 	"github.com/hitromudr/pockterm/internal/session"
 	"github.com/hitromudr/pockterm/internal/tmuxcmd"
 )
@@ -2060,4 +2061,160 @@ func TestWSAcceptsAnOriginThatMatches(t *testing.T) {
 	}
 	defer c.Close()
 	readBinaryUntil(t, c, "ready")
+}
+
+// --- Web Push -------------------------------------------------------------
+//
+// The endpoints exist because a suspended page cannot be reached down its own
+// socket: Android stops it answering, the socket is closed a minute later, and
+// what was written into it is counted as delivered and drawn nowhere. What is
+// checked here is the handing-over, not the encryption — internal/push covers
+// that against the RFC's own vectors.
+
+func TestPushHandsOutTheKeyAndTakesTheSubscription(t *testing.T) {
+	opts := testOptions("")
+	var stored push.Subscription
+	opts.PushKey = func() string { return "BKey" }
+	opts.Subscribe = func(sub push.Subscription) error { stored = sub; return nil }
+	opts.PushDevices = func(endpoint string) (bool, int) {
+		return endpoint == stored.Endpoint && endpoint != "", 1
+	}
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/push")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Key     string `json:"key"`
+		Here    bool   `json:"here"`
+		Devices int    `json:"devices"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if got.Key != "BKey" {
+		t.Fatalf("key = %q — without it no browser can subscribe at all", got.Key)
+	}
+
+	body := `{"subscription":{"endpoint":"https://push.example.net/abc","keys":{"p256dh":"BQ","auth":"AA"}},"device":"phone"}`
+	res, err = http.Post(srv.URL+"/api/push", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("subscribe answered %d", res.StatusCode)
+	}
+	if stored.Endpoint != "https://push.example.net/abc" || stored.Keys.P256dh != "BQ" {
+		t.Fatalf("the subscription did not arrive whole: %+v", stored)
+	}
+	if stored.Device != "phone" {
+		t.Fatalf("device = %q — without it one phone becomes five subscriptions", stored.Device)
+	}
+}
+
+func TestAHostWithoutPushSaysSoRatherThanFailing(t *testing.T) {
+	// The page has to tell "push is off here" from "push is broken here": the
+	// first means keep drawing notices from the frame, the second means somebody
+	// should look at the journal.
+	opts := testOptions("")
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+	res, err := http.Get(srv.URL + "/api/push")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", res.StatusCode)
+	}
+}
+
+func TestUnsubscribeForgetsOneEndpoint(t *testing.T) {
+	opts := testOptions("")
+	opts.PushKey = func() string { return "BKey" }
+	gone := ""
+	opts.Unsubscribe = func(endpoint string) error { gone = endpoint; return nil }
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	res, err := http.Post(srv.URL+"/api/push/off", "application/json",
+		strings.NewReader(`{"endpoint":"https://push.example.net/abc"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	if gone != "https://push.example.net/abc" {
+		t.Fatalf("forgot %q", gone)
+	}
+}
+
+func TestTheProbeIsDelayedAndBounded(t *testing.T) {
+	// Delayed on purpose: the failure it tests happens while the app is off
+	// screen, so a probe raised while the settings panel is open proves nothing.
+	// Bounded because the delay comes from a page, and a page can be older than
+	// this binary or simply wrong.
+	opts := testOptions("")
+	opts.PushKey = func() string { return "BKey" }
+	var asked []time.Duration
+	opts.PushTest = func(d time.Duration) error { asked = append(asked, d); return nil }
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	for _, tc := range []struct {
+		send string
+		want time.Duration
+	}{
+		{`{"delay":10}`, 10 * time.Second},
+		{`{"delay":-5}`, 0},
+		{`{"delay":9000}`, 60 * time.Second},
+		{``, 0},
+	} {
+		res, err := http.Post(srv.URL+"/api/push/test", "application/json", strings.NewReader(tc.send))
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusAccepted {
+			t.Fatalf("%s: status = %d", tc.send, res.StatusCode)
+		}
+	}
+	want := []time.Duration{10 * time.Second, 0, 60 * time.Second, 0}
+	if len(asked) != len(want) {
+		t.Fatalf("asked = %v", asked)
+	}
+	for i := range want {
+		if asked[i] != want[i] {
+			t.Fatalf("delay %d = %s, want %s", i, asked[i], want[i])
+		}
+	}
+}
+
+func TestPushEndpointsWantTheToken(t *testing.T) {
+	// Everything else behind the token is, and a subscription is somebody else's
+	// phone: an unauthenticated POST here would let a stranger have this server
+	// notify a device of their choosing.
+	opts := testOptions("secret")
+	opts.PushKey = func() string { return "BKey" }
+	opts.Subscribe = func(push.Subscription) error { return nil }
+	opts.PushTest = func(time.Duration) error { return nil }
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	for _, path := range []string{"/api/push", "/api/push/off", "/api/push/test"} {
+		res, err := http.Post(srv.URL+path, "application/json", strings.NewReader("{}"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("%s answered %d without a token", path, res.StatusCode)
+		}
+	}
 }

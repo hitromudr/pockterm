@@ -295,6 +295,12 @@ release.
   `showNotification` is not a notification — `askShade` reads `getNotifications` back into the
   journal (`notify-shade … live:0` is a notice the device never drew), `#notify-test` raises
   one on demand, and every client line carries `dev` so three installed PWAs are told apart.
+- **A backgrounded PWA is not reachable down its own socket** — Android suspends it, the
+  ping goes unanswered, and what was written in between was counted as delivered. Web Push
+  is the channel for that (`internal/push`: RFC 8291/8188/8292, no library, checked against
+  the RFC's own vectors; keys and subscriptions in files, because the public key is baked
+  into every subscription and CI restarts this binary daily). With a subscription in place
+  **the worker draws and the page does not** (`data-push`), or one finish arrives twice.
 
 ## Selection, the copy window and the Markdown behind the drawing
 

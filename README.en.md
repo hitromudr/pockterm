@@ -222,6 +222,9 @@ URL.
 | `POCKTERM_TG_API` | `https://api.telegram.org` | Bot API root: a local bot server or a test double. |
 | `POCKTERM_IDLE` | `30s` | How much silence counts as "finished". |
 | `POCKTERM_NOTIFY_FILE` | a file in the user's config dir | Where the notification switch is remembered; `off` keeps it in memory (lost on restart). |
+| `POCKTERM_VAPID_FILE` | a file in the user's config dir | The Web Push key pair (0600). `off` turns push off entirely. The pair must survive a restart: its public half is baked into every subscription. |
+| `POCKTERM_PUSH_FILE` | a file in the user's config dir | Device subscriptions (0600); `off` turns push off. |
+| `POCKTERM_PUSH_SUBJECT` | the project's name | The contact in the VAPID token (`mailto:` or https) a push service complains to about the sender. |
 | `POCKTERM_PRESETS_FILE` | a file in the user's config dir | Where the custom session buttons are remembered; `off` keeps them in memory. |
 | `POCKTERM_UPLOAD_DIR` | user cache dir | Where attached files are saved (images and documents alike); `off` disables uploads. |
 | `POCKTERM_SESSION_DIR` | the service's working dir | Where the session Makefile lives (the + button); `off` refuses to start any. |
@@ -467,6 +470,25 @@ prompt dismissed without an answer leaves the same "never asked" state behind, a
 page that asks on every load loses the right to ask at all. What is left after that
 is the dashed `🔔` — a tap on it is the second chance.
 
+**A backgrounded page receives nothing, so there is a third channel — Web Push.**
+Android suspends a backgrounded PWA: it stops answering the socket's ping, the
+server closes it a minute later, and everything written into it in between was
+counted as delivered and drawn nowhere. A push goes the other way: the browser's
+push service holds it, wakes the service worker, and the notice is drawn with no
+page involved. The VAPID keys live in `~/.config/pockterm/vapid.json`
+(`POCKTERM_VAPID_FILE`) and the subscriptions in `push.json`
+(`POCKTERM_PUSH_FILE`); both take `off`. The key pair has to survive a restart —
+its public half is baked into every subscription a browser made, and CI installs
+a new binary several times a day.
+
+With a subscription in place **the worker draws the notices and the page does
+not**: two channels rendering one event is a second notice that silently replaces
+the first. Which one owns it is on the root element as `data-push`. The sending
+rule is Telegram's: nothing about a session somebody has on screen. The
+intermediary is the browser's push service (FCM for Chrome): it sees that a
+device was notified and when, while the body is encrypted to keys only that
+device holds.
+
 **Whether one arrives is checked by a tap, not by waiting for an agent.**
 "Проверить уведомление" beside the switch raises a probe and then asks the
 browser what is left standing in the shade; the answer is written under the
@@ -474,8 +496,11 @@ button. "Уведомление доставлено" means the channel is live.
 в шторке пусто" means the system ate it: an installed PWA has its own
 notification channel in Android's settings, and with that channel off
 `Notification.permission` still answers `granted`, the call still succeeds, and
-nothing is drawn. The same answer goes to the journal (`notify-shade … live:0`),
-and every journal line now names its install (`dev`) — otherwise a laptop drawing
+nothing is drawn. The same answer goes to the journal (`notify-shade … live:0`).
+With a push subscription in place the tap also asks the server to push one ten
+seconds later — a probe of the path that was actually broken: press it, put the
+app in the background, see whether it arrives. Every journal line names its
+install (`dev`) — otherwise a laptop drawing
 notices perfectly reads exactly like the phone that draws none.
 
 **One session's notice no longer erases another's.** The tag carries the session
