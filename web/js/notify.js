@@ -16,6 +16,47 @@
 
 const KINDS = { question: 'pockterm-question', done: 'pockterm-done' };
 
+// The tag a new notice replaces an old one by.
+//
+// The kind alone used to be the whole of it, and that made every session share
+// one line in the shade. Measured, not reasoned about: on 2026-09-04 `xnt-lr`
+// finished at 18:53:08 and `xnt-mk` at 18:53:20, both raised as
+// `pockterm-done`, both reported `ok:true` — and the phone was left holding one
+// notice about the second. The first finish was not late or quiet, it was gone.
+//
+// So the session is part of the tag. What the tag was for is kept: a repeat
+// about the same session still collapses, because five "asks for an answer"
+// about one pane is noise. What it was never meant to do — swallow the session
+// next to it — stops.
+//
+// A frame carrying no session falls back to the kind: an older server sends
+// none, and one shared line beats nothing at all.
+export function tagFor(kind, session) {
+  const base = KINDS[kind];
+  if (!base) return null;
+  const name = String(session == null ? '' : session).trim();
+  return name ? `${base}:${name}` : base;
+}
+
+// The notice the owner raises by hand, from the settings panel.
+//
+// Everything else on this path is raised by the watcher — minutes or hours
+// apart, and only about a session no page is showing. So "does a notification
+// arrive on this phone at all" took an agent finishing to answer, and when the
+// answer was no there was nothing to say which half of the path had eaten it.
+// This is the half a tap can test.
+//
+// Its own tag: a probe that replaced a real finish would answer one question by
+// destroying another.
+export function testNotice() {
+  return {
+    title: '🔔 pockterm',
+    body: 'Проверка канала уведомлений',
+    tag: 'pockterm-test',
+    session: '',
+  };
+}
+
 // The picture in the notification, on every notice without exception.
 //
 // Left unset, Chrome draws its own generic bell — and it does so unpredictably:
@@ -53,7 +94,7 @@ const MAX_BODY = 400;
 // wrong one about as often as not.
 export function noticeFrom(frame) {
   if (!frame || frame.type !== 'notify') return null;
-  const tag = KINDS[frame.kind];
+  const tag = tagFor(frame.kind, frame.session);
   if (!tag) return null;
   const title = String(frame.title == null ? '' : frame.title).trim();
   if (!title) return null;
@@ -141,6 +182,28 @@ export function modeLabel(mode, telegram) {
   }
 }
 
+// askShade reads back what is actually standing under this tag, a tick after
+// the call was accepted.
+//
+// A resolved `showNotification` means the browser took the notice, not that the
+// phone drew it: a system channel switched off, a shade that dropped it, a
+// "Do not disturb" — all three look exactly like success from this side, and
+// `Notification.permission` keeps saying `granted` through every one of them.
+// That gap cost a day on 2026-09-04: the journal held 55 lines of
+// `notify … ok:true` about a phone whose shade was empty, and neither half of
+// the path could be ruled out from here.
+//
+// A browser with no `getNotifications` is left alone rather than guessed at —
+// silence in the journal, not a number that means nothing.
+function askShade(reg, tag, env) {
+  if (!env.onShown || typeof reg.getNotifications !== 'function') return;
+  try {
+    const asked = reg.getNotifications({ tag });
+    if (!asked || typeof asked.then !== 'function') return;
+    asked.then((list) => env.onShown(Array.isArray(list) ? list.length : 0)).catch(() => {});
+  } catch (_) { /* diagnostics must never cost a notification */ }
+}
+
 // deliver raises a notice through the strongest path the browser actually
 // allows, and returns which one that was: 'sw', 'window' or 'none'.
 //
@@ -178,14 +241,21 @@ export function deliver(notice, env = {}) {
         // both: white on nothing is exactly what that slot wants, and one file
         // cannot drift from the other.
         badge: ICON,
+        // Alert again when this replaces a notice that is still standing.
+        // Without it the replacement is drawn silently — no sound, no
+        // vibration, no banner — and a phone in a pocket cannot tell that from
+        // nothing having been sent. The tag keeps the shade to one line per
+        // session and kind; what this restores is the alert, not the stack.
+        renotify: true,
         data: { session: notice.session || '' },
       });
       // A registration can still refuse (permission revoked between the tap and
       // the notice). That is a lost notification, so it is said out loud rather
       // than dropped: the answer comes a tick after the call, which is why this
       // returns the path taken and not the outcome.
-      if (shown && typeof shown.catch === 'function') {
-        shown.catch((e) => { if (env.onError) env.onError(e); });
+      if (shown && typeof shown.then === 'function') {
+        shown.then(() => askShade(reg, notice.tag, env))
+          .catch((e) => { if (env.onError) env.onError(e); });
       }
       return 'sw';
     } catch (e) {
@@ -196,7 +266,7 @@ export function deliver(notice, env = {}) {
   if (typeof Notifier !== 'function') return 'none';
   try {
     const n = new Notifier(notice.title, {
-      body: notice.body, tag: notice.tag, icon: ICON, badge: ICON,
+      body: notice.body, tag: notice.tag, icon: ICON, badge: ICON, renotify: true,
     });
     if (env.onClick) n.onclick = () => env.onClick(notice, n);
     return 'window';

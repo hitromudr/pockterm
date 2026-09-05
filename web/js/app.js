@@ -1,6 +1,6 @@
 import { keyBytes, applyCtrl } from './keys.js';
 import { detectPrompt, answerKeys, submitKeys, hasInputBox } from './detect.js';
-import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from './notify.js';
+import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNotice } from './notify.js';
 import { linkAction } from './link.js';
 import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
 import { snapshotText, chunks, pickedText, markdownFrom } from './select.js';
@@ -24,12 +24,40 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v194';
+const APP_VERSION = 'v195';
+
+// Which install a journal line came from.
+//
+// Three installed PWAs answer this host — the phone and two desktops — and
+// their lines were indistinguishable. On 2026-09-04 that made a day's worth of
+// `notify … ok:true` unreadable: the owner's phone showed nothing, and nothing
+// in the journal said whether those lines were the phone or a laptop in another
+// room reporting a notice it had drawn perfectly. A short random tag per
+// install answers that, and says nothing else about the device.
+//
+// Read once: the input log posts a line per keystroke, and localStorage is
+// synchronous.
+const DEVICE_KEY = 'pt-device';
+let deviceTag = null;
+function device() {
+  if (deviceTag !== null) return deviceTag;
+  deviceTag = '';
+  try {
+    deviceTag = localStorage.getItem(DEVICE_KEY) || '';
+    if (!deviceTag) {
+      deviceTag = Math.random().toString(36).slice(2, 8);
+      localStorage.setItem(DEVICE_KEY, deviceTag);
+    }
+  } catch (_) { /* a browser with no storage stays anonymous */ }
+  return deviceTag;
+}
 
 // Diagnostics go to the server's journal — see js/diag.js for why.
 initDiag((line) => {
   try {
-    navigator.sendBeacon(`/api/log?${tokenQS}`, new Blob([JSON.stringify(line)], { type: 'application/json' }));
+    const dev = device();
+    const out = dev ? { ...line, dev } : line;
+    navigator.sendBeacon(`/api/log?${tokenQS}`, new Blob([JSON.stringify(out)], { type: 'application/json' }));
   } catch (_) { /* never break the app over a log line */ }
 });
 report('hello', environment(APP_VERSION));
@@ -4407,9 +4435,80 @@ function show(notice) {
       handle.close();
     },
     onError: (e) => report('notify', { via: 'browser', ok: false, error: (e && e.name) || 'error' }),
+    // What the shade holds a tick later, which is the half of this path the
+    // journal used to say nothing about: `ok:true` with `live:0` is a notice the
+    // browser accepted and the phone never drew — a system channel switched off
+    // for the installed app, and permission still reading `granted`.
+    onShown: (live) => report('notify-shade', { tag: notice.tag, live }),
   });
   report('notify', { via, ok: via !== 'none', tag: notice.tag });
 }
+
+// The probe: does anything at all arrive on this device?
+//
+// It answers the question the journal could not. `notify … ok:true` says the
+// browser accepted the notice; it does not say the phone drew it, and on
+// 2026-09-04 that difference was a day of reading the wrong half of the path.
+// A tap here raises one notice and then asks the shade what it is holding, so
+// the two failures separate: nothing sent (no permission, no worker) from sent
+// and swallowed (the system channel for the installed app, "Do not disturb").
+const notifyTestBtn = document.getElementById('notify-test');
+const notifyNoteEl = document.getElementById('notify-note');
+
+// The answer stays on screen where the button is, rather than in a toast: the
+// toast is drawn inside the terminal screen, and these settings sit in the
+// drawer over it — a browser test caught it invisible on the first run. It also
+// has to be readable after the thumb has moved, which a 2.5 second toast is not.
+function notifyNote(text) {
+  notifyNoteEl.textContent = text;
+  notifyNoteEl.hidden = !text;
+}
+
+notifyTestBtn.addEventListener('click', async () => {
+  notifyNote('');
+  const notice = testNotice();
+  if (nativeNotifier()) {
+    let ok = false;
+    try { ok = !!window.PockNative.notify(notice.title, notice.body, ''); } catch (_) { ok = false; }
+    report('notify-test', { via: 'native', ok });
+    notifyNote(ok ? 'пробное уведомление отправлено' : 'приложение не приняло уведомление');
+    return;
+  }
+  if (!('Notification' in window)) {
+    report('notify-test', { via: 'none', ok: false, reason: 'no Notification API' });
+    notifyNote('этот браузер не умеет уведомления');
+    return;
+  }
+  let perm = Notification.permission;
+  // A tap is a gesture, which is the one context a prompt is allowed in.
+  if (perm === 'default') perm = await Notification.requestPermission();
+  try { localStorage.setItem(ASKED_KEY, '1'); } catch (_) {}
+  renderBell();
+  if (perm !== 'granted') {
+    report('notify-test', { via: 'none', ok: false, reason: `permission ${perm}` });
+    notifyNote(perm === 'denied' ? 'уведомления запрещены в настройках браузера' : 'разрешение не получено');
+    return;
+  }
+  const via = deliver(notice, {
+    registration: swReg,
+    Notifier: window.Notification,
+    onClick: (n, handle) => { window.focus(); handle.close(); },
+    onError: (e) => {
+      report('notify-test', { via: 'browser', ok: false, error: (e && e.name) || 'error' });
+      notifyNote('браузер отказался показать уведомление');
+    },
+    // The answer that matters, and the only one this page can read: what is
+    // standing in the shade a tick after the call was accepted.
+    onShown: (live) => {
+      report('notify-test', { ok: true, live });
+      notifyNote(live
+        ? 'уведомление доставлено'
+        : 'браузер принял, но в шторке пусто — канал выключен в системе');
+    },
+  });
+  report('notify-test', { via, ok: via !== 'none' });
+  notifyNote(via === 'none' ? 'этот браузер не может показать уведомление' : 'пробное уведомление отправлено');
+});
 
 // A new page on the server: say so, and let the owner take it.
 //

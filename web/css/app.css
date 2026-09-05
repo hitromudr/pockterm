@@ -714,7 +714,11 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
 #custom-reset.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340; }
 
 /* Why a button was refused, in the words the host used: on a phone there is no
-   log to open, and "не сохранилось" is not something anyone can act on. */
+   log to open, and "не сохранилось" is not something anyone can act on. The
+   same plate carries the notification probe's answer, for the same reason and
+   one more: the toast lives inside the terminal screen, which is behind the
+   drawer these settings are in. */
+#notify-note,
 #custom-note {
   margin-top: 6px;
   padding: 8px 10px;
@@ -724,6 +728,7 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
   border: 1px solid #4a3a1c;
   border-radius: 8px;
 }
+#notify-note { margin-bottom: 8px; white-space: normal; }
 /* A custom entry under +, next to the four presets it joins. */
 #new-menu button.own, #new-menu-term button.own { color: #ffe9a8; }
 

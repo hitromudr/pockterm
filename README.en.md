@@ -345,8 +345,8 @@ switch) rather than in the browser: what it starts happens on the host, a second
 phone must find the same buttons, and CI restarts the binary several times a day.
 
 Everything that used to sit behind `⋯` over the terminal moved into the same panel —
-text size, notifications, `〰 smooth`, the keyboard mode, the input log, the version
-and Install. Moved rather than copied: two places holding one lever drift apart. The
+text size, notifications and the probe that checks them, `〰 smooth`, the keyboard
+mode, the input log, the version and Install. Moved rather than copied: two places holding one lever drift apart. The
 `▾` that hides the bars stayed on the key bar, being an action on the working
 surface rather than a setting.
 
@@ -466,6 +466,23 @@ refused outright by some browsers and shown more quietly by the rest. Asked once
 prompt dismissed without an answer leaves the same "never asked" state behind, and a
 page that asks on every load loses the right to ask at all. What is left after that
 is the dashed `🔔` — a tap on it is the second chance.
+
+**Whether one arrives is checked by a tap, not by waiting for an agent.**
+"Проверить уведомление" beside the switch raises a probe and then asks the
+browser what is left standing in the shade; the answer is written under the
+button. "Уведомление доставлено" means the channel is live. "Браузер принял, но
+в шторке пусто" means the system ate it: an installed PWA has its own
+notification channel in Android's settings, and with that channel off
+`Notification.permission` still answers `granted`, the call still succeeds, and
+nothing is drawn. The same answer goes to the journal (`notify-shade … live:0`),
+and every journal line now names its install (`dev`) — otherwise a laptop drawing
+notices perfectly reads exactly like the phone that draws none.
+
+**One session's notice no longer erases another's.** The tag carries the session
+name: a repeat about the same session still collapses into one line (five "asks
+for an answer" in a row is noise), the session next to it gets its own. A
+replacement re-alerts (`renotify`) — without it it is drawn silently, no sound and
+no banner, which from a pocket is indistinguishable from nothing being sent.
 
 While the session is open in pockterm and the tab is on screen, its
 notifications stay quiet — you can already see it. A backgrounded PWA

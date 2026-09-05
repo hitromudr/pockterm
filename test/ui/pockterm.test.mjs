@@ -2947,6 +2947,47 @@ describe('what the composer remembers', () => {
   });
 });
 
+describe('the notification channel, checked without waiting for an agent', () => {
+  let stand;
+  before(async () => { stand = await startStand(); });
+  after(async () => { await stand.stop(); });
+
+  test('the probe says what happened, and the journal says which device asked', async () => {
+    // The two failures this separates were indistinguishable for a day: a notice
+    // the browser refused, and one it accepted while the phone drew nothing
+    // (the installed app's system channel switched off — `Notification.permission`
+    // keeps saying `granted` through that). Everything else on this path is
+    // raised by the watcher, hours apart, so there was nothing to tap.
+    const { page } = stand;
+    await stand.open();
+    await stand.openSettings();
+    await page.click('#notify-test');
+
+    for (let i = 0; i < 100 && !/"event":"notify-test"/.test(stand.serverLog()); i++) {
+      await page.waitForTimeout(50);
+    }
+    const line = (stand.serverLog().match(/\{"event":"notify-test".*/) || [''])[0];
+    assert.match(line, /"event":"notify-test"/, 'the probe left nothing in the journal');
+    assert.doesNotMatch(line, /"via":"none"/,
+      `a browser with a worker and a granted permission should have raised one: ${line}`);
+    // Where the button is, and not in the toast: the toast is drawn inside the
+    // terminal screen, which is behind the drawer these settings live in, so a
+    // probe reporting there reports to nobody. This test found that on its first
+    // run rather than the owner finding it on the phone.
+    await page.waitForSelector('#notify-note:not([hidden])', { timeout: 5000 });
+    const said = await page.locator('#notify-note').textContent();
+    assert.doesNotMatch(said, /^\s*$/, 'the probe left its note empty');
+
+    // Three installed PWAs answer this host, and their lines used to be
+    // indistinguishable — a laptop drawing notices perfectly reads exactly like
+    // the phone that draws none.
+    const hello = (stand.serverLog().match(/\{"event":"hello".*/) || [''])[0];
+    assert.match(hello, /"dev":"[a-z0-9]+"/, `no device on the journal line: ${hello}`);
+
+    assert.deepEqual(stand.pageErrors, []);
+  });
+});
+
 describe('a new version on the server', () => {
   let stand;
   before(async () => { stand = await startStand(); });

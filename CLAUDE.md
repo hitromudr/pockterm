@@ -290,6 +290,11 @@ release.
   in Android Chrome — to every open page keyed by client id, minus the pages showing that very
   session (`OnScreen`). Permission is asked from the first touch, once per install
   (`pt-notify-asked`), and every notice names its own icon.
+- **The tag names the session, not just the kind** (`tagFor`), with `renotify` beside it: one
+  tag for every session meant the second finish replaced the first, silently. And a resolved
+  `showNotification` is not a notification — `askShade` reads `getNotifications` back into the
+  journal (`notify-shade … live:0` is a notice the device never drew), `#notify-test` raises
+  one on demand, and every client line carries `dev` so three installed PWAs are told apart.
 
 ## Selection, the copy window and the Markdown behind the drawing
 

@@ -94,6 +94,19 @@
         <button id="bell" title="Nothing is notified. Tap to notify this page">&#128276; Notify</button>
       </div>
       <div class="row">
+        <!-- Whether a notification reaches this device at all, answered by a tap
+             instead of by waiting for an agent to finish. Everything else on that
+             path is raised by the watcher, hours apart and only about a session
+             nothing is showing — so "нет уведомлений" took a day to tell from "нет
+             событий", and the shade being empty after a successful call (a system
+             channel switched off for the installed app) looked like neither. -->
+        <button id="notify-test" title="Прислать пробное уведомление на это устройство">&#128276; Проверить уведомление</button>
+      </div>
+      <!-- The answer, where the button is. Not the toast: that one lives inside
+           the terminal screen, which is hidden behind the drawer the settings
+           are in — a probe whose result cannot be read is not a probe. -->
+      <p id="notify-note" hidden></p>
+      <div class="row">
         <!-- Which keyboard the app is asked for. `?ime=` was meant to make the
              next attempt cost a reload rather than an APK release, but the
              Android client loads a fixed URL and has no address bar to type it

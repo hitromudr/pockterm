@@ -5,7 +5,7 @@
 // left on this side is the shaping of a frame that has already been decided.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission } from '../web/js/notify.js';
+import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNotice } from '../web/js/notify.js';
 
 const done = { type: 'notify', kind: 'done', session: 'claude-1', title: '✅ claude-1 закончил', body: 'ok  github.com/x/y' };
 
@@ -13,12 +13,12 @@ test('a done frame becomes a notice', () => {
   const n = noticeFrom(done);
   assert.equal(n.title, '✅ claude-1 закончил');
   assert.equal(n.body, 'ok  github.com/x/y');
-  assert.equal(n.tag, 'pockterm-done');
+  assert.equal(n.tag, 'pockterm-done:claude-1');
 });
 
 test('a question frame gets its own tag, so the two do not replace each other', () => {
   const q = noticeFrom({ ...done, kind: 'question', title: '❓ claude-1 просит ответ', body: 'Apply?\n1. Yes' });
-  assert.equal(q.tag, 'pockterm-question');
+  assert.equal(q.tag, 'pockterm-question:claude-1');
   assert.match(q.body, /1\. Yes/);
 });
 
@@ -212,4 +212,104 @@ test('every notice names its own icon, on both paths', () => {
   deliver(notice, { Notifier: function (title, o) { made.push(o); } });
   assert.equal(made[0].icon, opts.icon, 'the fallback path draws the same icon');
   assert.equal(made[0].badge, opts.icon);
+});
+
+// --- one line in the shade per session, not per kind ------------------------
+//
+// The tag was the kind and nothing else, so every session shared one notice.
+// Measured on the owner's phone rather than reasoned about: on 2026-09-04 the
+// journal has `done xnt-lr` at 18:53:08 and `done xnt-mk` at 18:53:20, both
+// raised with `pockterm-done`, both reported `ok:true`. The second replaced the
+// first — and a replacement without `renotify` makes no sound, raises no
+// banner and leaves one line where two finishes happened.
+
+test('a tag names its session, so two sessions do not share one line', () => {
+  const a = noticeFrom({ ...done, session: 'xnt-lr' });
+  const b = noticeFrom({ ...done, session: 'xnt-mk' });
+  assert.equal(a.tag, 'pockterm-done:xnt-lr');
+  assert.notEqual(a.tag, b.tag, 'one finish must not erase another');
+});
+
+test('the same session and kind still collapse into one', () => {
+  // The reason the tag exists at all: five "asks for an answer" about one
+  // session is noise, not information.
+  const first = noticeFrom({ ...done, session: 'a' });
+  const again = noticeFrom({ ...done, session: 'a', title: '✅ a закончил снова' });
+  assert.equal(first.tag, again.tag);
+});
+
+test('a question does not replace a finish about the same session', () => {
+  const d = noticeFrom({ ...done, session: 'a' });
+  const q = noticeFrom({ ...done, kind: 'question', session: 'a' });
+  assert.notEqual(d.tag, q.tag);
+});
+
+test('a frame with no session falls back to the kind alone', () => {
+  // An older server sends none, and one shared line beats no notice at all.
+  assert.equal(noticeFrom({ ...done, session: '' }).tag, 'pockterm-done');
+  assert.equal(noticeFrom({ ...done, session: undefined }).tag, 'pockterm-done');
+});
+
+// --- the alert, and whether anything actually arrived -----------------------
+
+function shadeReg(holding = null) {
+  const reg = fakeReg();
+  reg.asked = [];
+  if (holding !== null) {
+    reg.getNotifications = (filter) => { reg.asked.push(filter); return Promise.resolve(holding); };
+  }
+  return reg;
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+test('a notice replacing one that still stands re-alerts', () => {
+  // Without this the replacement is silent — no sound, no vibration, no
+  // banner — which on a phone in a pocket is the same as no notice.
+  const reg = fakeReg();
+  deliver(notice, { registration: reg });
+  assert.equal(reg.calls[0].opts.renotify, true);
+  assert.ok(reg.calls[0].opts.tag, 'renotify without a tag is a TypeError');
+});
+
+test('the fallback path re-alerts too — one rule, not one per browser', () => {
+  const made = [];
+  deliver(notice, { Notifier: function (title, o) { made.push(o); } });
+  assert.equal(made[0].renotify, true);
+});
+
+test('what the shade holds is read back rather than assumed', async () => {
+  const reg = shadeReg([{ tag: notice.tag }]);
+  let live = null;
+  deliver(notice, { registration: reg, onShown: (n) => { live = n; } });
+  await tick();
+  assert.equal(live, 1);
+  assert.deepEqual(reg.asked, [{ tag: notice.tag }], 'asked about this notice, not about every one');
+});
+
+test('a call that succeeded and a shade that is empty is the case worth reporting', async () => {
+  // `showNotification` resolving means the browser took it, not that the phone
+  // drew it: a disabled system channel looks exactly like success from here,
+  // and the journal said `ok:true` for a phone showing nothing all day.
+  const reg = shadeReg([]);
+  let live = -1;
+  deliver(notice, { registration: reg, onShown: (n) => { live = n; } });
+  await tick();
+  assert.equal(live, 0);
+});
+
+test('a browser that cannot say what it is showing says nothing rather than guessing', async () => {
+  const reg = fakeReg(); // no getNotifications
+  let called = false;
+  deliver(notice, { registration: reg, onShown: () => { called = true; } });
+  await tick();
+  await tick();
+  assert.equal(called, false);
+});
+
+test('the probe is a notice of its own, replacing neither of the two', () => {
+  const t = testNotice();
+  assert.ok(t.title, 'a notice without a title is not shown at all');
+  assert.notEqual(t.tag, noticeFrom(done).tag);
+  assert.notEqual(t.tag, noticeFrom({ ...done, kind: 'question' }).tag);
 });

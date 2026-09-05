@@ -147,3 +147,35 @@ generated from `icon-192.png` (luminance to alpha), so the two cannot drift.
 
 `show()` no longer consults the page's own copy of the switch: the frame's existence *is*
 the decision, the server having read the mode at the moment of the event.
+
+**A tag per kind is a tag per session, and it was not.** `pockterm-done` was the whole tag
+for every session there is, so the second finish replaced the first — and a replacement
+without `renotify` is drawn silently: no sound, no vibration, no banner. Measured rather
+than reasoned about: on 2026-09-04 the journal has `done xnt-lr` at 18:53:08 and `done
+xnt-mk` at 18:53:20, both `ok:true`, one line left in the shade. `tagFor` puts the session
+in the tag and `renotify: true` goes with it, so a repeat about one session still collapses
+into one line — which is what the tag was for — while the session next to it keeps its own.
+
+**A resolved `showNotification` is not a notification.** A system channel switched off for
+the installed app, a "Do not disturb", a shade that dropped it: all three resolve, and
+`Notification.permission` says `granted` through every one of them. That gap cost 2026-09-04
+— 55 lines of `notify … ok:true` about a phone whose shade was empty, with no way from here
+to tell which half of the path had eaten them. `askShade` reads `getNotifications({tag})` a
+tick after the call and the journal carries `notify-shade … "live":N`: `ok:true` with
+`live:0` is the browser accepting a notice the device never drew. A browser with no
+`getNotifications` is left alone rather than guessed at.
+
+**The channel is testable by a tap** (`#notify-test`, `testNotice`). Everything else on this
+path is raised by the watcher — hours apart, and only about a session no page is showing —
+so "нет уведомлений" could not be told from "нет событий" without running an agent and
+waiting. The probe carries its own tag, because a probe that replaced a real finish would
+answer one question by destroying another. **Its answer is drawn where the button is**
+(`#notify-note`), not in the toast: the toast lives inside the terminal screen and the
+settings sit in the drawer over it, so a probe reporting there reports to nobody — the
+browser test caught that on its first run, which is the whole reason it asserts on what the
+tap said rather than only on the journal.
+
+**A journal line says which install it came from.** Three installed PWAs answer this host —
+the phone and two desktops — and `notify … ok:true` from a laptop in another room reads
+exactly like the phone in a pocket. Every client line now carries `dev`, a short random tag
+per install kept in `pt-device`; nothing else about the device is derived from it.
