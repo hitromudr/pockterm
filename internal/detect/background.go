@@ -23,8 +23,50 @@ type Background struct {
 // Total is how many things are running, whatever kind.
 func (b Background) Total() int { return b.Shells + b.Monitors }
 
-// One count in the footer: "1 shell", "2 monitors".
-var backgroundItem = regexp.MustCompile(`(?i)(\d{1,3})\s+(shells?|monitors?)\b`)
+// One count in the footer: "1 shell", "2 monitors" — and, at the end of a line
+// the pane has cut short, however much of the word fitted.
+//
+// The word is matched loosely here and named afterwards (backgroundKind) rather
+// than spelled out in the pattern, because the status line is clipped at the
+// pane's width rather than wrapped: at the 48 columns a phone gives a shared
+// window, "1 shell, 1 monitor · ← for agents" arrives as "1 shell, 1 monito",
+// and a pattern that insists on the whole word drew the shell's plate and not
+// the monitor's on every session that had both.
+var backgroundItem = regexp.MustCompile(`(?i)(\d{1,3})\s+([a-z]{2,})`)
+
+// The words the footer counts with. A whole word is one of these, singular or
+// plural; a clipped one is a prefix of it.
+var backgroundKinds = []string{"shells", "monitors"}
+
+// What may stand between the last word and the end of the line and still leave
+// it clipped: the ellipsis the agent puts where it cut something off.
+var clipTail = regexp.MustCompile(`^\s*(\x{2026}|\.\.\.)?\s*$`)
+
+// How much of a word it takes to name a kind. "she" and "mon" tell the two
+// apart and tell them from what else a status line ends in; two letters would
+// let "1 mo…" claim a monitor, and a plate drawn on a guess says something the
+// session never claimed — so a shorter stump is read as nothing at all, which
+// is the cheap failure here.
+const backgroundStump = 3
+
+// backgroundKind says which of the two counted words this one is, and it is the
+// only thing that decides: the pattern above matches any word after a number.
+//
+// A whole word counts wherever it sits on the line. A word cut short counts only
+// at the end of one, because the end is the only place the width can cut — a
+// prefix in the middle of a line is prose that happens to start the same way.
+func backgroundKind(word string, atEnd bool) (string, bool) {
+	w := strings.ToLower(word)
+	for _, kind := range backgroundKinds {
+		if w == kind || w+"s" == kind {
+			return kind, true
+		}
+		if atEnd && len(w) >= backgroundStump && strings.HasPrefix(kind, w) {
+			return kind, true
+		}
+	}
+	return "", false
+}
 
 // Agents is the block Claude Code draws under its status lines while it has
 // subagents: `● main` for itself, then one line per subagent — its type, what it
@@ -105,21 +147,29 @@ func ReadBackground(lines []string) Background {
 		if strings.Contains(strings.ToLower(line), "still running") {
 			continue
 		}
-		m := backgroundItem.FindAllStringSubmatch(line, -1)
-		if m == nil {
-			continue
-		}
 		var bg Background
-		for _, g := range m {
-			n, err := strconv.Atoi(g[1])
+		read := false
+		for _, g := range backgroundItem.FindAllStringSubmatchIndex(line, -1) {
+			n, err := strconv.Atoi(line[g[2]:g[3]])
 			if err != nil {
 				continue
 			}
-			if strings.HasPrefix(strings.ToLower(g[2]), "shell") {
+			kind, ok := backgroundKind(line[g[4]:g[5]], clipTail.MatchString(line[g[5]:]))
+			if !ok {
+				continue
+			}
+			if kind == "shells" {
 				bg.Shells += n
 			} else {
 				bg.Monitors += n
 			}
+			read = true
+		}
+		// A count of something else is not this line answering nothing: "Read 1
+		// file" has the shape and names neither kind, so the search goes on up
+		// instead of returning empty from it.
+		if !read {
+			continue
 		}
 		return bg
 	}

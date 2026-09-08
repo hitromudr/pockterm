@@ -188,6 +188,22 @@ words appear in the line an agent prints when a turn ends ("Cogitated for 2m 23s
 nothing about now — skipped by its wording, and output scrolled above the last
 few lines is out of range by position.
 
+**The pane's own width cuts the last word in half, so the word is not what is
+matched.** The status line is clipped rather than wrapped, and a phone gives the
+shared window 48 columns: `  ⏵⏵ bypass permissions on · 1 shell, 1 monitor · ←
+for agents` arrives as `  ⏵⏵ bypass permissions on · 1 shell, 1 monito`, captured
+off the owner's pane 08.09.2026. A pattern spelling out `monitors?` matched the
+shell and not the monitor, so every session that had one of each drew one plate —
+reported as the monitor's plate never appearing beside the shell's. `ReadBackground`
+now matches any word after a number and asks `backgroundKind` which kind it names:
+a whole word counts wherever it sits, a prefix only where nothing but an ellipsis
+follows it, because the end of the line is the only place the width can cut. Three
+letters is the floor (`backgroundStump`) — `1 mo…` is as much a month as a monitor,
+and the plate is a claim, so a shorter stump is read as nothing. The looseness is
+paid for by the check that follows it: `Read 1 file` has the shape and names
+neither kind, and a footer line that names neither is not that line answering
+"nothing running" — the search goes on up.
+
 **The top edge says who is running for it.** A subagent is not a background
 process: it is another agent with its own turn, and the session is waiting on it.
 Claude Code lists them under its status lines (`● main`, then a `◯` per subagent),

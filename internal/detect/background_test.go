@@ -136,3 +136,61 @@ func TestReadBackgroundStepsOverTheAgentsBlock(t *testing.T) {
 		t.Errorf("ReadBackground = %+v, want 1 shell and 2 monitors", got)
 	}
 }
+
+func TestReadBackgroundReadsAClippedWord(t *testing.T) {
+	// The status line is clipped at the pane's width rather than wrapped, and a
+	// phone gives a shared window 48 columns — so the line that says both kinds
+	// arrives with the last word cut in half, and the monitor's plate went
+	// missing on every session that had one beside a shell. Captured off the
+	// owner's pane at 48 columns, 08.09.2026.
+	lines := []string{
+		"  ctx 66% | dms@ai:~/work/exante (main)*1?2 $…",
+		"  ⏵⏵ bypass permissions on · 1 shell, 1 monito",
+	}
+	got := ReadBackground(lines)
+	if got.Shells != 1 || got.Monitors != 1 {
+		t.Fatalf("got %+v, want 1 shell and 1 monitor", got)
+	}
+}
+
+func TestReadBackgroundReadsAClippedWordWithTheEllipsis(t *testing.T) {
+	lines := []string{"  ⏵⏵ bypass permissions on · 2 shel…"}
+	if got := ReadBackground(lines); got.Shells != 2 || got.Monitors != 0 {
+		t.Fatalf("got %+v, want 2 shells", got)
+	}
+}
+
+func TestReadBackgroundRefusesAStump(t *testing.T) {
+	// Two letters name nothing: "mo" is as much a month as a monitor, and a
+	// plate drawn on a guess claims something the session never said. The shell
+	// before it survived the clip and is still read.
+	lines := []string{"  ⏵⏵ bypass permissions on · 1 shell, 1 mo…"}
+	got := ReadBackground(lines)
+	if got.Shells != 1 || got.Monitors != 0 {
+		t.Fatalf("got %+v, want the shell alone", got)
+	}
+}
+
+func TestReadBackgroundReadsAClippedWordOnlyAtTheEnd(t *testing.T) {
+	// The width can only cut the end of a line. A word that looks like the start
+	// of one with the line continuing past it is prose.
+	lines := []string{"  ⏵⏵ bypass permissions on · 1 mon of the thing · 1 shell ·"}
+	got := ReadBackground(lines)
+	if got.Shells != 1 || got.Monitors != 0 {
+		t.Fatalf("got %+v, want the shell alone", got)
+	}
+}
+
+func TestReadBackgroundIgnoresACountOfSomethingElse(t *testing.T) {
+	// A count in the footer is not a count of these two. The line matches the
+	// shape and names neither kind, so the search goes on up rather than
+	// answering nothing from it.
+	lines := []string{
+		"  ⏵⏵ bypass permissions on · 1 shell, 2 monitors ·",
+		"● Read 1 file (ctrl+o to expand)",
+	}
+	got := ReadBackground(lines)
+	if got.Shells != 1 || got.Monitors != 2 {
+		t.Fatalf("got %+v, want 1 shell and 2 monitors", got)
+	}
+}
