@@ -1974,6 +1974,9 @@ function onControl(raw) {
     // whole reason push exists.
     if (pushOwns) report('notify', { via: 'push', tag: (noticeFrom(c) || {}).tag || '' });
     else show(noticeFrom(c));
+    // Update tab colors when session state changes (working→done, etc).
+    // The tab stays frozen in its old color if we only send the notification.
+    renderTabs();
   }
   // What is behind the screen, for the copy window that asked for it.
   if (c && c.type === 'capture') tookCapture(c.text);
