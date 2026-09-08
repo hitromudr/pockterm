@@ -215,7 +215,10 @@ release.
 - **The end of a turn is read off the agent's counter** (`detect.Live`, `liveGrace`, two polls
   before believing it gone), never off the verb; `sawLive`, `detect.InputBox`,
   `Watcher.Rebase` with `Presence.Join`/`Leave`, and `doneFresh` are the guards that stopped
-  it lying. `ActivityAsking` outranks working and done.
+  it lying. `ActivityAsking` outranks working and done. **A retry is a turn waiting**, not a
+  turn over: while the API is retried the counter is replaced by `· Retrying in Ns · attempt
+  N/M`, and reading that as an ending announced a finish mid-request — on a wide screen only,
+  the phone's truncation having made the star rule answer by accident.
 - **Every session is watched; only the ones a page has opened are announced**
   (`Options.Sessions` is the roster, `Watch` is the only thing that sets `notify`).
 - **The state rides in the session list**, never in an endpoint of its own — a name and its

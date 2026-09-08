@@ -126,6 +126,11 @@ func TestDoneAfterSilence(t *testing.T) {
 const (
 	turnRunning = "● reading detect.go\n✶ Doing… (1m 13s · ↓ 3.9k tokens)\n❯\u00a0\n  ctx 62% | ~/work $ | Opus 5\n"
 	turnOver    = "● reading detect.go\n✻ Cooked for 19s\nвсё, детектор поправлен\n❯\u00a0\n  ctx 62% | ~/work $ | Opus 5\n"
+	// The same turn held up by the network: the counter is replaced by the retry
+	// line. Captured off 2.1.241 on 2026-09-08 with the API pointed at a closed
+	// port; `in 0s` is what it says while an attempt is in flight, which is the
+	// form the owner photographed.
+	turnRetrying = "● reading detect.go\n✻ API error · Retrying in 0s · attempt 1/10\n❯\u00a0\n  ctx 62% | ~/work $ | Opus 5\n"
 	// A session just opened: the agent's box is there and nothing has run in it.
 	welcome = "Claude Code v2.1.222\n~/work/pockterm\n──────────\n❯\u00a0"
 )
@@ -166,6 +171,42 @@ func TestDoneWhenTheCounterGoes(t *testing.T) {
 	h.settle()
 	if got := h.kinds(); len(got) != 2 || got[1] != Done {
 		t.Fatalf("events = %+v, want a second done", h.events)
+	}
+}
+
+// A turn waiting on the network is still a turn. While the agent retries a
+// request the counter is gone, so this used to be read as the end of one: a
+// finished notification sent mid-request, the tab painted as done, and the work
+// carrying on behind both. Reported from the owner's screen as hanging on that
+// message and freeing itself a minute later — the minute being one attempt in
+// flight, during which the screen does not change at all.
+func TestRetryIsNotTheEndOfATurn(t *testing.T) {
+	h := newHarness(30 * time.Second)
+	h.screen = turnRunning
+	h.w.Tick()
+
+	h.screen = turnRetrying
+	h.settle()
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want none while the request is being retried", h.events)
+	}
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("during a retry: %q, want %q", got, ActivityWorking)
+	}
+	// The screen not changing must not answer either: the retry line stands still
+	// while an attempt is in flight, and the silence rule is what would call that
+	// an ending.
+	h.advance(31 * time.Second)
+	h.w.Tick()
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want silence to stay silent under a retry", h.events)
+	}
+
+	// And when the turn really ends, it is reported once.
+	h.screen = turnOver
+	h.settle()
+	if got := h.kinds(); len(got) != 1 || got[0] != Done {
+		t.Fatalf("events = %+v, want one done after the turn ended", h.events)
 	}
 }
 
@@ -319,6 +360,40 @@ func TestEveryDecisionIsWritten(t *testing.T) {
 	h.settle()
 	if len(lines) != 1 || !strings.Contains(lines[0], "on screen") {
 		t.Fatalf("lines = %q, want the reason it was not announced", lines)
+	}
+}
+
+// The retry is written down once at each end of it. It changes no decision, and
+// that is the point: the tab and the notice treat it as the turn it is, while the
+// journal is where "the session hung for a minute" stops being indistinguishable
+// from "the turn took a minute".
+func TestARetryIsWrittenDown(t *testing.T) {
+	var lines []string
+	h := newHarness(30 * time.Second)
+	h.w.o.Log = func(l string) { lines = append(lines, l) }
+
+	h.screen = turnRunning
+	h.w.Tick()
+	if len(lines) != 0 {
+		t.Fatalf("lines = %q, want nothing about a plain turn", lines)
+	}
+
+	h.screen = turnRetrying
+	h.w.Tick()
+	if len(lines) != 1 || !strings.Contains(lines[0], "retrying") ||
+		!strings.Contains(lines[0], "claude") {
+		t.Fatalf("lines = %q, want the retry named once", lines)
+	}
+	// Still retrying is not news.
+	h.w.Tick()
+	if len(lines) != 1 {
+		t.Fatalf("lines = %q, want no line per poll", lines)
+	}
+
+	h.screen = turnRunning
+	h.w.Tick()
+	if len(lines) != 2 || !strings.Contains(lines[1], "retry is over") {
+		t.Fatalf("lines = %q, want the end of the retry too", lines)
 	}
 }
 

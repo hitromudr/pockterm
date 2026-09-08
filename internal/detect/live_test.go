@@ -44,6 +44,43 @@ func TestLive(t *testing.T) {
 			"● Bash(make check)",
 			"  ⎿  Running… (esc to interrupt)",
 		}, true},
+		// A turn waiting on the network. Captured off 2.1.241 on 2026-09-08 with
+		// the API pointed at a closed port: the counter is replaced by the retry
+		// line, so every rule above answers "no turn" and the watcher announced a
+		// finish while the agent was still holding the request. Reported as "we
+		// hang on this message, the work carries on, and a minute later it frees
+		// itself" — the minute being the attempt in flight.
+		{"a retry is a turn waiting, not a turn over", []string{
+			"● Понял, смотрю.",
+			"✻ API error · Retrying in 0s · attempt 1/10",
+			"────────────────────────────────",
+			"❯ ",
+			"────────────────────────────────",
+			"  ctx 47% | dms@ai:~/work/exante (main) $ | Opus 5 (1M context)",
+		}, true},
+		// The same line with the reason spelled out, which the pane truncates.
+		// Both halves matter: on a phone the truncation leaves an ellipsis and the
+		// spinner rule happened to answer, on a wide screen it does not — so the
+		// same event read as work on one device and as finished on the other.
+		{"the long form of the retry line, truncated by the pane", []string{
+			"✻ Connection refused — a firewall or proxy may be blocking it (Co… · Retrying in 11s · attempt 6/10",
+		}, true},
+		// Attempts spent, captured off the same pane: the retry line is not on
+		// screen at all afterwards, and what is left is the ordinary end-of-turn
+		// line. That is what keeps the rule from latching — the sentence in the
+		// transcript names the error, not an attempt.
+		{"attempts spent: the line is gone and the turn is over", []string{
+			"● API Error: Connection refused — a firewall or proxy may be blocking it (ConnectionRefused)",
+			"✻ Cooked for 2m 58s",
+			"────────────────────────────────",
+			"❯ ",
+		}, false},
+		// The word in prose is not the state: an agent describing its own retries
+		// leaves that sentence in the transcript, where it would keep a tab
+		// working for as long as it stayed on screen.
+		{"a sentence about retrying is not a retry", []string{
+			"● Прогон упал на третьей попытке (attempt 3/10), повторяю вручную.",
+		}, false},
 		{"a plain shell says nothing either way", []string{
 			"$ make check",
 			"ok  	github.com/hitromudr/pockterm/internal/detect	0.004s",

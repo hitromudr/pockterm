@@ -72,6 +72,55 @@ var liveInterrupt = regexp.MustCompile(`(?i)esc to interrupt`)
 // range, against a notification saying the opposite of what is true.
 var liveSpinner = regexp.MustCompile(`^[\s│]*[✻✽✶✢✳✱✧✺*·][^\p{L}]*\p{L}[^…]*…`)
 
+// The fourth reading, and the only one that names words: a turn held up by the
+// network. While the agent retries a request it draws this in the counter's
+// place, and the counter itself is gone —
+//
+//	✻ API error · Retrying in 0s · attempt 1/10
+//	✻ Connection refused — a firewall or proxy may be blocking it (Co… · Retrying in 11s · attempt 6/10
+//
+// — so every rule above answers "no turn" and the watcher announces a finish
+// mid-request. Reported from the owner's screen as hanging on that message with
+// the work carrying on and freeing itself a minute later; the minute is one
+// attempt in flight, and `in 0s` is what the line says while it waits.
+//
+// **The two forms read differently, which is why this cost a release.** The long
+// one is truncated by the pane, and the ellipsis truncation leaves made the
+// spinner rule answer by accident — so on a phone the retry read as work and on a
+// wide screen, where `API error` fits whole, as a finished turn. Same event, two
+// answers, depending on the width of the window.
+//
+// Words are the exception here, and they are marked as one: `Retrying in` and
+// `attempt N/M` were measured off 2.1.241 (2026-09-08, the API pointed at a
+// closed port). Both halves are required together, because `attempt 3/10` alone
+// occurs in the agent's own prose — and prose stays in the transcript, where it
+// would keep a tab working until it scrolled away. The retry line cannot: it is
+// drawn where the counter is and vanishes with it, which is what makes reading it
+// as a live turn safe. Measured by interrupting a retry: the line is not in the
+// pane afterwards at all.
+var liveRetry = regexp.MustCompile(`(?i)retrying in\b[^·]*·\s*attempt\s+\d+\s*/\s*\d+`)
+
+// Retrying reports the same thing Live does about this one shape, separately:
+// the turn is held up by the API rather than working. Nothing decides by it — the
+// tab and the notice treat a retry as the turn it is — it exists so the journal
+// can say which of the two a session was in. Without that line, "the session
+// hangs and frees itself a minute later" reads the same in the log as a turn that
+// simply took a minute, and telling them apart is where the last hour went.
+func Retrying(lines []string) bool {
+	seen := 0
+	for i := len(lines) - 1; i >= 0 && seen < liveLines; i-- {
+		line := ansi.ReplaceAllString(lines[i], "")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		seen++
+		if liveRetry.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
 // How far up from the bottom the live counter can sit.
 //
 // Generous on purpose: the counter is the last line of the transcript, but the
@@ -101,7 +150,8 @@ func Live(lines []string) bool {
 			continue
 		}
 		seen++
-		if liveCounter.MatchString(line) || liveInterrupt.MatchString(line) || liveSpinner.MatchString(line) {
+		if liveCounter.MatchString(line) || liveInterrupt.MatchString(line) ||
+			liveSpinner.MatchString(line) || liveRetry.MatchString(line) {
 			return true
 		}
 	}

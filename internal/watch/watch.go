@@ -219,6 +219,12 @@ type state struct {
 	// reporting the human's typing as the machine's work.
 	live    bool
 	sawLive bool
+	// retrying is the retry line on screen at the last poll: the turn is held up
+	// by the API rather than working. It changes no decision — a retry is a turn,
+	// and `live` says so — and exists to be written down once when it starts,
+	// because "hung for a minute" and "worked for a minute" look identical in the
+	// journal otherwise.
+	retrying bool
 	// agent is the agent's input box on screen at the last poll — a pane whose
 	// turns are counted, whether or not one has been counted here yet. It is read
 	// fresh every time rather than remembered: a session that ran an agent and
@@ -414,6 +420,16 @@ func (w *Watcher) poll(session string) {
 	st.bg.Agents = detect.ReadAgents(lines)
 	st.live = detect.Live(lines)
 	st.agent = detect.InputBox(lines)
+	if retry := detect.Retrying(lines); retry != st.retrying {
+		st.retrying = retry
+		if w.o.Log != nil {
+			if retry {
+				w.o.Log(fmt.Sprintf("watch: %s is retrying — the turn is waiting on the API, not finished", session))
+			} else {
+				w.o.Log(fmt.Sprintf("watch: %s got its answer, the retry is over", session))
+			}
+		}
+	}
 	if st.live {
 		// A counter on screen is activity by itself, and it is what re-arms the
 		// next "finished". The screen's hash used to be the only evidence there

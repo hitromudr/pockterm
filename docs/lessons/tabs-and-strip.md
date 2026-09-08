@@ -41,7 +41,7 @@ finish an hour later, and what looked from the page's side like a burst of
 notices was one event delivered to the several sockets a stalled reconnect had
 left behind.
 
-Three readings say a turn is running, and the first had to be widened after it
+Four readings say a turn is running, and the first had to be widened after it
 sent a "finished" notice mid-thought:
 
 - **Brackets opening with a duration** — and nothing else in them is required.
@@ -66,6 +66,39 @@ sent a "finished" notice mid-thought:
   scrollback from four working panes begins with one, and the cost if it happens
   is a tab that stays purple rather than a notice saying the opposite of what is
   true.
+
+- **The retry line**, which is the fourth and the only one that names words:
+  `✻ API error · Retrying in 0s · attempt 1/10`. While the agent retries a
+  request it draws this **where the counter goes**, and the counter itself is
+  absent — so the three readings above all answer "no turn" and a finish is
+  announced with the request still in flight. The owner photographed it as
+  hanging on that message with the work carrying on and freeing itself a minute
+  later; the minute is one attempt, and `in 0s` is what the line says while it
+  waits, which is also why the screen does not change during it.
+
+  **The same event read two ways, and the width of the window decided which.**
+  The long form spells the reason out and the pane truncates it —
+  `✻ Connection refused — a firewall or proxy may be blocking it (Co… · Retrying
+  in 11s · attempt 6/10` — and the ellipsis the truncation leaves made the star
+  rule answer by accident. On a phone the retry therefore read as work, on a wide
+  screen, where `API error` fits whole, as a finished turn.
+
+  Words are the exception and are marked as one: `Retrying in` and `attempt N/M`
+  were measured off 2.1.241 (2026-09-08, `ANTHROPIC_BASE_URL` pointed at a closed
+  port). **Both halves are required together**, because `attempt 3/10` alone
+  occurs in the agent's own prose, and prose stays in the transcript — where it
+  would hold a tab at work until it scrolled away. The retry line cannot: it is
+  drawn in the counter's place and goes with it. Measured by interrupting a retry
+  (the line is not in the pane at all afterwards) and by letting the attempts run
+  out, which leaves `● API Error: …` in the transcript and an ordinary
+  `✻ Cooked for 2m 58s` — a turn that really has ended, and is reported as one.
+
+  `detect.Retrying` answers the same shape separately, and **nothing decides by
+  it**: the tab and the notice treat a retry as the turn it is. It exists so the
+  journal can say which of the two a session was in (`watch: exante is retrying —
+  the turn is waiting on the API, not finished`), because otherwise "hung for a
+  minute" and "worked for a minute" are the same line, and telling them apart is
+  where an evening went.
 
 What is never matched is the verb — Pondering, Crunching, Cooked, Sautéed turn
 over between releases, and the line left behind is the same words in the past
