@@ -3208,6 +3208,67 @@ describe('a tab says what its session is doing', () => {
     assert.equal(await page.locator('#tabs button.working.done').count(), 0);
   });
 
+  test('a finish repaints the strip with nothing else left to do it', async () => {
+    // Reported as a tab standing at what it had been doing after the agent
+    // finished: the colour came back only when something else redrew the strip,
+    // and scrolling the pager up and down was what the owner found.
+    //
+    // The poll is what usually covers this up — pollTabs asks every 3s — so the
+    // case worth pinning is the one where it does not run: the page behind
+    // something. That is also the case the frame is sent in, because a notice is
+    // skipped for the pages that have that very session on screen. With the poll
+    // off and the frame delivered, the frame is the only thing that can repaint
+    // the strip, and the assertion is about the frame rather than about a race
+    // with a timer.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+
+    // The strip has to agree the session is working before it can be caught
+    // missing that it stopped. Printed until it does, for the reason the test
+    // above gives: the watcher's first reading of a pane is not activity.
+    const typing = setInterval(() => {
+      try { stand.tmux(['send-keys', '-t', 'demo', 'working now', 'Enter']); } catch (_) {}
+    }, 700);
+    try {
+      await page.waitForFunction(
+        () => !!document.querySelector('#tabs button.working'), null, { timeout: 20000 });
+    } finally {
+      clearInterval(typing);
+    }
+
+    // Behind something. The lie is told to the page and not to the browser:
+    // there is no lever for one tab's visibility here, and it is the page's own
+    // reading of `visibilityState` that both stops the poll and tells the server
+    // this session is not on screen — the two halves this test needs.
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      Object.defineProperty(document, 'hidden', { get: () => true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // The pane is quiet now, so the watcher calls it done after POCKTERM_IDLE —
+    // 2s in the stand — and sends the notice. The server's own line is waited for
+    // first because it separates two failures that look identical from the strip:
+    // a frame that never went out is a broken stand, a frame that went out and
+    // left the tab alone is the defect.
+    const sent = /notify: done demo to [1-9]\d* page\(s\), 0 showing it/;
+    for (let i = 0; i < 200 && !sent.test(stand.serverLog()); i += 1) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.match(stand.serverLog(), sent,
+      'the finish never reached this page, so nothing asked the strip to repaint');
+
+    // No timeout worth the name: with the poll off there is no second chance
+    // coming, so this either happens on the frame or not at all.
+    await page.waitForFunction(
+      () => !!document.querySelector('#tabs button[data-session="demo"].done'),
+      null, { timeout: 5000 });
+    // And the state it left behind is gone with it: a tab carrying both would be
+    // claiming to be doing something it has finished.
+    assert.equal(await page.locator('#tabs button.working').count(), 0);
+  });
+
   test('scrolled back, the way to the live end says a question is waiting there', async () => {
     // The row of answers is not drawn while the pane is scrolled back — those
     // numbers belong to an older screen — and that left a question with nothing

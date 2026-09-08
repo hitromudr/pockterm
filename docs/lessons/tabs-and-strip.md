@@ -264,6 +264,26 @@ session's name and nothing else — the page reads it back to attach, rename and
 close — and a glyph spliced into it produced a session called
 `⭐pockterm-ui-oWck6x` that tmux had never heard of.
 
+**Two things repaint the strip, and only one of them runs in the pocket.** The
+poll (`pollTabs`, `TAB_POLL_MS` 3000) asks while the terminal is on screen *and*
+the page is in front, so it stops the moment the phone is put down. The other is
+the finish itself: `onControl` calls `renderTabs` on a `notify` frame. Without
+that call a tab kept the colour it had when the page went behind something —
+reported as the tab standing at "форматирует" after the agent had finished, with
+scrolling the pager up and down as the way to get the strip redrawn.
+
+The two halves fit because the server sends that frame to every page **except**
+the ones with that very session on screen (`Notices.Send`, and the page reports
+which it is with a `visible` frame). So the case where the poll is off is the
+case where the frame arrives, and neither covers for the other: on screen the
+poll does it, behind something the frame does. `a finish repaints the strip with
+nothing else left to do it` pins exactly that — it puts the page behind something
+through the page's own `visibilityState`, waits for the server's
+`notify: done demo to 1 page(s), 0 showing it`, and then gives the strip five
+seconds it cannot get from a poll that is not running. Checked against the defect:
+with the `renderTabs` call removed the journal line still appears and the tab
+never changes.
+
 ## The row is the owner's, and a held tab is carried
 
 tmux orders sessions by name, which is the one order nobody chose: the strip is read
