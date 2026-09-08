@@ -33,13 +33,15 @@ one, which is where it stands.
 
 - **`Pockterm Mono`** — the letters, from `third_party/fonts/DroidSansMono.ttf`
   (Apache 2.0, AOSP, `Version 1.00 build 113`, URL and sha256 in
-  `third_party/fonts/LICENSE-droid.txt`). The face is kept in this repository
+  `third_party/fonts/LICENSE-droid.txt`), subset to
+  `web/fonts/pockterm-mono-400.woff2`. The face is kept in this repository
   because it is nowhere else: Google Fonts dropped it for Roboto Mono and
   Debian's `fonts-droid-fallback` is the CJK fallback only. **43.8 KB**, 632 of
   the ranges' characters, one weight, `1229/2048` em — 0.600, the cell every
   other file is put on.
 - **`Pockterm Marks`** — everything the primary has not got, from the system
-  DejaVu Sans Mono: box drawing, blocks, shapes, arrows, `✓ ✗ ✳ ❯ ❄ ☀ ★ ⇩ ↵`.
+  DejaVu Sans Mono, in `web/fonts/pockterm-marks-{400,700}.woff2`: box drawing,
+  blocks, shapes, arrows, `✓ ✗ ✳ ❯ ❄ ☀ ★ ⇩ ↵`.
   **55.4 KB and 54.8 KB**, 1018 characters, both weights. Droid Sans Mono has no
   box drawing at all — checked, not assumed — so on the phone these already came
   from a fallback face rather than from the mono. Carrying them here is the same
