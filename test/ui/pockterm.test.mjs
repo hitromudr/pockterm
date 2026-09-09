@@ -400,6 +400,76 @@ describe('the order of the tabs', () => {
     assert.equal(stand.tmux(['show-options', '-v', '-t', last, '@pockterm-order']).trim(), '1',
       'the mouse-carried order did not reach tmux');
   });
+
+  test('a session named by another tool keeps the place it is dragged to', async () => {
+    // The names in this row are pockterm's own; a session started by another tool
+    // is not bound by what the rename field accepts. `ana-gate-window-authority`
+    // is 25 characters — one over that limit — and the host used the same limit as
+    // its gate for stamping the order: the drag was answered "saved", nothing was
+    // written, and the next poll put the tab back at the end of the row. Reported
+    // on 2026-09-09 as the tab jumping back however often it was dragged, with the
+    // journal saying it outright — the page sent 13 names, the host placed 12.
+    //
+    // Where it lands is not the claim here: by this point the row is five tabs wide
+    // on a phone and scrolls sideways, so the tab is carried a couple of places to
+    // the left and what is asserted is that it stays there.
+    const { page } = stand;
+    const name = 'ana-gate-window-authority';
+    const stamp = () => {
+      try {
+        return stand.tmux(['show-options', '-v', '-t', name, '@pockterm-order']).trim();
+      } catch (_) {
+        return ''; // never stamped: tmux has no such option on that session
+      }
+    };
+    stand.tmux(['new-session', '-d', '-s', name, 'cat']);
+    await page.waitForFunction(
+      (n) => [...document.querySelectorAll('#tabs button[data-session]')]
+        .some((b) => b.dataset.session === n), name, { timeout: 8000 });
+    const before = await strip();
+    assert.equal(before[before.length - 1], name, 'a session started later lands at the end');
+
+    // The row is wider than the screen by now, and the tab at the end of it is off
+    // to the right: a pointer cannot be put on what is not on screen, so the strip
+    // is flicked to it first — which is what a thumb does before dragging it.
+    await page.evaluate((n) => {
+      [...document.querySelectorAll('#tabs button[data-session]')]
+        .find((b) => b.dataset.session === n)
+        .scrollIntoView({ inline: 'center', block: 'nearest' });
+    }, name);
+    await page.waitForTimeout(200);
+    const from = await page.locator(`#tabs button[data-session="${name}"]`).boundingBox();
+    const y = Math.round(from.y + from.height / 2);
+    let x = Math.round(from.x + from.width / 2);
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let step = 0; step < 10; step++) {
+      x = Math.max(8, x - 20);
+      await page.mouse.move(x, y);
+      await page.waitForTimeout(20);
+    }
+    await page.mouse.up();
+
+    await page.waitForFunction((n) => {
+      const row = [...document.querySelectorAll('#tabs button[data-session]')].map((b) => b.dataset.session);
+      return row.indexOf(n) >= 0 && row.indexOf(n) < row.length - 1;
+    }, name, { timeout: 5000 });
+    const moved = await strip();
+    // The save is asked of tmux and not of the row: the row is what the finger
+    // left behind, and the whole defect was that it did not reach tmux. Waited on
+    // rather than read once — the drop returns before its own POST has landed.
+    let stamped = '';
+    for (let i = 0; i < 24 && !stamped; i++) {
+      await page.waitForTimeout(250);
+      stamped = stamp();
+    }
+    assert.notEqual(stamped, '', 'the order was not stamped on a session pockterm did not name');
+    // And it stays there. The row is redrawn from tmux on every poll, so a stamp
+    // that was never written shows up as the tab travelling back on its own — one
+    // poll is 3s.
+    await page.waitForTimeout(4000);
+    assert.deepEqual(await strip(), moved, 'the row travelled back on its own');
+  });
 });
 
 describe('the session list is a drawer', () => {

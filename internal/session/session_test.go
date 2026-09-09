@@ -48,6 +48,43 @@ func TestValidName(t *testing.T) {
 	}
 }
 
+// SafeName is asked of a name that already exists in tmux, and the two gates
+// answer different questions. Reusing this one's answer for the other cost the
+// tab order on 2026-09-09: `ana-gate-window-authority` — a worktree session
+// another tool had named, 25 characters — was dropped by the order stamp for
+// being unreadable in a rename field it never went through.
+func TestSafeNameTakesNamesPockTermDidNotChoose(t *testing.T) {
+	good := []string{
+		"ana-gate-window-authority", // the name that was dropped
+		strings.Repeat("x", 25),     // length is not a safety property here
+		strings.Repeat("x", 255),    //
+		"has space",                 // an argv is not a command line
+		"кириллица",                 // and a session may be named in any of them
+		"claude-2",                  //
+	}
+	for _, n := range good {
+		if err := SafeName(n); err != nil {
+			t.Errorf("%q rejected: %v", n, err)
+		}
+		if err := ValidName(n); err == nil && len(n) > 24 {
+			t.Errorf("%q would have passed ValidName, and the defect needs it not to", n)
+		}
+	}
+	bad := []string{
+		"",                       // nothing
+		"-leading",               // tmux reads it as a flag
+		"win:1",                  // a colon addresses windows
+		"dot.name",               // a dot addresses panes
+		"tab\there",              // a control character
+		strings.Repeat("x", 256), // the absurd
+	}
+	for _, n := range bad {
+		if err := SafeName(n); err == nil {
+			t.Errorf("%q accepted", n)
+		}
+	}
+}
+
 func TestRenameMatchesExactly(t *testing.T) {
 	argv := Rename("claude-1", "notes")
 	// Without "=", tmux matches by prefix and "claude-1" could rename

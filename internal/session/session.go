@@ -15,6 +15,7 @@ package session
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Presets are the make targets the page may ask for. The values are targets,
@@ -81,6 +82,41 @@ var nameOK = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$`)
 func ValidName(name string) error {
 	if !nameOK.MatchString(name) {
 		return fmt.Errorf("a name must be 1-24 characters of letters, digits, - or _, starting with a letter or digit")
+	}
+	return nil
+}
+
+// SafeName is the gate for a name pockterm did not choose: one that came off
+// tmux's own list of sessions, on its way to a tmux command line.
+//
+// It answers a different question from ValidName above, and using that one for
+// this cost 2026-09-09. ValidName's 1-24 characters are about a tab on a phone —
+// what the owner may type into the rename field — while a session another tool
+// started carries whatever name that tool gave it. `ana-gate-window-authority` is
+// 25 characters, so the order stamp skipped it silently: the tab was dragged out
+// of the end of the row, the save answered "saved", nothing was written, and the
+// next poll put it back. Reported as the tab jumping back however often it was
+// dragged, and the journal had it — the page sent 13 names, the host placed 12.
+//
+// So what is checked here is only what a command line cares about: tmux addresses
+// windows and panes with "." and ":", a leading "-" reads as a flag, and a control
+// character has no business in an argument. Length is not a safety property and is
+// bounded only against the absurd.
+func SafeName(name string) error {
+	switch {
+	case name == "":
+		return fmt.Errorf("an empty session name")
+	case len(name) > 255:
+		return fmt.Errorf("a session name of %d bytes", len(name))
+	case strings.HasPrefix(name, "-"):
+		return fmt.Errorf("a session name starting with %q reads as a flag", "-")
+	case strings.ContainsAny(name, ".:"):
+		return fmt.Errorf("a session name with %q or %q addresses a window or a pane", ".", ":")
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("a session name with a control character")
+		}
 	}
 	return nil
 }

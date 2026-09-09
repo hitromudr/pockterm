@@ -1921,7 +1921,7 @@ func TestTheStripKeepsTheOrderItWasDraggedInto(t *testing.T) {
 		}, nil
 	}
 	var got []string
-	o.OrderSessions = func(names []string) error { got = names; return nil }
+	o.OrderSessions = func(names []string) ([]string, error) { got = names; return nil, nil }
 	srv := httptest.NewServer(Handler(o))
 	defer srv.Close()
 
@@ -1946,11 +1946,52 @@ func TestTheStripKeepsTheOrderItWasDraggedInto(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 	if len(got) != 2 || got[0] != "work" {
 		t.Fatalf("the order did not reach the host: %v", got)
+	}
+	var answer struct {
+		Skipped []string `json:"skipped"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&answer); err != nil {
+		t.Fatal(err)
+	}
+	if len(answer.Skipped) != 0 {
+		t.Fatalf("skipped = %v, want nothing", answer.Skipped)
+	}
+}
+
+// A name the host would not stamp is named back, and that is the whole of the
+// 2026-09-09 report: the tab was dragged, the save answered success, and one poll
+// later the tab was back where it had been. The page cannot say so about a save
+// that answered "no content", so it said nothing and the drag was made again.
+func TestOrderSaysWhatKeptItsPlace(t *testing.T) {
+	o := testOptions("")
+	o.OrderSessions = func(names []string) ([]string, error) {
+		return []string{"ana-gate-window-authority"}, nil
+	}
+	srv := httptest.NewServer(Handler(o))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/sessions/order", "application/json",
+		strings.NewReader(`{"names":["ana-gate-window-authority","work"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	var answer struct {
+		Skipped []string `json:"skipped"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&answer); err != nil {
+		t.Fatal(err)
+	}
+	if len(answer.Skipped) != 1 || answer.Skipped[0] != "ana-gate-window-authority" {
+		t.Fatalf("skipped = %v, want the name that was not stamped", answer.Skipped)
 	}
 }
 

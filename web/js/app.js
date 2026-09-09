@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v197';
+const APP_VERSION = 'v198';
 
 // Which install a journal line came from.
 //
@@ -1621,6 +1621,19 @@ async function saveTabOrder() {
       // A host that cannot reorder, or a name it did not like. The next poll
       // redraws the row from tmux, so the drag simply does not stick.
       report('tab-order', { ok: false, status: res.status });
+      return;
+    }
+    // Which tabs kept their old place. Normally none — and when there is one, the
+    // row under the finger is not the row the next poll will draw, so it must not
+    // be adopted as the signature and the tab must not snap back without a word:
+    // that is the 2026-09-09 report, a drag made over and over against a save
+    // that answered success. An older host answers no body at all, which is the
+    // same as nothing skipped.
+    const answer = await res.json().catch(() => null);
+    const skipped = Array.isArray(answer?.skipped) ? answer.skipped : [];
+    if (skipped.length) {
+      report('tab-order', { ok: false, skipped });
+      toast(`${skipped.join(', ')} kept its place — the row was not saved`);
       return;
     }
     // The row already looks like this, so the next poll must not rebuild it and

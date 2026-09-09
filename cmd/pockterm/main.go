@@ -474,37 +474,51 @@ func killer(name string) error {
 }
 
 // orderer writes the order the owner dragged the tabs into onto the sessions
-// themselves, one option per session.
+// themselves, one option per session, and answers with the names it could not
+// stamp.
 //
 // Every name is checked against the list this server just produced, not trusted
 // from the page: the value reaches a tmux command line. An unknown name is skipped
 // rather than fatal — a session can be closed between the drag and the save, and
 // the strip is redrawn from tmux on the next poll regardless.
-func orderer(names []string) error {
+//
+// **The gate is session.SafeName and not ValidName**, which is the whole of
+// 2026-09-09: ValidName bounds what the owner may type into the rename field at 24
+// characters, and a session another tool started is not bound by that. The one
+// named `ana-gate-window-authority` (25) was dropped here without a word, so its
+// tab came back to the end of the row on the next poll while the page reported the
+// drag saved. What is skipped now says so — in the journal, and to the page, which
+// is what a save that did not happen owes whoever made it.
+func orderer(names []string) ([]string, error) {
 	sessions, err := listSessions()
 	if err != nil {
-		return fmt.Errorf("could not read the sessions")
+		return nil, fmt.Errorf("could not read the sessions")
 	}
 	known := map[string]bool{}
 	for _, s := range sessions {
 		known[s.Name] = true
 	}
+	skipped := []string{}
 	placed := 0
 	for _, name := range names {
+		// A session that has gone, or this server's own client session: neither is
+		// a tab in the row, and neither is news.
 		if !known[name] || tmuxcmd.IsClientSession(name) {
 			continue
 		}
-		if err := session.ValidName(name); err != nil {
+		if err := session.SafeName(name); err != nil {
+			log.Printf("tab order: %s keeps its place — %v", name, err)
+			skipped = append(skipped, name)
 			continue
 		}
 		placed++
 		argv := tmuxcmd.SetOrder(name, placed)
 		if out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput(); err != nil {
-			return fmt.Errorf("could not order %s: %s", name, firstLine(string(out)))
+			return nil, fmt.Errorf("could not order %s: %s", name, firstLine(string(out)))
 		}
 	}
-	log.Printf("tab order: %d sessions", placed)
-	return nil
+	log.Printf("tab order: %d of %d sessions", placed, len(names))
+	return skipped, nil
 }
 
 // renamer renames a session. The name is checked here rather than trusted

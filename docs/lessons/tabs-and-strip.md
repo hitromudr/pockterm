@@ -343,6 +343,33 @@ checked against the list the server just produced, the value reaching a tmux com
 line. `saveTabOrder` writes the new signature itself, `renderTabs` refusing to
 rebuild while a tab is carried.
 
+**The check was the wrong one, and it was the rename field's.** `session.ValidName`
+bounds what the owner may type into that field at 1-24 characters, which is about a
+tab on a phone; `orderer` reused it as its gate, and a session another tool started
+is not bound by it. The one named `ana-gate-window-authority` — 25 characters, a
+worktree session of another project — was therefore dropped from every save without
+a word: the tab was dragged out of the end of the row, the save answered success,
+and the next poll put it back. Reported on 2026-09-09 as the tab jumping back
+however often it was dragged, and the journal had said it all along — `tab order: 12
+sessions` against a page reporting `count: 13`. The gate is now
+`session.SafeName`, which asks what a command line cares about and nothing else: no
+`.` or `:` (tmux addresses windows and panes with them), no leading `-` (a flag), no
+control characters, and a length bounded only against the absurd. Length is not a
+safety property, and the two gates are named apart so the next reader cannot mistake
+one question for the other.
+
+**A save that did not save says so.** The endpoint answered `204 No Content`
+whatever happened, so the page reported `ok` and adopted the row it had drawn — the
+one shape a defect must never have here. It now answers `{"skipped":[…]}`, normally
+empty; a name in it means that tab kept its old place, so the page does not adopt
+the row, says which tab in a toast, and lets the next poll draw what the server will
+actually serve. The journal names it too, with the reason (`tab order: <name> keeps
+its place — …`) and a count of what was placed against what was asked
+(`tab order: 12 of 13 sessions`). The browser test carries the defect: a session
+tmux itself named too long for the rename field is dragged, and what is asserted is
+the stamp reaching tmux — with the old gate the option is never written and the row
+travels back on its own.
+
 **And a row three screens wide has to scroll itself to where you were sent.** Which
 tab is current is said by a frame around it, and a frame off screen says nothing —
 reported after following a notification, which is the one switch nobody's finger was

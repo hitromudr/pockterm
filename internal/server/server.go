@@ -108,7 +108,12 @@ type Options struct {
 	// /api/sessions/order absent. The whole strip travels, not a move: the page
 	// holds the row it just drew, and two phones dragging at once then end with
 	// whichever saved last rather than with a list nobody arranged.
-	OrderSessions func(names []string) error
+	//
+	// It answers with the names it could not stamp. Those are the row the page
+	// drew and the server will not serve, so they are told rather than swallowed:
+	// a save reported as done while a tab keeps its old place is a drag that has
+	// to be made again, blind. See serveOrder.
+	OrderSessions func(names []string) (skipped []string, err error)
 	// Buttons and SetButtons are the session buttons under "+": the four the
 	// page starts with and whatever the owner added beside them. nil leaves
 	// /api/presets absent, which is a host where the four cannot be edited.
@@ -578,6 +583,12 @@ func serveNewSession(o Options, w http.ResponseWriter, r *http.Request) {
 // each session with its place. A session that has since been closed is simply not
 // found — the strip is redrawn from tmux on the next poll anyway, so a stale name
 // costs nothing and is not worth refusing the whole list for.
+//
+// What it answers is which names kept their old place. Nothing did, and a name
+// the host would not stamp was a drag that reported success and came undone one
+// poll later — 2026-09-09, a session whose name was one character over what the
+// rename field allows. The list is normally empty; it exists so that the page
+// never claims a row the server did not take.
 func serveOrder(o Options, w http.ResponseWriter, r *http.Request) {
 	if !authOK(o, r) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -598,11 +609,19 @@ func serveOrder(o Options, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unreadable request", http.StatusBadRequest)
 		return
 	}
-	if err := o.OrderSessions(req.Names); err != nil {
+	skipped, err := o.OrderSessions(req.Names)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	if skipped == nil {
+		skipped = []string{}
+	}
+	// The names that kept their old place, so the page can say so instead of
+	// holding a row the next poll will undo. An empty list is the ordinary answer
+	// and one shape is easier to read than two.
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string][]string{"skipped": skipped})
 }
 
 // servePresets reads and replaces the owner's custom buttons.
