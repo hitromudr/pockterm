@@ -262,6 +262,53 @@ test('a list that answers nothing is not an offer', () => {
   assert.equal(detectOffer(report), null);
 });
 
+// Captured off the owner's screen on 2026-09-09, where the page drew three
+// buttons for it. Everything an offer is read by held: the box empty, the list
+// inside the last message, the numbers 1,2,3 in order — and the message ends in a
+// question mark. The list is a report of decisions already taken, though, and the
+// question at the bottom is about something else, so each button would have typed
+// a bare digit into the agent as an answer to a question nobody asked. The
+// paragraph between the list and the question is what separates the two shapes.
+const REPORT_THEN_QUESTION = [
+  '● По CI в yarr — нет, целиком не убирали. Убрали одну джобу и отказались от одного',
+  '  варианта размещения. Решения от 09.09 (владельца, коммит 6c5b05f):',
+  '',
+  '  1. Эмулятор-джоба удалена. Она поднимала эмулятор, ставила APK и дёргала сборщик.',
+  '     Причина — дорого и доказывала не то: на живом планшете установку гасит тумблер',
+  '     HyperOS, а служба спец.возможностей отваливается при каждом обновлении.',
+  '  2. Домашний CI на раннерах хозяйства решено не заводить — приложение всё равно',
+  '     ставится с кабеля. Сборка остаётся на приватном GitHub-зеркале.',
+  '  3. Сборочная джоба осталась — юнит-тесты парсера + assembleDebug + upload artifact.',
+  '',
+  '  Отдельно про то, из-за чего это, вероятно, и всплыло — две джобы yarr, висевшие',
+  '  10 часов в очереди Forgejo за меткой ubuntu-latest. Это закрыто выключением',
+  '  Actions у репозитория, а не удалением workflow.',
+  '',
+  '  Хочешь — проверю make ci-runners, что очередь yarr в Forgejo сейчас пуста?',
+  '✻ Churned for 2m 39s',
+  '───────────────────────────────────',
+  '❯\u00a0',
+  '───────────────────────────────────',
+  '  ctx 13% | dms@ai:~/work/devops (develop) $ | Opus 4.8',
+];
+
+test('a report with a question about something else is not an offer', () => {
+  assert.equal(detectOffer(REPORT_THEN_QUESTION), null,
+    'the numbered decisions were offered as answers');
+  assert.equal(detectPrompt(REPORT_THEN_QUESTION), null,
+    'nothing on this screen is answerable by a button');
+});
+
+test('the question is still read through the last option\'s own wrap', () => {
+  // The wrap under an option carries no blank line, and a question drawn straight
+  // under it does not either: "2. …\n  Что делаем?" is one paragraph on screen and
+  // an offer all the same.
+  const tight = OFFER.filter((l) => l.trim() !== '');
+  const q = detectOffer(tight);
+  assert.ok(q, 'a question directly under the list was not read');
+  assert.equal(q.options.length, 2);
+});
+
 test('a numbered list with no agent and no box is not an offer', () => {
   // A shell printing a list is the case the chrome rule was written for: there
   // is nothing here to type a digit into.

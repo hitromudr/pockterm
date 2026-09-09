@@ -99,9 +99,29 @@ list in prose as something to press. But an agent that has finished its turn and
 written "Что делаем? 1. … 2. …" is asking a question too. `detectOffer` requires
 four things, each removing a way to be wrong: the agent's input box is on screen
 and **empty**; the list is inside the agent's last message (below the last `●`);
-that message **ends in a question**, a list of what was done not being an offer;
-and the numbers run 1,2,3… in order, at least two of them. The button types the
-number and presses Enter, which is what the owner would have done. `detectPrompt`
+the question is drawn **under the list with nothing else between them**, a list of
+what was done not being an offer; and the numbers run 1,2,3… in order, at least two
+of them. The button types the number and presses Enter, which is what the owner
+would have done.
+
+**The third of those was "the message ends in a question", and that read the wrong
+screen on 2026-09-09.** The owner photographed three buttons drawn over a report:
+three numbered decisions already taken, a paragraph about how they had come up, and
+a closing "Хочешь — проверю …?" about something else entirely. Every other rule
+held — the box was empty, the list sat in the last message, the numbers ran 1,2,3 —
+so a press would have sent a bare digit as an answer to a question nobody had
+asked. A question mark **somewhere** in the message says nothing about the list; an
+offer is drawn with the list last and the question directly under it. So
+`askedUnder` consumes the last option's own wrap — prose wraps with no blank line
+in it, while a paragraph after a list has one before it — and then allows exactly
+one paragraph, the one ending in `?`, with nothing below it but the turn summary
+and the box's chrome. A list with prose after it draws nothing now, which is the
+cheap failure: a paragraph between the two says the question is about something the
+list does not enumerate, and silence costs a thumb one digit typed by hand. The
+screen is in `test/detect.test.mjs` as `REPORT_THEN_QUESTION`, and the fixture the
+rule was written for (`OFFER`, question straight under the list) is held to as
+well — including with its blank lines taken out, which is the shape of a question
+drawn with no gap under the last option. `detectPrompt`
 asks the strict question first. This lives on the page alone — `internal/detect`
 does not read offers, so the tab's blue and the "asks for an answer" notice keep
 meaning a menu is on screen; otherwise an agent that ends every second answer with

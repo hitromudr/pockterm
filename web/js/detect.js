@@ -343,14 +343,61 @@ export function detectQuestion(lines) {
 //   - the agent's own input box is on screen, empty. That is what the digit is
 //     typed into — not into a shell, not into a half-written message.
 //   - the list is inside the agent's last message (below the last `●`).
-//   - that message ends in a question. A list of what was *done* is not an
-//     offer, and the question mark is what the two do not share.
+//   - the question is drawn under the list and nothing else stands between the
+//     two. A list of what was *done* is not an offer, and a question about
+//     something else, further down the same message, is not the list's — see
+//     askedUnder for the screen that cost.
 //   - the numbers run 1,2,3… in order, at least two of them.
 //
 // It answers `digits`, because that is literally what it is: the button types
 // the number and presses Enter, which is what the owner would have done.
 const AGENT_SAID = /^\s*●\s+\S/;
 const TURN_SUMMARY = /^\s*[✻✽✳✢✶*]\s+\w+\s+for\s+/;
+
+// Whether the one thing standing between the list and the end of the message is
+// the question that list answers.
+//
+// The question mark used to be looked for anywhere in the message, and the answer
+// it gave was the wrong one on the owner's screen of 2026-09-09: three numbered
+// decisions already taken, a paragraph about how they had come up, and a closing
+// "Хочешь — проверю …?" about something else entirely. Every other rule held —
+// the box was empty, the list sat in the last message, the numbers ran 1,2,3 — so
+// the page drew three buttons, and a press would have sent a bare digit as an
+// answer to a question nobody had asked. A wrong answer looks exactly like the
+// right one, which is why the reading is narrowed rather than patched.
+//
+// The shape it is narrowed to is the one an offer is actually drawn in: the list
+// last, the question directly under it ("Два пути: 1. … 2. … Что делаем?"). So
+// the last option's own wrap is consumed — prose wraps with no blank line in it,
+// while a paragraph after a list has one before it — and then exactly one
+// paragraph may stand, the one ending in "?", with nothing below it but the turn
+// summary and the box's chrome. A question drawn with no blank line under the
+// last option counts too: the wrap stops at the first line that ends in one.
+//
+// A list with prose after it is then not an offer, and nothing is drawn for it.
+// That is the cheap failure here — a paragraph between the two says the question
+// is about something the list does not enumerate, and silence costs a thumb one
+// digit typed by hand.
+function askedUnder(block, last) {
+  const chromeOnly = (line) => !boxGlyphs(line) || TURN_SUMMARY.test(line);
+  const closes = (from) => {
+    for (let i = from; i < block.length; i++) {
+      if (!chromeOnly(block[i])) return false;
+    }
+    return true;
+  };
+  let i = last + 1;
+  // The last option's own wrap.
+  for (; i < block.length && !chromeOnly(block[i]); i++) {
+    if (boxGlyphs(block[i]).endsWith('?')) return closes(i + 1);
+  }
+  // Then the paragraph under the list, which has to be the question itself.
+  while (i < block.length && chromeOnly(block[i])) i++;
+  if (i >= block.length) return false;
+  let end = i;
+  while (end + 1 < block.length && !chromeOnly(block[end + 1])) end++;
+  return boxGlyphs(block[end]).endsWith('?') && closes(end + 1);
+}
 
 export function detectOffer(lines) {
   const plain = lines.map(stripAnsi);
@@ -373,17 +420,6 @@ export function detectOffer(lines) {
   if (said < 0) return null;
   const block = plain.slice(said, box);
 
-  // It has to end in a question. The turn summary ("✻ Cooked for 19s") and the
-  // rule above the box are chrome, not the last word.
-  let asked = false;
-  for (let i = block.length - 1; i >= 0; i--) {
-    const t = boxGlyphs(block[i]);
-    if (!t || TURN_SUMMARY.test(block[i])) continue;
-    asked = t.endsWith('?');
-    break;
-  }
-  if (!asked) return null;
-
   // The lowest run of 1,2,3… in it. A line that is not an option continues the
   // one above — in prose a wrapped line sits at the margin, so the indentation
   // rule a real menu is read by has nothing to say here.
@@ -394,13 +430,18 @@ export function detectOffer(lines) {
     if (!m) continue;
     if (run && m[2] === String(run.opts.length + 1)) {
       run.opts.push({ key: m[2], label: label(m[3]) });
+      run.last = i;
       continue;
     }
     if (run && run.opts.length >= 2) best = run;
-    run = m[2] === '1' ? { start: i, opts: [{ key: '1', label: label(m[3]) }] } : null;
+    run = m[2] === '1' ? { start: i, last: i, opts: [{ key: '1', label: label(m[3]) }] } : null;
   }
   if (run && run.opts.length >= 2) best = run;
   if (!best) return null;
+
+  // And the question has to be the list's own: drawn under it, with nothing else
+  // in between.
+  if (!askedUnder(block, best.last)) return null;
 
   const prompt = label(boxGlyphs(block[0]).replace(/^●\s*/, ''));
   return { prompt, options: best.opts, cursor: -1, navigate: 'digits', offer: true };
