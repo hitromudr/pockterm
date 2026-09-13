@@ -53,6 +53,11 @@ type Session struct {
 	// same answer, and the second one is why a tab is worth looking at.
 	Shells   int `json:"shells,omitempty"`
 	Monitors int `json:"monitors,omitempty"`
+	// Other is a count the footer printed without getting to name it — the
+	// pane's width ate the word. Its own number rather than a share of the two
+	// above: the tab may say how many more are running, and must not say which
+	// kind they are. See detect.Background.
+	Other int `json:"other,omitempty"`
 	// Agents is how many subagents the session lists; drawn as one head each.
 	Agents int `json:"agents,omitempty"`
 	// Which button started this session — a preset's name, or "custom:<id>" for

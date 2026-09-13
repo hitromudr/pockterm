@@ -237,6 +237,37 @@ paid for by the check that follows it: `Read 1 file` has the shape and names
 neither kind, and a footer line that names neither is not that line answering
 "nothing running" — the search goes on up.
 
+**Sometimes the width eats the word whole, and then the number is all there
+is.** Same line, same 48 columns, one session further along: `  ⏵⏵ bypass
+permissions on · 3 shells, 3 monitors · ← for agents` arrives as `  ⏵⏵ bypass
+permissions on · 3 shells, 3` — captured off the owner's pane 13.09.2026, when
+three monitors were invisible in either orientation of the phone and he asked for
+them on the tab. The stump rule above has nothing to work with here: the cut
+landed before `monitors` began, and the live server was answering
+`{"name":"anabasis",…,"shells":3}` with the monitors simply absent. The detector
+was right, the line was short.
+
+What is certain is the number and not the kind, so that is what the tab says: a
+third plate, a grey circle, meaning "and this many more". `Background.Other`
+carries it, `backgroundCut` reads it — anchored to the `", "` the footer
+separates its counted items with, so what is read is that list cut short rather
+than prose ending in a digit, and only where a kind was named earlier on the same
+line. A word too short to name (`3 mo…`) goes to the same plate instead of being
+dropped, and only at the end of a line, the one place the width can cut. The
+alternatives were put to the owner and refused for the same reason a shorter
+stump is: the footer counts more kinds than these two — the binary's own list is
+shells, monitors, teams, local agents, ultraplan, remote and background dynamic
+workflows, cloud sessions, Artifact comment monitors, MCP tasks (2.1.270) — so a
+bare `3` after `3 shells,` reads as monitors only by their order, and a plate
+drawn on that order would claim a kind the session never said.
+
+The circle is a child of the `.bg` span rather than a third pseudo-element, an
+element having two and both being spoken for; `order` puts it after them. Grey
+because cyan and green are the two kinds that have names, and no point on it
+because the triangle and the shield have theirs. It comes and goes with the
+width: at a width where the word fits, the same count arrives named and the green
+shield draws it instead.
+
 **The top edge says who is running for it.** A subagent is not a background
 process: it is another agent with its own turn, and the session is waiting on it.
 Claude Code lists them under its status lines (`● main`, then a `◯` per subagent),

@@ -3557,6 +3557,67 @@ describe('a tab says what its session is doing', () => {
       null, { timeout: 20000 });
   });
 
+  test('a count the width cut off gets a plate that names no kind', async () => {
+    // The agent clips its own status line to the pane, and at the 48 columns a
+    // phone gives a shared window the cut lands before the second word starts:
+    // "3 shells, 3 monitors · ← for agents" arrives as "3 shells, 3". Captured
+    // off the owner's pane 13.09.2026, when three monitors were invisible in
+    // either orientation — the tab drew the shells and nothing else, because
+    // there was not even a stump of "monitors" left to read.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    stand.tmux(['send-keys', '-t', 'demo', 'bypass permissions on · 3 shells, 3', 'Enter']);
+    await page.waitForFunction(
+      () => {
+        const box = document.querySelector('#tabs button[data-session="demo"] .bg');
+        return box?.dataset.sh === '3' && box.querySelector('.oth')?.dataset.n === '3';
+      },
+      null, { timeout: 20000 });
+
+    const plates = await page.evaluate(() => {
+      const b = document.querySelector('#tabs button[data-session="demo"]');
+      const box = b.querySelector('.bg');
+      const oth = box.querySelector('.oth');
+      const s = getComputedStyle(oth);
+      const shell = getComputedStyle(box, '::before');
+      const monitor = getComputedStyle(box, '::after');
+      return {
+        mon: box.dataset.mon,
+        plates: b.dataset.bg,
+        display: s.display,
+        background: s.backgroundColor,
+        radius: s.borderRadius,
+        shellBg: shell.backgroundColor,
+        monitorBg: monitor.backgroundColor,
+        monitorContent: monitor.content,
+        past: oth.getBoundingClientRect().right - box.getBoundingClientRect().right,
+      };
+    });
+    // The number is the agent's own; the kind is what the width ate. So no kind
+    // is claimed for it — the monitors' plate stays away rather than taking a
+    // number the line never gave it.
+    assert.equal(plates.mon, undefined, 'the unnamed count was handed to the monitors');
+    assert.equal(plates.monitorContent, 'none', `the monitor plate says ${plates.monitorContent}`);
+    assert.equal(plates.plates, '2', `the corner reserves room for ${plates.plates} plates`);
+    // Its own shape and its own colour, neither of them a kind's: cyan and green
+    // are the two that have names, and a circle is the shape with no point on it.
+    assert.notEqual(plates.background, plates.shellBg, 'drawn in the shells\u2019 colour');
+    assert.notEqual(plates.background, plates.monitorBg, 'drawn in the monitors\u2019 colour');
+    assert.ok(/%|\d{2,}px/.test(plates.radius), `not a circle: ${plates.radius}`);
+    // And last in the row: shells, monitors, then whatever the line did not get
+    // to say.
+    assert.ok(Math.abs(plates.past) <= 1.5,
+      `the unnamed plate is not the last one: ${JSON.stringify(plates)}`);
+
+    // It goes when the claim does, like the two named ones.
+    stand.tmux(['send-keys', '-t', 'demo', 'bypass permissions on', 'Enter']);
+    stand.tmux(['send-keys', '-t', 'demo', 'bypass permissions on', 'Enter']);
+    await page.waitForFunction(
+      () => !document.querySelector('#tabs button[data-session="demo"]')?.dataset.bg,
+      null, { timeout: 20000 });
+  });
+
   test('the drawer says it too, in the same colours as the strip', async () => {
     // The drawer is what you open to see what else is running, and it was the one
     // surface that could not say what any of it was doing: the state was on the

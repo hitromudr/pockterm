@@ -343,8 +343,9 @@ type fakePresence struct {
 	// What Activity reports per session, set by the test. A tab is coloured by
 	// it, so the list has to carry it.
 	activity map[string]string
-	// What Background reports per session: shells and monitors still running.
-	background map[string][3]int
+	// What Background reports per session: shells, monitors, counts the pane's
+	// width left unnamed, and subagents.
+	background map[string][4]int
 }
 
 func (p *fakePresence) Activity(s string) string {
@@ -353,11 +354,11 @@ func (p *fakePresence) Activity(s string) string {
 	return p.activity[s]
 }
 
-func (p *fakePresence) Background(s string) (int, int, int) {
+func (p *fakePresence) Background(s string) (int, int, int, int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	bg := p.background[s]
-	return bg[0], bg[1], bg[2]
+	return bg[0], bg[1], bg[2], bg[3]
 }
 
 func (p *fakePresence) Watch(s string) {
@@ -1812,7 +1813,7 @@ func TestSessionListCarriesBackgroundWork(t *testing.T) {
 	opts := testOptions("")
 	opts.Presence = &fakePresence{
 		activity:   map[string]string{"demo": "done"},
-		background: map[string][3]int{"demo": {1, 2, 3}},
+		background: map[string][4]int{"demo": {1, 2, 4, 3}},
 	}
 	srv := httptest.NewServer(Handler(opts))
 	defer srv.Close()
@@ -1828,6 +1829,11 @@ func TestSessionListCarriesBackgroundWork(t *testing.T) {
 	}
 	if len(got) != 1 || got[0]["shells"] != float64(1) || got[0]["monitors"] != float64(2) {
 		t.Fatalf("sessions = %v", got)
+	}
+	// And what the agent's line counted without getting to name it: at a phone's
+	// width the word is cut off whole, so the number travels on its own.
+	if got[0]["other"] != float64(4) {
+		t.Fatalf("other = %v, want 4 — sessions = %v", got[0]["other"], got)
 	}
 	// And the subagents the session lists, which the tab draws a head each for.
 	if got[0]["agents"] != float64(3) {
@@ -1856,6 +1862,9 @@ func TestSessionListLeavesOutBackgroundWhenThereIsNone(t *testing.T) {
 		t.Fatalf("a count appeared with nothing running: %v", got[0])
 	}
 	if _, ok := got[0]["monitors"]; ok {
+		t.Fatalf("a count appeared with nothing running: %v", got[0])
+	}
+	if _, ok := got[0]["other"]; ok {
 		t.Fatalf("a count appeared with nothing running: %v", got[0])
 	}
 }

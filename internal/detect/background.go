@@ -14,6 +14,14 @@ import (
 type Background struct {
 	Shells   int
 	Monitors int
+	// Other is a count the footer printed and did not get to name: the width of
+	// the pane cut the item off before its word. It is not a third kind of thing
+	// — it is the two above with the name eaten — and it exists because at the 48
+	// columns a phone gives a shared window the line arrives as "3 shells, 3",
+	// with "monitors" gone whole (captured off the owner's pane 13.09.2026). The
+	// number is what the agent claims and the kind is what the width ate, so the
+	// tab says "and this many more" rather than picking a kind for it.
+	Other int
 	// Agents is how many subagents the session's own list shows — see ReadAgents.
 	// Not part of Total: a subagent is somebody else's turn rather than a command
 	// left running, and the tab draws it in its own place.
@@ -21,7 +29,7 @@ type Background struct {
 }
 
 // Total is how many things are running, whatever kind.
-func (b Background) Total() int { return b.Shells + b.Monitors }
+func (b Background) Total() int { return b.Shells + b.Monitors + b.Other }
 
 // One count in the footer: "1 shell", "2 monitors" — and, at the end of a line
 // the pane has cut short, however much of the word fitted.
@@ -41,6 +49,13 @@ var backgroundKinds = []string{"shells", "monitors"}
 // What may stand between the last word and the end of the line and still leave
 // it clipped: the ellipsis the agent puts where it cut something off.
 var clipTail = regexp.MustCompile(`^\s*(\x{2026}|\.\.\.)?\s*$`)
+
+// A count the line ends on with nothing left to name it by. Anchored to the
+// ", " the footer separates its counted items with, so what is read is that list
+// cut short rather than a line of prose that happens to end in a number; the
+// optional letters are the case where a stump too short to name survived the cut
+// ("3 shells, 3 mo").
+var backgroundCut = regexp.MustCompile(`,\s*(\d{1,3})(?:\s+[a-z]{1,2})?\s*(?:\x{2026}|\.\.\.)?\s*$`)
 
 // How much of a word it takes to name a kind. "she" and "mon" tell the two
 // apart and tell them from what else a status line ends in; two letters would
@@ -149,13 +164,26 @@ func ReadBackground(lines []string) Background {
 		}
 		var bg Background
 		read := false
+		other, lastItem := 0, -1
 		for _, g := range backgroundItem.FindAllStringSubmatchIndex(line, -1) {
 			n, err := strconv.Atoi(line[g[2]:g[3]])
 			if err != nil {
 				continue
 			}
-			kind, ok := backgroundKind(line[g[4]:g[5]], clipTail.MatchString(line[g[5]:]))
+			lastItem = g[5]
+			atEnd := clipTail.MatchString(line[g[5]:])
+			kind, ok := backgroundKind(line[g[4]:g[5]], atEnd)
 			if !ok {
+				// A count this line ends on and does not name: a stump too short to
+				// tell "monitors" from "months", or a word the strip draws no plate
+				// for. Kept as a number without a kind rather than dropped — what is
+				// still running is the question, and "two more of something" answers
+				// more of it than silence does. Only at the end of the line, which is
+				// the only place the width can cut: a count in the middle of one is
+				// prose, by the same rule the stump goes by.
+				if atEnd {
+					other += n
+				}
 				continue
 			}
 			if kind == "shells" {
@@ -165,12 +193,24 @@ func ReadBackground(lines []string) Background {
 			}
 			read = true
 		}
+		// And the item cut off before its word got to start at all. The footer
+		// separates its counts with ", ", so a bare number at the end of the line
+		// is the next one with its name eaten: at 48 columns "3 shells, 3 monitors
+		// · ← for agents" arrives as "3 shells, 3", and the monitors' plate had
+		// nothing left to read. Skipped when it overlaps the last item, which is
+		// the stump case above and already counted.
+		if g := backgroundCut.FindStringSubmatchIndex(line); g != nil && g[0] >= lastItem {
+			if n, err := strconv.Atoi(line[g[2]:g[3]]); err == nil {
+				other += n
+			}
+		}
 		// A count of something else is not this line answering nothing: "Read 1
 		// file" has the shape and names neither kind, so the search goes on up
 		// instead of returning empty from it.
 		if !read {
 			continue
 		}
+		bg.Other = other
 		return bg
 	}
 	return Background{}

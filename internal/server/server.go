@@ -43,7 +43,7 @@ type Presence interface {
 	Activity(session string) string
 	// Background says what the agent still has running while it is quiet, so a
 	// tab can carry a badge as well as a colour.
-	Background(session string) (shells, monitors, agents int)
+	Background(session string) (shells, monitors, other, agents int)
 }
 
 type Options struct {
@@ -277,7 +277,7 @@ func serveSessions(o Options, w http.ResponseWriter, r *http.Request) {
 	if o.Presence != nil {
 		for i := range sessions {
 			sessions[i].State = o.Presence.Activity(sessions[i].Name)
-			sessions[i].Shells, sessions[i].Monitors, sessions[i].Agents = o.Presence.Background(sessions[i].Name)
+			sessions[i].Shells, sessions[i].Monitors, sessions[i].Other, sessions[i].Agents = o.Presence.Background(sessions[i].Name)
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

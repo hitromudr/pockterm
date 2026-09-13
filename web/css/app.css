@@ -347,6 +347,32 @@ html, body {
 }
 /* No plate for a kind with nothing in it: a zero is a claim too. */
 .bg:not([data-sh])::before, .bg:not([data-mon])::after { content: none; }
+/* And the count the agent printed without getting to name it. At the 48 columns
+   a phone gives a shared window the status line is cut before the second word
+   even starts — "3 shells, 3" is what "3 shells, 3 monitors · ← for agents"
+   arrives as — so the number is the agent's own and the kind is what the width
+   ate. The plate says the number and nothing else.
+
+   A circle: the triangle points the way a shell's mark does and the shield
+   points down, and this one has no point to make. Grey for the same reason —
+   cyan and green are the two kinds, and a third colour close to either would
+   claim one of them.
+
+   A child element rather than a third pseudo-element, because an element has
+   two and both are spoken for; `order` puts it after them, so the row reads
+   shells, monitors, and then what the line did not get to say. */
+.bg .oth {
+  display: none;
+  order: 1;
+  box-sizing: border-box;
+  font-weight: 700;
+  text-align: center;
+  color: #0f1b14;
+  background: #a8b3c1;
+  border-radius: 999px;
+}
+.bg .oth[data-n] { display: block; }
+.bg .oth::before { content: attr(data-n); }
 /* The subagents, one head each, on the top edge of the tab — the mirror of the
    plates below it. Two different questions and two different edges: the bottom
    says what the agent left running, the top says how many other agents are
@@ -411,7 +437,7 @@ button.session .agents {
      the border rather than as sitting inside the tab. */
   transform: translateY(50%);
 }
-#tabs .bg::before, #tabs .bg::after {
+#tabs .bg::before, #tabs .bg::after, #tabs .bg .oth {
   min-width: 14px;
   font-size: 9px;
   line-height: 10px;
@@ -420,6 +446,8 @@ button.session .agents {
    triangle, down for the shield. The transform is the overhang. */
 #tabs .bg::before { min-width: 15px; padding: 2px 7px 2px 2px; }
 #tabs .bg::after { padding: 1px 2px 4px; }
+/* Even padding: a circle is the one shape here with nowhere to put its point. */
+#tabs .bg .oth { padding: 2px; }
 /* Which button started the session, in that button's own glyph — ▸ shell,
    ✦ claude, ⚡ yolo, ↻ continue, ★ or its own lead for one the owner added.
 
@@ -825,17 +853,19 @@ button.session.asking::before {
    is worse than either of them saying nothing — and only the size differs, the
    row having more room than a tab. */
 button.session .bg { right: 8px; bottom: 6px; gap: 3px; }
-button.session .bg::before, button.session .bg::after {
+button.session .bg::before, button.session .bg::after, button.session .bg .oth {
   min-width: 16px;
   font-size: 10px;
   line-height: 11px;
 }
 button.session .bg::before { min-width: 21px; padding: 3px 13px 3px 3px; }
 button.session .bg::after { padding: 1px 3px 5px; }
+button.session .bg .oth { padding: 3px; }
 /* The meta line runs under the plates otherwise: it is the row's full width, and
    the corner is where its tail lands. */
 button.session[data-bg="1"] .meta { padding-right: 26px; }
 button.session[data-bg="2"] .meta { padding-right: 52px; }
+button.session[data-bg="3"] .meta { padding-right: 78px; }
 /* The mark takes no colour of its own here either: form says what a session is
    and colour says what it is doing, so it inherits the name's colour and steps
    back. An empty span takes no room, and the gap belongs to the mark — a margin

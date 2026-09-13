@@ -162,12 +162,60 @@ func TestReadBackgroundReadsAClippedWordWithTheEllipsis(t *testing.T) {
 
 func TestReadBackgroundRefusesAStump(t *testing.T) {
 	// Two letters name nothing: "mo" is as much a month as a monitor, and a
-	// plate drawn on a guess claims something the session never said. The shell
-	// before it survived the clip and is still read.
+	// plate drawn on a guess claims something the session never said. The count
+	// is still the agent's own, so it is carried as one without a kind — and
+	// once, not twice, though the bare-tail pattern covers the same letters.
 	lines := []string{"  ⏵⏵ bypass permissions on · 1 shell, 1 mo…"}
 	got := ReadBackground(lines)
-	if got.Shells != 1 || got.Monitors != 0 {
-		t.Fatalf("got %+v, want the shell alone", got)
+	if got.Shells != 1 || got.Monitors != 0 || got.Other != 1 {
+		t.Fatalf("got %+v, want the shell and one unnamed", got)
+	}
+}
+
+func TestReadBackgroundReadsACountTheWidthAte(t *testing.T) {
+	// The whole word gone, not half of it. Captured off the owner's pane at 48
+	// columns, 13.09.2026: the session had three shells and three monitors, the
+	// agent's own line printed "3 shells, 3" and stopped, and the tab drew the
+	// shells alone — reported as three monitors being invisible in any
+	// orientation of the phone.
+	lines := []string{
+		"  ctx 77% | dms@ai:~/work/anabasis (main)↑2 $…",
+		"  ⏵⏵ bypass permissions on · 3 shells, 3",
+		"        ✔ Update installed · Restart to update",
+	}
+	got := ReadBackground(lines)
+	if got.Shells != 3 || got.Monitors != 0 || got.Other != 3 {
+		t.Fatalf("got %+v, want 3 shells and 3 unnamed", got)
+	}
+	if got.Total() != 6 {
+		t.Fatalf("total = %d, want 6", got.Total())
+	}
+}
+
+func TestReadBackgroundNamesWhatFits(t *testing.T) {
+	// The same session in the other orientation, where the line fits whole: both
+	// kinds are named, and nothing is left over to count without a name.
+	lines := []string{
+		"  ctx 76% | dms@ai:~/work/anabasis (main)↑2 $ | Opus 5 (1M context)",
+		"    ⏵⏵ bypass permissions on · 3 shells, 3 monitors · ← for agents",
+		"          ✔ Update installed · Restart to update",
+	}
+	got := ReadBackground(lines)
+	if got.Shells != 3 || got.Monitors != 3 || got.Other != 0 {
+		t.Fatalf("got %+v, want 3 shells and 3 monitors named", got)
+	}
+}
+
+func TestReadBackgroundCountsNothingUnnamedOnItsOwn(t *testing.T) {
+	// A bare number at the end of a line is only the footer's list cut short if
+	// that line is the footer's list: a line that names neither kind is output,
+	// and the search goes on up instead of answering from it.
+	lines := []string{
+		"● Read 1 file, 3",
+		"  ⏵⏵ bypass permissions on",
+	}
+	if got := ReadBackground(lines); got.Total() != 0 {
+		t.Fatalf("got %+v, want nothing claimed", got)
 	}
 }
 
@@ -176,7 +224,7 @@ func TestReadBackgroundReadsAClippedWordOnlyAtTheEnd(t *testing.T) {
 	// of one with the line continuing past it is prose.
 	lines := []string{"  ⏵⏵ bypass permissions on · 1 mon of the thing · 1 shell ·"}
 	got := ReadBackground(lines)
-	if got.Shells != 1 || got.Monitors != 0 {
+	if got.Shells != 1 || got.Monitors != 0 || got.Other != 0 {
 		t.Fatalf("got %+v, want the shell alone", got)
 	}
 }

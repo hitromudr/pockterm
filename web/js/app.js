@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v198';
+const APP_VERSION = 'v199';
 
 // Which install a journal line came from.
 //
@@ -295,7 +295,7 @@ async function loadSessions() {
     b.innerHTML = '<span class="line"><span class="kind"></span>' +
       `<span class="name">${escapeHtml(s.name)}</span></span>` +
       `<span class="meta">${escapeHtml(meta.join(' · '))}</span>` +
-      '<span class="bg"></span><span class="agents"></span>';
+      '<span class="bg"><span class="oth"></span></span><span class="agents"></span>';
     b.addEventListener('click', () => attach(s.name));
     li.appendChild(b);
 
@@ -349,6 +349,18 @@ function paintBackground(b, s) {
   for (const [attr, field] of BG_PLATES) {
     const n = s[field] || 0;
     if (n > 0) { box.dataset[attr] = String(n); plates++; } else delete box.dataset[attr];
+  }
+  // What the agent counted and the pane's width kept it from naming: at 48
+  // columns "3 shells, 3 monitors · ← for agents" reaches the page as "3
+  // shells, 3", so the second number is known and its kind is not. Its own
+  // plate, because the two above are what the session actually claimed — a
+  // number moved into either of them would be the page saying what the line
+  // never said. On its own element for the same reason the box has two
+  // pseudo-elements and no more.
+  const oth = box.querySelector('.oth');
+  if (oth) {
+    const n = s.other || 0;
+    if (n > 0) { oth.dataset.n = String(n); plates++; } else delete oth.dataset.n;
   }
   if (plates) b.dataset.bg = String(plates);
   else delete b.dataset.bg;
@@ -1386,6 +1398,12 @@ async function renderTabs() {
       // is painted on a later poll, and a tab must not be rebuilt to carry it.
       const bgBox = document.createElement('span');
       bgBox.className = 'bg';
+      // The plate for a count the agent's line did not get to name is a child of
+      // its own: the two named kinds are the box's own pseudo-elements, and an
+      // element has no third one. Empty it draws nothing, like the box itself.
+      const oth = document.createElement('span');
+      oth.className = 'oth';
+      bgBox.appendChild(oth);
       b.appendChild(bgBox);
       // The other corner: the heads of the subagents. Empty until there are any,
       // and painted rather than rebuilt for the same reason as everything else
