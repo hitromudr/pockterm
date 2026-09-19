@@ -166,32 +166,46 @@ the old code. The page publishes that size on `#term` (`data-size`, `fitNow`).
 
 Reported 2026-09-19 as the history doubling while it is scrolled back: the same
 paragraph twice, once in narrow lines broken off mid-word and once in full at
-twice the width. Nothing here scrolled it twice — what doubled was written into
-the scrollback hours earlier, by the agent, at the moment the width changed.
+twice the width. Nothing scrolled it twice — the copy was written into the
+scrollback the moment the width changed, and it was written by the agent.
 
-**tmux never reflows its history.** What re-wraps a paragraph is the program:
-Ink clears the frame it drew and prints it again at the new width on `SIGWINCH`.
-It can only clear what is still on the pane, so everything that had already
-scrolled past the top stays there in the old width, and the reprint lands under
-it. The two are then adjacent and identical in words.
+**The agent reprints its last message; tmux keeps what fell off the top.** A
+message that has not been followed by another is still the live frame, so a
+width change re-wraps it: Ink erases the lines it printed and prints them again.
+Erasing only reaches what is still on the pane, so whatever had already scrolled
+past the top stays there at the old width and the reprint lands under it.
 
-Measured off the pane rather than argued: in `anabasis`'s scrollback the narrow
-copy runs to ~100 columns and stops at "появятся враги, идущие не", the wide one
-to ~206 and starts at "Со стенами…" — the line that was at the top of the visible
-pane. Beside it, the journal: one page on the session until 14:56:20
-(`screen 392x791`, a phone turned to landscape, ~100 columns), a second at
-14:56:20 (`1920x981`, 211 columns). The window is shared and `window-size latest`
-hands it to the newest client, so the width went 100 → 211 and the agent
-reprinted.
+Reproduced on a private server (`tmux -L`), a real Claude Code, a pane 42 rows
+tall — a phone in landscape — carrying a 40-line answer:
 
-**It is not only the second device.** Every `resize` that reaches tmux does this:
-the ± font buttons, a browser window dragged wider, a phone rotated. Each one
-leaves one more copy of whatever the agent had on screen.
+| | copies of a line from the answer |
+|---|---|
+| answer printed at 100 columns | 1 |
+| 100 → 211 | 2 (24 narrow lines left above, 33 wide below) |
+| 211 → 100 | 1 — the wide frame fitted the pane, so it was erased whole |
+| 100 → 211 again | 2 |
 
-**What would remove it, and why it is not done.** Only a width that stops moving:
-either the arriving client keeps the session's width and picks a font size to
-draw it at, or it keeps its font and draws that width in part of the screen.
-Both were put to the owner on 2026-09-19 and both were declined — a pane fitted
-to the screen it is read on is worth more than a clean scrollback. `clear-history`
-is not the smaller version of the same cure: it takes the whole history, not the
-duplicate.
+So it is the **narrow-to-wide** step that leaves the copy, because at the narrow
+width the message was taller than the pane; the way back is clean. One copy per
+step, not a pile: what is already in the history is never reprinted again. The
+phone-then-laptop order is exactly the owner's.
+
+The journal names the step that did it here: one page on the session until
+14:56:20 (`screen 392x791`, a phone in landscape, ~100 columns), a second at
+14:56:20 (`1920x981`, 211 columns), no `watch: done` in between — no turn ran,
+nothing was typed, the text simply appeared twice.
+
+**Both halves of the cure are out of reach, and each was tried.** tmux cannot be
+asked to stop writing history for a moment: `set -p history-limit 0` is accepted
+and reads back, and the pane's buffer is untouched — the option is consulted when
+a pane is made. And nothing removes a range from the history: `clear-history`
+takes all of it, which is the one thing worth less than a duplicate. What is left
+is a width that does not move, and that was declined on 2026-09-19 — a pane
+fitted to the screen it is read on is worth more than a clean scrollback.
+
+**What tmux does re-wrap is its own wrapping.** A line too long for the new width
+is broken by tmux and joined back when the width returns, because tmux marked it;
+the agent's own line breaks are not its to undo, which is why the narrow copy
+stays narrow under a wide pane. Measured with a model of Ink under `tmux -L` while
+chasing the above — worth knowing before reading a scrollback as evidence of what
+a width used to be.
