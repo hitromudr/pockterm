@@ -161,3 +161,37 @@ version of the test demonstrated by passing against the defect: `sendResize`
 corrects the window first. The test drops resize frames on their way out and
 compares `#{window_width}` with what the page says its size is — 80 against 44 on
 the old code. The page publishes that size on `#term` (`data-size`, `fitNow`).
+
+## A width the session has already been drawn at is in its history for good
+
+Reported 2026-09-19 as the history doubling while it is scrolled back: the same
+paragraph twice, once in narrow lines broken off mid-word and once in full at
+twice the width. Nothing here scrolled it twice — what doubled was written into
+the scrollback hours earlier, by the agent, at the moment the width changed.
+
+**tmux never reflows its history.** What re-wraps a paragraph is the program:
+Ink clears the frame it drew and prints it again at the new width on `SIGWINCH`.
+It can only clear what is still on the pane, so everything that had already
+scrolled past the top stays there in the old width, and the reprint lands under
+it. The two are then adjacent and identical in words.
+
+Measured off the pane rather than argued: in `anabasis`'s scrollback the narrow
+copy runs to ~100 columns and stops at "появятся враги, идущие не", the wide one
+to ~206 and starts at "Со стенами…" — the line that was at the top of the visible
+pane. Beside it, the journal: one page on the session until 14:56:20
+(`screen 392x791`, a phone turned to landscape, ~100 columns), a second at
+14:56:20 (`1920x981`, 211 columns). The window is shared and `window-size latest`
+hands it to the newest client, so the width went 100 → 211 and the agent
+reprinted.
+
+**It is not only the second device.** Every `resize` that reaches tmux does this:
+the ± font buttons, a browser window dragged wider, a phone rotated. Each one
+leaves one more copy of whatever the agent had on screen.
+
+**What would remove it, and why it is not done.** Only a width that stops moving:
+either the arriving client keeps the session's width and picks a font size to
+draw it at, or it keeps its font and draws that width in part of the screen.
+Both were put to the owner on 2026-09-19 and both were declined — a pane fitted
+to the screen it is read on is worth more than a clean scrollback. `clear-history`
+is not the smaller version of the same cure: it takes the whole history, not the
+duplicate.
