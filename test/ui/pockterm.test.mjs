@@ -3557,13 +3557,17 @@ describe('a tab says what its session is doing', () => {
       null, { timeout: 20000 });
   });
 
-  test('a count the width cut off gets a plate that names no kind', async () => {
+  test('a count the width cut off goes to the monitors', async () => {
     // The agent clips its own status line to the pane, and at the 48 columns a
     // phone gives a shared window the cut lands before the second word starts:
     // "3 shells, 3 monitors · ← for agents" arrives as "3 shells, 3". Captured
     // off the owner's pane 13.09.2026, when three monitors were invisible in
     // either orientation — the tab drew the shells and nothing else, because
     // there was not even a stump of "monitors" left to read.
+    //
+    // The kind comes from the comma rather than from the word: the agent writes
+    // one phrase per kind and only the shells and monitors are written as a
+    // pair, so the count after that comma is the monitors and gets their plate.
     await stand.open();
     await stand.attach('demo');
     const { page } = stand;
@@ -3571,46 +3575,29 @@ describe('a tab says what its session is doing', () => {
     await page.waitForFunction(
       () => {
         const box = document.querySelector('#tabs button[data-session="demo"] .bg');
-        return box?.dataset.sh === '3' && box.querySelector('.oth')?.dataset.n === '3';
+        return box?.dataset.sh === '3' && box.dataset.mon === '3';
       },
       null, { timeout: 20000 });
 
     const plates = await page.evaluate(() => {
       const b = document.querySelector('#tabs button[data-session="demo"]');
       const box = b.querySelector('.bg');
-      const oth = box.querySelector('.oth');
-      const s = getComputedStyle(oth);
-      const shell = getComputedStyle(box, '::before');
       const monitor = getComputedStyle(box, '::after');
       return {
-        mon: box.dataset.mon,
         plates: b.dataset.bg,
-        display: s.display,
-        background: s.backgroundColor,
-        radius: s.borderRadius,
-        shellBg: shell.backgroundColor,
-        monitorBg: monitor.backgroundColor,
         monitorContent: monitor.content,
-        past: oth.getBoundingClientRect().right - box.getBoundingClientRect().right,
+        monitorBg: monitor.backgroundColor,
+        unnamed: box.querySelectorAll('.oth').length,
       };
     });
-    // The number is the agent's own; the kind is what the width ate. So no kind
-    // is claimed for it — the monitors' plate stays away rather than taking a
-    // number the line never gave it.
-    assert.equal(plates.mon, undefined, 'the unnamed count was handed to the monitors');
-    assert.equal(plates.monitorContent, 'none', `the monitor plate says ${plates.monitorContent}`);
+    // Drawn by the monitors' own plate, not by a third one standing in for it:
+    // a plate with no kind said "and this many more", and with the comma
+    // answering the kind there is nothing left for it to say.
+    assert.equal(plates.monitorContent, '"3"', `the monitor plate says ${plates.monitorContent}`);
     assert.equal(plates.plates, '2', `the corner reserves room for ${plates.plates} plates`);
-    // Its own shape and its own colour, neither of them a kind's: cyan and green
-    // are the two that have names, and a circle is the shape with no point on it.
-    assert.notEqual(plates.background, plates.shellBg, 'drawn in the shells\u2019 colour');
-    assert.notEqual(plates.background, plates.monitorBg, 'drawn in the monitors\u2019 colour');
-    assert.ok(/%|\d{2,}px/.test(plates.radius), `not a circle: ${plates.radius}`);
-    // And last in the row: shells, monitors, then whatever the line did not get
-    // to say.
-    assert.ok(Math.abs(plates.past) <= 1.5,
-      `the unnamed plate is not the last one: ${JSON.stringify(plates)}`);
+    assert.equal(plates.unnamed, 0, 'the plate with no kind is still drawn');
 
-    // It goes when the claim does, like the two named ones.
+    // It goes when the claim does, like the shells beside it.
     stand.tmux(['send-keys', '-t', 'demo', 'bypass permissions on', 'Enter']);
     stand.tmux(['send-keys', '-t', 'demo', 'bypass permissions on', 'Enter']);
     await page.waitForFunction(

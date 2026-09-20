@@ -14,14 +14,6 @@ import (
 type Background struct {
 	Shells   int
 	Monitors int
-	// Other is a count the footer printed and did not get to name: the width of
-	// the pane cut the item off before its word. It is not a third kind of thing
-	// — it is the two above with the name eaten — and it exists because at the 48
-	// columns a phone gives a shared window the line arrives as "3 shells, 3",
-	// with "monitors" gone whole (captured off the owner's pane 13.09.2026). The
-	// number is what the agent claims and the kind is what the width ate, so the
-	// tab says "and this many more" rather than picking a kind for it.
-	Other int
 	// Agents is how many subagents the session's own list shows — see ReadAgents.
 	// Not part of Total: a subagent is somebody else's turn rather than a command
 	// left running, and the tab draws it in its own place.
@@ -29,7 +21,7 @@ type Background struct {
 }
 
 // Total is how many things are running, whatever kind.
-func (b Background) Total() int { return b.Shells + b.Monitors + b.Other }
+func (b Background) Total() int { return b.Shells + b.Monitors }
 
 // One count in the footer: "1 shell", "2 monitors" — and, at the end of a line
 // the pane has cut short, however much of the word fitted.
@@ -50,11 +42,26 @@ var backgroundKinds = []string{"shells", "monitors"}
 // it clipped: the ellipsis the agent puts where it cut something off.
 var clipTail = regexp.MustCompile(`^\s*(\x{2026}|\.\.\.)?\s*$`)
 
-// A count the line ends on with nothing left to name it by. Anchored to the
-// ", " the footer separates its counted items with, so what is read is that list
-// cut short rather than a line of prose that happens to end in a number; the
-// optional letters are the case where a stump too short to name survived the cut
-// ("3 shells, 3 mo").
+// A count the line ends on with nothing left to name it by, and it is the
+// monitors. Anchored to the ", " the footer separates its counted items with,
+// which is what makes the kind knowable: the agent writes one phrase per group
+// and groups by kind, so the only comma in that line is the one inside "N
+// shells, M monitors" — shells and monitors are one kind of task to it (a
+// command left running, with a flag for the ones that watch), and every other
+// kind prints alone ("2 teams", "1 MCP task", "3 cloud sessions"), a mixture of
+// kinds collapsing to "N background tasks" with no comma at all. Read off the
+// binary 20.09.2026, version 2.1.278.
+//
+// So it is the pair that is being read here, and the second half of that pair is
+// the monitors. The optional letters are the case where a stump too short to
+// name survived the cut ("3 shells, 3 mo"): after the comma it is the monitors
+// as well, and the three-letter floor below is for a count standing on its own,
+// where position says nothing and the word is all there is.
+//
+// What this rests on is the shape of that line rather than its words, and the
+// shape is the agent's: a release that counted another kind alongside the shells
+// would make this plate claim a kind the session never named, and nothing here
+// would notice.
 var backgroundCut = regexp.MustCompile(`,\s*(\d{1,3})(?:\s+[a-z]{1,2})?\s*(?:\x{2026}|\.\.\.)?\s*$`)
 
 // How much of a word it takes to name a kind. "she" and "mon" tell the two
@@ -164,26 +171,21 @@ func ReadBackground(lines []string) Background {
 		}
 		var bg Background
 		read := false
-		other, lastItem := 0, -1
+		named := -1
 		for _, g := range backgroundItem.FindAllStringSubmatchIndex(line, -1) {
 			n, err := strconv.Atoi(line[g[2]:g[3]])
 			if err != nil {
 				continue
 			}
-			lastItem = g[5]
 			atEnd := clipTail.MatchString(line[g[5]:])
 			kind, ok := backgroundKind(line[g[4]:g[5]], atEnd)
 			if !ok {
-				// A count this line ends on and does not name: a stump too short to
-				// tell "monitors" from "months", or a word the strip draws no plate
-				// for. Kept as a number without a kind rather than dropped — what is
-				// still running is the question, and "two more of something" answers
-				// more of it than silence does. Only at the end of the line, which is
-				// the only place the width can cut: a count in the middle of one is
-				// prose, by the same rule the stump goes by.
-				if atEnd {
-					other += n
-				}
+				// A word that names neither kind gets no plate of its own. The footer
+				// counts more kinds than these two — teams, MCP tasks, cloud sessions
+				// — and each of them prints alone, so a number beside one of their
+				// words is a count of something this strip does not draw. What is
+				// left of such a word when the width cuts it is covered below, where
+				// the comma says which kind it was.
 				continue
 			}
 			if kind == "shells" {
@@ -191,17 +193,17 @@ func ReadBackground(lines []string) Background {
 			} else {
 				bg.Monitors += n
 			}
+			named = g[5]
 			read = true
 		}
-		// And the item cut off before its word got to start at all. The footer
-		// separates its counts with ", ", so a bare number at the end of the line
-		// is the next one with its name eaten: at 48 columns "3 shells, 3 monitors
-		// · ← for agents" arrives as "3 shells, 3", and the monitors' plate had
-		// nothing left to read. Skipped when it overlaps the last item, which is
-		// the stump case above and already counted.
-		if g := backgroundCut.FindStringSubmatchIndex(line); g != nil && g[0] >= lastItem {
+		// And the item cut off before its word got to start at all: at 48 columns
+		// "3 shells, 3 monitors · ← for agents" arrives as "3 shells, 3", and the
+		// monitors' plate had nothing left to read. The comma is what names it —
+		// see backgroundCut. Skipped where it overlaps an item already counted,
+		// which is the whole word arriving intact.
+		if g := backgroundCut.FindStringSubmatchIndex(line); g != nil && g[0] >= named {
 			if n, err := strconv.Atoi(line[g[2]:g[3]]); err == nil {
-				other += n
+				bg.Monitors += n
 			}
 		}
 		// A count of something else is not this line answering nothing: "Read 1
@@ -210,7 +212,6 @@ func ReadBackground(lines []string) Background {
 		if !read {
 			continue
 		}
-		bg.Other = other
 		return bg
 	}
 	return Background{}

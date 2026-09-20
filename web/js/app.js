@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v200';
+const APP_VERSION = 'v201';
 
 // Which install a journal line came from.
 //
@@ -295,7 +295,7 @@ async function loadSessions() {
     b.innerHTML = '<span class="line"><span class="kind"></span>' +
       `<span class="name">${escapeHtml(s.name)}</span></span>` +
       `<span class="meta">${escapeHtml(meta.join(' · '))}</span>` +
-      '<span class="bg"><span class="oth"></span></span><span class="agents"></span>';
+      '<span class="bg"></span><span class="agents"></span>';
     b.addEventListener('click', () => attach(s.name));
     li.appendChild(b);
 
@@ -322,7 +322,7 @@ async function loadSessions() {
 }
 
 // What is still running while the agent says nothing, one plate per kind: a
-// shell in green, a monitor in cyan, each with how many of them there are.
+// shell in cyan, a monitor in green, each with how many of them there are.
 //
 // It was one plate carrying the sum, on the argument that a tab only has to say
 // whether anything is left running. That is one question and the strip is read
@@ -331,6 +331,13 @@ async function loadSessions() {
 // counted apart — the footer says "1 shell, 2 monitors" and the session list has
 // carried both numbers since the badge existed — so what changed is only that
 // the page stopped adding them up.
+//
+// Two kinds and no more, including where the pane's width ate the word: a count
+// the agent printed after the comma is the monitors, and the server names it as
+// one before it ever reaches here (detect.backgroundCut). A third plate stood
+// here for a week saying "and this many more" — the number without a kind — and
+// it is gone: the comma answers the kind, so there was nothing left for it to
+// say.
 //
 // Drawn from attributes through pseudo-elements, so nothing here is text in the
 // button: the label is the session's name, and rewriting it rebuilds the button
@@ -349,18 +356,6 @@ function paintBackground(b, s) {
   for (const [attr, field] of BG_PLATES) {
     const n = s[field] || 0;
     if (n > 0) { box.dataset[attr] = String(n); plates++; } else delete box.dataset[attr];
-  }
-  // What the agent counted and the pane's width kept it from naming: at 48
-  // columns "3 shells, 3 monitors · ← for agents" reaches the page as "3
-  // shells, 3", so the second number is known and its kind is not. Its own
-  // plate, because the two above are what the session actually claimed — a
-  // number moved into either of them would be the page saying what the line
-  // never said. On its own element for the same reason the box has two
-  // pseudo-elements and no more.
-  const oth = box.querySelector('.oth');
-  if (oth) {
-    const n = s.other || 0;
-    if (n > 0) { oth.dataset.n = String(n); plates++; } else delete oth.dataset.n;
   }
   if (plates) b.dataset.bg = String(plates);
   else delete b.dataset.bg;
@@ -1406,12 +1401,6 @@ async function renderTabs() {
       // is painted on a later poll, and a tab must not be rebuilt to carry it.
       const bgBox = document.createElement('span');
       bgBox.className = 'bg';
-      // The plate for a count the agent's line did not get to name is a child of
-      // its own: the two named kinds are the box's own pseudo-elements, and an
-      // element has no third one. Empty it draws nothing, like the box itself.
-      const oth = document.createElement('span');
-      oth.className = 'oth';
-      bgBox.appendChild(oth);
       b.appendChild(bgBox);
       // The other corner: the heads of the subagents. Empty until there are any,
       // and painted rather than rebuilt for the same reason as everything else

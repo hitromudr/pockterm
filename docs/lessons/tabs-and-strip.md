@@ -247,26 +247,32 @@ landed before `monitors` began, and the live server was answering
 `{"name":"anabasis",…,"shells":3}` with the monitors simply absent. The detector
 was right, the line was short.
 
-What is certain is the number and not the kind, so that is what the tab says: a
-third plate, a grey circle, meaning "and this many more". `Background.Other`
-carries it, `backgroundCut` reads it — anchored to the `", "` the footer
-separates its counted items with, so what is read is that list cut short rather
-than prose ending in a digit, and only where a kind was named earlier on the same
-line. A word too short to name (`3 mo…`) goes to the same plate instead of being
-dropped, and only at the end of a line, the one place the width can cut. The
-alternatives were put to the owner and refused for the same reason a shorter
-stump is: the footer counts more kinds than these two — the binary's own list is
-shells, monitors, teams, local agents, ultraplan, remote and background dynamic
-workflows, cloud sessions, Artifact comment monitors, MCP tasks (2.1.270) — so a
-bare `3` after `3 shells,` reads as monitors only by their order, and a plate
-drawn on that order would claim a kind the session never said.
+**The comma is what names it, and it took two goes to see that.** The count after
+it is the monitors, and the tab draws the monitors' shield for it. Read off the
+binary 20.09.2026 (2.1.278): the agent writes one phrase per group of background
+tasks and groups them by kind, so `, ` appears in that line exactly once — inside
+`N shells, M monitors`, which is one group because a shell and a monitor are the
+same kind of task to it, a command left running with a flag for the ones that
+watch. Every other kind prints alone (`2 teams`, `1 MCP task`, `3 cloud
+sessions`, `1 background dynamic workflow`), and a mixture of kinds collapses to
+`N background tasks` with no comma at all.
 
-The circle is a child of the `.bg` span rather than a third pseudo-element, an
-element having two and both being spoken for; `order` puts it after them. Grey
-because cyan and green are the two kinds that have names, and no point on it
-because the triangle and the shield have theirs. It comes and goes with the
-width: at a width where the word fits, the same count arrives named and the green
-shield draws it instead.
+The first answer was a third plate — a grey circle meaning "and this many more" —
+on the argument that the footer counts ten kinds and a bare `3` after `3 shells,`
+reads as monitors only by their order. That was the wrong reason to be careful:
+the order of the words is not what is being read, the shape of the line is, and
+in that shape a second count only ever exists inside the one pair. The owner said
+so from the phone, the binary agreed, and the circle is gone — `backgroundCut`
+now adds to `Monitors`. The plate that stood for a count with no kind stood for
+one week.
+
+What it rests on is that shape rather than any word, which is the risk worth
+writing down: a release that counts another kind alongside the shells would make
+the shield claim a kind the session never named, and nothing here would catch it.
+The three-letter floor (`backgroundStump`) stays for the other case — a count
+standing on its own, where position says nothing and the word is all there is:
+`1 mo…` with no comma before it is as much a month as a monitor, and silence is
+the answer.
 
 **The top edge says who is running for it.** A subagent is not a background
 process: it is another agent with its own turn, and the session is waiting on it.

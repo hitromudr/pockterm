@@ -160,15 +160,27 @@ func TestReadBackgroundReadsAClippedWordWithTheEllipsis(t *testing.T) {
 	}
 }
 
-func TestReadBackgroundRefusesAStump(t *testing.T) {
-	// Two letters name nothing: "mo" is as much a month as a monitor, and a
-	// plate drawn on a guess claims something the session never said. The count
-	// is still the agent's own, so it is carried as one without a kind — and
-	// once, not twice, though the bare-tail pattern covers the same letters.
+func TestReadBackgroundReadsAStumpAfterTheComma(t *testing.T) {
+	// Two letters name nothing on their own — "mo" is as much a month as a
+	// monitor — but this one is not on its own: it stands after the comma, and
+	// the comma in that line only ever separates the shells from the monitors.
+	// So the kind comes from the place rather than from the letters, and it is
+	// counted once, though the bare-tail pattern covers the same letters.
 	lines := []string{"  ⏵⏵ bypass permissions on · 1 shell, 1 mo…"}
 	got := ReadBackground(lines)
-	if got.Shells != 1 || got.Monitors != 0 || got.Other != 1 {
-		t.Fatalf("got %+v, want the shell and one unnamed", got)
+	if got.Shells != 1 || got.Monitors != 1 {
+		t.Fatalf("got %+v, want the shell and one monitor", got)
+	}
+}
+
+func TestReadBackgroundRefusesAStumpStandingAlone(t *testing.T) {
+	// The same two letters with no comma before them: a session whose only
+	// background task is a monitor prints "1 monitor" alone, and cut to "1 mo…"
+	// there is nothing to say which kind it was. A plate is a claim, so silence
+	// is the answer — the three-letter floor is what buys the claim back.
+	lines := []string{"  ⏵⏵ bypass permissions on · 1 mo…"}
+	if got := ReadBackground(lines); got.Total() != 0 {
+		t.Fatalf("got %+v, want nothing claimed", got)
 	}
 }
 
@@ -184,8 +196,8 @@ func TestReadBackgroundReadsACountTheWidthAte(t *testing.T) {
 		"        ✔ Update installed · Restart to update",
 	}
 	got := ReadBackground(lines)
-	if got.Shells != 3 || got.Monitors != 0 || got.Other != 3 {
-		t.Fatalf("got %+v, want 3 shells and 3 unnamed", got)
+	if got.Shells != 3 || got.Monitors != 3 {
+		t.Fatalf("got %+v, want 3 shells and 3 monitors", got)
 	}
 	if got.Total() != 6 {
 		t.Fatalf("total = %d, want 6", got.Total())
@@ -201,7 +213,7 @@ func TestReadBackgroundNamesWhatFits(t *testing.T) {
 		"          ✔ Update installed · Restart to update",
 	}
 	got := ReadBackground(lines)
-	if got.Shells != 3 || got.Monitors != 3 || got.Other != 0 {
+	if got.Shells != 3 || got.Monitors != 3 {
 		t.Fatalf("got %+v, want 3 shells and 3 monitors named", got)
 	}
 }
@@ -224,8 +236,25 @@ func TestReadBackgroundReadsAClippedWordOnlyAtTheEnd(t *testing.T) {
 	// of one with the line continuing past it is prose.
 	lines := []string{"  ⏵⏵ bypass permissions on · 1 mon of the thing · 1 shell ·"}
 	got := ReadBackground(lines)
-	if got.Shells != 1 || got.Monitors != 0 || got.Other != 0 {
+	if got.Shells != 1 || got.Monitors != 0 {
 		t.Fatalf("got %+v, want the shell alone", got)
+	}
+}
+
+func TestReadBackgroundDrawsNoPlateForAKindItCannotName(t *testing.T) {
+	// The footer counts more kinds than these two, and each of the others prints
+	// alone: "2 teams", "1 MCP task", "3 cloud sessions", and "N background
+	// tasks" where the kinds are mixed. None of them is a shell or a monitor, so
+	// none of them gets a plate — the line names a kind and it is not one of
+	// ours, which is different from the line being cut short.
+	for _, line := range []string{
+		"  ⏵⏵ bypass permissions on · 2 teams · ← for agents",
+		"  ⏵⏵ bypass permissions on · 1 MCP task · ← for agents",
+		"  ⏵⏵ bypass permissions on · 4 background tasks · ← for agents",
+	} {
+		if got := ReadBackground([]string{line}); got.Total() != 0 {
+			t.Fatalf("%q: got %+v, want nothing claimed", line, got)
+		}
 	}
 }
 
