@@ -337,6 +337,12 @@
            is somewhere in the history and come and go with it; the stack is
            column-reverse, so ⇞ drops to the bottom of it when it is alone.
 
+           ⇟ has a second reason to be there, and it is not about tmux's history
+           at all: where the program in the pane has taken the mouse, the wheel
+           goes to it and tmux never enters copy-mode, so a ⇟ waiting on copy-mode
+           would never arrive while ⇞ went on scrolling that program's own view.
+           See `setCopyMode` in js/app.js.
+
            Inside #term rather than over the whole screen, which is where it
            learned to be: a stack pinned 64px above the bottom of the viewport
            was a guess about how tall the bars are, and with ⇞ on screen

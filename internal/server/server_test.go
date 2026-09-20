@@ -235,8 +235,8 @@ func TestCopyModeReported(t *testing.T) {
 	var back atomic.Int64
 	var hist atomic.Int64
 	hist.Store(800)
-	opts.InMode = func(id int64) (bool, int, int, error) {
-		return inMode.Load(), int(back.Load()), int(hist.Load()), nil
+	opts.PaneState = func(id int64) (tmuxcmd.PaneState, error) {
+		return tmuxcmd.PaneState{InMode: inMode.Load(), Back: int(back.Load()), History: int(hist.Load())}, nil
 	}
 	srv := httptest.NewServer(Handler(opts))
 	defer srv.Close()
@@ -320,8 +320,68 @@ func waitHist(t *testing.T, c *websocket.Conn, want int) {
 	}
 }
 
+func TestPaneFactsReported(t *testing.T) {
+	// Who owns the wheel and whether there is a scrollback at all are facts about
+	// the program in the pane, not about the mode, and the page draws two of its
+	// controls from them: the way forward through a history tmux is not keeping,
+	// and the scrollbar. Both were missing from the phone (ROY 2026-09-20) for
+	// want of these two fields on the frame.
+	opts := testOptions("")
+	var app, alt atomic.Bool
+	opts.PaneState = func(id int64) (tmuxcmd.PaneState, error) {
+		return tmuxcmd.PaneState{History: 5, AppWheel: app.Load(), AltScreen: alt.Load()}, nil
+	}
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	readBinaryUntil(t, c, "ready")
+
+	// A plain shell first: neither flag, which is the state every reading before
+	// this change was taken as.
+	waitFacts(t, c, false, false)
+	// And then the pane the report came from: the program has taken both.
+	app.Store(true)
+	alt.Store(true)
+	waitFacts(t, c, true, true)
+	// A program can give the mouse back without leaving the alternate screen,
+	// and the two travel separately because they decide different controls.
+	app.Store(false)
+	waitFacts(t, c, false, true)
+}
+
+// waitFacts reads until a mode frame carrying the wanted pane facts arrives.
+func waitFacts(t *testing.T, c *websocket.Conn, wantApp, wantAlt bool) {
+	t.Helper()
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("waiting for app=%v alt=%v: %v", wantApp, wantAlt, err)
+		}
+		if mt != websocket.TextMessage {
+			continue
+		}
+		var f struct {
+			Type string `json:"type"`
+			App  bool   `json:"app"`
+			Alt  bool   `json:"alt"`
+		}
+		if err := json.Unmarshal(data, &f); err != nil || f.Type != "mode" {
+			continue
+		}
+		if f.App == wantApp && f.Alt == wantAlt {
+			return
+		}
+	}
+}
+
 func TestModePollOptional(t *testing.T) {
-	// Without InMode wired the socket still works; no mode frames are sent.
+	// Without PaneState wired the socket still works; no mode frames are sent.
 	srv := testServer(t, "")
 	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
 	if err != nil {

@@ -100,6 +100,64 @@ inherits the two traps above — stop the glide, give up the focus. The browser
 test asserts the bounds rather than the formula: at least half a screen, never
 more than one, and forward undoing back exactly.
 
+## The wheel is not always tmux's, and then none of the above is reachable
+
+Everything above assumes tmux owns the wheel and the scrollback. It owns neither while
+the program in the pane has asked for the mouse or is drawing on the alternate screen,
+and tmux's own root binding is where that is decided:
+
+```
+bind -T root WheelUpPane if-shell -F "#{||:#{pane_in_mode},#{mouse_any_flag}}" "send -M" "copy-mode -e"
+```
+
+A program that asked for the mouse takes the `send -M` branch: the notch goes to it and
+copy-mode is never entered, so `pane_in_mode` and `scroll_position` stand still however
+many notches go out. A program on the alternate screen has no growing scrollback either,
+so `history_size` is a leftover from before it started.
+
+Measured on ROY 2026-09-20, tmux 3.2a, Claude Code 2.1.278 in both panes:
+
+```
+anabasis:0.0  mode=0 scroll= hist=5 limit=2000 alt=1 mouse_any=1   # the agent's TUI
+probe:0.0     mode=0 scroll= hist=272          alt=0 mouse_any=0   # a plain bash pane,
+                                                                   # same tmux, same host
+```
+
+and the journal said the same from the other side: four `{"event":"page","dir":1,"notches":8}`
+and not one `mode` frame between them. Reported from the phone as **"only the up button,
+the others are missing"** — ⇞ is unconditional, and ⇟ and ⇩ waited on a state that could
+no longer arrive.
+
+So the mode frame carries two more of tmux's answers about the pane, `#{mouse_any_flag}`
+and `#{alternate_on}` (`tmuxcmd.PaneState`), and each decides one thing:
+
+- **⇟ goes on screen when the program owns the wheel.** The notches are not lost — they
+  are what scrolls that program's own view — so the way forward exists exactly as much as
+  the way back, and tmux has no say in either. This is the one control here that is *not*
+  drawn from the mode.
+- **No bar over the alternate screen.** A thumb sized from 5 lines of leftover history
+  claims there is output to reach where there is none, and a drag on it asks for a place
+  in output this screen never had.
+- **⇩ stays with copy-mode.** It is the way out of a mode, and leaving a mode nobody is in
+  is the one thing here that would do nothing at all — which is the defect the ⇩ already
+  had once (see the section above).
+
+A tmux too old to know the two formats prints nothing for them, which reads as `false` and
+leaves the page behaving as it did before they existed.
+
+**The fixture is the real thing, not a stand-in**: `\033[?1049h\033[?1002h` written into a
+pane makes tmux answer `alternate_on 1, mouse_any_flag 1` — measured on tmux 3.2a before
+either test was written — and the pane the tests run (`cat`) echoes what is sent into it,
+so the bytes arrive as a program's output. `TestRealTmuxPaneFacts` checks the frame,
+`a program that owns the wheel keeps the way forward and loses the bar` checks the two
+controls.
+
+**What the page cannot fix is the missing history itself.** With the agent on the
+alternate screen there is no tmux scrollback to page through at all, whoever owns the
+wheel; that is a launcher decision on the host, not this app's — 2.1.278 reads
+`CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN` and `CLAUDE_CODE_DISABLE_MOUSE`, and with both set
+the pane goes back to being the one every section above was measured on.
+
 ## The bar says where in the output you are, which no step can
 
 The swipe and the pager both move by a step; neither says how much is behind the

@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v199';
+const APP_VERSION = 'v200';
 
 // Which install a journal line came from.
 //
@@ -1347,6 +1347,14 @@ function attach(name) {
   copyBack = 0;
   copyHist = 0;
   barEl.hidden = true;
+  // Whose wheel it is and whether there is a scrollback at all are facts about
+  // the program in the pane, so they belong to the pane being left. Cleared to
+  // what a plain shell answers, which is also what a tmux too old to know the
+  // formats leaves them as.
+  appWheel = false;
+  altScreen = false;
+  pageDownShown = false;
+  pageDownBtn.hidden = true;
   renderTabs();
   // The strip is on screen now, so its colours have to keep up with the panes.
   pollTabs(true);
@@ -1997,7 +2005,7 @@ document.addEventListener('visibilitychange', () => {
 function onControl(raw) {
   let c = null;
   try { c = JSON.parse(raw); } catch (_) { return; }
-  if (c && c.type === 'mode') setCopyMode(!!c.in, c.back | 0, c.hist | 0);
+  if (c && c.type === 'mode') setCopyMode(!!c.in, c.back | 0, c.hist | 0, !!c.app, !!c.alt);
   if (c && c.type === 'notify') {
     // Drawn here only while nothing else can draw it. With a subscription in
     // place the same event is arriving as a push, and the worker will show it —
@@ -4746,9 +4754,20 @@ document.getElementById('update-now').addEventListener('click', () => {
 // present. What matters here is whether there is history above, which is the
 // second number in the mode frame.
 let scrolledBack = false;
+// Whether the program in the pane has taken the wheel from tmux, and whether it
+// is drawing on the alternate screen. Both are tmux's own answers about the
+// pane (`mouse_any_flag`, `alternate_on`), and they decide whether the rest of
+// this is reachable at all — see the pager below and `paintScrollbar`.
+let appWheel = false;
+let altScreen = false;
 // The position the stack was last woken for. -1 rather than 0, so the first frame
 // of a live pane is not a movement.
 let copyBackShown = -1;
+// What the ⇟ is on screen for. Tracked beside `scrolledBack` rather than derived
+// from it, because it now has two reasons to be there and they move separately:
+// a pane scrolled back in copy-mode, and a pane whose program answers the wheel
+// itself.
+let pageDownShown = false;
 // Scrolled back into history, the way out was a tmux key nobody has on a
 // phone. This button is the way back to the live end of the output, and it is
 // on screen exactly while there is somewhere to come back from.
@@ -4788,11 +4807,23 @@ toBottomBtn.addEventListener('click', () => {
 // somewhere in the history, so they come and go with it.
 //
 // They ride on the wheel the swipe already sends rather than asking tmux for its
-// own `page-up`, and that is the whole reason they need no new state: a wheel
-// notch enters copy-mode by itself, and a scroll down that reaches the live end
-// leaves it — which is what takes all three buttons off screen at the bottom. A
-// copy-mode command would do neither, and one sent to a pane that has left the
-// mode is a character in somebody's prompt.
+// own `page-up`, and that is nearly the whole reason they need no state of their
+// own: a wheel notch enters copy-mode by itself, and a scroll down that reaches
+// the live end leaves it — which is what takes all three buttons off screen at
+// the bottom. A copy-mode command would do neither, and one sent to a pane that
+// has left the mode is a character in somebody's prompt.
+//
+// **The wheel is not always tmux's, and then copy-mode never answers.** tmux's
+// own WheelUpPane binding passes the notch to the program in the pane as soon as
+// the program has asked for the mouse, so `in` and `back` stay where they were
+// however many notches go out, and ⇟ tied to them alone never appears: reported
+// from the phone as "only the up button, the others are missing" (ROY,
+// 2026-09-20, Claude Code 2.1.278, which takes both the mouse and the alternate
+// screen). The notches are not lost — they are what scrolls that program's own
+// view — so the way forward exists exactly as much as the way back does, and
+// that is what `app` puts the ⇟ on screen for. The ⇩ stays with copy-mode,
+// because leaving a mode nobody is in is the one thing here that would do
+// nothing at all.
 const pageUpBtn = document.getElementById('page-up');
 const pageDownBtn = document.getElementById('page-down');
 keepsTerminalFocus(pageUpBtn);
@@ -4925,6 +4956,16 @@ function trackHeight() {
 function paintScrollbar() {
   if (!barEl) return;
   if (dragging) return; // the finger owns it
+  // No bar over the alternate screen. tmux keeps no scrollback for a pane a
+  // program is drawing on, so `hist` there is a leftover from before it started
+  // — 5 lines under a `history-limit` of 2000, measured on ROY 2026-09-20 — and
+  // a thumb sized from it says there is history to reach where there is none.
+  // Dragging it would be worse than the lie: the drag asks for a place, and the
+  // place is in output this screen never had.
+  if (altScreen) {
+    barEl.hidden = true;
+    return;
+  }
   const t = thumbAt({ hist: copyHist, rows: term.rows, back: copyBack, track: trackHeight() });
   if (!t) {
     barEl.hidden = true;
@@ -5016,10 +5057,12 @@ function dragTo(clientY) {
   return back;
 }
 
-function setCopyMode(inMode, back, hist) {
+function setCopyMode(inMode, back, hist, app, alt) {
   copyMode = !!inMode;
   copyBack = back | 0;
   copyHist = hist | 0;
+  appWheel = !!app;
+  altScreen = !!alt;
   // The bar is drawn from both numbers and moves whenever either does — which
   // includes the history growing under a pane that is printing, and that is a
   // frame every poll. Painting is cheap; the journal line below is not, and it
@@ -5033,16 +5076,22 @@ function setCopyMode(inMode, back, hist) {
   // go idle. Before the early return below, which only fires when the *shown*
   // state is unchanged.
   if (back !== copyBackShown) { copyBackShown = back; wakePager(); }
-  if (away === scrolledBack) return;
+  // ⇟ goes with the ⇩ while tmux owns the wheel: at the live end there is
+  // nothing below to page to. Where the program owns it, tmux has no say in
+  // either direction and the way forward is on screen with the way back. ⇞ is
+  // never hidden — it is the way in, and the stack closes over the two that are.
+  const down = away || appWheel;
+  if (away === scrolledBack && down === pageDownShown) return;
   scrolledBack = away;
+  pageDownShown = down;
   toBottomBtn.hidden = !away;
   paintWayBack(liveEndAsking);
-  // ⇟ goes with the ⇩: at the live end there is nothing below to page to. ⇞ is
-  // never hidden — it is the way in, and the stack closes over the two that are.
-  pageDownBtn.hidden = !away;
-  // Both numbers, not the conclusion: if the button lingers again, the journal
-  // has to say whether tmux was in a mode and where it thought it was.
-  report('mode', { in: !!inMode, back, shown: away });
+  pageDownBtn.hidden = !down;
+  // Every number and both flags, not the conclusion: if a button lingers or
+  // fails to arrive again, the journal has to say whether tmux was in a mode,
+  // where it thought it was, and whether it owned the wheel and the scrollback
+  // at all.
+  report('mode', { in: !!inMode, back, shown: away, down, app: appWheel, alt: altScreen });
   renderAnswers();
 }
 

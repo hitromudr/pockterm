@@ -465,6 +465,60 @@ describe('a swipe follows the finger', () => {
     assert.deepEqual(stand.pageErrors, []);
   });
 
+  test('a program that owns the wheel keeps the way forward and loses the bar', async () => {
+    // Everything above this holds while tmux owns the wheel. A program that has
+    // asked for the mouse takes it: tmux's own WheelUpPane binding hands it the
+    // notch instead of entering copy-mode, so `pane_in_mode` and
+    // `scroll_position` never move — and the ⇟ that waited on them never arrived,
+    // while ⇞ went on scrolling that program's own view. Reported from the phone
+    // as "only the up button, the others are missing" (ROY 2026-09-20, Claude
+    // Code 2.1.278, which takes the alternate screen as well).
+    //
+    // The two sequences are what such a program writes, not an imitation: 1049 is
+    // the alternate screen, 1002 is button-event mouse tracking. They go in
+    // through tmux and come back out of the pane, which runs cat — the same way
+    // the history above is made — because it is tmux's reading of a program's
+    // output that is under test, and tmux answers `alternate_on` and
+    // `mouse_any_flag` to exactly this.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#term');
+    for (let i = 1; i <= 100; i += 10) {
+      await page.keyboard.type(Array.from({ length: 10 }, (_, k) => `wheel line ${i + k}\n`).join(''));
+    }
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('wheel line 100'));
+
+    // The pane as tmux owns it: history to reach, a bar drawn from it, and no way
+    // forward offered from the live end.
+    await page.waitForSelector('#scrollbar:not([hidden])', { timeout: 5000 });
+    assert.ok(await page.locator('#page-up').isVisible(), 'the way into the history is not offered at the live end');
+    assert.ok(await page.locator('#page-down').isHidden(), 'a page forward is offered with nothing ahead');
+
+    stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1049h\x1b[?1002h']);
+    stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+
+    // One poll later the page knows whose wheel it is. ⇟ arrives because the
+    // notches reach that program in both directions, and the bar goes because
+    // tmux keeps no scrollback for the screen it is drawing on — the total it
+    // would be sized from is a leftover from before it started.
+    await page.waitForSelector('#page-down:not([hidden])', { timeout: 5000 });
+    await page.waitForSelector('#scrollbar', { state: 'hidden', timeout: 5000 });
+    assert.ok(await page.locator('#page-up').isVisible(), 'the way in went away with tmux owning the wheel');
+    // The ⇩ is the way out of copy-mode, and there is no mode to leave: a button
+    // that would do nothing is the one failure this stack has already had.
+    assert.ok(await page.locator('#to-bottom').isHidden(), 'a way back out of a mode nobody is in');
+
+    // And it all comes back when the program gives both back, which is what
+    // leaving it does.
+    stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1002l\x1b[?1049l']);
+    stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });
+    await page.waitForSelector('#scrollbar:not([hidden])', { timeout: 5000 });
+    assert.deepEqual(stand.pageErrors, []);
+  });
+
   test('the bar says where in the output the pane is, and takes it anywhere', async () => {
     // The swipe and the pager move by a step and neither says how much there is
     // or how far through it you are. This one is drawn from both numbers tmux

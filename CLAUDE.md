@@ -83,6 +83,13 @@ them instead of deriving them again.
   that has moved on: `send-keys -X cancel` rather than `q`, `scroll-to` with a
   place rather than a delta. Anything sent after a flick stops the glide first —
   inertia keeps sending notches for up to a second after the finger is gone.
+- **The wheel is tmux's only while the pane lets it be.** tmux hands the notch to the
+  program in the pane as soon as the program has asked for the mouse, and a program drawing
+  on the alternate screen has no scrollback to enter at all — so `pane_in_mode` and
+  `scroll_position` stand still, and a control drawn from them alone never appears (⇟) or
+  points at history that is not there (the bar). Both are drawn from
+  `#{mouse_any_flag}` and `#{alternate_on}` as well. The agent's own TUI is such a program
+  as of Claude Code 2.1.278.
 - **Read a TUI by shape, never by vocabulary.** Verbs, labels and spinner frames
   turn over between Claude Code releases; brackets, indentation, a pointer
   glyph, a footer line do not. Where a word is unavoidable (`TYPE_FIELD`,

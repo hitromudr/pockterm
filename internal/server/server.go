@@ -50,13 +50,16 @@ type Options struct {
 	Token        string                                 // "" disables token auth (loopback-only deployments)
 	ListSessions func() ([]tmuxcmd.Session, error)      // current tmux sessions
 	Attach       func(id int64, target string) []string // argv attaching a client to target
-	// InMode reports the client pane's copy-mode state: whether it is in one,
-	// how far back it is scrolled, and how many lines of history there are to
-	// scroll through. The last is what a scrollbar is drawn from — a position
-	// with no total says nothing about where in the output it is — and tmux
-	// answers it out of a mode as well, which is what lets the bar be on screen
-	// before the first scroll. nil disables the poll.
-	InMode func(id int64) (inMode bool, back, history int, err error)
+	// PaneState reports what tmux says about the client's pane: the mode it is
+	// in, how far back it is scrolled, how many lines of history there are to
+	// scroll through, and whether the program in the pane has taken the wheel or
+	// the alternate screen. The history size is what a scrollbar is drawn from — a
+	// position with no total says nothing about where in the output it is — and
+	// tmux answers it out of a mode as well, which is what lets the bar be on
+	// screen before the first scroll. The last two facts are what say whether any
+	// of the others can be reached at all (see tmuxcmd.PaneMode). nil disables the
+	// poll.
+	PaneState func(id int64) (tmuxcmd.PaneState, error)
 	// LeaveMode takes the client's pane out of copy-mode. The page asks for it
 	// when something is typed into a pane tmux is holding in a mode, where every
 	// keystroke is discarded and nothing on screen says so; nil makes the request
@@ -984,10 +987,10 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 
 	// Tell the client when its pane enters or leaves copy-mode, so prompt
 	// buttons can disappear while it is scrolled back into history.
-	if o.InMode != nil {
+	if o.PaneState != nil {
 		done := make(chan struct{})
 		defer close(done)
-		go pollMode(conn, &writeMu, func() (bool, int, int, error) { return o.InMode(id) }, done)
+		go pollMode(conn, &writeMu, func() (tmuxcmd.PaneState, error) { return o.PaneState(id) }, done)
 	}
 
 	// PTY → WS. On PTY EOF (client killed, tmux server gone) close the
@@ -1122,6 +1125,16 @@ type modeFrame struct {
 	// How many lines of history the pane has. The scrollbar needs both numbers:
 	// how far back it is and how far back it could go.
 	Hist int `json:"hist"`
+	// Whether the program in the pane has taken the mouse, in which case tmux
+	// hands it the wheel notch instead of entering copy-mode: In and Back then
+	// never move, and what scrolling happens is the program's own. The page shows
+	// its way forward from this as well, because a way back that the wheel can
+	// reach and no way forward is the state that was reported.
+	App bool `json:"app"`
+	// Whether the pane is on the alternate screen, where tmux keeps no
+	// scrollback: Hist is then a leftover from before the program started and a
+	// bar drawn from it points into output this screen never had.
+	Alt bool `json:"alt"`
 }
 
 // pollMode reports the pane's copy-mode state to the client until done is
@@ -1163,16 +1176,17 @@ func dimension(v string, fallback uint16) uint16 {
 	return uint16(n)
 }
 
-func pollMode(conn *websocket.Conn, writeMu *sync.Mutex, in func() (bool, int, int, error), done <-chan struct{}) {
+func pollMode(conn *websocket.Conn, writeMu *sync.Mutex, state func() (tmuxcmd.PaneState, error), done <-chan struct{}) {
 	ticker := time.NewTicker(modePoll)
 	defer ticker.Stop()
-	last, lastBack, lastHist, known := false, 0, 0, false
+	var last tmuxcmd.PaneState
+	known := false
 	for {
 		select {
 		case <-done:
 			return
 		case <-ticker.C:
-			cur, back, hist, err := in()
+			cur, err := state()
 			if err != nil {
 				continue
 			}
@@ -1182,12 +1196,13 @@ func pollMode(conn *websocket.Conn, writeMu *sync.Mutex, in func() (bool, int, i
 			// however much has been printed since — and it costs one small frame
 			// per poll on a busy pane. The page does not write a journal line
 			// for it: what it records is the state it *shows* changing.
-			if known && cur == last && back == lastBack && hist == lastHist {
+			if known && cur == last {
 				continue
 			}
-			last, lastBack, lastHist, known = cur, back, hist, true
+			last, known = cur, true
 			writeMu.Lock()
-			err = conn.WriteJSON(modeFrame{Type: "mode", In: cur, Back: back, Hist: hist})
+			err = conn.WriteJSON(modeFrame{Type: "mode", In: cur.InMode, Back: cur.Back, Hist: cur.History,
+				App: cur.AppWheel, Alt: cur.AltScreen})
 			writeMu.Unlock()
 			if err != nil {
 				return

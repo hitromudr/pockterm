@@ -47,14 +47,13 @@ func TestRealTmuxCopyMode(t *testing.T) {
 			base := tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 			return append([]string{"tmux", "-L", sock}, base[1:]...)
 		},
-		InMode: func(id int64) (bool, int, int, error) {
+		PaneState: func(id int64) (tmuxcmd.PaneState, error) {
 			argv := tmuxcmd.PaneMode(tmuxcmd.ClientName(id))
 			out, err := tmuxL(sock, argv[1:]...).Output()
 			if err != nil {
-				return false, 0, 0, err
+				return tmuxcmd.PaneState{}, err
 			}
-			in, back, hist := tmuxcmd.ParsePaneMode(string(out))
-			return in, back, hist, nil
+			return tmuxcmd.ParsePaneMode(string(out)), nil
 		},
 		Static: http.NotFoundHandler(),
 	}))
@@ -94,6 +93,76 @@ func TestRealTmuxCopyMode(t *testing.T) {
 		t.Fatalf("tmux cancel: %v: %s", err, out)
 	}
 	waitMode(t, c, false, 0)
+}
+
+// A program that takes the mouse and the alternate screen takes the history with
+// them, and tmux says so about the pane. Checked against a real tmux because
+// every guess about this cost a release: the page hid its way forward and drew a
+// scrollbar over a scrollback that was not growing, reported from the phone as
+// "only the up button, the others are missing" (ROY 2026-09-20, Claude Code
+// 2.1.278).
+//
+// The two escape sequences are what that program does, not an imitation of it:
+// 1049 is the alternate screen, 1002 is button-event mouse tracking, and tmux
+// answers `alternate_on 1` and `mouse_any_flag 1` to both — measured on tmux 3.2a
+// before this test was written. What matters is that the frame carries them; the
+// buttons they decide are the page's, and the browser test owns that half.
+func TestRealTmuxPaneFacts(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not installed")
+	}
+	sock := fmt.Sprintf("pockterm-facts-%d", time.Now().UnixNano())
+	if out, err := tmuxL(sock, "new-session", "-d", "-s", "itest", "cat").CombinedOutput(); err != nil {
+		t.Fatalf("tmux new-session: %v: %s", err, out)
+	}
+	t.Cleanup(func() { tmuxL(sock, "kill-server").Run() })
+
+	srv := httptest.NewServer(Handler(Options{
+		ListSessions: func() ([]tmuxcmd.Session, error) {
+			out, _ := tmuxL(sock, "list-sessions", "-F",
+				"#{session_name}\t#{session_windows}\t#{session_created}\t#{session_attached}").Output()
+			return tmuxcmd.ParseSessions(string(out)), nil
+		},
+		Attach: func(id int64, target string) []string {
+			base := tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
+			return append([]string{"tmux", "-L", sock}, base[1:]...)
+		},
+		PaneState: func(id int64) (tmuxcmd.PaneState, error) {
+			argv := tmuxcmd.PaneMode(tmuxcmd.ClientName(id))
+			out, err := tmuxL(sock, argv[1:]...).Output()
+			if err != nil {
+				return tmuxcmd.PaneState{}, err
+			}
+			return tmuxcmd.ParsePaneMode(string(out)), nil
+		},
+		Static: http.NotFoundHandler(),
+	}))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws?session=itest", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	// The pane runs cat: the wheel and the scrollback are tmux's, and this is the
+	// reading every earlier one was taken as.
+	waitFacts(t, c, false, false)
+
+	// Now the program asks for both. The bytes are sent rather than a command that
+	// would print them, and that is the same trick the history above uses: the
+	// pane runs cat, so what goes in comes back out as the pane's own output and
+	// tmux parses it exactly as it parses a program's.
+	if err := c.WriteMessage(websocket.BinaryMessage, []byte("\x1b[?1049h\x1b[?1002h\r")); err != nil {
+		t.Fatal(err)
+	}
+	waitFacts(t, c, true, true)
+
+	// And gives them back, which is what leaving such a program does.
+	if err := c.WriteMessage(websocket.BinaryMessage, []byte("\x1b[?1002l\x1b[?1049l\r")); err != nil {
+		t.Fatal(err)
+	}
+	waitFacts(t, c, false, false)
 }
 
 func TestRealTmuxRoundTrip(t *testing.T) {

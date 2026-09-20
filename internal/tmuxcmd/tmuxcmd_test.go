@@ -89,37 +89,57 @@ func TestCaptureHistoryArgv(t *testing.T) {
 func TestPaneModeArgv(t *testing.T) {
 	got := PaneMode("pockterm-7")
 	want := []string{"tmux", "display-message", "-p", "-t", "pockterm-7",
-		"#{pane_in_mode},#{scroll_position},#{history_size}"}
+		"#{pane_in_mode},#{scroll_position},#{history_size},#{mouse_any_flag},#{alternate_on}"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v", got)
 	}
 }
 
 func TestParsePaneMode(t *testing.T) {
-	// Scrolled back: all three numbers say so, and how far through what.
-	if in, back, hist := ParsePaneMode("1,30,800\n"); !in || back != 30 || hist != 800 {
-		t.Fatalf("in = %v, back = %d, hist = %d, want true, 30, 800", in, back, hist)
+	// Scrolled back: all three numbers say so, and how far through what. The two
+	// flags are what a pane running an ordinary shell answers.
+	if got := ParsePaneMode("1,30,800,0,0\n"); got != (PaneState{InMode: true, Back: 30, History: 800}) {
+		t.Fatalf("scrolled back: got %+v", got)
 	}
 	// In copy-mode at the live end. This is the case the button used to be
 	// shown for: tmux is in a mode, and there is nowhere to come back from.
-	if in, back, _ := ParsePaneMode("1,0,800\n"); !in || back != 0 {
-		t.Fatalf("in = %v, back = %d, want true and 0", in, back)
+	if got := ParsePaneMode("1,0,800,0,0\n"); !got.InMode || got.Back != 0 {
+		t.Fatalf("live end: got %+v", got)
 	}
 	// A mode with no position at all (not copy-mode) is still a mode.
-	if in, back, _ := ParsePaneMode("1,,800\n"); !in || back != 0 {
-		t.Fatalf("in = %v, back = %d, want true and 0", in, back)
+	if got := ParsePaneMode("1,,800,0,0\n"); !got.InMode || got.Back != 0 {
+		t.Fatalf("mode without a position: got %+v", got)
 	}
 	// Not in a mode — and the history is still the pane's, which is what lets a
 	// scrollbar be drawn before anything has been scrolled. The empty middle
 	// field is the whole reason this is not split on spaces: "0  800" read by
 	// fields is two of them, and the history size becomes the position.
-	if in, back, hist := ParsePaneMode("0,,800\n"); in || back != 0 || hist != 800 {
-		t.Fatalf("out of mode: in = %v, back = %d, hist = %d, want false, 0, 800", in, back, hist)
+	if got := ParsePaneMode("0,,800,0,0\n"); got != (PaneState{History: 800}) {
+		t.Fatalf("out of mode: got %+v", got)
+	}
+	// A pane whose program has taken the mouse and the alternate screen, in the
+	// exact shape tmux 3.2a answered on ROY 2026-09-20 for Claude Code 2.1.278:
+	// out of any mode, nowhere in the history, and a history size left over from
+	// before the program started (5 lines under a history-limit of 2000). Every
+	// button the page draws from the first three numbers is unreachable here, so
+	// the flags are the only thing that says so.
+	if got := ParsePaneMode("0,,5,1,1\n"); got != (PaneState{History: 5, AppWheel: true, AltScreen: true}) {
+		t.Fatalf("alternate screen: got %+v", got)
+	}
+	// One without the other: a program can take the mouse and stay on the normal
+	// screen, where tmux's scrollback is real and only the wheel has been taken.
+	if got := ParsePaneMode("0,,800,1,0\n"); got != (PaneState{History: 800, AppWheel: true}) {
+		t.Fatalf("mouse only: got %+v", got)
+	}
+	// A tmux too old to know the two formats prints nothing for them, which reads
+	// as the pane the page already handled — not as a program owning anything.
+	if got := ParsePaneMode("0,,800,,\n"); got != (PaneState{History: 800}) {
+		t.Fatalf("unknown formats: got %+v", got)
 	}
 	// The failure cases: no such session, dead server, nothing at all.
 	for _, out := range []string{"0", "", "can't find session: pockterm-7\n"} {
-		if in, back, hist := ParsePaneMode(out); in || back != 0 || hist != 0 {
-			t.Fatalf("%q wrongly read as %v/%d/%d", out, in, back, hist)
+		if got := ParsePaneMode(out); got != (PaneState{}) {
+			t.Fatalf("%q wrongly read as %+v", out, got)
 		}
 	}
 }

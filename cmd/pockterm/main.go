@@ -231,7 +231,7 @@ func serve() {
 		Attach: func(id int64, target string) []string {
 			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 		},
-		InMode:     inMode,
+		PaneState:  paneState,
 		LeaveMode:  leaveMode,
 		ScrollTo:   scrollTo,
 		Capture:    capture,
@@ -849,18 +849,19 @@ func capturePane(session string) (string, error) {
 	return string(out), nil
 }
 
-// inMode asks tmux whether the client's own grouped session is showing
-// copy-mode (the browser scrolled back into history), how far back it is
-// scrolled, and how much history there is behind it. The client session is the
-// one to ask: its current window is what that browser tab displays.
-func inMode(id int64) (bool, int, int, error) {
+// paneState asks tmux what the client's own grouped session is showing: whether
+// it is in copy-mode (the browser scrolled back into history), how far back it
+// is scrolled, how much history there is behind it, and whether the program in
+// the pane has taken the wheel or the alternate screen from tmux. The client
+// session is the one to ask: its current window is what that browser tab
+// displays.
+func paneState(id int64) (tmuxcmd.PaneState, error) {
 	argv := tmuxcmd.PaneMode(tmuxcmd.ClientName(id))
 	out, err := exec.Command(argv[0], argv[1:]...).Output()
 	if err != nil {
-		return false, 0, 0, err
+		return tmuxcmd.PaneState{}, err
 	}
-	in, back, hist := tmuxcmd.ParsePaneMode(string(out))
-	return in, back, hist, nil
+	return tmuxcmd.ParsePaneMode(string(out)), nil
 }
 
 // scrollTo puts this client's pane at back lines from the live end.
@@ -878,14 +879,14 @@ func scrollTo(id int64, back int) error {
 	if err != nil {
 		return err
 	}
-	_, at, hist := tmuxcmd.ParsePaneMode(string(out))
-	if back > hist {
-		back = hist
+	st := tmuxcmd.ParsePaneMode(string(out))
+	if back > st.History {
+		back = st.History
 	}
-	if back == at {
+	if back == st.Back {
 		return nil
 	}
-	argv = tmuxcmd.ScrollHistory(session, back-at)
+	argv = tmuxcmd.ScrollHistory(session, back-st.Back)
 	return exec.Command(argv[0], argv[1:]...).Run()
 }
 
