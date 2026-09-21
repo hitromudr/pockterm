@@ -5,7 +5,21 @@
 
 // A menu option line: optional pointer/box glyphs, a number, a separator,
 // then a label. Matches "❯ 1. Yes", "  2) No", "│ 3. …", etc.
-const OPTION = /^([\s│>❯›*-]*)(\d{1,2})[.):]\s+(\S.*?)\s*$/;
+//
+// The space after the separator is optional, and what stands in for it is a
+// lookahead rather than nothing at all. A menu drawn beside a preview column
+// (see `previewColumn`) glues the two together — ` 1.архитектура с` is what a
+// 48-column pane shows — and under the old rule such a line was not an option,
+// so a three-option menu came down to the single one that happened to be drawn
+// the ordinary way and no menu was found at all. The lookahead is what keeps
+// `1.2.3` out: a digit after the separator is a version number, and silence is
+// the cheap failure there.
+const OPTION = /^([\s│>❯›*-]*)(\d{1,2})[.):](?:\s+|(?=\D))(\S.*?)\s*$/;
+
+// Whether that line's number has the label glued to it. On a two-column menu it
+// says more than how the line is spaced: the widget has moved the number one
+// line down, so the label's first words are on the line above — see `widen`.
+const GLUED = /^[\s│>❯›*-]*\d{1,2}[.):]\S/;
 
 // TUI chrome: the pointer at the highlighted option, or the box the prompt
 // is drawn in. A numbered list in prose (Claude writes one in almost every
@@ -67,6 +81,94 @@ function label(text) {
 
 function boxGlyphs(s) {
   return s.replace(/[│╭╮╰╯─]/g, '').trim();
+}
+
+// The left edge of a box drawn *beside* the options, and the whole of what tells
+// the two-column menu from every other one. AskUserQuestion draws a preview next
+// to its answers as soon as one option carries a `preview`, and on a phone that
+// second column lands in the middle of each option's line:
+//
+//     ❯   Монолитная             ┌────────────┐
+//      1.архитектура с           │ Система    │
+//
+// Measured on a real question at 48 columns, 2026-09-21, Claude Code 2.1.241 —
+// the pane is in the shared fixtures. Three things follow from it and each cost
+// the row: the number is glued to the label, the label's first words sit on the
+// line above the number, and everything a line says about indentation is about
+// the two columns together. So the column is found once and every line is read
+// with the preview taken off.
+//
+// Corners and tees only. The box a prompt is drawn in uses `│` down both edges
+// and would make every boxed menu look like this one; `┌`, `└` and `├` are drawn
+// where a box begins, ends or is cut, which is beside the options and nowhere
+// else. Two lines have to agree on the column, and it has to be past the column
+// the answers themselves are drawn in.
+//
+// **What is found has to be a column beside a list, not merely a box.** The
+// agent prints trees, and `tree` draws `├──` and `└──` down a column of its own:
+// nested three deep that column is past the margin, and a pane holding one above
+// a real menu would have every line cut at it — the menu mangled and the row
+// silent, which is the very defect this reads panes for. So two of the lines
+// carrying the box have to be options once the box is taken off. A tree has
+// nothing but path names to its left.
+const BOX_EDGE = /[┌└├┐┘┤]/;
+const BOX_CORNER = /[┌└]/;
+const PREVIEW_MIN_COL = 8;
+
+// Where a line's own characters sit, counted in columns rather than code units
+// for the reason `indentOf` is: these panes are read in any language.
+function columnsOf(s) {
+  return Array.from(s);
+}
+
+function previewColumn(plain) {
+  // Candidate columns: where a box begins, ends or is cut. Its vertical edges
+  // are `│`, which a prompt drawn in a box has too, so they name no column of
+  // their own.
+  const corners = new Map();
+  for (const line of plain) {
+    const cols = columnsOf(line);
+    for (let c = PREVIEW_MIN_COL; c < cols.length; c++) {
+      if (!BOX_EDGE.test(cols[c])) continue;
+      const at = corners.get(c) || { lines: 0, corner: false };
+      at.lines++;
+      at.corner = at.corner || BOX_CORNER.test(cols[c]);
+      corners.set(c, at);
+      break;
+    }
+  }
+  let best = -1;
+  for (const [col, at] of corners) {
+    if (at.lines < 2 || !at.corner) continue;
+    if (best >= 0 && col > best) continue;
+    // And it has to stand beside a list: two of the lines it is drawn against
+    // are options once it is taken off them.
+    let options = 0;
+    for (const line of plain) {
+      if (besideBox(line, col) && OPTION.test(cutAt(line, col))) options++;
+    }
+    if (options >= 2) best = col;
+  }
+  return best;
+}
+
+// One line with the preview column taken off.
+function cutAt(line, col) {
+  return col < 0 ? line : columnsOf(line).slice(0, col).join('');
+}
+
+// Whether the line carries the preview box beside it. That box is chrome in
+// exactly the sense `RIGHT_BORDER` is — a widget drew it, and prose draws no
+// boxes — and without it a two-column menu carries no chrome at all: its pointer
+// is on the line above the number it belongs to, so every option line looks like
+// a sentence beginning with a figure.
+function besideBox(line, col) {
+  if (col < 0) return false;
+  const cols = columnsOf(line);
+  for (let c = col; c < cols.length; c++) {
+    if (BOX_EDGE.test(cols[c]) || cols[c] === '│') return true;
+  }
+  return false;
 }
 
 // One option, read off a matched line: the key it carries, what it says,
@@ -214,6 +316,72 @@ function submitRow(plain, best) {
   return undefined;
 }
 
+// The two-column menu, read back as the list it is. Returns the line the list
+// actually ends on, which is what the footer is then looked for under.
+//
+// Three readings, and each one was a defect on the owner's phone 2026-09-21: a
+// question whose options carried previews drew no buttons at all, and the
+// journal said `asked:false` while the host's own watcher said "menu on screen".
+//
+//   - **The label wraps.** In a column twenty-odd characters wide the answer is
+//     spread over five or six lines, so the label is those lines joined. Taking
+//     the number's own line alone made two of the three options read
+//     "архитектура с" — one button's text for another button's answer, which is
+//     the one shape of wrongness this file exists to prevent.
+//   - **The number sits inside the wrap.** Where it is glued to the text, the
+//     widget has pushed it a line down and the label's first words are above it.
+//     That line belongs to this option and not to the one before it, and the
+//     glue is what says so.
+//   - **The pointer goes with those first words**, not with the number, so a
+//     focused option looks unpointed and `cursor` comes back -1 — no honest count
+//     of arrow presses, and therefore no button even once the rest is read.
+//
+// Verified against the labels the tool was called with: the three strings this
+// rebuilds are the three that went into AskUserQuestion, character for
+// character. The pane is in the shared fixtures, captured at 48 columns off
+// Claude Code 2.1.241.
+function widen(rows, best) {
+  // The line the label starts on: the one above a glued number, and the number's
+  // own line otherwise. A blank line is not a wrap, so it ends the search.
+  const begin = (j) => {
+    const i = best.at[j];
+    if (!best.glued[j] || i === 0) return i;
+    return rows[i - 1].trim() ? i - 1 : i;
+  };
+  // A line's own words, past whatever chrome is drawn to the left of them.
+  const words = (line) => {
+    const m = ROW.exec(line);
+    return m ? label(m[2]) : '';
+  };
+  let tail = best.last;
+  for (let j = 0; j < best.at.length; j++) {
+    const first = begin(j);
+    const indent = indentOf(rows[best.at[j]]);
+    // Where this option's own lines stop: at the next option's first line, at
+    // anything that is not a wrap, or at the end of the pane.
+    const stop = j + 1 < best.at.length ? begin(j + 1) : rows.length;
+    let last = best.at[j];
+    for (let k = best.at[j] + 1; k < stop; k++) {
+      if (!rows[k].trim() || RULE.test(rows[k]) || NAVIGATION.test(rows[k])) break;
+      if (OPTION.test(rows[k]) || indentOf(rows[k]) <= indent) break;
+      last = k;
+    }
+    const parts = [];
+    for (let k = first; k <= last; k++) {
+      const text = k === best.at[j] ? best.opts[j].label : words(rows[k]);
+      if (text) parts.push(text);
+    }
+    best.opts[j].label = parts.join(' ');
+    if (first < best.at[j]) {
+      const m = ROW.exec(rows[first]);
+      if (m && POINTER.test(m[1])) best.pointers[j] = true;
+    }
+    if (j === 0) best.start = first;
+    if (j === best.at.length - 1) tail = last;
+  }
+  return tail;
+}
+
 // detectQuestion(lines) → { prompt, options: [{key,label}], cursor, navigate,
 // submit } | null.
 // A menu is a run of lines numbered 1,2,3,… in order that carries TUI chrome,
@@ -232,8 +400,14 @@ function submitRow(plain, best) {
 // press anything — so both are absent from the shared fixtures' Go side.
 export function detectQuestion(lines) {
   const plain = lines.map(stripAnsi);
+  // A preview beside the answers is read off and set aside: what the menu says
+  // about itself is in the left column, and the right one is another widget
+  // whose borders and figures are not the list's. The prompt is still read off
+  // the whole line below — the question is drawn across both columns.
+  const pcol = previewColumn(plain);
+  const rows = pcol < 0 ? plain : plain.map((l) => cutAt(l, pcol));
   let best = null;
-  let run = null; // { start, last, indent, opts, pointers, chrome }
+  let run = null; // { start, last, indent, opts, pointers, at, glued, chrome }
 
   const close = () => {
     // The pointer standing on the submit row is chrome for the list above it, and
@@ -244,29 +418,31 @@ export function detectQuestion(lines) {
     // being pressed is never sent. It is narrow on purpose: a list of checkboxes
     // with a `❯` on a `Submit` of its own is a widget, and prose does not draw one.
     if (run && run.opts.length >= 2) {
-      const s = run.chrome ? null : submitRow(plain, run);
+      const s = run.chrome ? null : submitRow(rows, run);
       if (run.chrome || (s && s.focused)) best = run;
     }
     run = null;
   };
-  for (let i = 0; i < plain.length; i++) {
-    const m = OPTION.exec(plain[i]);
+  for (let i = 0; i < rows.length; i++) {
+    const m = OPTION.exec(rows[i]);
     // Not a numbered line: it may still belong to the option above, so the run
     // is left open and the next number is what decides.
     if (!m) continue;
     // A line of the input box brings no chrome with it: what is under that ❯ is
     // being typed, not offered.
-    const chrome = (CHROME.test(m[1]) || RIGHT_BORDER.test(plain[i]))
-      && !COMPOSER.test(plain[i]);
+    const chrome = (CHROME.test(m[1]) || RIGHT_BORDER.test(rows[i])
+      || besideBox(plain[i], pcol)) && !COMPOSER.test(rows[i]);
     // Continues the run if this line carries the next number and everything
     // between it and the previous option belongs to that option. The next
     // number is counted from the option before it rather than from the length
     // of the run, because a run no longer has to start at 1 — see below.
     if (run && Number(m[2]) === Number(run.opts[run.opts.length - 1].key) + 1
-        && continues(plain.slice(run.last + 1, i), run.indent, run.flush)) {
+        && continues(rows.slice(run.last + 1, i), run.indent, run.flush)) {
       const o = option(m);
       run.opts.push(o);
       run.pointers.push(POINTER.test(m[1]));
+      run.at.push(i);
+      run.glued.push(GLUED.test(rows[i]));
       run.chrome = run.chrome || chrome;
       // Asked of the option the gap opens under, not of the run: what is allowed
       // between two options is a fact about the one above them.
@@ -292,14 +468,20 @@ export function detectQuestion(lines) {
     close();
     const first = option(m);
     run = {
-      start: i, last: i, indent: indentOf(plain[i]), chrome,
+      start: i, last: i, indent: indentOf(rows[i]), chrome,
       flush: first.checked !== undefined,
       opts: [first],
       pointers: [POINTER.test(m[1])],
+      at: [i],
+      glued: [GLUED.test(rows[i])],
     };
   }
   close();
   if (!best) return null;
+  // A two-column menu is read back in full before anything else is asked of it:
+  // its labels wrap, its pointer is not on the line its number is, and where the
+  // list ends is further down than the numbers say.
+  const tail = pcol < 0 ? best.last : widen(rows, best);
 
   // Prompt: nearest non-empty line just above the first option.
   let prompt = '';
@@ -311,17 +493,17 @@ export function detectQuestion(lines) {
   // How it is answered: what the menu says under itself, or digits when it says
   // nothing. A prompt that lists its keys is a prompt whose keys those are.
   let navigate = 'digits';
-  for (let i = best.last + 1, seen = 0; i < plain.length && seen < FOOTER_REACH; i++) {
-    if (!plain[i].trim()) continue;
+  for (let i = tail + 1, seen = 0; i < rows.length && seen < FOOTER_REACH; i++) {
+    if (!rows[i].trim()) continue;
     seen++;
-    if (NAVIGATION.test(plain[i])) { navigate = 'arrows'; break; }
+    if (NAVIGATION.test(rows[i])) { navigate = 'arrows'; break; }
   }
   return {
     prompt,
     options: best.opts,
     cursor: best.pointers.indexOf(true),
     navigate,
-    submit: submitRow(plain, best),
+    submit: submitRow(rows, best),
   };
 }
 

@@ -279,3 +279,94 @@ checked against the naive one-write walk. Both panes are in
 `test/fixtures/menus.json`, captured at 51 columns: the fresh menu, and the same
 question part-answered — two boxes ticked, the pointer moved, the list scrolled past
 its own first option, which is three of this file's lessons in one screen.
+
+## A question whose options carry previews is drawn in two columns
+
+Reported 2026-09-21 as the answer buttons having disappeared in the new version.
+They had not disappeared: for one kind of question they had never been drawn,
+and that kind was new. `AskUserQuestion` puts a preview beside its answers as
+soon as one option carries a `preview` field, and on a phone the second column
+lands in the middle of every line of the first.
+
+The screen, measured off a real question at 48 columns (Claude Code 2.1.241; both
+panes are in `test/fixtures/menus.json`):
+
+```
+│ Какую архитектуру микросервисов предпочесть
+│ для масштабируемой системы обработки данных в
+│ реальном времени?
+
+❯   Монолитная             ┌────────────┐
+ 1.архитектура с           │ Система    │
+   внутренней              │ ├── API    │
+   модульностью и          │ слой       │
+   горизонтальным          │ │   ├──    │
+   масштабированием        │ REST       │
+  2. Микросервисная        │ endpoints  │
+    архитектура с          │ │   └──    │
+    ...
+ 3.архитектура с           ├─── ✂ ─── 9 lines
+   функциями как           hidden ┤
+   сервисом и              └────────────┘
+   управляемыми
+   сервисами               Notes press n to add
+
+────────────────────────────────────────────────
+  Chat about this
+
+Enter to select · ↑/↓ to navigate · n to add
+notes · Tab to switch questions · Esc to cancel
+```
+
+Four readings, and every one of them was a way to draw nothing or to press the
+wrong thing:
+
+- **The number is glued to the label.** ` 1.архитектура с` — no space after the
+  dot, so the line was not an option at all. Of three answers only the one drawn
+  the ordinary way matched, a run of one is not a menu, and `detectQuestion`
+  returned null: no buttons, no blue tab, nothing. The journal said
+  `{"event":"ender","asked":false}` at the same second the host's own watcher
+  said `question work (menu on screen)` — two readings of one pane, which is what
+  narrowed this to the page. The space is optional now, and what keeps `1.2.3`
+  out is the digit: a version number after the dot is not an answer.
+- **The number sits inside the wrap.** Where it is glued, the widget has pushed
+  it one line down and the label's first words are on the line above — a line
+  indented exactly like the previous option's own continuation, so indentation
+  cannot tell them apart and the glue is the only thing that can. Reading the
+  number's line alone made options 1 and 3 both read `архитектура с`: two buttons
+  with one text, each answering something else. `widen` joins the left column
+  back into the label, and what it rebuilds was checked against the strings the
+  tool was actually called with — the same three, character for character.
+- **The pointer travels with those first words**, not with the number. So a
+  focused option read as unpointed, `cursor` came back -1, and an arrow-driven
+  menu with no pointer gets no button by design — the fix for the first reading
+  alone would still have drawn an empty row.
+- **The footer is further down than the numbers say.** `navigate` is read within
+  four non-empty lines of the last option, and here the label's own wrap fills
+  them: the menu came out `digits` while its footer offers arrows and Enter
+  only. That is the old defect in its worst shape — the digit falls on the floor,
+  the Enter takes whatever is highlighted, and **every button answers option 1**.
+  The reach is measured from the end of the list rather than from the last
+  number.
+
+**The column is read off once and taken off every line.** Nothing else here can
+be trusted while it is on: indentation is about both columns at once, and the
+preview's own borders and figures are not the list's — `├─── ✂ ─── 9 lines` is a
+widget saying it has hidden nine rows, not an option. The box is also the only
+chrome such a menu has, which is what keeps it from reading as prose.
+
+**What is found has to be a column beside a list, not merely a box.** The agent
+prints trees, and `tree` draws `├──` and `└──` down a column of its own: nested
+three deep that column is past the margin. A pane holding one above a real menu
+would have every line cut at it, the menu taken apart and the row silent — the
+very defect this reading exists to fix. So two of the lines the box is drawn
+against have to be options once it is taken off them; a tree has nothing but path
+names to its left. `a tree in the output above a menu is not a preview column`
+holds that, and fails without the test.
+
+The buttons carry the whole label, ellipsised by the row's own CSS — the owner's
+call 2026-09-21, asked with a question drawn in this very layout: what the button
+says is what the screen says, and a long answer reads `1 · Монолитная
+архитектура с внутр…`. The alternative on the table was numbers alone, and the
+reason it lost is that the labels differ in their first words and agree in the
+rest.

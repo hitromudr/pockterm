@@ -95,6 +95,14 @@ them instead of deriving them again.
   glyph, a footer line do not. Where a word is unavoidable (`TYPE_FIELD`,
   `Submit`/`Next`) it is marked as the exception it is and carries the version
   it was measured on.
+- **A menu can be drawn in two columns, and then nothing on the line belongs to one
+  widget.** `AskUserQuestion` puts a preview beside its answers as soon as an option
+  carries one, and at a phone's width that column lands mid-line: the number is glued
+  to the label, the label wraps, the number sits one line *inside* the wrap and the
+  pointer stays with the words above it. So the column is found once
+  (`previewColumn`) and taken off every line before anything is read — and what is
+  found has to stand beside a list, or a `tree` in the output above a menu cuts the
+  menu apart.
 - **Measure the agent's TUI off the agent** — a real pane
   (`test/fixtures/menus.json`, captured at 51 columns, which is what a phone
   gives a shared window) or the binary itself in

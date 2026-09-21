@@ -15,7 +15,24 @@ import (
 
 // option is a menu line: optional pointer/box glyphs, a number, a
 // separator, then a label. Matches "❯ 1. Yes", "  2) No", "│ 3. …".
-var option = regexp.MustCompile(`^([\s│>❯›*-]*)(\d{1,2})[.):]\s+(\S.*?)\s*$`)
+//
+// The space after the separator is optional, and the label of a line without
+// one has to begin with neither space nor digit. A menu drawn beside a preview
+// column glues the number to the text — " 1.архитектура с" is what a 48-column
+// pane shows, see previewColumn — and under the old rule such a line was not an
+// option at all, so a three-option question came down to the one option drawn
+// the ordinary way and no menu was found. The digit is what keeps "1.2.3" out:
+// a version number is not an answer, and silence is the cheap failure there.
+//
+// The label comes back in one of two groups: the third when a space separates
+// it, the fourth when nothing does. The fourth is also what says the widget has
+// moved the number a line down — see widen.
+var option = regexp.MustCompile(`^([\s│>❯›*-]*)(\d{1,2})[.):](?:\s+(\S.*?)|([^\s\d].*?))\s*$`)
+
+// row is a line split into the chrome drawn down its left edge and its own
+// words, which is how a wrapped label's continuation is read off a two-column
+// menu.
+var row = regexp.MustCompile(`^([\s│>❯›]*)(\S.*?)\s*$`)
 
 // TUI chrome: the pointer at the highlighted option, or the box the prompt
 // is drawn in. A numbered list in prose has neither, and that list is the
@@ -35,7 +52,20 @@ var (
 	// off the label because the label is what a notification reads out, and
 	// because the page recognises the menu's own text field by its words.
 	checkbox = regexp.MustCompile(`^\[(.?)\]\s+`)
+	// The keys a menu says it takes, drawn under its options. This package
+	// presses nothing and so does not read them; the line is recognised because
+	// it ends the list of options, which is where a wrapped label stops.
+	navigation = regexp.MustCompile(`(?i)(enter to select|to navigate)`)
+	// The corners and tees of a box drawn beside the options — see
+	// previewColumn. "│" is left out on purpose: a prompt drawn in a box has
+	// one down both edges, and every boxed menu would look like this one.
+	boxEdge   = regexp.MustCompile(`[┌└├┐┘┤]`)
+	boxCorner = regexp.MustCompile(`[┌└]`)
 )
+
+// previewMinCol is how far in a second column has to start to be one: the
+// answers themselves are drawn at the left margin.
+const previewMinCol = 8
 
 // Option is one answer: the digit to send and what it says.
 type Option struct {
@@ -47,6 +77,183 @@ type Option struct {
 type Menu struct {
 	Prompt  string
 	Options []Option
+}
+
+// run is a candidate list of options as it is being read off the screen.
+type run struct {
+	start  int
+	last   int  // where the last option was found; the gap is measured from it
+	indent int  // the column the numbers sit in, which continuations sit past
+	flush  bool // ...unless the option carries a checkbox; see continues
+	opts   []Option
+	chrome bool
+	at     []int  // the line each option was found on
+	glued  []bool // ...and whether its number had the label glued to it
+}
+
+// previewColumn is the column a box drawn *beside* the options starts at, or -1.
+// It is the whole of what tells the two-column menu from every other one.
+//
+// AskUserQuestion draws a preview next to its answers as soon as one option
+// carries one, and on a phone that second column lands in the middle of every
+// option line:
+//
+//	❯   Монолитная             ┌────────────┐
+//	 1.архитектура с           │ Система    │
+//
+// Measured at 48 columns on 2026-09-21, Claude Code 2.1.241; the pane is in the
+// shared fixtures. Three things follow and each one cost the answer row on the
+// phone and the labels in a notification here: the number is glued to the text,
+// the label's first words sit on the line above the number, and what a line says
+// about indentation is about both columns at once. So the column is found once
+// and every line is read with the preview taken off.
+//
+// Two lines have to agree on it, and it has to be past the column the answers
+// are drawn in.
+//
+// **What is found has to be a column beside a list, not merely a box.** The agent
+// prints trees, and tree draws "├──" and "└──" down a column of its own: nested
+// three deep that column is past the margin, and a pane holding one above a real
+// menu would have every line cut at it — the menu taken apart and the
+// notification silent, which is the defect this reading exists to fix. So two of
+// the lines the box is drawn against have to be options once it is taken off
+// them. A tree has nothing but path names to its left.
+func previewColumn(plain []string) int {
+	type candidate struct {
+		lines  int
+		corner bool
+	}
+	corners := map[int]*candidate{}
+	for _, line := range plain {
+		cols := []rune(line)
+		for c := previewMinCol; c < len(cols); c++ {
+			if !boxEdge.MatchString(string(cols[c])) {
+				continue
+			}
+			at := corners[c]
+			if at == nil {
+				at = &candidate{}
+				corners[c] = at
+			}
+			at.lines++
+			at.corner = at.corner || boxCorner.MatchString(string(cols[c]))
+			break
+		}
+	}
+	best := -1
+	for col, at := range corners {
+		if at.lines < 2 || !at.corner {
+			continue
+		}
+		if best >= 0 && col > best {
+			continue
+		}
+		options := 0
+		for _, line := range plain {
+			if besideBox(line, col) && option.MatchString(cutAt(line, col)) {
+				options++
+			}
+		}
+		if options >= 2 {
+			best = col
+		}
+	}
+	return best
+}
+
+// cutAt is one line with the preview column taken off.
+func cutAt(line string, col int) string {
+	if col < 0 {
+		return line
+	}
+	cols := []rune(line)
+	if len(cols) <= col {
+		return line
+	}
+	return string(cols[:col])
+}
+
+// besideBox reports whether the preview box is drawn beside this line. That box
+// is chrome in exactly the sense the right border is — a widget drew it, and
+// prose draws no boxes — and without it a two-column menu carries no chrome at
+// all: its pointer is on the line above the number it belongs to, so every
+// option line looks like a sentence beginning with a figure.
+func besideBox(line string, col int) bool {
+	if col < 0 {
+		return false
+	}
+	cols := []rune(line)
+	for c := col; c < len(cols); c++ {
+		if cols[c] == '│' || boxEdge.MatchString(string(cols[c])) {
+			return true
+		}
+	}
+	return false
+}
+
+// widen reads a two-column menu back as the list it is: the labels wrap, and
+// where a number is glued to its text the widget has pushed it one line down, so
+// the label begins on the line above and that line belongs to this option rather
+// than to the one before it.
+//
+// Taking the number's own line alone made two of three options read
+// "архитектура с" — one option's words against another option's answer, which is
+// the worst shape a mistake has here: a notification that names the wrong answer
+// reads exactly like one that names the right one. Checked against the strings
+// the tool was called with: what this rebuilds is what went into
+// AskUserQuestion, character for character.
+//
+// The page reads one more thing off the same shape — the pointer, which travels
+// with those first words rather than with the number (web/js/detect.js, widen).
+// This package presses nothing, so it reads only the labels.
+func widen(rows []string, r *run) {
+	begin := func(j int) int {
+		i := r.at[j]
+		if !r.glued[j] || i == 0 || strings.TrimSpace(rows[i-1]) == "" {
+			return i
+		}
+		return i - 1
+	}
+	words := func(line string) string {
+		m := row.FindStringSubmatch(line)
+		if m == nil {
+			return ""
+		}
+		return label(m[2])
+	}
+	for j := range r.at {
+		first := begin(j)
+		indent := indentOf(rows[r.at[j]])
+		// Where this option's own lines stop: at the next option's first line, at
+		// anything that is not a wrap, or at the end of the pane.
+		stop := len(rows)
+		if j+1 < len(r.at) {
+			stop = begin(j + 1)
+		}
+		last := r.at[j]
+		for k := r.at[j] + 1; k < stop; k++ {
+			if strings.TrimSpace(rows[k]) == "" || rule.MatchString(rows[k]) ||
+				navigation.MatchString(rows[k]) || option.MatchString(rows[k]) ||
+				indentOf(rows[k]) <= indent {
+				break
+			}
+			last = k
+		}
+		parts := make([]string, 0, last-first+1)
+		for k := first; k <= last; k++ {
+			text := words(rows[k])
+			if k == r.at[j] {
+				text = r.opts[j].Label
+			}
+			if text != "" {
+				parts = append(parts, text)
+			}
+		}
+		r.opts[j].Label = strings.Join(parts, " ")
+		if j == 0 {
+			r.start = first
+		}
+	}
 }
 
 // Question reports the menu on screen, or nil. A menu is a run of lines
@@ -66,15 +273,19 @@ func Question(lines []string) *Menu {
 	for i, l := range lines {
 		plain[i] = ansi.ReplaceAllString(l, "")
 	}
-
-	type run struct {
-		start  int
-		last   int  // where the last option was found; the gap is measured from it
-		indent int  // the column the numbers sit in, which continuations sit past
-		flush  bool // ...unless the option carries a checkbox; see continues
-		opts   []Option
-		chrome bool
+	// A preview beside the answers is read off and set aside: what the menu says
+	// about itself is in the left column, and the right one is another widget
+	// whose borders and figures are not the list's. The prompt is still read off
+	// the whole line — the question is drawn across both columns.
+	pcol := previewColumn(plain)
+	rows := plain
+	if pcol >= 0 {
+		rows = make([]string, len(plain))
+		for i, l := range plain {
+			rows[i] = cutAt(l, pcol)
+		}
 	}
+
 	var best, cur *run
 	closeRun := func() {
 		if cur != nil && len(cur.opts) >= 2 && cur.chrome {
@@ -82,7 +293,7 @@ func Question(lines []string) *Menu {
 		}
 		cur = nil
 	}
-	for i, line := range plain {
+	for i, line := range rows {
 		m := option.FindStringSubmatch(line)
 		// Not a numbered line: it may still belong to the option above, so the
 		// run is left open and the next number is what decides. Closing here is
@@ -94,15 +305,22 @@ func Question(lines []string) *Menu {
 		// what is under it is whatever is being typed — see composer.go for how
 		// the two are told apart. A line from there brings no chrome, so a
 		// numbered list in a half-written message is prose like any other.
-		hasChrome := (chrome.MatchString(m[1]) || rightBorder.MatchString(line)) &&
-			!composerPrompt.MatchString(line)
+		hasChrome := (chrome.MatchString(m[1]) || rightBorder.MatchString(line) ||
+			besideBox(plain[i], pcol)) && !composerPrompt.MatchString(line)
+		// The label, and whether anything separated it from its number.
+		text, glued := m[3], false
+		if m[4] != "" {
+			text, glued = m[4], true
+		}
 		// Continues the run if this line carries the next number and everything
 		// between it and the previous option belongs to that option. Counted from
 		// the option before it rather than from the length of the run, because a
 		// run no longer has to start at 1 — see below.
-		if cur != nil && m[2] == nextKey(cur.opts) && continues(plain[cur.last+1:i], cur.indent, cur.flush) {
-			text, boxed := unbox(label(m[3]))
-			cur.opts = append(cur.opts, Option{Key: m[2], Label: text})
+		if cur != nil && m[2] == nextKey(cur.opts) && continues(rows[cur.last+1:i], cur.indent, cur.flush) {
+			shown, boxed := unbox(label(text))
+			cur.opts = append(cur.opts, Option{Key: m[2], Label: shown})
+			cur.at = append(cur.at, i)
+			cur.glued = append(cur.glued, glued)
 			cur.chrome = cur.chrome || hasChrome
 			// Asked of the option the gap opens under, not of the run: what may
 			// stand between two options is a fact about the one above them.
@@ -121,13 +339,19 @@ func Question(lines []string) *Menu {
 		// leading 1: it is the chrome a run is kept on, and the indentation rule in
 		// continues. Both are untouched.
 		closeRun()
-		text, boxed := unbox(label(m[3]))
+		shown, boxed := unbox(label(text))
 		cur = &run{start: i, last: i, indent: indentOf(line), flush: boxed,
-			opts: []Option{{Key: m[2], Label: text}}, chrome: hasChrome}
+			opts: []Option{{Key: m[2], Label: shown}}, chrome: hasChrome,
+			at: []int{i}, glued: []bool{glued}}
 	}
 	closeRun()
 	if best == nil {
 		return nil
+	}
+	// A two-column menu is read back in full before anything is asked of it: its
+	// labels wrap, and its numbers sit inside the wrap.
+	if pcol >= 0 {
+		widen(rows, best)
 	}
 
 	// Prompt: nearest non-empty line just above the first option.
