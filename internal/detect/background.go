@@ -18,6 +18,10 @@ type Background struct {
 	// Not part of Total: a subagent is somebody else's turn rather than a command
 	// left running, and the tab draws it in its own place.
 	Agents int
+	// Workflows is how many dynamic workflows the same list shows. Counted apart
+	// from the agents because one workflow is a whole orchestration — dozens of
+	// subagents across phases — and a head apiece would say it is one of them.
+	Workflows int
 }
 
 // Total is how many things are running, whatever kind.
@@ -104,37 +108,71 @@ func backgroundKind(word string, atEnd bool) (string, bool) {
 // shells and monitors badge goes by. An agent that has finished but has not been
 // collected is still on that list, and this counts it: the honest statement is
 // "the session lists this many", not "this many are running".
-var agentLine = regexp.MustCompile(`^\s*[◯○⭘]\s+\S`)
+//
+// The pointer in front is the footer's own selection (← for agents, then the
+// arrows): the row it stands on keeps its circle, and dropping out of the count
+// while it is looked at would make the tab blink under the owner's thumb.
+var agentLine = regexp.MustCompile(`^\s*(?:❯\s+)?[◯○⭘]\s+\S`)
 
 // The block always opens with the main agent, and that is what tells it from a
 // stray circle in output.
 var agentHead = regexp.MustCompile(`^\s*●\s+main\s*$`)
 
+// A dynamic workflow's row in the same block, below the subagents: the same
+// circle, its name, then a progress bar of pills — `◯ audit-wave-a  ▱▱▱▱▱▱  ↓
+// 678.0k`. The bar is what tells it from a subagent's row, which has an elapsed
+// time where this has the bar, and it is drawn on every width: the agent picks
+// 20, 12 or 8 pills and gives up the counts beside it before it gives up the
+// bar. `█░` is the same bar on a terminal the agent believes bleeds geometric
+// shapes. A workflow paused on a rate limit trades its circle for ⏸ and its bar
+// for the wait, and ⏸ is drawn in that list for nothing else.
+//
+// There is no head of its own: with no subagents the block is these rows and
+// nothing above them, which is why a session running only workflows grew no
+// heads at all while `● main` was the anchor. The bar anchors them instead, and
+// only a run of them at the very bottom counts — the block is the last thing the
+// agent draws, and the workflows are the last thing in the block. Read off the
+// binary 27.09.2026, version 2.1.283 (the row is `VN`, the bar `qv` with variant
+// "pill").
+var workflowLine = regexp.MustCompile(`^\s*(?:❯\s+)?(?:[◯○⭘]\s+\S.*(?:[▰▱]{3,}|[█░]{3,})|⏸\s+\S)`)
+
 // How far up from the bottom the agents block can reach: its own head, a line
-// per agent, and the status lines under which it is drawn.
+// per agent, and the status lines under which it is drawn. The workflows'
+// rows are not counted against it — they are recognised by their own shape.
 const agentLines = 12
 
-// ReadAgents counts the subagents the session's own footer lists.
-func ReadAgents(lines []string) int {
-	seen, n, anchored := 0, 0, false
+// ReadAgents counts the subagents and the dynamic workflows the session's own
+// footer lists.
+func ReadAgents(lines []string) (agents, workflows int) {
+	seen, anchored, bottom := 0, false, true
 	for i := len(lines) - 1; i >= 0 && seen < agentLines; i-- {
 		line := strings.TrimRight(ansi.ReplaceAllString(lines[i], ""), " ")
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
+		if bottom && workflowLine.MatchString(line) {
+			workflows++
+			continue
+		}
+		bottom = false
 		seen++
 		if agentHead.MatchString(line) {
 			anchored = true
 			break
 		}
 		if agentLine.MatchString(line) {
-			n++
+			agents++
 		}
 	}
 	if !anchored {
-		return 0
+		agents = 0
 	}
-	return n
+	return agents, workflows
+}
+
+// taskLine is a row of that block, of either kind.
+func taskLine(line string) bool {
+	return agentHead.MatchString(line) || agentLine.MatchString(line) || workflowLine.MatchString(line)
 }
 
 // How far up from the bottom the live counter can sit. The footer is the last
@@ -162,7 +200,7 @@ func ReadBackground(lines []string) Background {
 		// rather than counted: with three of them on screen the line saying "1
 		// shell, 2 monitors" fell out of the window and the plates went away while
 		// the shell was still running.
-		if agentHead.MatchString(line) || agentLine.MatchString(line) {
+		if taskLine(line) {
 			continue
 		}
 		seen++

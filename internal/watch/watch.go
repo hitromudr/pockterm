@@ -417,7 +417,7 @@ func (w *Watcher) poll(session string) {
 	// whether the turn is still running come from one reading, so they cannot
 	// describe two different moments.
 	st.bg = detect.ReadBackground(lines)
-	st.bg.Agents = detect.ReadAgents(lines)
+	st.bg.Agents, st.bg.Workflows = detect.ReadAgents(lines)
 	st.live = detect.Live(lines)
 	st.agent = detect.InputBox(lines)
 	if retry := detect.Retrying(lines); retry != st.retrying {

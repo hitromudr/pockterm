@@ -287,6 +287,20 @@ content cost the plates their line: it sits below the status lines and is as tal
 as the session has subagents, so with three of them "1 shell, 2 monitors" fell out
 of the four-line window. `ReadBackground` steps over it.
 
+**A dynamic workflow gets a 🐝, not a head** (27.09.2026, Claude Code 2.1.283). It
+is drawn in the same block, below the subagents: `◯ audit-wave-a  ▱▱▱▱▱▱  ↓ 678k`
+— same circle, and where a subagent has its elapsed time, a bar of pills. Two
+consequences, both seen on the owner's phone. With no subagents the block has **no
+`● main`**, so a session waiting on two workflows grew nothing at all; with both,
+the workflows' rows sat under the head and would have been counted as robots. So
+the bar is the anchor: `detect.ReadAgents` counts a run of such rows from the very
+bottom (`workflowLine`: `▰▱`, or `█░` on a terminal the agent thinks bleeds
+geometric shapes; `⏸` in place of the circle for one paused on a rate limit), and
+only above them looks for subagents under `● main`. Every width keeps the bar —
+the agent sheds the counts beside it first — so the shape holds at 48 columns. A
+bee rather than a head because one workflow is a swarm of agents run in phases;
+three is the cap.
+
 **The drawer says all of it too, in the strip's own colours** — the same three
 states, keyframes, duration and per-session phase, the same CSS for the shapes and
 glyphs, differing only in size and padding: the sweep runs the row's width, the `!`

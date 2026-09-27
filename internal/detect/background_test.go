@@ -93,12 +93,12 @@ func TestReadAgentsCountsTheAgentsList(t *testing.T) {
 		"  ◯ general-purpose  Probe ag…  7s · ↓ 48.9k tokens",
 		"  ◯ general-purpose  Probe ag…  9s · ↓ 49.2k tokens",
 	}
-	if got := ReadAgents(pane); got != 3 {
-		t.Errorf("ReadAgents = %d, want 3", got)
+	if got, flows := ReadAgents(pane); got != 3 || flows != 0 {
+		t.Errorf("ReadAgents = %d agents, %d workflows, want 3 and 0", got, flows)
 	}
 	// The same pane with the block gone says nothing.
-	if got := ReadAgents(pane[:4]); got != 0 {
-		t.Errorf("ReadAgents without the block = %d, want 0", got)
+	if got, flows := ReadAgents(pane[:4]); got != 0 || flows != 0 {
+		t.Errorf("ReadAgents without the block = %d, %d, want nothing", got, flows)
 	}
 }
 
@@ -110,11 +110,78 @@ func TestReadAgentsNeedsTheBlocksOwnHead(t *testing.T) {
 		"  ◯ первый",
 		"  ◯ второй",
 	}
-	if got := ReadAgents(loose); got != 0 {
-		t.Errorf("ReadAgents = %d on a list in prose, want 0", got)
+	if got, flows := ReadAgents(loose); got != 0 || flows != 0 {
+		t.Errorf("ReadAgents = %d, %d on a list in prose, want nothing", got, flows)
 	}
-	if got := ReadAgents(nil); got != 0 {
-		t.Errorf("ReadAgents(nil) = %d, want 0", got)
+	if got, flows := ReadAgents(nil); got != 0 || flows != 0 {
+		t.Errorf("ReadAgents(nil) = %d, %d, want nothing", got, flows)
+	}
+}
+
+// Two dynamic workflows and no subagents, captured off a real pane at 52 columns
+// on 27.09.2026 (Claude Code 2.1.283). There is no `● main` over them — the
+// block opens with the main agent only when it has subagents to list — so the
+// head that anchors the agents is not what anchors these: the bar is.
+func TestReadAgentsCountsTheWorkflows(t *testing.T) {
+	pane := []string{
+		"* Waiting for 2 dynamic workflows to finish",
+		"",
+		"────────────────────────────────────────────────────",
+		"❯ как там агенты?",
+		"────────────────────────────────────────────────────",
+		"  ctx 78% | dms@ai:~/work/anabasis (main)?1 $ | O…",
+		"  ⏵⏵ bypass permissions on (shift+tab to cycle) ·",
+		"            ✔ Update installed · Restart to update",
+		"",
+		"  ◯ anabasis-audit-wave-a  ▱▱▱▱▱▱▱▱▱▱▱▱  ↓ 678.0k",
+		"  ◯ anabasis-audit-wave-b  ▱▱▱▱▱▱▱▱▱▱▱▱  ↓ 666.0k",
+		"",
+	}
+	if agents, flows := ReadAgents(pane); agents != 0 || flows != 2 {
+		t.Errorf("ReadAgents = %d agents, %d workflows, want 0 and 2", agents, flows)
+	}
+	// The same pane with the rows gone says nothing.
+	if agents, flows := ReadAgents(pane[:9]); agents != 0 || flows != 0 {
+		t.Errorf("ReadAgents without the rows = %d, %d, want nothing", agents, flows)
+	}
+}
+
+// With both, the agent draws one block: `● main`, the subagents, the workflows
+// last. Counted by the head alone, the workflows were three more robots.
+func TestReadAgentsTellsWorkflowsFromSubagents(t *testing.T) {
+	pane := []string{
+		"  ctx 47% | dms@ai:~/work/anabasis (main)?1 $ | O…",
+		"  ⏵⏵ bypass permissions on · 4 shells · ← 1 agent",
+		"",
+		"  ● main",
+		"  ◯ general-purpose  Fi… 29m 20s · ↓ 340.2k tokens",
+		"❯ ◯ general-purpose  Wr… 28m 52s · ↓ 329.4k tokens",
+		"  ◯ audit-wave-a  ▰▰▰▰▱▱▱▱▱▱▱▱  3/9 · 4m · ↓ 61k",
+		"❯ ◯ audit-wave-b  ▰▰▰▰▰▰▰▰  ↓ 612.0k",
+		"  ◯ audit-wave-c  ████░░░░  ↓ 12k",
+		"  ⏸ audit-wave-d  Paused · resets 11pm",
+	}
+	if agents, flows := ReadAgents(pane); agents != 2 || flows != 4 {
+		t.Errorf("ReadAgents = %d agents, %d workflows, want 2 and 4", agents, flows)
+	}
+	// And the plates still come from the line above the block.
+	if bg := ReadBackground(pane); bg.Shells != 4 {
+		t.Errorf("ReadBackground = %+v, want 4 shells", bg)
+	}
+}
+
+func TestReadAgentsTakesOnlyWorkflowsAtTheBottom(t *testing.T) {
+	// A bar in output that has scrolled above the footer is not a workflow: the
+	// block is the last thing on the screen, and the rows count only while they
+	// run up from the bottom of it.
+	pane := []string{
+		"  ◯ audit-wave-a  ▱▱▱▱▱▱▱▱▱▱▱▱  ↓ 678.0k",
+		"● Готово.",
+		"  ctx 78% | dms@ai:~/work/anabasis (main)?1 $ | O…",
+		"  ⏵⏵ bypass permissions on (shift+tab to cycle) ·",
+	}
+	if agents, flows := ReadAgents(pane); agents != 0 || flows != 0 {
+		t.Errorf("ReadAgents = %d, %d with the row in output, want nothing", agents, flows)
 	}
 }
 

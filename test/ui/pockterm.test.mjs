@@ -3541,6 +3541,18 @@ describe('a tab says what its session is doing', () => {
     // what made them disappear.
     assert.equal(heads.plates, '2', 'the agents block pushed the plates out of the footer');
 
+    // A dynamic workflow is drawn last in the same block — same circle, a bar of
+    // pills where the subagent has its time — and it gets a bee of its own rather
+    // than another head: one workflow is many agents.
+    stand.tmux(['send-keys', '-t', 'demo', '◯ audit-wave-a  ▱▱▱▱▱▱▱▱  ↓ 12k', 'Enter']);
+    await page.waitForFunction(
+      () => (document.querySelector('#tabs button[data-session="demo"] .agents')?.textContent || '').includes('🐝'),
+      null, { timeout: 20000 });
+    const swarm = await page.evaluate(() =>
+      document.querySelector('#tabs button[data-session="demo"] .agents').textContent);
+    assert.deepEqual([...swarm], ['🤖', '🤖', '🐝', '🐝'],
+      `the workflows were not told from the subagents: ${swarm}`);
+
     // And it goes away when the bottom of the pane stops claiming it: a badge
     // that only ever appeared would say "something is running" about every
     // session that was ever busy.

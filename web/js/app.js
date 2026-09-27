@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v202';
+const APP_VERSION = 'v203';
 
 // Which install a journal line came from.
 //
@@ -349,6 +349,11 @@ const BG_PLATES = [['sh', 'shells'], ['mon', 'monitors']];
 // is 34px tall and a tab is not a bar chart: past this it says "several".
 const AGENT_HEAD = '🤖';
 const AGENT_HEADS_MAX = 4;
+// One bee per dynamic workflow, beside the heads and not among them: a workflow is
+// a swarm of subagents run in phases, and a head for it would say it is one agent.
+// Capped lower, since each already stands for many.
+const WORKFLOW_MARK = '🐝';
+const WORKFLOW_MARKS_MAX = 3;
 function paintBackground(b, s) {
   const box = b.querySelector('.bg');
   if (!box) return;
@@ -365,8 +370,10 @@ function paintBackground(b, s) {
   const heads = b.querySelector('.agents');
   if (!heads) return;
   const n = Math.min(s.agents || 0, AGENT_HEADS_MAX);
-  heads.textContent = AGENT_HEAD.repeat(n);
-  heads.title = n ? `${s.agents} subagent(s)` : '';
+  const w = Math.min(s.workflows || 0, WORKFLOW_MARKS_MAX);
+  heads.textContent = AGENT_HEAD.repeat(n) + WORKFLOW_MARK.repeat(w);
+  heads.title = [n && `${s.agents} subagent(s)`, w && `${s.workflows} workflow(s)`]
+    .filter(Boolean).join(', ');
 }
 
 // paintRows puts the state on the rows the drawer already has.

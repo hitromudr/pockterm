@@ -55,6 +55,9 @@ type Session struct {
 	Monitors int `json:"monitors,omitempty"`
 	// Agents is how many subagents the session lists; drawn as one head each.
 	Agents int `json:"agents,omitempty"`
+	// Workflows is how many dynamic workflows it lists; one mark each, apart from
+	// the heads, since a workflow is many agents rather than one.
+	Workflows int `json:"workflows,omitempty"`
 	// Which button started this session — a preset's name, or "custom:<id>" for
 	// one of the owner's own. tmux carries it as a session option the Makefile
 	// stamps at creation (see KindOption), so it survives a rename and this

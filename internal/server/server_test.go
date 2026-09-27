@@ -403,9 +403,9 @@ type fakePresence struct {
 	// What Activity reports per session, set by the test. A tab is coloured by
 	// it, so the list has to carry it.
 	activity map[string]string
-	// What Background reports per session: shells, monitors, counts the pane's
-	// width left unnamed, and subagents.
-	background map[string][3]int
+	// What Background reports per session: shells, monitors, subagents and
+	// dynamic workflows.
+	background map[string][4]int
 }
 
 func (p *fakePresence) Activity(s string) string {
@@ -414,11 +414,11 @@ func (p *fakePresence) Activity(s string) string {
 	return p.activity[s]
 }
 
-func (p *fakePresence) Background(s string) (int, int, int) {
+func (p *fakePresence) Background(s string) (int, int, int, int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	bg := p.background[s]
-	return bg[0], bg[1], bg[2]
+	return bg[0], bg[1], bg[2], bg[3]
 }
 
 func (p *fakePresence) Watch(s string) {
@@ -1873,7 +1873,7 @@ func TestSessionListCarriesBackgroundWork(t *testing.T) {
 	opts := testOptions("")
 	opts.Presence = &fakePresence{
 		activity:   map[string]string{"demo": "done"},
-		background: map[string][3]int{"demo": {1, 2, 3}},
+		background: map[string][4]int{"demo": {1, 2, 3, 2}},
 	}
 	srv := httptest.NewServer(Handler(opts))
 	defer srv.Close()
@@ -1893,6 +1893,10 @@ func TestSessionListCarriesBackgroundWork(t *testing.T) {
 	// And the subagents the session lists, which the tab draws a head each for.
 	if got[0]["agents"] != float64(3) {
 		t.Fatalf("agents = %v, want 3 — sessions = %v", got[0]["agents"], got)
+	}
+	// And the dynamic workflows, counted apart from them.
+	if got[0]["workflows"] != float64(2) {
+		t.Fatalf("workflows = %v, want 2 — sessions = %v", got[0]["workflows"], got)
 	}
 }
 
