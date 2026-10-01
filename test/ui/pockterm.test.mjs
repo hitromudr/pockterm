@@ -2476,6 +2476,29 @@ describe('the key bar', () => {
     assert.ok(await page.locator('#keybar').isVisible(), 'the bars did not come back');
   });
 
+  test('the bottom bar reads as a third row of the key bar', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    // Two bars stacked, each with its own padding, left 12px between the keys and
+    // Paste against 4px between the key rows — read on the screen as two rows and
+    // a separate one under them. The space under the last key row is the grid's
+    // own gap and no more.
+    const gaps = await page.evaluate(() => {
+      const keys = [...document.querySelectorAll('#keybar button')].map((b) => b.getBoundingClientRect());
+      const tops = [...new Set(keys.map((r) => r.top))].sort((a, b) => a - b);
+      const row = (t) => keys.find((r) => r.top === t);
+      const paste = document.getElementById('paste').getBoundingClientRect();
+      return {
+        between: tops.length > 1 ? tops[1] - row(tops[0]).bottom : null,
+        below: paste.top - row(tops[tops.length - 1]).bottom,
+      };
+    });
+    assert.ok(gaps.between !== null, 'the key bar is not two rows at this size');
+    assert.ok(Math.abs(gaps.below - gaps.between) < 1,
+      `Paste sits ${gaps.below}px under the keys, the key rows ${gaps.between}px apart`);
+  });
+
   test('the way back to the end appears only when scrolled back', async () => {
     await stand.open();
     await stand.attach();

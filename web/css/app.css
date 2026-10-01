@@ -1616,6 +1616,13 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   border: none;
   border-radius: 8px;
 }
+/* Under the key bar this row is its third row, not a bar of its own: two
+   paddings stacked put 12px between the keys and Paste against the grid's 4px,
+   and the screen read as two rows with a separate one under them. The key bar
+   keeps the grid's gap at its bottom, this row takes nothing on top. `~` and not
+   `+`: the file input and ▴ stand between them, hidden. */
+#keybar:not([hidden]) { padding-bottom: 4px; }
+#keybar:not([hidden]) ~ #modebar { padding-top: 0; }
 #modebar #select, #modebar #mode { flex: 0 0 48px; font-size: 17px; }
 #modebar #paste { flex: 1; }
 #modebar button.on { background: var(--accent); color: #0b0e14; font-weight: 600; }
