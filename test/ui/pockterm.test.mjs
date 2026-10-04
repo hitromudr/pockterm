@@ -2517,8 +2517,15 @@ describe('the key bar', () => {
         keyLefts: keys.slice(0, 6).map((r) => r.left),
         keyWidth: keys[0].width,
         tops: [...new Set(cells.map((b) => box(b).top))],
+        // The words on the row against the word on the key above: End was drawn
+        // smaller than Esc, three letters each (reported from the phone, v206).
+        esc: getComputedStyle(document.querySelector('#keybar [data-key="esc"]')).fontSize,
+        home: getComputedStyle(document.querySelector('#modebar [data-key="home"]')).fontSize,
+        end: getComputedStyle(document.querySelector('#modebar [data-key="end"]')).fontSize,
       };
     });
+    assert.equal(row.home, row.esc, `Home is drawn at ${row.home}, Esc at ${row.esc}`);
+    assert.equal(row.end, row.esc, `End is drawn at ${row.end}, Esc at ${row.esc}`);
     assert.deepEqual(row.names, ['select', 'paste', 'home', 'end', 'pick', 'mode']);
     assert.equal(row.tops.length, 1, `the row broke into ${row.tops.length} lines`);
     for (const [i, w] of row.widths.entries()) {

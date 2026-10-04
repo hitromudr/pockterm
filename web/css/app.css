@@ -1621,7 +1621,6 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   border-radius: 6px;
 }
 #modebar button:active { background: #3a4458; }
-#modebar button.small { font-size: 12px; }
 /* Under the key bar this row is its third row, not a bar of its own: two
    paddings stacked put 12px between the keys and Paste against the grid's 4px,
    and the screen read as two rows with a separate one under them. The key bar
