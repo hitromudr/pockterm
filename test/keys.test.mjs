@@ -32,6 +32,8 @@ test('named keys map to escape sequences', () => {
   // Home and End, beside Paste on the bottom row.
   assert.equal(keyBytes('home'), '\x1b[H');
   assert.equal(keyBytes('end'), '\x1b[F');
+  // What the ⇩ sends to a program that owns the wheel: xterm's Ctrl+End.
+  assert.equal(keyBytes('ctrl-end'), '\x1b[1;5F');
 });
 
 test('unknown key maps to empty string', () => {

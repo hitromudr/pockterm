@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v205';
+const APP_VERSION = 'v206';
 
 // Which install a journal line came from.
 //
@@ -1357,6 +1357,8 @@ function attach(name) {
   altScreen = false;
   pageDownShown = false;
   pageDownBtn.hidden = true;
+  wayBackShown = false;
+  toBottomBtn.hidden = true;
   renderTabs();
   // The strip is on screen now, so its colours have to keep up with the panes.
   pollTabs(true);
@@ -4764,6 +4766,9 @@ let copyBackShown = -1;
 // a pane scrolled back in copy-mode, and a pane whose program answers the wheel
 // itself.
 let pageDownShown = false;
+// And the ⇩, for the same reason: it is the way out of copy-mode, and since
+// 2026-10-04 also the way to the bottom of a program that scrolls its own view.
+let wayBackShown = false;
 // Scrolled back into history, the way out was a tmux key nobody has on a
 // phone. This button is the way back to the live end of the output, and it is
 // on screen exactly while there is somewhere to come back from.
@@ -4779,6 +4784,19 @@ toBottomBtn.addEventListener('click', () => {
   // focus is given up first, the same answer a session switch already gives.
   // Tapping the terminal is still what asks for a keyboard, and still gets one.
   const blurred = releaseTerminalFocus();
+  // A program drawing its own view on the alternate screen has no copy-mode to
+  // leave: tmux handed it the wheel, so what scrolled is the program, and only
+  // the program can be asked back. Claude Code's full-screen view jumps to its
+  // bottom on Ctrl+End. Asked of whatever program it is, and that is a guess the
+  // rule about wrong answers allows only because the key is harmless where it
+  // means nothing: an editor goes to its last line, a pager to its end.
+  if (!scrolledBack && appWheel && altScreen) {
+    scroller.stop();
+    dropQueuedWheel();
+    sendInput(keyBytes('ctrl-end'));
+    report('to-bottom', { via: 'program', blurred });
+    return;
+  }
   // The glide first. A flick's inertia goes on sending notches for up to a
   // second after the finger has left, and those would arrive behind the q and
   // put the pane straight back into the history it was just asked to leave —
@@ -4868,6 +4886,18 @@ function wakePager() {
   pagerTimer = setTimeout(() => showPager(false), PAGER_IDLE);
 }
 termBox.addEventListener('pointerdown', wakePager, { passive: true });
+// And a mouse wheel, which on a laptop is the scrolling and not a touch. The
+// page's own notches wake the stack in sendWheel, but a laptop's wheel never
+// passes through there: tmux asked the outer terminal for the mouse, so xterm
+// encodes the wheel itself. Where tmux owns it, the position moving woke the
+// stack anyway; where the program owns it, nothing on tmux's side moves, and the
+// three buttons stayed faded however far the view was scrolled — reported from
+// the laptop on Claude Code's full screen, 2026-10-04.
+//
+// On the way down rather than on the way up: xterm cancels the wheel it encodes
+// for a program, propagation included, so a listener here in the bubbling phase
+// hears nothing in exactly the case it is for.
+termBox.addEventListener('wheel', wakePager, { passive: true, capture: true });
 wakePager();
 
 // Two rows of overlap, so a page reads on from what the last one ended with
@@ -5077,17 +5107,24 @@ function setCopyMode(inMode, back, hist, app, alt) {
   // either direction and the way forward is on screen with the way back. ⇞ is
   // never hidden — it is the way in, and the stack closes over the two that are.
   const down = away || appWheel;
-  if (away === scrolledBack && down === pageDownShown) return;
+  // ⇩ is the way out of copy-mode, and the way to the bottom of a program that
+  // owns the wheel and draws its own view: Claude Code's full screen, where it
+  // was reported missing on 2026-10-04. Whether that view is scrolled up is the
+  // program's to know and not tmux's, so the button stands with the other two
+  // and is harmless at the bottom.
+  const wayBack = away || (appWheel && altScreen);
+  if (away === scrolledBack && down === pageDownShown && wayBack === wayBackShown) return;
   scrolledBack = away;
   pageDownShown = down;
-  toBottomBtn.hidden = !away;
+  wayBackShown = wayBack;
+  toBottomBtn.hidden = !wayBack;
   paintWayBack(liveEndAsking);
   pageDownBtn.hidden = !down;
   // Every number and both flags, not the conclusion: if a button lingers or
   // fails to arrive again, the journal has to say whether tmux was in a mode,
   // where it thought it was, and whether it owned the wheel and the scrollback
   // at all.
-  report('mode', { in: !!inMode, back, shown: away, down, app: appWheel, alt: altScreen });
+  report('mode', { in: !!inMode, back, shown: away, down, end: wayBack, app: appWheel, alt: altScreen });
   renderAnswers();
 }
 

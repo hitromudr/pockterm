@@ -506,15 +506,31 @@ describe('a swipe follows the finger', () => {
     await page.waitForSelector('#page-down:not([hidden])', { timeout: 5000 });
     await page.waitForSelector('#scrollbar', { state: 'hidden', timeout: 5000 });
     assert.ok(await page.locator('#page-up').isVisible(), 'the way in went away with tmux owning the wheel');
-    // The ⇩ is the way out of copy-mode, and there is no mode to leave: a button
-    // that would do nothing is the one failure this stack has already had.
-    assert.ok(await page.locator('#to-bottom').isHidden(), 'a way back out of a mode nobody is in');
+    // The ⇩ is there as well, and it is not a way out of copy-mode — there is no
+    // mode to leave — but the way to the bottom of the program's own view: Claude
+    // Code's full screen jumps there on Ctrl+End (`scroll:bottom`). Reported
+    // missing from the laptop on 2026-10-04. The pane runs cat, so what the key
+    // put on the wire comes back as the terminal's echo of it.
+    await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
+    // A finger on the pane first: the stack has faded by now, and a faded button
+    // takes no touch — which is what a thumb does before it reaches for one.
+    await page.click('#term');
+    await page.click('#to-bottom');
+    let pane = '';
+    for (let i = 0; i < 20 && !pane.includes('^[[1;5F'); i++) {
+      await page.waitForTimeout(100);
+      pane = stand.tmux(['capture-pane', '-p', '-t', 'demo']);
+    }
+    assert.ok(pane.includes('^[[1;5F'), `the ⇩ did not ask the program for its bottom: ${pane}`);
+    assert.equal(stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_in_mode}']).trim(), '0',
+      'the ⇩ put the pane into a mode instead');
 
     // And it all comes back when the program gives both back, which is what
     // leaving it does.
     stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1002l\x1b[?1049l']);
     stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
     await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });
+    await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
     await page.waitForSelector('#scrollbar:not([hidden])', { timeout: 5000 });
     assert.deepEqual(stand.pageErrors, []);
   });
@@ -919,5 +935,36 @@ describe('the laptop is a client too', () => {
     assert.match(state, /^1 [1-9]/, `the wheel did not scroll tmux: ${state}`);
     await page.click('#to-bottom');
     await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
+  });
+
+  test('a wheel wakes the faded buttons where the program owns it', async () => {
+    // Reported from the laptop on Claude Code's full screen (2026-10-04): the view
+    // scrolled under the wheel, and ⇞ ⇟ ⇩ never came up. They fade a few seconds
+    // after the last scrolling, and what woke them was a finger on the pane, the
+    // page's own notches or the position moving in tmux. A laptop's wheel is none
+    // of those: xterm encodes it itself, and where the program owns the wheel
+    // tmux's position never moves.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1049h\x1b[?1002h']);
+    stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    await page.waitForSelector('#page-down:not([hidden])', { timeout: 5000 });
+
+    // Faded, with no click anywhere — a click is a pointerdown, which wakes them
+    // by itself and would make this prove nothing.
+    await page.mouse.move(600, 300);
+    await page.waitForSelector('#pager.idle', { timeout: 6000 });
+    await page.mouse.wheel(0, -120);
+    await page.waitForSelector('#pager:not(.idle)', { timeout: 2000 });
+    assert.equal(stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_in_mode}']).trim(), '0',
+      'tmux took the wheel, so this is not the case being tested');
+    for (const id of ['#page-up', '#page-down', '#to-bottom']) {
+      assert.ok(await page.locator(id).isVisible(), `${id} is not on screen`);
+    }
+
+    stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1002l\x1b[?1049l']);
+    stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });
   });
 });

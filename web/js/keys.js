@@ -31,6 +31,10 @@ const KEYS = {
   // the outer terminal as xterm-256color and re-encodes both for the pane.
   home: '\x1b[H',
   end: '\x1b[F',
+  // Not on any bar: the ⇩ sends it where the program in the pane owns the wheel,
+  // since that is what Claude Code's full-screen view jumps to its bottom on
+  // (`scroll:bottom`, read off the 2.1.281 binary).
+  'ctrl-end': '\x1b[1;5F',
 };
 
 export function keyBytes(name) {

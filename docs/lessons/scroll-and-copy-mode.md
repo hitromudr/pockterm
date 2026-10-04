@@ -138,9 +138,32 @@ and `#{alternate_on}` (`tmuxcmd.PaneState`), and each decides one thing:
 - **No bar over the alternate screen.** A thumb sized from 5 lines of leftover history
   claims there is output to reach where there is none, and a drag on it asks for a place
   in output this screen never had.
-- **⇩ stays with copy-mode.** It is the way out of a mode, and leaving a mode nobody is in
-  is the one thing here that would do nothing at all — which is the defect the ⇩ already
-  had once (see the section above).
+- **⇩ asks the program for its bottom** (since 2026-10-04; until then it stayed with
+  copy-mode). Leaving a mode nobody is in would do nothing, so on the alternate screen
+  with the wheel taken it sends **Ctrl+End** instead (`\x1b[1;5F`), which Claude Code's
+  full-screen view binds to `scroll:bottom` — read off the 2.1.281 binary, context
+  `Scroll`: `pageup`/`pagedown`, `ctrl+home` → `scroll:top`, `ctrl+end` →
+  `scroll:bottom`. Whether that view is scrolled up is the program's to know, so the
+  button stands with ⇞ and ⇟ and is harmless at the bottom. In another program the key
+  is a guess, kept because it is harmless where it means nothing (an editor's last line,
+  a pager's end).
+
+### Nothing woke the buttons on a laptop's wheel
+
+Reported from the laptop on 2026-10-04 as "no up, down or to-the-end buttons" on one tab,
+while the wheel scrolled the agent's view fine. The stack fades three seconds after the
+last scrolling, and what woke it was a finger on the pane (`pointerdown`), the page's own
+notches (`sendWheel`) or the position moving in tmux. A laptop's wheel is none of them:
+tmux asked the outer terminal for the mouse, so xterm encodes the wheel itself, and with
+the program owning the wheel tmux's position never moves. The other tabs were plain panes
+(`alternate_on 0`), where the wheel enters copy-mode and the position woke the stack — the
+same Claude Code version, only that one session on the alternate screen.
+
+So a `wheel` over `#term` wakes the stack, **in the capture phase**: xterm cancels the
+wheel it encodes for a program, propagation included, and a bubbling listener hears
+nothing in exactly the case it is for. `a wheel wakes the faded buttons where the program
+owns it` waits for the fade without a click (a click is a pointerdown and would wake it
+by itself).
 
 A tmux too old to know the two formats prints nothing for them, which reads as `false` and
 leaves the page behaving as it did before they existed.
@@ -149,8 +172,8 @@ leaves the page behaving as it did before they existed.
 pane makes tmux answer `alternate_on 1, mouse_any_flag 1` — measured on tmux 3.2a before
 either test was written — and the pane the tests run (`cat`) echoes what is sent into it,
 so the bytes arrive as a program's output. `TestRealTmuxPaneFacts` checks the frame,
-`a program that owns the wheel keeps the way forward and loses the bar` checks the two
-controls.
+`a program that owns the wheel keeps the way forward and loses the bar` checks the
+controls, including the Ctrl+End on the wire.
 
 **What the page cannot fix is the missing history itself.** With the agent on the
 alternate screen there is no tmux scrollback to page through at all, whoever owns the
