@@ -29,6 +29,9 @@ test('named keys map to escape sequences', () => {
   assert.equal(keyBytes('3'), '3');
   // ESC + CR: a newline in the message, not a send.
   assert.equal(keyBytes('alt-enter'), '\x1b\r');
+  // Home and End, beside Paste on the bottom row.
+  assert.equal(keyBytes('home'), '\x1b[H');
+  assert.equal(keyBytes('end'), '\x1b[F');
 });
 
 test('unknown key maps to empty string', () => {

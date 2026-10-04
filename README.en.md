@@ -9,7 +9,7 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
 - **One binary.** Static PWA is embedded; no runtime dependencies except
   `tmux` on the host.
 - **Real terminal.** xterm.js over a WebSocket-to-PTY bridge, plus a key
-  bar (Esc, Tab, arrows, Ctrl latch) for mobile keyboards. Ctrl reads the
+  bar (Esc, Tab, arrows, Home and End, Ctrl latch) for mobile keyboards. Ctrl reads the
   next letter off the ordinary keyboard — including a Cyrillic one, by the
   key it sits on (`Ctrl` `к` is `^R`, as in a terminal on a laptop) — and
   ends the composition itself, or the letter would stay with the keyboard.

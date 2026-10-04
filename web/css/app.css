@@ -1580,7 +1580,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #selbar #sel-done { flex: 0 0 40%; }
 /* The file picker is a label wrapping a hidden input; it has to read as one
    of the buttons next to it. */
-#modebar #pick { flex: 0 0 48px; font-size: 17px; }
+#modebar #pick { font-size: 17px; }
 #modebar #pick:active { background: #3a4458; }
 /* Escape hatch for a browser that will not read the clipboard for us. */
 #paste-target {
@@ -1597,9 +1597,14 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    modes you switch between and everything else behind ⋯. This replaces the
    eight-button header that squeezed the session tabs — the one thing up there
    worth reading — down to forty pixels. */
+/* Six cells of one width, the key bar's grid: asked for as "the bottom row like
+   the two above it", which it already was in spacing (below) but not in size —
+   Paste stretched across whatever ✂ 📎 💬 left it. It holds Home and End beside
+   it now, and its word is gone: at a sixth of a phone's width it did not fit. */
 #modebar {
-  display: flex;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
   /* Last element on the screen, so this is the one that pays the bottom
      system inset for everything above it. */
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
@@ -1608,14 +1613,15 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   position: relative;
 }
 #modebar button {
-  flex: 1;
   padding: 10px 0;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--fg);
   background: #232a38;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
 }
+#modebar button:active { background: #3a4458; }
+#modebar button.small { font-size: 12px; }
 /* Under the key bar this row is its third row, not a bar of its own: two
    paddings stacked put 12px between the keys and Paste against the grid's 4px,
    and the screen read as two rows with a separate one under them. The key bar
@@ -1623,8 +1629,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    `+`: the file input and ▴ stand between them, hidden. */
 #keybar:not([hidden]) { padding-bottom: 4px; }
 #keybar:not([hidden]) ~ #modebar { padding-top: 0; }
-#modebar #select, #modebar #mode { flex: 0 0 48px; font-size: 17px; }
-#modebar #paste { flex: 1; }
+#modebar #select, #modebar #mode, #modebar #paste { font-size: 17px; }
 #modebar button.on { background: var(--accent); color: #0b0e14; font-weight: 600; }
 /* The clip's two sources. Anchored to the bar itself (`bottom: 100%`) rather
    than to a number of pixels: the bar is padding plus the system inset, and

@@ -27,6 +27,10 @@ const KEYS = {
   // what Alt+Enter puts on the wire. There is no other way to write a second
   // line from a phone — the on-screen Enter sends.
   'alt-enter': '\x1b\r',
+  // What xterm sends for them with the cursor keys in normal mode; tmux reads
+  // the outer terminal as xterm-256color and re-encodes both for the pane.
+  home: '\x1b[H',
+  end: '\x1b[F',
 };
 
 export function keyBytes(name) {

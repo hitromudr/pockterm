@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v204';
+const APP_VERSION = 'v205';
 
 // Which install a journal line came from.
 //
@@ -2517,7 +2517,7 @@ function commitPendingInput() {
 }
 
 
-document.querySelectorAll('#keybar button[data-key]').forEach((b) => {
+document.querySelectorAll('#keybar button[data-key], #modebar button[data-key]').forEach((b) => {
   keepsTerminalFocus(b);
   b.addEventListener('click', () => {
     // A bar key is a sequence of its own, not a character to modify: a Ctrl+Esc

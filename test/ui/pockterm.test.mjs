@@ -2499,6 +2499,35 @@ describe('the key bar', () => {
       `Paste sits ${gaps.below}px under the keys, the key rows ${gaps.between}px apart`);
   });
 
+  test('the bottom row is six keys the size of the ones above it', async () => {
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    // Paste used to stretch across whatever ✂ 📎 💬 left it, and the row read as a
+    // different bar under the key grid. Asked for as six buttons of one size, in
+    // this order, with Paste down to its icon so it fits a sixth of a phone.
+    const row = await page.evaluate(() => {
+      const box = (b) => b.getBoundingClientRect();
+      const keys = [...document.querySelectorAll('#keybar button')].map(box);
+      const cells = [...document.querySelectorAll('#modebar > button')].filter((b) => !b.hidden);
+      return {
+        names: cells.map((b) => b.id || b.dataset.key),
+        widths: cells.map((b) => box(b).width),
+        lefts: cells.map((b) => box(b).left),
+        keyLefts: keys.slice(0, 6).map((r) => r.left),
+        keyWidth: keys[0].width,
+        tops: [...new Set(cells.map((b) => box(b).top))],
+      };
+    });
+    assert.deepEqual(row.names, ['select', 'paste', 'home', 'end', 'pick', 'mode']);
+    assert.equal(row.tops.length, 1, `the row broke into ${row.tops.length} lines`);
+    for (const [i, w] of row.widths.entries()) {
+      assert.ok(Math.abs(w - row.keyWidth) < 1, `${row.names[i]} is ${w}px against the keys' ${row.keyWidth}px`);
+      assert.ok(Math.abs(row.lefts[i] - row.keyLefts[i]) < 1,
+        `${row.names[i]} stands at ${row.lefts[i]}px, the key above it at ${row.keyLefts[i]}px`);
+    }
+  });
+
   test('the way back to the end appears only when scrolled back', async () => {
     await stand.open();
     await stand.attach();

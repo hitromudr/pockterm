@@ -27,6 +27,11 @@ const WIRE = {
   tab: '^I',
   enter: '^M',
   'alt-enter': '^[^M',
+  // On the bottom row, beside Paste. What reaches the pane is tmux's own
+  // encoding, not what the page sent (`\x1b[H`, `\x1b[F`): tmux reads the page
+  // as an xterm and re-encodes both for the terminal inside it.
+  home: '^[[1~',
+  end: '^[[4~',
 };
 
 describe('what the key bar puts on the wire', () => {
@@ -57,7 +62,8 @@ describe('what the key bar puts on the wire', () => {
 
   async function afterPressing(page, keys) {
     const before = await settled(page);
-    for (const k of keys) await page.click(`#keybar [data-key="${k}"]`);
+    // Both rows that carry keys: Home and End sit on the bottom one.
+    for (const k of keys) await page.click(`#keybar [data-key="${k}"], #modebar [data-key="${k}"]`);
     // Give the echo a moment to come back through tmux.
     await page.waitForTimeout(400);
     const now = await transcript(page);
