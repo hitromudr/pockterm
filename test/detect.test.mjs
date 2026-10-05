@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  detectQuestion, detectOffer, detectPrompt, answerKeys, submitKeys, hasInputBox,
+  detectQuestion, detectOffer, detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill,
 } from '../web/js/detect.js';
 
 // The cases are shared with the Go detector (internal/detect), which drives
@@ -406,4 +406,38 @@ test('the agent\'s input box is recognised on its own', () => {
   // Something typed into the box does not make it stop being one: the pad has to
   // ask about a half-written message just as much as about an empty box.
   assert.equal(hasInputBox(['❯\u00a0а можно и так']), true);
+});
+
+// Claude Code's full-screen view, off a private stand at 52 columns: scrolled up
+// with the wheel, back at the bottom on Ctrl+End, and scrolled up while a turn
+// went on printing below.
+const fullscreen = JSON.parse(
+  readFileSync(new URL('./fixtures/fullscreen.json', import.meta.url), 'utf8'),
+);
+for (const c of fullscreen.cases) {
+  test(`full screen: ${c.name}`, () => {
+    assert.equal(scrolledPill(c.rows, fullscreen.cols), c.scrolled);
+    // And it is the agent's screen, which is what lets the page trust the answer.
+    assert.equal(hasInputBox(c.rows.map((r) => r.text)), true, 'the composer was not seen');
+  });
+}
+
+test('full screen: a painted user message ending in an arrow is not the pill', () => {
+  const cols = 52;
+  const text = '❯ scroll down ↓'.padEnd(cols - 1);
+  const rows = [{ text, paint: '#'.repeat(cols - 1) + ' ' }];
+  assert.equal(scrolledPill(rows, cols), false);
+});
+
+test('full screen: the arrow without a background is not the pill', () => {
+  const cols = 52;
+  const text = ' '.repeat(12) + ' Jump to bottom (ctrl+End) ↓ ' + ' '.repeat(11);
+  assert.equal(scrolledPill([{ text, paint: ' '.repeat(cols) }], cols), false);
+});
+
+test('full screen: a pill with the arrow cut off says no', () => {
+  const cols = 20;
+  const text = '   Jump to bottom   ';
+  const paint = '   ' + '#'.repeat(14) + '   ';
+  assert.equal(scrolledPill([{ text, paint }], cols), false);
 });

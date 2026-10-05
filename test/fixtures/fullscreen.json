@@ -1,0 +1,516 @@
+{
+ "_measured": "Claude Code 2.1.289, CLAUDE_CODE_NO_FLICKER=1, 52x41 private tmux, 2026-10-05; paint marks cells with a non-default background",
+ "cols": 52,
+ "cases": [
+  {
+   "name": "scrolled up: Jump to bottom",
+   "scrolled": true,
+   "rows": [
+    {
+     "text": "❯ Print the full contents of numbers.txt with cat … ",
+     "paint": "################################################### "
+    },
+    {
+     "text": "  84                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  85                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  86                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  87                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  88                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  89                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  90                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  91                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  92                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  93                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  94                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  95                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  96                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  97                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  98                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  99                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  100                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  101                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  102                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  103                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  104                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  105                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  106                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  107                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  108                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  109                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  110                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  111                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  112                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  113                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  114                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  115                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  116                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  117        Jump to bottom (ctrl+End) ↓            ",
+     "paint": "            #############################           "
+    },
+    {
+     "text": "                                                    ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "────────────────────────────────────────────────────",
+     "paint": "                                                    "
+    },
+    {
+     "text": "❯                                                   ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "────────────────────────────────────────────────────",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  ctx 18% | dms@ai:/tmp/claude-1000/-home-dms-wor…  ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  ⏵⏵ bypass permissions on (shift+tab to cycle) ·   ",
+     "paint": "                                                    "
+    }
+   ]
+  },
+  {
+   "name": "at the bottom",
+   "scrolled": false,
+   "rows": [
+    {
+     "text": "  88                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  89                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  90                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  91                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  92                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  93                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  94                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  95                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  96                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  97                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  98                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  99                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  100                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  101                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  102                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  103                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  104                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  105                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  106                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  107                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  108                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  109                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  110                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  111                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  112                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  113                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  114                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  115                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  116                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  117                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  118                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  119                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  120                                               ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "                                                    ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "✻ Churned for 6s · done 10:00 AM                    ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "                                                    ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "────────────────────────────────────────────────────",
+     "paint": "                                                    "
+    },
+    {
+     "text": "❯                                                   ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "────────────────────────────────────────────────────",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  ctx 18% | dms@ai:/tmp/claude-1000/-home-dms-wor…  ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  ⏵⏵ bypass permissions on (shift+tab to cycle) ·   ",
+     "paint": "                                                    "
+    }
+   ]
+  },
+  {
+   "name": "scrolled up while a turn runs: new message",
+   "scrolled": true,
+   "rows": [
+    {
+     "text": "❯ Reply with the numbers 1 to 40, one per line.     ",
+     "paint": "###############################################     "
+    },
+    {
+     "text": "  14                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  15                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  16                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  17                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  18                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  19                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  20                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  21                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  22                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  23                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  24                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  25                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  26                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  27                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  28                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  29                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  30                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  31                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  32                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  33                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  34                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  35                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  36                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  37                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  38                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  39                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  40                                                ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "                                                    ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "✻ Brewed for 1s · done 10:03 AM                     ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "                                                    ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "❯ Run via Bash: for i in 1 2 3 4 5 6; do echo step  ",
+     "paint": "################################################### "
+    },
+    {
+     "text": "  $i; sleep 2; done. Then run it once more. Then    ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  say done.                                         ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "             1 new message (ctrl+End) ↓             ",
+     "paint": "            ############################            "
+    },
+    {
+     "text": "                                                    ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "────────────────────────────────────────────────────",
+     "paint": "                                                    "
+    },
+    {
+     "text": "❯                                                   ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "────────────────────────────────────────────────────",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  ctx 18% | dms@ai:/tmp/claude-1000/-home-dms-wor…  ",
+     "paint": "                                                    "
+    },
+    {
+     "text": "  ⏵⏵ bypass permissions on (shift+tab to cycle) ·   ",
+     "paint": "                                                    "
+    }
+   ]
+  }
+ ]
+}

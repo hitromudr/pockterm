@@ -89,9 +89,10 @@ them instead of deriving them again.
   `scroll_position` stand still, and a control drawn from them alone never appears (⇟) or
   points at history that is not there (the bar). Both are drawn from
   `#{mouse_any_flag}` and `#{alternate_on}` as well, and ⇩ there asks the program for its
-  bottom (Ctrl+End) instead of leaving a mode nobody is in. Nothing on tmux's side moves
-  under such a wheel, so the stack is woken by the wheel event itself, in the capture
-  phase — xterm cancels it. The agent's own TUI is such a program as of Claude Code 2.1.278.
+  bottom (Ctrl+End) instead of leaving a mode nobody is in. On the agent's full screen ⇟
+  and ⇩ stand only while its own `… ↓` pill says the view is off its bottom. Nothing on
+  tmux's side moves under such a wheel, so the stack is woken by the wheel event itself,
+  in the capture phase — xterm cancels it. The agent's own TUI is such a program as of Claude Code 2.1.278.
 - **Read a TUI by shape, never by vocabulary.** Verbs, labels and spinner frames
   turn over between Claude Code releases; brackets, indentation, a pointer
   glyph, a footer line do not. Where a word is unavoidable (`TYPE_FIELD`,

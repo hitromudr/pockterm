@@ -1,5 +1,5 @@
 import { keyBytes, applyCtrl } from './keys.js';
-import { detectPrompt, answerKeys, submitKeys, hasInputBox } from './detect.js';
+import { detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNotice } from './notify.js';
 import { linkAction } from './link.js';
 import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v207';
+const APP_VERSION = 'v208';
 
 // Which install a journal line came from.
 //
@@ -1359,6 +1359,8 @@ function attach(name) {
   pageDownBtn.hidden = true;
   wayBackShown = false;
   toBottomBtn.hidden = true;
+  agentView = false;
+  agentScrolled = false;
   renderTabs();
   // The strip is on screen now, so its colours have to keep up with the panes.
   pollTabs(true);
@@ -4758,6 +4760,13 @@ let scrolledBack = false;
 // this is reachable at all — see the pager below and `paintScrollbar`.
 let appWheel = false;
 let altScreen = false;
+// Whether that program is the agent's full-screen view, and whether the view is
+// scrolled up from its bottom — the one question tmux cannot answer there, so the
+// screen is asked instead (`scrolledPill`). `agentView` holds once the composer
+// has been seen on this screen, because a menu takes the composer's place and the
+// view is still the agent's while it is up.
+let agentView = false;
+let agentScrolled = false;
 // The position the stack was last woken for. -1 rather than 0, so the first frame
 // of a live pane is not a movement.
 let copyBackShown = -1;
@@ -4835,9 +4844,10 @@ toBottomBtn.addEventListener('click', () => {
 // 2026-09-20, Claude Code 2.1.278, which takes both the mouse and the alternate
 // screen). The notches are not lost — they are what scrolls that program's own
 // view — so the way forward exists exactly as much as the way back does, and
-// that is what `app` puts the ⇟ on screen for. The ⇩ stays with copy-mode,
-// because leaving a mode nobody is in is the one thing here that would do
-// nothing at all.
+// that is what `app` puts the ⇟ on screen for — with the ⇩ beside it on the
+// alternate screen, sending the program Ctrl+End. Where the program is the
+// agent's full screen, both wait for its own word that the view is off its
+// bottom (placeWayButtons).
 const pageUpBtn = document.getElementById('page-up');
 const pageDownBtn = document.getElementById('page-down');
 keepsTerminalFocus(pageUpBtn);
@@ -5099,20 +5109,61 @@ function setCopyMode(inMode, back, hist, app, alt) {
   // itself — so the buttons are worth looking at again. Asked of the position
   // rather than of the frame: the mode frame now carries the history size, so a
   // pane that is merely printing sends one every poll and the stack would never
-  // go idle. Before the early return below, which only fires when the *shown*
-  // state is unchanged.
+  // go idle. Before the early return in placeWayButtons, which only fires when
+  // the *shown* state is unchanged.
   if (back !== copyBackShown) { copyBackShown = back; wakePager(); }
+  placeWayButtons();
+}
+
+// The screen of a program that owns the wheel, as the pill detector reads it.
+function screenCells() {
+  const buf = term.buffer.active;
+  const cell = buf.getNullCell();
+  const rows = [];
+  for (let y = 0; y < term.rows; y++) {
+    const line = buf.getLine(buf.baseY + y);
+    const text = [];
+    const paint = [];
+    for (let x = 0; x < term.cols; x++) {
+      const c = line && line.getCell(x, cell);
+      text.push(c ? c.getChars() || ' ' : ' ');
+      paint.push(!!c && !c.isBgDefault());
+    }
+    rows.push({ text, paint });
+  }
+  return rows;
+}
+
+// Is the agent's full-screen view on screen, and is it off its bottom? Asked on
+// every mode frame and on every redraw, since in that view tmux sends no frame
+// when the program scrolls: nothing on tmux's side moves.
+function readAgentView() {
+  if (!appWheel || !altScreen) { agentView = false; agentScrolled = false; return; }
+  if (!agentView && hasInputBox(visibleLines())) agentView = true;
+  agentScrolled = agentView && scrolledPill(screenCells(), term.cols);
+}
+
+// ⇟ and ⇩, from what the pane is doing now.
+function placeWayButtons() {
+  const away = copyMode && copyBack > 0;
+  readAgentView();
+  // A program that owns the wheel has scrolled its own view, and tmux cannot say
+  // how far. The agent's full screen can: it draws a pill while it is off its
+  // bottom, and with no pill there is nothing ahead to page to or come back from
+  // — reported from the phone as ⇟ and ⇩ never going away on that tab
+  // (2026-10-05). Any other such program says nothing, and keeps both.
+  const programAway = appWheel && (!agentView || agentScrolled);
   // ⇟ goes with the ⇩ while tmux owns the wheel: at the live end there is
   // nothing below to page to. Where the program owns it, tmux has no say in
   // either direction and the way forward is on screen with the way back. ⇞ is
   // never hidden — it is the way in, and the stack closes over the two that are.
-  const down = away || appWheel;
+  const down = away || programAway;
   // ⇩ is the way out of copy-mode, and the way to the bottom of a program that
   // owns the wheel and draws its own view: Claude Code's full screen, where it
   // was reported missing on 2026-10-04. Whether that view is scrolled up is the
   // program's to know and not tmux's, so the button stands with the other two
   // and is harmless at the bottom.
-  const wayBack = away || (appWheel && altScreen);
+  const wayBack = away || (programAway && altScreen);
   if (away === scrolledBack && down === pageDownShown && wayBack === wayBackShown) return;
   scrolledBack = away;
   pageDownShown = down;
@@ -5124,7 +5175,7 @@ function setCopyMode(inMode, back, hist, app, alt) {
   // fails to arrive again, the journal has to say whether tmux was in a mode,
   // where it thought it was, and whether it owned the wheel and the scrollback
   // at all.
-  report('mode', { in: !!inMode, back, shown: away, down, end: wayBack, app: appWheel, alt: altScreen });
+  report('mode', { in: copyMode, back: copyBack, shown: away, down, end: wayBack, app: appWheel, alt: altScreen, agent: agentView, pill: agentScrolled });
   renderAnswers();
 }
 
@@ -5501,7 +5552,7 @@ function renderAnswers() {
 let scanTimer = null;
 function scheduleScan() {
   if (scanTimer) return;
-  scanTimer = setTimeout(() => { scanTimer = null; renderAnswers(); }, 150);
+  scanTimer = setTimeout(() => { scanTimer = null; renderAnswers(); placeWayButtons(); }, 150);
 }
 
 // Keep the terminal grid in sync with the visible viewport. Debounced:

@@ -535,6 +535,57 @@ describe('a swipe follows the finger', () => {
     assert.deepEqual(stand.pageErrors, []);
   });
 
+  test("the agent's full screen keeps ⇟ and ⇩ only while it is scrolled up", async () => {
+    // Reported from the phone on 2026-10-05: on the tab where Claude Code draws its
+    // full-screen view, ⇟ and ⇩ stood at the bottom of the output for good — tmux
+    // cannot say where that view is, so both had been put up whenever the program
+    // owned the wheel. The view says it itself: off its bottom it lays a pill over
+    // the last transcript row (`Jump to bottom (ctrl+End) ↓`, measured on 2.1.289,
+    // test/fixtures/fullscreen.json), and at the bottom there is none.
+    //
+    // Drawn here the way that program draws it, through cat as in the case above:
+    // the alternate screen and the mouse, the composer's ❯ with its non-breaking
+    // space, and the pill centred on a background of its own.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    const cols = Number(stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_width}']).trim());
+    const pill = ' Jump to bottom (ctrl+End) ↓ ';
+    const at = Math.floor((cols - pill.length) / 2) + 1;
+    const screen = (withPill) => '\x1b[2J\x1b[H' + 'transcript\r\n'.repeat(4) +
+      (withPill ? `\x1b[${at}G\x1b[48;5;237m${pill}\x1b[49m` : '') + '\r\n' +
+      '─'.repeat(cols) + '\r\n❯\u00a0\r\n' + '─'.repeat(cols);
+    const draw = (withPill) => {
+      stand.tmux(['send-keys', '-t', 'demo', '-l', screen(withPill)]);
+      stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    };
+
+    stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1049h\x1b[?1002h']);
+    stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    // Given back whatever happens, since the cases after this one share the pane.
+    try {
+      await page.waitForSelector('#page-down:not([hidden])', { timeout: 5000 });
+      // At the bottom: the composer and no pill. Only the way in is left.
+      draw(false);
+      await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });
+      await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
+      assert.ok(await page.locator('#page-up').isVisible(), 'the way in went away with the others');
+      // Scrolled up: the pill is there, and tmux sent no frame for it — the program
+      // moved, nothing in tmux did. The redraw is what has to bring them.
+      draw(true);
+      await page.waitForSelector('#page-down:not([hidden])', { timeout: 5000 });
+      await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
+      // And back at the bottom they go again.
+      draw(false);
+      await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });
+      await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
+    } finally {
+      stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1002l\x1b[?1049l']);
+      stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    }
+    assert.deepEqual(stand.pageErrors, []);
+  });
+
   test('the bar says where in the output the pane is, and takes it anywhere', async () => {
     // The swipe and the pager move by a step and neither says how much there is
     // or how far through it you are. This one is drawn from both numbers tmux

@@ -143,10 +143,33 @@ and `#{alternate_on}` (`tmuxcmd.PaneState`), and each decides one thing:
   with the wheel taken it sends **Ctrl+End** instead (`\x1b[1;5F`), which Claude Code's
   full-screen view binds to `scroll:bottom` — read off the 2.1.281 binary, context
   `Scroll`: `pageup`/`pagedown`, `ctrl+home` → `scroll:top`, `ctrl+end` →
-  `scroll:bottom`. Whether that view is scrolled up is the program's to know, so the
-  button stands with ⇞ and ⇟ and is harmless at the bottom. In another program the key
-  is a guess, kept because it is harmless where it means nothing (an editor's last line,
-  a pager's end).
+  `scroll:bottom`. In another program the key is a guess, kept because it is harmless
+  where it means nothing (an editor's last line, a pager's end).
+
+### ⇟ and ⇩ that never went away
+
+v206 put ⇩ up for every program owning the wheel on the alternate screen, reasoning that
+whether its view is scrolled up is the program's to know. Reported from the phone the next
+morning (2026-10-05) on the `anabasis` tab: at the bottom of the agent's output, ⇟ and ⇩
+stood there for good, while the plain-pane tabs beside it lost them at the live end.
+
+The program does say it, on screen. Measured on a private stand (`CLAUDE_CODE_NO_FLICKER=1`,
+Claude Code 2.1.289, 52×41): off its bottom, the full-screen view lays a pill over the last
+transcript row — `Jump to bottom (ctrl+End) ↓`, or `1 new message (ctrl+End) ↓` once a
+turn has printed below — centred, on its own background (`48;5;237`); at the bottom there
+is none. The component (`Jump to bottom`, `N new messages`, absolute `bottom:0`,
+`justifyContent:center`) is in the 2.1.281 binary as well. Its text has three spellings by
+platform and width, the last of them without the arrow below about 18 columns.
+
+`scrolledPill` reads it by shape: a run of painted cells, centred within two cells, ending
+in `↓`. The transcript's own user messages carry the same background and are what it has to
+tell apart — they run from the left edge — and a modal's scroll hint is the same arrow
+unpainted. The page asks it only of the agent's view, known by the composer's `❯` and
+non-breaking space having been seen on that alternate screen (held while a menu replaces the
+composer); any other program owning the wheel keeps ⇟ and ⇩ as before. And it is asked on
+every redraw, not on the mode frame: when that view scrolls, nothing in tmux moves and no
+frame comes. Frames: `test/fixtures/fullscreen.json`; browser test: `the agent's full
+screen keeps ⇟ and ⇩ only while it is scrolled up`.
 
 ### Nothing woke the buttons on a laptop's wheel
 

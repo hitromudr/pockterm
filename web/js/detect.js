@@ -741,3 +741,44 @@ export function submitKeys(menu) {
 export function hasInputBox(lines) {
   return lines.some((l) => COMPOSER.test(stripAnsi(l)));
 }
+
+// Is the agent's full-screen view scrolled up from its bottom?
+//
+// Where Claude Code draws on the alternate screen and holds the mouse, tmux has no
+// scrollback and no position to ask, so the only one who knows is the program —
+// and it says so on screen: while the view is off its bottom it lays a pill over
+// the last row of the transcript, `Jump to bottom (ctrl+End) ↓`, or `1 new
+// message (ctrl+End) ↓` once output has arrived below. At the bottom the pill is
+// gone. Measured on 2.1.289 at 52 columns (test/fixtures/fullscreen.json), and
+// the same component is in the 2.1.281 binary.
+//
+// Read by shape and not by its words: a run of cells painted with a background,
+// standing in the middle of the row (the pill is centred) and ending in the down
+// arrow. The transcript's own user messages are painted the same colour, and they
+// are what this has to tell apart — they start at the left edge and run to the
+// right one. The scroll hint a modal draws is the same arrow without a
+// background. Too narrow a pane makes the program drop the arrow, and then this
+// answers no: the cheap failure, a button not offered.
+//
+// `rows` is one entry per screen row, `{ text, paint }`, both indexed by cell:
+// `text[x]` is the character there and `paint[x]` is truthy where the cell has a
+// background of its own (a string with '#' in the fixtures, booleans on the page).
+const PILL_SLACK = 2;
+export function scrolledPill(rows, cols) {
+  for (const row of rows) {
+    const painted = (x) => row.paint[x] && row.paint[x] !== ' ';
+    let x = 0;
+    while (x < cols) {
+      if (!painted(x)) { x++; continue; }
+      const start = x;
+      while (x < cols && painted(x)) x++;
+      let text = '';
+      for (let i = start; i < x; i++) text += row.text[i] || ' ';
+      text = text.trim();
+      const left = start;
+      const right = cols - x;
+      if (text.length > 1 && text.endsWith('↓') && Math.abs(left - right) <= PILL_SLACK && left > 0) return true;
+    }
+  }
+  return false;
+}
