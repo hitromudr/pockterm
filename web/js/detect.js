@@ -760,9 +760,17 @@ export function hasInputBox(lines) {
 // background. Too narrow a pane makes the program drop the arrow, and then this
 // answers no: the cheap failure, a button not offered.
 //
+// A run is cut where the background *changes*, not only where it ends. The pill
+// lies over whatever transcript row is there, and a diff row is painted from its
+// gutter to its right edge: read as painted-or-not, the pill and the green line
+// under it were one run, which stood off centre or ended in the line's own text
+// past the arrow — and ⇟ and ⇩ came and went as the view scrolled over diffs and
+// off them (reported from the phone 07.10.2026, two screenshots of one pill).
+//
 // `rows` is one entry per screen row, `{ text, paint }`, both indexed by cell:
-// `text[x]` is the character there and `paint[x]` is truthy where the cell has a
-// background of its own (a string with '#' in the fixtures, booleans on the page).
+// `text[x]` is the character there and `paint[x]` names the cell's background,
+// falsy or ' ' where it has none of its own (a letter per colour in the fixtures,
+// the colour mode and value on the page).
 const PILL_SLACK = 2;
 export function scrolledPill(rows, cols) {
   for (const row of rows) {
@@ -771,7 +779,8 @@ export function scrolledPill(rows, cols) {
     while (x < cols) {
       if (!painted(x)) { x++; continue; }
       const start = x;
-      while (x < cols && painted(x)) x++;
+      const bg = row.paint[x];
+      while (x < cols && row.paint[x] === bg) x++;
       let text = '';
       for (let i = start; i < x; i++) text += row.text[i] || ' ';
       text = text.trim();

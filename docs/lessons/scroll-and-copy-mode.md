@@ -171,6 +171,15 @@ every redraw, not on the mode frame: when that view scrolls, nothing in tmux mov
 frame comes. Frames: `test/fixtures/fullscreen.json`; browser test: `the agent's full
 screen keeps ⇟ and ⇩ only while it is scrolled up`.
 
+A run is a run of **one background**, not of any. Reported from the phone 07.10.2026 as ⇟
+and ⇩ coming and going while paging up with ⇞, usually from one tap to the next: the pill
+lies over whatever row is last, and over a diff that row is painted green from its gutter
+to the diff box's edge. Read as painted-or-not, pill and row were one run — off centre when
+the green ran on unevenly past it, not ending in `↓` when the row's text went on after it.
+So the page hands the detector the cell's colour (`mode:value`), and a run ends where the
+colour changes. Unit tests rebuilt from the two screenshots in `test/detect.test.mjs`; the
+browser test draws the pill over a `48;5;22` row too.
+
 ### Nothing woke the buttons on a laptop's wheel
 
 Reported from the laptop on 2026-10-04 as "no up, down or to-the-end buttons" on one tab,

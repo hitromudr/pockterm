@@ -552,11 +552,16 @@ describe('a swipe follows the finger', () => {
     const cols = Number(stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_width}']).trim());
     const pill = ' Jump to bottom (ctrl+End) ↓ ';
     const at = Math.floor((cols - pill.length) / 2) + 1;
-    const screen = (withPill) => '\x1b[2J\x1b[H' + 'transcript\r\n'.repeat(4) +
-      (withPill ? `\x1b[${at}G\x1b[48;5;237m${pill}\x1b[49m` : '') + '\r\n' +
+    // `diff` lays it over a row painted green past it on both sides, with the
+    // row's text going on after the arrow — as on the phone 07.10.2026, where the
+    // page read the two as one run and the buttons came and went.
+    const diffRow = `\x1b[3G\x1b[48;5;22m${' +o'.padEnd(cols - 12)}\x1b[49m`;
+    const screen = (withPill, diff) => '\x1b[2J\x1b[H' + 'transcript\r\n'.repeat(4) +
+      (diff ? diffRow : '') +
+      (withPill ? `\x1b[${at}G\x1b[48;5;237m${pill}\x1b[48;5;22msis:\x1b[49m` : '') + '\r\n' +
       '─'.repeat(cols) + '\r\n❯\u00a0\r\n' + '─'.repeat(cols);
-    const draw = (withPill) => {
-      stand.tmux(['send-keys', '-t', 'demo', '-l', screen(withPill)]);
+    const draw = (withPill, diff = false) => {
+      stand.tmux(['send-keys', '-t', 'demo', '-l', screen(withPill, diff)]);
       stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
     };
 
@@ -579,6 +584,12 @@ describe('a swipe follows the finger', () => {
       draw(false);
       await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });
       await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
+      // The same pill over a diff row: still scrolled up, still both buttons.
+      draw(true, true);
+      await page.waitForSelector('#page-down:not([hidden])', { timeout: 5000 });
+      await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
+      draw(false, true);
+      await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });
     } finally {
       stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1002l\x1b[?1049l']);
       stand.tmux(['send-keys', '-t', 'demo', 'Enter']);

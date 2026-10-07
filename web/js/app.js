@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v209';
+const APP_VERSION = 'v210';
 
 // Which install a journal line came from.
 //
@@ -5137,7 +5137,9 @@ function screenCells() {
     for (let x = 0; x < term.cols; x++) {
       const c = line && line.getCell(x, cell);
       text.push(c ? c.getChars() || ' ' : ' ');
-      paint.push(!!c && !c.isBgDefault());
+      // The colour itself and not just whether there is one: the pill is told
+      // from a painted row under it by its own background (scrolledPill).
+      paint.push(c && !c.isBgDefault() ? `${c.getBgColorMode()}:${c.getBgColor()}` : '');
     }
     rows.push({ text, paint });
   }

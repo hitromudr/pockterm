@@ -429,6 +429,35 @@ test('full screen: a painted user message ending in an arrow is not the pill', (
   assert.equal(scrolledPill(rows, cols), false);
 });
 
+// The pill lies over whatever row is there, and on the owner's phone it lay over
+// a diff (07.10.2026, two screenshots): the row is painted green from the gutter
+// to its right edge, the pill sits on it in a colour of its own. Rebuilt from
+// those screenshots at the fixture's width — a gutter of 4 on the left, 10 on the
+// right where the diff box ends, and the pill centred on the whole row. `g` is
+// the diff's green, `#` the pill.
+const overDiff = (after) => {
+  const cols = 52;
+  const pill = ' Jump to bottom (ctrl+End) ↓ ';
+  const at = Math.floor((cols - pill.length) / 2);
+  const text = ('     +o' + ' '.repeat(at - 7) + pill + after).padEnd(cols);
+  const paint = ('    ' + 'g'.repeat(at - 4) + '#'.repeat(pill.length) + 'g'.repeat(42 - at - pill.length))
+    .padEnd(cols);
+  return { cols, rows: [{ text, paint }] };
+};
+
+test('full screen: the pill over a diff row is still the pill', () => {
+  // The green runs on past the pill on both sides, unevenly: read as one run the
+  // whole thing stood off centre.
+  const { cols, rows } = overDiff('');
+  assert.equal(scrolledPill(rows, cols), true);
+});
+
+test("full screen: the pill over a diff row with the row's text past it", () => {
+  // And here the line goes on after the arrow, so one run did not end in it.
+  const { cols, rows } = overDiff('sis:');
+  assert.equal(scrolledPill(rows, cols), true);
+});
+
 test('full screen: the arrow without a background is not the pill', () => {
   const cols = 52;
   const text = ' '.repeat(12) + ' Jump to bottom (ctrl+End) ↓ ' + ' '.repeat(11);
