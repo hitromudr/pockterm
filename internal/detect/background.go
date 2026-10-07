@@ -116,7 +116,21 @@ var agentLine = regexp.MustCompile(`^\s*(?:❯\s+)?[◯○⭘]\s+\S`)
 
 // The block always opens with the main agent, and that is what tells it from a
 // stray circle in output.
-var agentHead = regexp.MustCompile(`^\s*●\s+main\s*$`)
+//
+// The list shows five subagents at a time and says how many it is not showing:
+// `↑ 2 more` at the right end of the main agent's own line once the window has
+// moved down, and `↓ 3 more` on a line of its own under the window. Those count
+// as much as the rows on show — the tab draws the number once there are more
+// heads than it has room for, and a list of eight that the tab called five
+// would be a wrong answer that looks right. Read by shape, an arrow, a number
+// and one word; the word is not matched. Read off the binary 07.10.2026,
+// version 2.1.292 (the window is `iV=5`, the lines `${eL} ${Q} more` and
+// `  ${dx} ${es} more`).
+var agentHead = regexp.MustCompile(`^\s*(?:❯\s+)?●\s+main(?:\s+↑\s+(\d+)\s+\S+)?\s*$`)
+
+// The line under the window, `  ↓ 3 more`. With nothing below it the agent
+// draws a blank line in the same place, which is stepped over like any other.
+var agentsBelow = regexp.MustCompile(`^\s*↓\s+(\d+)\s+\S+\s*$`)
 
 // A dynamic workflow's row in the same block, below the subagents: the same
 // circle, its name, then a progress bar of pills — `◯ audit-wave-a  ▱▱▱▱▱▱  ↓
@@ -156,9 +170,14 @@ func ReadAgents(lines []string) (agents, workflows int) {
 		}
 		bottom = false
 		seen++
-		if agentHead.MatchString(line) {
+		if m := agentHead.FindStringSubmatch(line); m != nil {
+			agents += hidden(m[1])
 			anchored = true
 			break
+		}
+		if m := agentsBelow.FindStringSubmatch(line); m != nil {
+			agents += hidden(m[1])
+			continue
 		}
 		if agentLine.MatchString(line) {
 			agents++
@@ -170,9 +189,18 @@ func ReadAgents(lines []string) (agents, workflows int) {
 	return agents, workflows
 }
 
-// taskLine is a row of that block, of either kind.
+// hidden is how many rows an overflow line says the window leaves out; nothing
+// when the line carries no count.
+func hidden(n string) int {
+	v, _ := strconv.Atoi(n)
+	return v
+}
+
+// taskLine is a row of that block, of either kind, or the line saying how many
+// of them are off the window.
 func taskLine(line string) bool {
-	return agentHead.MatchString(line) || agentLine.MatchString(line) || workflowLine.MatchString(line)
+	return agentHead.MatchString(line) || agentLine.MatchString(line) ||
+		agentsBelow.MatchString(line) || workflowLine.MatchString(line)
 }
 
 // How far up from the bottom the live counter can sit. The footer is the last

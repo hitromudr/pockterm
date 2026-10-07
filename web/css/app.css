@@ -381,6 +381,27 @@ button.session .agents {
   font-size: 13px;
   transform: translateY(-50%);
 }
+/* Five subagents and more: one head and the number beside it, on a plate made
+   the way the shells' and the monitors' are — bold digits, dark on light, a
+   colour of its own. Silver, the head's own colour, because the plate belongs
+   to the head rather than standing for a third kind of thing; and a plain
+   rounded box, since the triangle and the shield are taken. The page's own
+   font, not the emoji one the heads are asked for in. */
+.agents .count {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #c9cfdc;
+  color: #0f1b14;
+  font-family: system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 9px;
+  line-height: 11px;
+  letter-spacing: 0;
+}
+button.session .agents .count { font-size: 10px; line-height: 13px; }
 
 /* Room for them, and only on the tabs that have one. The plates stand in the
    corner over the padding, and the tab's usual 12px is narrower than one — so

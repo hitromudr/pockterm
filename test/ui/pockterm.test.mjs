@@ -3600,6 +3600,34 @@ describe('a tab says what its session is doing', () => {
     // what made them disappear.
     assert.equal(heads.plates, '2', 'the agents block pushed the plates out of the footer');
 
+    // Past four the row of heads stops being counted at a glance, so from five on
+    // it is one head and a plate with the number. The list itself shows five and
+    // says how many more are below — that line is counted too, or eight agents
+    // would come out as five. Echoed twice like every line here: 2 + 3 + 3.
+    stand.tmux(['send-keys', '-t', 'demo', '  ↓ 3 more', 'Enter']);
+    await page.waitForFunction(
+      () => document.querySelector('#tabs button[data-session="demo"] .agents .count'),
+      null, { timeout: 20000 });
+    const many = await page.evaluate(() => {
+      const el = document.querySelector('#tabs button[data-session="demo"] .agents');
+      const plate = el.querySelector('.count');
+      const cs = getComputedStyle(plate);
+      return {
+        heads: [...el.childNodes].filter((c) => c.nodeType === 3).map((c) => c.data).join(''),
+        count: plate.textContent,
+        background: cs.backgroundColor,
+        font: cs.fontFamily,
+        height: plate.getBoundingClientRect().height,
+        title: el.title,
+      };
+    });
+    assert.equal(many.heads, '🤖', `one head for eight agents: ${JSON.stringify(many)}`);
+    assert.equal(many.count, '8', `the plate says ${many.count}`);
+    assert.notEqual(many.background, 'rgba(0, 0, 0, 0)', 'the number is not on a plate');
+    assert.doesNotMatch(many.font, /Emoji/, `the number is drawn in ${many.font}`);
+    assert.ok(many.height > 0 && many.height <= 14, `the plate is ${many.height}px tall`);
+    assert.match(many.title, /^8 subagent/, `the title says ${many.title}`);
+
     // A dynamic workflow is drawn last in the same block — same circle, a bar of
     // pills where the subagent has its time — and it gets a bee of its own rather
     // than another head: one workflow is many agents.
@@ -3609,7 +3637,7 @@ describe('a tab says what its session is doing', () => {
       null, { timeout: 20000 });
     const swarm = await page.evaluate(() =>
       document.querySelector('#tabs button[data-session="demo"] .agents').textContent);
-    assert.deepEqual([...swarm], ['🤖', '🤖', '🐝', '🐝'],
+    assert.deepEqual([...swarm], ['🤖', '8', '🐝', '🐝'],
       `the workflows were not told from the subagents: ${swarm}`);
 
     // And it goes away when the bottom of the pane stops claiming it: a badge

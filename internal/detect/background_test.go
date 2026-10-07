@@ -102,6 +102,52 @@ func TestReadAgentsCountsTheAgentsList(t *testing.T) {
 	}
 }
 
+// The list shows five at a time and says how many it leaves out. Off the
+// owner's phone on 07.10.2026 (Claude Code 2.1.292): five rows on show and
+// three under them, which the tab used to call five.
+func TestReadAgentsCountsTheRowsOffTheWindow(t *testing.T) {
+	pane := []string{
+		"  ctx 17% | dms@ai:~/work/anabasis (main)?1≡1 $ |…",
+		"  bypass permissions on · ← 1 agent · 2 shells",
+		"",
+		"  ● main",
+		"  ◯ general-purpose      2h 18m 49s · ↓ 347.1k tokens",
+		"  ◯ general-purpose         18m 44s · ↓ 308.0k tokens",
+		"  ◯ general-purpose         18m 29s · ↓ 194.4k tokens",
+		"  ◯ general-purpose         18m 15s · ↓ 277.9k tokens",
+		"  ◯ general-purpose          18m 1s · ↓ 239.9k tokens",
+		"  ↓ 3 more",
+	}
+	if got, flows := ReadAgents(pane); got != 8 || flows != 0 {
+		t.Errorf("ReadAgents = %d agents, %d workflows, want 8 and 0", got, flows)
+	}
+	if bg := ReadBackground(pane); bg.Shells != 2 {
+		t.Errorf("ReadBackground = %+v, want 2 shells", bg)
+	}
+	// Moved down the list: the rows above go to the main agent's own line, the
+	// pointer stands on a row, and nothing below leaves a blank line.
+	moved := []string{
+		"  bypass permissions on · ← 1 agent · 2 shells",
+		"",
+		"  ● main                                 ↑ 3 more",
+		"  ◯ general-purpose  Один     18m 44s · ↓ 308.0k",
+		"  ◯ general-purpose  Два      18m 29s · ↓ 194.4k",
+		"  ◯ general-purpose  Три      18m 15s · ↓ 277.9k",
+		"  ◯ general-purpose  Четыре    18m 1s · ↓ 239.9k",
+		"❯ ◯ general-purpose  Пять         12s · ↓ 9.1k",
+		"",
+	}
+	if got, _ := ReadAgents(moved); got != 8 {
+		t.Errorf("ReadAgents on a moved window = %d, want 8", got)
+	}
+	// And with the main agent itself selected, the pointer stands in front of
+	// its line and the block is still the block.
+	moved[2] = "❯ ● main"
+	if got, _ := ReadAgents(moved); got != 5 {
+		t.Errorf("ReadAgents with main selected = %d, want 5", got)
+	}
+}
+
 func TestReadAgentsNeedsTheBlocksOwnHead(t *testing.T) {
 	// A circle in output is not an agent. Without `● main` above them there is
 	// no list, and a pane full of prose must not grow heads on its tab.

@@ -287,6 +287,18 @@ content cost the plates their line: it sits below the status lines and is as tal
 as the session has subagents, so with three of them "1 shell, 2 monitors" fell out
 of the four-line window. `ReadBackground` steps over it.
 
+**From five on, one head and a number** (07.10.2026, Claude Code 2.1.292). Capped
+at four heads, the tab said four of eight, and past four a row of heads stops being
+counted at a glance anyway. So from five the tab draws one 🤖 and a silver plate
+with the count, made the way the shells' and monitors' plates are. The number is
+only honest if the list's own overflow is counted: the agent shows **five rows at a
+time** (`iV=5` in the binary) and says how many it leaves out — `↓ 3 more` on a line
+under the window, and `↑ 2 more` at the right end of the `● main` line once the
+window has moved down. Read by shape (an arrow, a number, one word), not by the word.
+Before this, a moved window lost all heads: the trailing `↑ … more` and a pointer in
+front of `● main` (`❯ ● main`, the main agent selected) both broke the anchor, and
+the block without its anchor counts as nothing.
+
 **A dynamic workflow gets a 🐝, not a head** (27.09.2026, Claude Code 2.1.283). It
 is drawn in the same block, below the subagents: `◯ audit-wave-a  ▱▱▱▱▱▱  ↓ 678k`
 — same circle, and where a subagent has its elapsed time, a bar of pills. Two

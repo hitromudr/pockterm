@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v208';
+const APP_VERSION = 'v209';
 
 // Which install a journal line came from.
 //
@@ -345,8 +345,10 @@ async function loadSessions() {
 // the room the corner has to reserve.
 const BG_PLATES = [['sh', 'shells'], ['mon', 'monitors']];
 // One head per subagent, and no number on it — the count is the row of heads.
-// A number would have to be read; two heads are seen. Capped because the strip
-// is 34px tall and a tab is not a bar chart: past this it says "several".
+// A number would have to be read; two heads are seen. Up to four: past that the
+// row stopped being counted at a glance and started being a stripe, and capped
+// at four it said four of eight. So from five on it is one head and a plate
+// with the number, the way the shells and the monitors say theirs.
 const AGENT_HEAD = '🤖';
 const AGENT_HEADS_MAX = 4;
 // One bee per dynamic workflow, beside the heads and not among them: a workflow is
@@ -369,10 +371,18 @@ function paintBackground(b, s) {
   // side of the tab.
   const heads = b.querySelector('.agents');
   if (!heads) return;
-  const n = Math.min(s.agents || 0, AGENT_HEADS_MAX);
+  const n = s.agents || 0;
   const w = Math.min(s.workflows || 0, WORKFLOW_MARKS_MAX);
-  heads.textContent = AGENT_HEAD.repeat(n) + WORKFLOW_MARK.repeat(w);
-  heads.title = [n && `${s.agents} subagent(s)`, w && `${s.workflows} workflow(s)`]
+  const bees = WORKFLOW_MARK.repeat(w);
+  if (n > AGENT_HEADS_MAX) {
+    const plate = document.createElement('span');
+    plate.className = 'count';
+    plate.textContent = String(n);
+    heads.replaceChildren(AGENT_HEAD, plate, bees);
+  } else {
+    heads.textContent = AGENT_HEAD.repeat(n) + bees;
+  }
+  heads.title = [n && `${n} subagent(s)`, w && `${s.workflows} workflow(s)`]
     .filter(Boolean).join(', ');
 }
 
