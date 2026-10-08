@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v211';
+const APP_VERSION = 'v212';
 
 // Which install a journal line came from.
 //
@@ -4954,8 +4954,13 @@ function pageBy(dir) {
   // of screens, as far as the start of the session. So it is asked for its own
   // page instead — the same reasoning as the ⇩'s Ctrl+End, and as harmless where
   // the key means nothing else: an editor or a pager pages on it too.
+  //
+  // Twice, because that page is half its view and a screen was asked for from the
+  // phone. The two add up exactly: the second is applied on top of the first's
+  // pending delta (`cQ`, 2.1.294), so an even view moves by itself and an odd one
+  // by one row less. In an editor or a pager it is two of their pages.
   if (!scrolledBack && appWheel && altScreen) {
-    sendInput(keyBytes(dir > 0 ? 'page-up' : 'page-down'));
+    sendInput(keyBytes(dir > 0 ? 'page-up' : 'page-down').repeat(2));
     report('page', { dir, via: 'program', blurred });
     return;
   }

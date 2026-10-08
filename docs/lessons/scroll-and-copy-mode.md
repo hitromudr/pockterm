@@ -151,8 +151,11 @@ and `#{alternate_on}` (`tmuxcmd.PaneState`), and each decides one thing:
   session. The 2.1.294 binary says why: `scroll:lineUp` takes its rows from a wheel
   accelerator (`wheelMode`, a multiplier that grows through a burst), so a burst is never
   a fixed number of lines. `pageup`/`pagedown` (`\x1b[5~`/`\x1b[6~`) are its own page —
-  half the view (`getViewportHeight()/2`), unaccelerated — which is a smaller step than
-  a full screen, but one that reads on with overlap rather than past what it skipped.
+  half the view (`getViewportHeight()/2`), unaccelerated. A screen was asked for the same
+  day, so v212 sends each key **twice**: the second lands on the first's pending delta
+  (`cQ` adds `getPendingDelta()`), so the two make 2·⌊h/2⌋ — the whole view when it is
+  even, one row of overlap when it is odd. A full-page action exists (`scroll:fullPageUp`)
+  but is bound only in the `Transcript` context, not in `Scroll`.
 
 ### ⇟ and ⇩ that never went away
 

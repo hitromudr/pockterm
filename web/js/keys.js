@@ -37,7 +37,8 @@ const KEYS = {
   'ctrl-end': '\x1b[1;5F',
   // Not on any bar either: ⇞ and ⇟ send them to the same program. Its wheel is
   // accelerated, so a page's worth of notches went most of the way to the top;
-  // these are its own page (`scroll:pageUp`, half the view, read off 2.1.294).
+  // these are its own page (`scroll:pageUp`, half the view, read off 2.1.294),
+  // sent twice for a screen.
   'page-up': '\x1b[5~',
   'page-down': '\x1b[6~',
 };

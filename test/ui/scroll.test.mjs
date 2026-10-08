@@ -527,14 +527,16 @@ describe('a swipe follows the finger', () => {
     // ⇞ and ⇟ ask it for its own page as well. A page of wheel notches is a burst,
     // and Claude Code's full screen accelerates a burst: on the phone on
     // 2026-10-08 one ⇞ went up by an unknown number of screens, as far as the
-    // start of the session.
-    for (const [btn, seq] of [['#page-up', '^[[5~'], ['#page-down', '^[[6~']]) {
+    // start of the session. Twice, since that page is half its view and a screen
+    // is what was asked for (2026-10-08).
+    for (const [btn, seq] of [['#page-up', '^[[5~^[[5~'], ['#page-down', '^[[6~^[[6~']]) {
       await page.click('#term');
       await page.click(btn);
       pane = '';
       for (let i = 0; i < 20 && !pane.includes(seq); i++) {
         await page.waitForTimeout(100);
-        pane = stand.tmux(['capture-pane', '-p', '-t', 'demo']);
+        // Joined: the echo runs on along one line and wraps at the pane's edge.
+        pane = stand.tmux(['capture-pane', '-p', '-J', '-t', 'demo']);
       }
       assert.ok(pane.includes(seq), `${btn} did not ask the program for its page: ${pane}`);
     }
