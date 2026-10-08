@@ -94,14 +94,20 @@ const OWN_LINE = /^(#{1,6} |---$|\|)/;
 export function unwrapFrom(text, cols = 0) {
   const lines = String(text == null ? '' : text).split('\n');
   const out = [];
+  // The row the pane drew last. Whether the next word would have fitted is a
+  // question about that row, not about the text already joined: measured on the
+  // join, the room had always run out after the first one, and a short last row of
+  // a paragraph took the line written under it along.
+  let row = null;
   for (const line of lines) {
     const prev = out.length ? out[out.length - 1] : null;
-    if (prev !== null && joins(prev, line, cols)) {
-      const glue = cutToken(prev, line, cols) ? '' : ' ';
+    if (prev !== null && joins(prev, line, cols, row)) {
+      const glue = cutToken(row, line, cols) ? '' : ' ';
       out[out.length - 1] = `${prev.replace(/\s+$/, '')}${glue}${line.trim()}`;
-      continue;
+    } else {
+      out.push(line);
     }
-    out.push(line);
+    row = line;
   }
   return out.join('\n');
 }
@@ -118,9 +124,21 @@ const drawnLen = (s) => s
   .replace(/\s+$/, '')
   .length;
 
+// A line wider than the pane is one tmux wrapped and gave back whole (`-J` on the
+// capture), and only its last row was drawn beside the break that follows it —
+// a shell line is cut at the width, so that row is what is left over. A line the
+// agent drew wider and tmux re-cut after a resize was drawn at a width nobody
+// knows any more; the remainder answers "not a wrap" more often than not there,
+// and a break left standing is the cheap failure.
+function lastRow(line, cols) {
+  const n = drawnLen(line);
+  if (!cols || n <= cols) return n;
+  return n - Math.floor((n - 1) / cols) * cols;
+}
+
 function cutToken(prev, line, cols) {
   if (!cols) return false;
-  if (drawnLen(prev) < cols - 1) return false; // the break was chosen, not forced
+  if (lastRow(prev, cols) < cols - 1) return false; // the break was chosen, not forced
   if (!CUT_TAIL.test(prev.replace(/\s+$/, ''))) return false;
   return /^[\p{L}\p{N}]/u.test(line.trim());
 }
@@ -148,10 +166,10 @@ function indentOf(line) { return /^[ \t]*/.exec(line)[0].length; }
 function roomRanOut(prev, line, cols) {
   if (!cols) return true;
   const word = /^\S+/.exec(line.trim());
-  return drawnLen(prev) + 1 + drawnLen(word ? word[0] : '') > cols;
+  return lastRow(prev, cols) + 1 + drawnLen(word ? word[0] : '') > cols;
 }
 
-function joins(prev, line, cols) {
+function joins(prev, line, cols, row = prev) {
   if (!prev.trim() || !line.trim()) return false;
   const bare = prev.trimStart();
   const next = line.trimStart();
@@ -163,7 +181,7 @@ function joins(prev, line, cols) {
   if (pi > 3 && ni > 3) return false;
   if (OWN_LINE.test(bare) || /^⎿/.test(bare)) return false;
   if (STARTS_BLOCK.test(next)) return false;
-  if (!roomRanOut(prev, line, cols)) return false;
+  if (!roomRanOut(row, line, cols)) return false;
   const marker = MARKER.exec(prev);
   if (marker) return ni === pi + 2;
   // A row shallower than the one before it is the other half of the same defect.
@@ -188,7 +206,7 @@ function joins(prev, line, cols) {
   // row the two are indistinguishable — the sentence ending flush with the edge
   // and the token sliced through look identical — so what is deep keeps its
   // break, where a wrong space is a broken command rather than a missing one.
-  if (pi > 3) return ni <= 2 && !!cols && drawnLen(prev) < cols;
+  if (pi > 3) return ni <= 2 && !!cols && lastRow(row, cols) < cols;
   return ni === pi;
 }
 

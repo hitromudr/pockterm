@@ -73,15 +73,18 @@ func TestCaptureHistoryArgv(t *testing.T) {
 	// `-e` is what carries the agent's Markdown: bold and the colour of an inline
 	// code span are all that is left of `**слово**` and `` `путь` `` on a pane, and
 	// without the flag the page is handed a drawing to copy.
+	// `-J` is what keeps a long line one line: without it every place tmux wrapped
+	// a row came back as a newline, and the page could only guess which of them to
+	// put a space in.
 	got := CaptureHistory("pockterm-7", 2000)
-	want := []string{"tmux", "capture-pane", "-p", "-e", "-S", "-2000", "-t", "pockterm-7"}
+	want := []string{"tmux", "capture-pane", "-p", "-e", "-J", "-S", "-2000", "-t", "pockterm-7"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v", got)
 	}
 	// A nonsense count is the screen alone rather than a command tmux refuses:
 	// what answers this frame is text on a phone, and no text is the worse answer.
 	if got := CaptureHistory("pockterm-7", -5); !reflect.DeepEqual(
-		got, []string{"tmux", "capture-pane", "-p", "-e", "-S", "-0", "-t", "pockterm-7"}) {
+		got, []string{"tmux", "capture-pane", "-p", "-e", "-J", "-S", "-0", "-t", "pockterm-7"}) {
 		t.Fatalf("negative: got %v", got)
 	}
 }

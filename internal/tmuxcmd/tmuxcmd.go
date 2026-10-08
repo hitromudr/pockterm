@@ -333,11 +333,19 @@ func CapturePane(session string) []string {
 // The page reads two of them back into text (`markdownFrom` in js/select.js) and
 // drops the rest, so this flag is the whole of the difference between copying a
 // message and copying a drawing of one.
+//
+// `-J` hands back as one line what tmux wrapped as several. Without it a copied
+// line came out in pieces, a newline or a space at each seam: on a shell every
+// command and output wider than the phone, and on the agent's own history after
+// a resize, which tmux re-cuts mid-word (`Если н` / `ужен` on a pane drawn at 246
+// and read at 211). tmux is the one that knows which rows it wrapped; the page
+// can only guess, and its guesses are for the breaks a renderer made itself.
+// The flag also keeps trailing spaces, which the page trims.
 func CaptureHistory(session string, lines int) []string {
 	if lines < 0 {
 		lines = 0
 	}
-	return []string{"tmux", "capture-pane", "-p", "-e", "-S", "-" + strconv.Itoa(lines), "-t", session}
+	return []string{"tmux", "capture-pane", "-p", "-e", "-J", "-S", "-" + strconv.Itoa(lines), "-t", session}
 }
 
 // PaneMode returns the argv reporting five things about the current pane of

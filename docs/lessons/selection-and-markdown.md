@@ -339,6 +339,40 @@ a worse copy; a wrong space in it is a broken command.
 What the copy still carries is the block's own two-column margin, which `sh` does not mind and a
 here-doc terminator would.
 
+## The wraps that are tmux's own were guessed at, and tmux knows them
+
+Reported 2026-10-08 as a copied line coming out in pieces, "в конце каждой вставляется либо перевод
+строки либо пробел". The journal named the place: `select-tap grain:line chars:466` on a pane with
+`agent:false` — a shell, a line far wider than the phone. Everything above is about breaks a
+**renderer** made, and this pass was reading breaks **tmux** made the same way, because the capture
+had no `-J` and every row tmux wrapped came back as a newline. Reproduced on a private server at 51
+columns, a command echo came out as `…@185.250.4 7.112/srv…` — a space in an address — and with
+newlines where the next row began with something that is not a word.
+
+The same seams sit in the agent's own history, and more of them: **tmux re-cuts a pane's history
+when the pane is resized**, mid-word, wherever the new width falls. Measured on a live pane drawn at
+246 columns and read at 211 — `Если н` / `ужен`, `автомати` / `ия` — and every diff row, padded
+with its background to the old width, came back with an empty row under it.
+
+So the capture asks for `-J` (`tmuxcmd.CaptureHistory`) and tmux joins exactly what it wrapped,
+with the space that was there. Two things followed from lines now arriving wider than the pane:
+
+- **The room is measured on the last row the pane drew**, not on the line (`lastRow` in
+  `js/select.js`): for a line wider than the pane, what is left after cutting it at the width. A
+  command echo followed by its output at the same indent was otherwise glued into one line, the
+  replay answering "the room ran out" for any line longer than the pane.
+- **And on the last row, not on the text already joined.** That was wrong before `-J` as well:
+  once two rows were joined the accumulated line was always over the width, so a short row ending a
+  paragraph took the line written under it along.
+
+Two things this was checked against, on five live panes. Rows the agent drew exactly to the
+pane's width are **not** wrap-flagged by tmux — `-J` returned the same number of lines on every pane
+not resized under its history, with 2–4 such rows each — so a word break cannot turn into two words
+glued together. And the change to the measurement alone, run over the old captures, changed **no**
+line on any of them. On reflowed history the remainder after the current width means little, the
+width the agent drew at being unknown; it answers "not a wrap" more often than not there, and a
+break left standing is the cheap failure.
+
 **A thematic break is drawn as a rule**, and a copy of the rule is box glyphs. Found while looking
 for those header underlines, which is the second Markdown construct that search turned up rather
 than the one it was after. `rulesFrom` puts the `---` back, and the width is what tells a break

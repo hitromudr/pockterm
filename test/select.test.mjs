@@ -582,6 +582,38 @@ test('a dedent is not a wrap', () => {
   assert.equal(unwrapFrom(pane, 56), pane);
 });
 
+// --- the line tmux wrapped -------------------------------------------------
+// Reported as a copied line coming out in pieces, a newline or a space at the end
+// of each. The capture was taken without `-J`, so every row tmux wrapped came back
+// as a row of its own and this pass guessed: a space where it read prose, a break
+// where it did not, and both in the middle of an address. Measured on a shell at 51
+// columns — `185.250.4` / `7.112` — and on the agent's own history after a resize,
+// where tmux re-cuts what was drawn wider: `Если н` / `ужен`. Now tmux joins its own
+// wraps, and what reaches this pass is wider than the pane.
+test('a line tmux joined stays one line, and the line after it stays its own', () => {
+  // Verbatim off the shell at 51 columns, captured with `-J`.
+  const pane = [
+    "bash-5.2$ echo 'git clone ssh://gitmirror@185.250.47.112/srv/git-mirror/pockterm.git"
+      + " && cd pockterm && make check && echo a very long sentence here with many words in it"
+      + " that goes on'; echo next line; printf '%s\\n' '  - item one' '1. numbered'",
+    'git clone ssh://gitmirror@185.250.47.112/srv/git-mirror/pockterm.git && cd pockterm'
+      + ' && make check && echo a very long sentence here with many words in it that goes on',
+    'next line',
+    '  - item one',
+    '1. numbered',
+    'bash-5.2$',
+  ].join('\n');
+  assert.equal(markdownFrom(pane, 51), pane);
+});
+
+test('the room is measured on the row the line ends with, not on what was joined', () => {
+  // The first two rows are a wrap, and the second stops with room for `Дальше`:
+  // the third is a line of its own. Measured on the joined text, the room had
+  // always run out after the first join, and the whole block became one line.
+  const pane = '  первая строка абзаца, которая\n  кончается тут.\n  Дальше своё';
+  assert.equal(unwrapFrom(pane, 33), '  первая строка абзаца, которая кончается тут.\n  Дальше своё');
+});
+
 test('a list is a list, and its items are not glued into a sentence', () => {
   const pane = '  - первый пункт\n  - второй пункт\n  1. и нумерованный\n  2. второй';
   assert.equal(unwrapFrom(pane), pane);
