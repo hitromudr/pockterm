@@ -34,6 +34,9 @@ test('named keys map to escape sequences', () => {
   assert.equal(keyBytes('end'), '\x1b[F');
   // What the ⇩ sends to a program that owns the wheel: xterm's Ctrl+End.
   assert.equal(keyBytes('ctrl-end'), '\x1b[1;5F');
+  // And what ⇞ and ⇟ send it: xterm's PageUp and PageDown.
+  assert.equal(keyBytes('page-up'), '\x1b[5~');
+  assert.equal(keyBytes('page-down'), '\x1b[6~');
 });
 
 test('unknown key maps to empty string', () => {

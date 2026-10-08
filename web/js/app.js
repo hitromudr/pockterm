@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v210';
+const APP_VERSION = 'v211';
 
 // Which install a journal line came from.
 //
@@ -4948,6 +4948,17 @@ function pageBy(dir) {
   // for the layout to move — which a page down reaching the live end makes the
   // pane do, since that is tmux leaving copy-mode. The same answer the ⇩ gives.
   const blurred = releaseTerminalFocus();
+  // A program drawing its own view takes the notches itself, and Claude Code's
+  // full screen accelerates a burst of them: the 41 notches of a page on the
+  // phone (2026-10-08, 43 rows at one line a notch) went up by an unknown number
+  // of screens, as far as the start of the session. So it is asked for its own
+  // page instead — the same reasoning as the ⇩'s Ctrl+End, and as harmless where
+  // the key means nothing else: an editor or a pager pages on it too.
+  if (!scrolledBack && appWheel && altScreen) {
+    sendInput(keyBytes(dir > 0 ? 'page-up' : 'page-down'));
+    report('page', { dir, via: 'program', blurred });
+    return;
+  }
   const notches = pageNotches();
   const btnCode = dir > 0 ? 64 : 65; // 64 = towards history
   for (let i = 0; i < notches; i++) sendWheel(btnCode);

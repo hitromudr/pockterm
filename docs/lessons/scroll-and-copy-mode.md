@@ -145,6 +145,14 @@ and `#{alternate_on}` (`tmuxcmd.PaneState`), and each decides one thing:
   `Scroll`: `pageup`/`pagedown`, `ctrl+home` → `scroll:top`, `ctrl+end` →
   `scroll:bottom`. In another program the key is a guess, kept because it is harmless
   where it means nothing (an editor's last line, a pager's end).
+- **⇞ and ⇟ ask it for its page** (since 2026-10-08, v211; until then they sent the
+  page's worth of wheel notches). On the phone that was 41 notches (43 rows, `wheelLines`
+  1), and one ⇞ went up by an unknown number of screens, as far as the start of the
+  session. The 2.1.294 binary says why: `scroll:lineUp` takes its rows from a wheel
+  accelerator (`wheelMode`, a multiplier that grows through a burst), so a burst is never
+  a fixed number of lines. `pageup`/`pagedown` (`\x1b[5~`/`\x1b[6~`) are its own page —
+  half the view (`getViewportHeight()/2`), unaccelerated — which is a smaller step than
+  a full screen, but one that reads on with overlap rather than past what it skipped.
 
 ### ⇟ and ⇩ that never went away
 
