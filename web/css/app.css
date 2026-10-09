@@ -42,6 +42,22 @@
                  'Liberation Mono', Consolas, 'Cascadia Mono', Menlo, monospace;
   --mono: var(--mono-embedded), var(--mono-marks), var(--mono-system);
   --vvh: 100dvh;
+  /* The page has one theme and it is dark, and the browser has to be told so:
+     what it draws by itself — the scrollbar of the drawer, of the tab strip, of
+     the frozen copy; the caret and the placeholder of a field — it draws for a
+     light page otherwise. Reported from the laptop as a white scrollbar down a
+     black drawer; a phone never showed it, its scrollbars being overlays that
+     fade out.
+
+     And drawn in the page's own colours rather than the browser's dark set:
+     a thin thumb on no track, like the rail over the pane (#scrollbar below),
+     in the grey of the shell's borders rather than the pane's accent — the
+     pane's bar is a control, these only say how far down the list is. The
+     colour inherits, so this one rule covers every scroll container on the
+     page, including the next one; the width does not, and sits on `*` below.
+     A browser test walks them all. */
+  color-scheme: dark;
+  scrollbar-color: #3a4558 transparent;
 }
 /* `swap` rather than `block`: an unreadable pane for up to three seconds reads as
    a terminal that has hung, and the swap is what js/app.js waits for before it
@@ -83,7 +99,9 @@
   font-style: normal;
   font-display: swap;
 }
-* { margin: 0; padding: 0; box-sizing: border-box; }
+/* scrollbar-width goes with scrollbar-color on :root above; it is the one of
+   the two that does not inherit. */
+* { margin: 0; padding: 0; box-sizing: border-box; scrollbar-width: thin; }
 /* The hidden attribute must always win over an id's display rule
    (#keybar/#composer/#screen-* all set display, which by specificity
    would otherwise leave a "hidden" element on screen). */

@@ -105,6 +105,21 @@ opens the drawer **by its state**: `☰` toggles, and the restore of the last se
 happens after load, so a blind tap raced it (two suites failed that way about one run
 in three before `startStand` grew `openDrawer`).
 
+**The browser's own scrollbars are drawn for a dark page** (2026-10-09). Reported from
+the laptop as a white scrollbar down the black drawer, with another under the tab strip:
+the page has one theme and nothing had told the browser, so what it draws by itself —
+the scrollbar of a scroll container, the caret and placeholder of a field — it drew for
+a light page. A phone never showed it, its scrollbars being overlays that fade out.
+`color-scheme: dark` on `:root` says so, and `scrollbar-color` beside it draws them in
+the shell's border grey on no track, thin; the pane's own bar keeps the accent because it
+is a control, these only say how far down a list is. `scrollbar-color` inherits and
+`scrollbar-width` does not, which is why the width sits on `*` — the first draft put
+both on the root and the test caught the width still at `auto`. That test walks every
+scroll container on the page rather than naming the two reported, so the next one
+cannot be missed. The stand cannot show any of this: headless Chromium is started with
+`--hide-scrollbars`, so the test reads computed style, and the look was checked once in
+a browser launched without that flag.
+
 ## The settings are in the drawer, and the ⋯ menu is gone
 
 Text size, the notification switch, `〰 smooth`, the keyboard mode, the input log, the

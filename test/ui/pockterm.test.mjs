@@ -38,6 +38,37 @@ describe('sessions screen', () => {
     await last.locator('button.rename').click({ trial: true });
   });
 
+  test('the browser draws its own scrollbars for a dark page', async () => {
+    // Reported from the laptop as a white scrollbar down a black drawer, with
+    // another under the tab strip: the page has one theme, but nothing had told
+    // the browser, so what it draws by itself it drew for a light page. The fix
+    // is one declaration on the root that inherits — so this walks every scroll
+    // container there is rather than naming the two that were reported.
+    await stand.open();
+    const { page } = stand;
+    const seen = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement).colorScheme;
+      const containers = [];
+      for (const el of document.querySelectorAll('*')) {
+        const s = getComputedStyle(el);
+        if (!/auto|scroll/.test(`${s.overflowX} ${s.overflowY}`)) continue;
+        containers.push({
+          who: el.id ? `#${el.id}` : `${el.tagName.toLowerCase()}.${el.getAttribute('class')}`,
+          color: s.scrollbarColor,
+          width: s.scrollbarWidth,
+        });
+      }
+      return { root, containers };
+    });
+    assert.equal(seen.root, 'dark', 'the browser was not told the page is dark');
+    // The drawer's list, the tab strip and the settings at the least.
+    assert.ok(seen.containers.length >= 3, `only ${seen.containers.length} scroll containers found`);
+    for (const c of seen.containers) {
+      assert.notEqual(c.color, 'auto', `${c.who} is drawn with the browser's own scrollbar`);
+      assert.notEqual(c.width, 'auto', `${c.who} is drawn with the browser's own scrollbar`);
+    }
+  });
+
   test('the strip scrolls to the tab that was switched to', async () => {
     // Which tab is current is said by a frame around it, and a frame off screen
     // says nothing: the strip is wider than a phone and nothing scrolled it.
