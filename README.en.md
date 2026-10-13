@@ -70,9 +70,8 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   Ctrl+V, or dropping a file), and 📎 picks anything off the device — a spec, a
   log, a patch, a note. On Android a screenshot never reaches the clipboard, so
   the installed app sits in the share sheet: screenshot → Share → pockterm, and
-  the path is typed into the tab that was open last (Chrome carries a new
-  manifest into an installed app on its own schedule, up to a day; if pockterm
-  is not on the list, reinstall it).
+  the path is typed into the tab that was open last (an install from before v217
+  has to be reinstalled: Chrome never carried the new manifest into it itself).
   The clip asks which source first (🖼 pictures,
   📄 documents), because the filter that opens Android on the gallery is the one
   that hides every document, and no filter at all buries the screenshots. Only keystrokes fit through a pty, so the bytes go to

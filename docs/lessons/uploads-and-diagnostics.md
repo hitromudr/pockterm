@@ -210,8 +210,12 @@ attaches **once the socket is open** (`ws.onopen`): the paths are typed, and typ
 socket still connecting is lost. With no tab to restore it says so and waits for one.
 `client: shared` in the journal carries how many were sent and how many were found.
 
-Android reads the share targets from the installed app's package, which Chrome rebuilds from a
-changed manifest on its own schedule (checked at launch, at most about once a day): an install
-from before v217 may not offer pockterm until then, or until it is reinstalled. The stand drives the POST as a form
+Android reads the share targets from the installed app's package (a WebAPK), not from the page.
+On the owner's phone Chrome never rebuilt it: `chrome://webapks` → Update went Scheduled → Not
+updatable → Scheduled, Version code stayed 1 across launches. A reinstall (remove the icon,
+Chrome → Install app) gave a new package, `Update Status: Succeeded`, and pockterm on the share
+sheet at once — first share 12:19, `shared sent:1 found:1`. So a change to `manifest.json`
+reaches the phone by a reinstall, and `chrome://webapks` is where to check, not the page's
+version. The stand drives the POST as a form
 navigation (`a screenshot sent from the share sheet lands in the open tab`); the sheet itself
 exists only on the phone.
