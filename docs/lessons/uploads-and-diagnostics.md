@@ -210,7 +210,8 @@ attaches **once the socket is open** (`ws.onopen`): the paths are typed, and typ
 socket still connecting is lost. With no tab to restore it says so and waits for one.
 `client: shared` in the journal carries how many were sent and how many were found.
 
-Android reads the share targets when the app is installed, so an install from before v217
-does not offer pockterm until it is reinstalled. The stand drives the POST as a form
+Android reads the share targets from the installed app's package, which Chrome rebuilds from a
+changed manifest on its own schedule (checked at launch, at most about once a day): an install
+from before v217 may not offer pockterm until then, or until it is reinstalled. The stand drives the POST as a form
 navigation (`a screenshot sent from the share sheet lands in the open tab`); the sheet itself
 exists only on the phone.
