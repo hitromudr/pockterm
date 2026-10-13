@@ -192,14 +192,3 @@ takes focus** (`keepsTerminalFocus` on the clip, the sources and the scrim). The
 ids deep (`#modebar #attach-menu button`) because `#modebar button` matches those buttons
 too, and equal specificity would leave the answer to whichever rule was written last — the
 same trap that drew the mark picker's button as a full-width bar.
-
-## A copied picture can arrive as its own address
-
-Measured 2026-10-13 on the owner's phone (Chrome 155, Android 10, the PWA): "Copy image" in
-Chrome and then 📥 put the image's URL into the prompt — `paste via:browser chars:84` — while
-the same button on the laptop attached the picture (`via:image found:true`). The desktop copy
-carries no plain text, so `readText` comes back empty and the image is asked for; the phone's
-copy carries the address as plain text, and text was taken first. So text that is one link
-and nothing else (`loneLink`) sends the button to the clipboard's pictures before it is typed,
-and the journal line `paste via:link-image` names what the clipboard offered (`types`). With
-no picture there the address is pasted as before.

@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickFiles, chosenFiles, carriesFiles, firstImage, loneLink } from '../web/js/paste.js';
+import { pickFiles, chosenFiles, carriesFiles, firstImage } from '../web/js/paste.js';
 
 const png = { type: 'image/png', name: 'screenshot.png' };
 const two = { type: 'image/png', name: 'second.png' };
@@ -89,16 +89,4 @@ test('the clipboard API path returns the image blob', async () => {
 test('a text-only clipboard yields no image', async () => {
   const items = [{ types: ['text/plain'], getType: async () => ({ type: 'text/plain' }) }];
   assert.equal(await firstImage(items), null);
-});
-
-test('an address alone may stand for a copied picture', () => {
-  assert.equal(loneLink('https://dvps.example/forum/auth/t/o-rR-JsNWUE'), true);
-  assert.equal(loneLink(' http://host/img.png\n'), true);
-});
-
-test('text around a link is text', () => {
-  assert.equal(loneLink('see https://host/img.png'), false);
-  assert.equal(loneLink('https://a/1 https://b/2'), false);
-  assert.equal(loneLink('ftp://host/file'), false);
-  assert.equal(loneLink(''), false);
 });
