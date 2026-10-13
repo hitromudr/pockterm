@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v217';
+const APP_VERSION = 'v218';
 
 // Which install a journal line came from.
 //
@@ -1342,6 +1342,9 @@ function attach(name) {
   forget(name); // it is where you are now, not somewhere to go back to
   current = name;
   try { sessionStorage.setItem('pt-session', name); } catch (_) {}
+  // And once more for the whole device, for the one launch that arrives in a
+  // window of its own: a share (see init).
+  try { localStorage.setItem('pt-last-session', name); } catch (_) {}
   screenTerm.hidden = false;
   // There is something behind the drawer again, so it has a way out again.
   drawerCloseBtn.hidden = false;
@@ -5784,7 +5787,17 @@ async function init() {
   }
   let saved = null;
   try { saved = sessionStorage.getItem('pt-session'); } catch (_) {}
-  const want = asked || saved;
+  // Android starts a share in a window of its own (2026-10-13: a second copy of
+  // the app beside the open one), and a new window has no `pt-session`, so the
+  // shared picture used to wait on the session list for a tab to be picked. It
+  // goes where this device was last instead — the tab the owner was looking at
+  // when they left to take the screenshot. Only for a share: an ordinary launch
+  // still opens on the list.
+  let last = null;
+  if (pendingShared && !saved) {
+    try { last = localStorage.getItem('pt-last-session'); } catch (_) {}
+  }
+  const want = asked || saved || last;
   if (want) {
     const { sessions } = await fetchSessions();
     if (sessions.some((s) => s.name === want)) { attach(want); return; }

@@ -207,7 +207,15 @@ of their own — not the versioned one, which an update deletes — and redirect
 `/?shared=<n>`. The page (`takeShared`) collects them on load, drops the parameter from the
 address so a reload does not look again, restores the tab the same way any reload does, and
 attaches **once the socket is open** (`ws.onopen`): the paths are typed, and typing into a
-socket still connecting is lost. With no tab to restore it says so and waits for one.
+socket still connecting is lost. Android starts a share as a **second copy** of the app beside the open one (measured
+2026-10-13), and a new window has no `pt-session` — the picture waited on the session list
+for a tab to be picked. So `attach` also writes `pt-last-session` to localStorage, and a share
+with nothing in sessionStorage goes there: the tab the device was on when the owner left to
+take the screenshot. An ordinary launch still opens on the list. Delivering into the copy that
+is already open is not the page's to decide — the share sheet starts the target where Android
+puts it — and `launch_handler: navigate-existing` was not taken: it is unconfirmed on a WebAPK,
+needs a reinstall, and would reload the open page on every launch, composer and all. With no
+tab to restore it says so and waits for one.
 `client: shared` in the journal carries how many were sent and how many were found.
 
 Android reads the share targets from the installed app's package (a WebAPK), not from the page.

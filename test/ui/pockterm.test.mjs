@@ -2876,6 +2876,45 @@ describe('attaching a file', () => {
       `the path never reached the pane:\n${pane.slice(-400)}`);
   });
 
+  test('a share that opens a window of its own goes to the tab last open', async () => {
+    // Android starts a share as a second copy of the app (2026-10-13), and a new
+    // window has none of the first one's sessionStorage — the picture waited on
+    // the session list for a tab to be picked. A fresh page in the same browser
+    // is that window: the device's storage, nothing of the tab's.
+    await stand.open();
+    await stand.attach();
+    const fresh = await stand.page.context().newPage();
+    try {
+      await fresh.goto(stand.base);
+      await fresh.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 10000 });
+      await fresh.evaluate((b64) => {
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const dt = new DataTransfer();
+        dt.items.add(new File([bytes], 'Screenshot_window.png', { type: 'image/png' }));
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/share';
+        form.enctype = 'multipart/form-data';
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.name = 'files';
+        input.files = dt.files;
+        form.append(input);
+        document.body.append(form);
+        form.submit();
+      }, PNG_B64);
+      await fresh.waitForFunction(
+        () => /attached/.test((document.getElementById('toast') || {}).textContent || ''),
+        null,
+        { timeout: 10000 },
+      );
+      assert.equal(await fresh.evaluate(() => document.getElementById('screen-term').hidden), false,
+        'the share was left on the session list');
+    } finally {
+      await fresh.close();
+    }
+  });
+
   test('several screenshots picked at once arrive as one message', async () => {
     // A message about a screen is often about three of them, and one upload is
     // one request: `/api/upload` takes a body rather than a form. So a selection
