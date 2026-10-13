@@ -2,7 +2,7 @@ import { keyBytes, applyCtrl } from './keys.js';
 import { detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNotice } from './notify.js';
 import { linkAction } from './link.js';
-import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
+import { pickFiles, chosenFiles, carriesFiles, firstImage, loneLink } from './paste.js';
 import { snapshotText, chunks, pickedText, markdownFrom } from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v214';
+const APP_VERSION = 'v215';
 
 // Which install a journal line came from.
 //
@@ -3849,14 +3849,23 @@ let copyingViaFallback = false;
 // Read an image out of the clipboard where the browser allows it. Wrapped
 // because navigator.clipboard.read is missing on Firefox and throws on a
 // denied permission, and neither is worth a stack trace.
+//
+// What the clipboard offered is kept in `lastClipboardTypes` for the journal:
+// whether a phone's copied picture is there at all is the question a missing
+// image leaves open.
 async function clipboardImage() {
+  lastClipboardTypes = '';
   try {
-    if (!navigator.clipboard || !navigator.clipboard.read) return null;
-    return await firstImage(await navigator.clipboard.read());
-  } catch (_) {
+    if (!navigator.clipboard || !navigator.clipboard.read) { lastClipboardTypes = 'no-read'; return null; }
+    const items = await navigator.clipboard.read();
+    lastClipboardTypes = Array.from(items || []).map((i) => Array.from(i.types || []).join('+')).join(',');
+    return await firstImage(items);
+  } catch (e) {
+    lastClipboardTypes = `refused:${(e && e.name) || 'error'}`;
     return null;
   }
 }
+let lastClipboardTypes = '';
 
 // First non-blank line, trimmed: enough to recognise what was copied.
 function preview(text) {
@@ -4237,10 +4246,18 @@ document.getElementById('paste').addEventListener('click', async () => {
   }
   if (!text) {
     const image = await clipboardImage();
-    report('paste', { via: 'image', found: !!image });
+    report('paste', { via: 'image', found: !!image, types: lastClipboardTypes });
     if (image) { attachFiles([image]); return; }
     openPasteTarget('clipboard looks empty — paste here');
     return;
+  }
+  // A copied picture can come with its address as the text (Chrome on
+  // Android). The picture is what was meant; with no picture behind it the
+  // address is pasted as before.
+  if (loneLink(text)) {
+    const image = await clipboardImage();
+    report('paste', { via: 'link-image', found: !!image, types: lastClipboardTypes });
+    if (image) { attachFiles([image]); return; }
   }
   // term.paste honours bracketed-paste mode, so a multi-line paste arrives
   // as one block instead of firing a message per line in Claude Code.

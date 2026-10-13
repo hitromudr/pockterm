@@ -61,3 +61,13 @@ export async function firstImage(items) {
   }
   return null;
 }
+
+// loneLink answers whether pasted text may only be the address of a picture
+// that came with it. Chrome on Android's "Copy image" puts the picture's URL on
+// the clipboard as plain text, so the Paste button, which reads text first,
+// typed the address and never looked for the picture (journal, 2026-10-13:
+// `paste via:browser chars:84` for a copied image). One link and nothing else
+// is the shape of that; a link inside a sentence is text somebody meant.
+export function loneLink(text) {
+  return /^\s*https?:\/\/\S+\s*$/.test(String(text || ''));
+}
