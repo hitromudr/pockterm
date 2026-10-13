@@ -1,6 +1,6 @@
 // Version-stamped static cache. Bump VERSION on any static change:
 // the old cache is dropped on activate.
-const VERSION = 'v216';
+const VERSION = 'v217';
 const PRECACHE = [
   '/',
   '/css/app.css',
@@ -49,7 +49,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== VERSION && k !== SHARE_CACHE).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -150,8 +150,45 @@ self.addEventListener('notificationclick', (e) => {
   })());
 });
 
+// Files sent to pockterm from Android's share sheet.
+//
+// A screenshot on the phone is a file in the gallery and never touches the
+// clipboard, so 📥 has nothing to read and 📎 means a trip through the picker
+// (2026-10-13). The manifest names this app a share target instead: the system
+// POSTs the files to `/share` and opens the app there. The page that will
+// attach them does not exist yet at that moment, so they wait in a cache of
+// their own — not the versioned one, which an update drops — and the page is
+// sent to `/?shared=<n>` to collect them. They go into the tab that was open
+// last, the same one a reload restores.
+const SHARE_CACHE = 'pockterm-share';
+
+async function takeShare(request) {
+  let n = 0;
+  try {
+    const form = await request.formData();
+    const files = form.getAll('files').filter((f) => typeof f !== 'string');
+    const cache = await caches.open(SHARE_CACHE);
+    // What an earlier share left behind is not what this one meant.
+    for (const k of await cache.keys()) await cache.delete(k);
+    for (const f of files) {
+      await cache.put(`/shared/${n}`, new Response(f, {
+        headers: {
+          'Content-Type': f.type || 'application/octet-stream',
+          'X-Pockterm-Name': encodeURIComponent(f.name || ''),
+        },
+      }));
+      n++;
+    }
+  } catch (_) { /* the page says that nothing arrived */ }
+  return Response.redirect(`/?shared=${n}`, 303);
+}
+
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
+  if (e.request.method === 'POST' && url.origin === location.origin && url.pathname === '/share') {
+    e.respondWith(takeShare(e.request));
+    return;
+  }
   // Never intercept non-GET or cross-origin; WebSocket upgrades bypass SW anyway.
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   // Network first, cache only as the offline fallback.

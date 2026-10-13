@@ -192,3 +192,25 @@ takes focus** (`keepsTerminalFocus` on the clip, the sources and the scrim). The
 ids deep (`#modebar #attach-menu button`) because `#modebar button` matches those buttons
 too, and equal specificity would leave the answer to whichever rule was written last — the
 same trap that drew the mark picker's button as a full-width bar.
+
+## The share sheet: a screenshot never reaches the clipboard
+
+Measured 2026-10-13 on the owner's phone (realme, Android 10, Chrome 155 PWA): the system
+screenshot (power + volume up) is saved to the gallery and the clipboard keeps whatever text
+was copied before — 📥 pasted that text, twice, and the journal said `types:text/plain`. A
+laptop's screenshot tool writes the clipboard, which is why Paste worked there. Nothing the
+page does changes where Android puts a screenshot.
+
+So the manifest declares a `share_target`: the screenshot preview's Share offers pockterm, the
+system POSTs the files to `/share`, and the service worker (`takeShare`) keeps them in a cache
+of their own — not the versioned one, which an update deletes — and redirects to
+`/?shared=<n>`. The page (`takeShared`) collects them on load, drops the parameter from the
+address so a reload does not look again, restores the tab the same way any reload does, and
+attaches **once the socket is open** (`ws.onopen`): the paths are typed, and typing into a
+socket still connecting is lost. With no tab to restore it says so and waits for one.
+`client: shared` in the journal carries how many were sent and how many were found.
+
+Android reads the share targets when the app is installed, so an install from before v217
+does not offer pockterm until it is reinstalled. The stand drives the POST as a form
+navigation (`a screenshot sent from the share sheet lands in the open tab`); the sheet itself
+exists only on the phone.

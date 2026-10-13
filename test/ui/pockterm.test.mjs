@@ -2835,6 +2835,47 @@ describe('attaching a file', () => {
     assert.ok(saved.length >= 1, `uploads holds ${JSON.stringify(saved)}`);
   });
 
+  test('a screenshot sent from the share sheet lands in the open tab', async () => {
+    // A screenshot on Android is a file in the gallery and never reaches the
+    // clipboard, so 📥 found nothing to paste (2026-10-13). The app is a share
+    // target instead: the system POSTs the file to /share and opens the app on
+    // it. This is that POST as a navigation, the way the share sheet makes it —
+    // a form rather than fetch, so the worker answers a page load and the page
+    // that comes back is the one that has to find the file.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 10000 });
+
+    await page.evaluate((b64) => {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const dt = new DataTransfer();
+      dt.items.add(new File([bytes], 'Screenshot_shared.png', { type: 'image/png' }));
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/share';
+      form.enctype = 'multipart/form-data';
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.name = 'files';
+      input.files = dt.files;
+      form.append(input);
+      document.body.append(form);
+      form.submit();
+    }, PNG_B64);
+
+    await page.waitForFunction(
+      () => /attached/.test((document.getElementById('toast') || {}).textContent || ''),
+      null,
+      { timeout: 10000 },
+    );
+    assert.equal(new URL(page.url()).search, '', 'the address still asks for the shared files');
+    // Typed into the pane that was open before the share, not merely uploaded.
+    const pane = stand.tmux(['capture-pane', '-p', '-J', '-t', 'demo']).replace(/\s+/g, '');
+    assert.ok(pane.includes(stand.uploads.replace(/\s+/g, '')),
+      `the path never reached the pane:\n${pane.slice(-400)}`);
+  });
+
   test('several screenshots picked at once arrive as one message', async () => {
     // A message about a screen is often about three of them, and one upload is
     // one request: `/api/upload` takes a body rather than a form. So a selection

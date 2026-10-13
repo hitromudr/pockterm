@@ -68,7 +68,11 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   clipboard.
 - **Files, not only pictures.** A screenshot arrives through Paste (so does
   Ctrl+V, or dropping a file), and 📎 picks anything off the device — a spec, a
-  log, a patch, a note. The clip asks which source first (🖼 pictures,
+  log, a patch, a note. On Android a screenshot never reaches the clipboard, so
+  the installed app sits in the share sheet: screenshot → Share → pockterm, and
+  the path is typed into the tab that was open last (an install from before v217
+  has to be reinstalled — Android reads the share targets at install time).
+  The clip asks which source first (🖼 pictures,
   📄 documents), because the filter that opens Android on the gallery is the one
   that hides every document, and no filter at all buries the screenshots. Only keystrokes fit through a pty, so the bytes go to
   the server, land as a file under the user's cache directory, and the terminal

@@ -24,7 +24,7 @@ const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 // itself is a page that never looks out of date. An installed PWA can keep
 // running the version it was installed with, which is what makes the number
 // worth having at all.
-const APP_VERSION = 'v216';
+const APP_VERSION = 'v217';
 
 // Which install a journal line came from.
 //
@@ -1931,6 +1931,13 @@ function connect() {
     noteLink();
     sendResize();
     sendVisible();
+    // Files shared from another app go into the first pane there is a socket
+    // for: the paths are typed, and typing into a socket not yet open is lost.
+    if (pendingShared) {
+      const files = pendingShared;
+      pendingShared = null;
+      attachFiles(files);
+    }
   };
   ws.onmessage = (e) => {
     noteLink();
@@ -5731,12 +5738,49 @@ if ('serviceWorker' in navigator) {
 // (an orientation change, the system reviving the page) restores what was
 // actually being looked at instead of reopening the notification's session
 // forever.
+//
+// `?shared=<n>` is the service worker sending the page for files from the share
+// sheet (see takeShare in sw.js). Dropped from the address the same way, or a
+// reload would go looking for them again.
+let pendingShared = null;
+
+// takeShared collects what the share sheet left in the worker's cache, in the
+// order it was sent, and empties the cache behind it.
+async function takeShared() {
+  try {
+    const cache = await caches.open('pockterm-share');
+    const keys = (await cache.keys())
+      .sort((a, b) => Number(a.url.split('/').pop()) - Number(b.url.split('/').pop()));
+    const files = [];
+    for (const k of keys) {
+      const res = await cache.match(k);
+      if (!res) continue;
+      const blob = await res.blob();
+      const name = decodeURIComponent(res.headers.get('X-Pockterm-Name') || '') || 'shared';
+      files.push(new File([blob], name, { type: blob.type || res.headers.get('Content-Type') || '' }));
+      await cache.delete(k);
+    }
+    return files;
+  } catch (_) {
+    return [];
+  }
+}
+
 async function init() {
-  const asked = new URLSearchParams(location.search).get('session');
-  if (asked) {
+  const params = new URLSearchParams(location.search);
+  const asked = params.get('session');
+  const shared = params.get('shared');
+  if (asked || shared !== null) {
     const url = new URL(location.href);
     url.searchParams.delete('session');
+    url.searchParams.delete('shared');
     try { history.replaceState(null, '', url.pathname + url.search + url.hash); } catch (_) {}
+  }
+  if (shared !== null) {
+    const files = await takeShared();
+    report('shared', { sent: Number(shared) || 0, found: files.length });
+    if (files.length) pendingShared = files;
+    else toast('nothing arrived from the share');
   }
   let saved = null;
   try { saved = sessionStorage.getItem('pt-session'); } catch (_) {}
@@ -5746,5 +5790,6 @@ async function init() {
     if (sessions.some((s) => s.name === want)) { attach(want); return; }
   }
   showSessions();
+  if (pendingShared) toast('open a tab to attach what was shared');
 }
 init();
