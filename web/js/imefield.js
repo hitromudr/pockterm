@@ -96,50 +96,64 @@ export function fieldHygiene({
 
 // echoGuard is the other way the field sends a chunk twice, and this one is
 // xterm's own. Dictation on the owner's phone (2026-10-14, Gboard voice, no
-// composition at all) delivers every chunk as keydown(229), keyup(229), then an
-// `insertText` — the keyup *before* the text. xterm has two routes for text, and
-// that order takes both:
+// composition at all) delivers every chunk as an `insertText` with keydown(229)
+// and keyup(229) around it, in no fixed order. xterm has two routes for text:
 //
-//   - keydown(229) snapshots the field and schedules a comparison for the next
-//     task (CompositionHelper._handleAnyTextareaChanges): whatever the field
-//     gained by then is sent.
+//   - each keydown(229) snapshots the field and schedules a comparison for the
+//     next task (CompositionHelper._handleAnyTextareaChanges): whatever the
+//     field gained over that snapshot by then is sent.
 //   - the input handler (Terminal._inputEvent) sends an `insertText` itself
-//     unless a keydown is still "seen" — and the keyup has just cleared that.
+//     unless a keydown is still "seen" — set on any keydown, cleared on any keyup.
 //
-// So the chunk goes out from the input handler, and again from the comparison.
-// In the usual order (keydown, text, keyup) the input handler stands down and
-// only the comparison sends. The guard mirrors xterm's flag — set on any
-// keydown, cleared on any keyup — and when the input handler has sent while a
-// comparison is still pending, puts the field back to the snapshot: the
-// comparison then finds nothing to send. The text has gone out once, from the
-// input handler; the keyboard sees a field emptied one task earlier than the
-// hygiene rule above would have emptied it anyway.
+// Two orders send a chunk twice, both in the recording:
+//
+//   - keydown, keyup, text: the keyup has cleared the flag, so the input handler
+//     sends, and then the comparison finds the chunk in the field and sends it
+//     again. Here the field is put back to what it held before the text — the
+//     comparisons then find nothing.
+//   - keydown, (keyup,) keydown, text: two comparisons are pending, and both
+//     find the same chunk («ржками.ржками.»). Here, once a comparison has run —
+//     it has sent everything the field held — the field is put back to the
+//     snapshot the next one took, so that one sends only what came after.
+//
+// The keyboard sees a field emptied a task earlier than the hygiene rule above
+// would have emptied it anyway.
 //
 // read() and write() are the field's value; defer() runs a callback in a later
-// task, after the comparison xterm scheduled from the same keydown.
-// isComposing() is the hygiene rule's answer: xterm schedules no comparison
-// while a composition is open. onEcho(len) says a chunk was kept from going out
-// twice.
+// task — wired after xterm's own listener, it runs right behind the comparison
+// scheduled from the same keydown. isComposing() is the hygiene rule's answer:
+// xterm schedules no comparison while a composition is open. onEcho(len) says a
+// chunk was kept from going out twice.
 export function echoGuard({
   read, write, defer = (fn) => setTimeout(fn, 0), isComposing = () => false, onEcho = () => {},
 }) {
   let keyDown = false; // xterm's _keyDownSeen
-  let snapshot = null; // the field at the last keydown(229) whose comparison has not run
-  let pending = 0;
+  const pending = []; // the snapshots of the comparisons that have not run yet, oldest first
 
   return {
     keydown(keyCode) {
       keyDown = true;
       if (keyCode !== 229 || isComposing()) return;
-      snapshot = read();
-      pending++;
-      defer(() => { if (--pending === 0) snapshot = null; });
+      pending.push(read());
+      defer(() => {
+        pending.shift();
+        // The comparison that has just run sent what the field gained; the next
+        // one would send the same gain again over its older snapshot.
+        if (!pending.length) return;
+        const now = read();
+        if (now === pending[0]) return;
+        write(pending[0]);
+        onEcho(now.length - pending[0].length);
+      });
     },
     keyup() { keyDown = false; },
     input(inputType, data) {
       if (inputType !== 'insertText' || !data) return;
-      if (keyDown || snapshot === null) return; // only one route sends
-      write(snapshot);
+      if (keyDown || !pending.length) return; // only one route sends
+      // The input handler has sent the chunk: take it out of the field, and the
+      // comparisons find the field as they would have without it.
+      const now = read();
+      write(now.endsWith(data) ? now.slice(0, -data.length) : pending[pending.length - 1]);
       onEcho(data.length);
     },
   };

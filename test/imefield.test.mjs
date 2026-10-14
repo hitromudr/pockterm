@@ -272,3 +272,30 @@ test('no comparison is scheduled while composing, so none is guarded', () => {
   s.guard.input('insertText', 'x');
   assert.deepEqual(s.echoes, []);
 });
+
+test('two keydowns before the text: two comparisons, one send', () => {
+  // «ржками.ржками.» in the recording of 2026-10-14.
+  const s = dictation();
+  s.down(); s.up(); s.down(); s.input('mn');
+  s.run();
+  assert.deepEqual(s.sent, ['mn']);
+});
+
+test('text that came between two keydowns is sent once, by the first comparison', () => {
+  const s = dictation();
+  s.down(); s.input('a'); s.down();
+  s.run();
+  assert.deepEqual(s.sent, ['a']);
+  assert.deepEqual(s.echoes, []);
+});
+
+test('text after the first comparison is still sent by the second', () => {
+  const s = dictation();
+  s.down(); s.down();
+  // Only the first comparison and the guard behind it have run.
+  const q = s.queue; s.queue = q.slice(2);
+  q[0](); q[1]();
+  s.input('z');
+  s.run();
+  assert.deepEqual(s.sent, ['z']);
+});

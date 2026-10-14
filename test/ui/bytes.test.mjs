@@ -725,6 +725,21 @@ describe('a chunk whose keyup came first goes out once', () => {
     assert.equal(added, 'xy');
   });
 
+  // The other order in the same recording (21:12, «ржками.ржками.», « и... и...»):
+  // two keydowns before the text. Each schedules its own comparison, both find
+  // the same chunk in the field, both send it.
+  test('two keydowns, then the text: once', async () => {
+    await ready();
+    const added = await dictate(stand.page, 'mn', ['down', 'up', 'down', 'input']);
+    assert.equal(added, 'mn', `the chunk went out ${JSON.stringify(added)}`);
+  });
+
+  test('two keydowns, a keyup, then the text: once', async () => {
+    await ready();
+    const added = await dictate(stand.page, 'kl', ['down', 'down', 'up', 'input']);
+    assert.equal(added, 'kl', `the chunk went out ${JSON.stringify(added)}`);
+  });
+
   test('text with no key at all (an emoji, a suggestion): once, not lost', async () => {
     await ready();
     const added = await dictate(stand.page, 'q', ['input']);
