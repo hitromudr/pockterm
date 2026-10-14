@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fieldHygiene, keepEmpty } from '../web/js/imefield.js';
+import { fieldHygiene, keepEmpty, echoGuard } from '../web/js/imefield.js';
 
 // A field that records what was done to it, and a clock that does not run until
 // it is told to. Between them they are the whole environment this rule needs —
@@ -189,4 +189,86 @@ test('a field that was never there answers rather than throwing', () => {
   assert.equal(off.isComposing(), false);
   assert.equal(off.held(), 0);
   off();
+});
+
+// echoGuard against a field and a clock, with xterm's two routes modelled by
+// what they would send: the input handler sends when no keydown is "seen", the
+// comparison sends whatever the field gained since the keydown that scheduled it.
+function dictation() {
+  const s = { value: '', sent: [], echoes: [], queue: [], composing: false };
+  s.guard = echoGuard({
+    read: () => s.value,
+    write: (v) => { s.value = v; },
+    defer: (fn) => s.queue.push(fn),
+    isComposing: () => s.composing,
+    onEcho: (len) => s.echoes.push(len),
+  });
+  let seen = false;
+  s.down = () => {
+    seen = true;
+    const before = s.value;
+    // xterm's comparison is scheduled before the guard's own callback.
+    s.queue.push(() => { if (s.value.length > before.length) s.sent.push(s.value.replace(before, '')); });
+    s.guard.keydown(229);
+  };
+  s.up = () => { seen = false; s.guard.keyup(); };
+  s.input = (text) => {
+    s.value += text;
+    if (!seen) s.sent.push(text);
+    s.guard.input('insertText', text);
+  };
+  s.run = () => { const q = s.queue; s.queue = []; for (const fn of q) fn(); };
+  return s;
+}
+
+test('a chunk whose keyup came first goes out once', () => {
+  const s = dictation();
+  s.down(); s.up(); s.input('abc');
+  s.run();
+  assert.deepEqual(s.sent, ['abc']);
+  assert.deepEqual(s.echoes, [3]);
+});
+
+test('the usual order is left to the comparison, and the field is not touched', () => {
+  const s = dictation();
+  s.down(); s.input('abc'); s.up();
+  assert.equal(s.value, 'abc');
+  s.run();
+  assert.deepEqual(s.sent, ['abc']);
+  assert.deepEqual(s.echoes, []);
+});
+
+test('text with no keydown pending is not touched', () => {
+  const s = dictation();
+  s.input('🙂');
+  s.run();
+  assert.deepEqual(s.sent, ['🙂']);
+  assert.equal(s.value, '🙂');
+  assert.deepEqual(s.echoes, []);
+});
+
+test('a residue in the field is put back, not taken: the comparison sends no delete', () => {
+  const s = dictation();
+  s.value = 'old';
+  s.down(); s.up(); s.input('new');
+  assert.equal(s.value, 'old');
+  s.run();
+  assert.deepEqual(s.sent, ['new']);
+});
+
+test('once the comparison has run, the guard stands down', () => {
+  const s = dictation();
+  s.down(); s.run();
+  s.up(); s.input('late');
+  assert.equal(s.value, 'late');
+  assert.deepEqual(s.echoes, []);
+});
+
+test('no comparison is scheduled while composing, so none is guarded', () => {
+  const s = dictation();
+  s.composing = true;
+  s.guard.keydown(229);
+  s.guard.keyup();
+  s.guard.input('insertText', 'x');
+  assert.deepEqual(s.echoes, []);
 });

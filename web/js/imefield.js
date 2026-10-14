@@ -94,6 +94,57 @@ export function fieldHygiene({
   };
 }
 
+// echoGuard is the other way the field sends a chunk twice, and this one is
+// xterm's own. Dictation on the owner's phone (2026-10-14, Gboard voice, no
+// composition at all) delivers every chunk as keydown(229), keyup(229), then an
+// `insertText` — the keyup *before* the text. xterm has two routes for text, and
+// that order takes both:
+//
+//   - keydown(229) snapshots the field and schedules a comparison for the next
+//     task (CompositionHelper._handleAnyTextareaChanges): whatever the field
+//     gained by then is sent.
+//   - the input handler (Terminal._inputEvent) sends an `insertText` itself
+//     unless a keydown is still "seen" — and the keyup has just cleared that.
+//
+// So the chunk goes out from the input handler, and again from the comparison.
+// In the usual order (keydown, text, keyup) the input handler stands down and
+// only the comparison sends. The guard mirrors xterm's flag — set on any
+// keydown, cleared on any keyup — and when the input handler has sent while a
+// comparison is still pending, puts the field back to the snapshot: the
+// comparison then finds nothing to send. The text has gone out once, from the
+// input handler; the keyboard sees a field emptied one task earlier than the
+// hygiene rule above would have emptied it anyway.
+//
+// read() and write() are the field's value; defer() runs a callback in a later
+// task, after the comparison xterm scheduled from the same keydown.
+// isComposing() is the hygiene rule's answer: xterm schedules no comparison
+// while a composition is open. onEcho(len) says a chunk was kept from going out
+// twice.
+export function echoGuard({
+  read, write, defer = (fn) => setTimeout(fn, 0), isComposing = () => false, onEcho = () => {},
+}) {
+  let keyDown = false; // xterm's _keyDownSeen
+  let snapshot = null; // the field at the last keydown(229) whose comparison has not run
+  let pending = 0;
+
+  return {
+    keydown(keyCode) {
+      keyDown = true;
+      if (keyCode !== 229 || isComposing()) return;
+      snapshot = read();
+      pending++;
+      defer(() => { if (--pending === 0) snapshot = null; });
+    },
+    keyup() { keyDown = false; },
+    input(inputType, data) {
+      if (inputType !== 'insertText' || !data) return;
+      if (keyDown || snapshot === null) return; // only one route sends
+      write(snapshot);
+      onEcho(data.length);
+    },
+  };
+}
+
 // keepEmpty wires the rule onto a real field. Returns a function that unwires
 // it, so this can be switched off from the page without a reload — the phone is
 // the only device that can judge it, and a lever it cannot let go of is not one
@@ -115,7 +166,7 @@ export function fieldHygiene({
 // same events would be two answers to one question — see commitComposition in
 // js/ender.js for what is done with it.
 export function keepEmpty(el, opts = {}) {
-  const { onClear = () => {}, ...rest } = opts;
+  const { onClear = () => {}, onEcho = () => {}, ...rest } = opts;
   if (!el) {
     const off = () => {};
     off.isComposing = () => false;
@@ -127,8 +178,19 @@ export function keepEmpty(el, opts = {}) {
     clear: () => { const len = el.value.length; el.value = ''; onClear(len); },
     ...rest,
   });
-  const kinds = ['compositionstart', 'compositionend', 'input'];
-  const onEvent = (e) => rule.on(e.type);
+  const echo = echoGuard({
+    read: () => el.value,
+    write: (v) => { el.value = v; },
+    isComposing: () => rule.isComposing(),
+    onEcho,
+  });
+  const kinds = ['compositionstart', 'compositionend', 'input', 'keydown', 'keyup'];
+  const onEvent = (e) => {
+    if (e.type === 'keydown') { echo.keydown(e.keyCode); return; }
+    if (e.type === 'keyup') { echo.keyup(); return; }
+    if (e.type === 'input') echo.input(e.inputType, e.data);
+    rule.on(e.type);
+  };
   for (const k of kinds) el.addEventListener(k, onEvent);
   const off = () => { for (const k of kinds) el.removeEventListener(k, onEvent); };
   off.isComposing = () => rule.isComposing();

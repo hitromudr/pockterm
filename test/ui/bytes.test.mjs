@@ -654,3 +654,80 @@ describe('the console pad', () => {
     await page.waitForSelector('#cmdpad', { state: 'hidden' });
   });
 });
+
+// Dictation, as the owner's phone delivers it (journal of 2026-10-14, `🔍 Input
+// log` at `chars`): no composition at all, every chunk an `insertText`, and the
+// keydown(229) and keyup(229) for it arriving *before* the input. xterm has two
+// routes for such text, and that order opens both: the keydown schedules a
+// comparison of the field for the next task, the keyup clears the flag that
+// would have stopped the input handler, and the input handler sends the chunk
+// at once — then the comparison finds it in the field and sends it again. On
+// screen every phrase came out twice, and the next one too.
+describe('a chunk whose keyup came first goes out once', () => {
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['wire'], raw: true }); });
+  after(async () => { await stand.stop(); });
+
+  const transcript = (page) =>
+    page.evaluate(() => (document.querySelector('.xterm-rows')?.textContent || '').replace(/\s+$/, ''));
+
+  // Dispatches one chunk the way the keyboard did, all in one task. `order` is
+  // the sequence of events: 'down', 'up', 'input'. The events are composed, as
+  // the browser's own are — xterm tests that flag.
+  async function dictate(page, text, order) {
+    const before = await transcript(page);
+    await page.evaluate(({ text, order }) => {
+      const el = document.querySelector('.xterm-helper-textarea');
+      const key = (type) => {
+        const e = new KeyboardEvent(type, { key: 'Unidentified', bubbles: true, cancelable: true, composed: true });
+        Object.defineProperty(e, 'keyCode', { get: () => 229 });
+        Object.defineProperty(e, 'which', { get: () => 229 });
+        el.dispatchEvent(e);
+      };
+      for (const step of order) {
+        if (step === 'down') key('keydown');
+        if (step === 'up') key('keyup');
+        if (step === 'input') {
+          el.value += text;
+          el.dispatchEvent(new InputEvent('input', {
+            data: text, inputType: 'insertText', bubbles: true, composed: true,
+          }));
+        }
+      }
+    }, { text, order });
+    await page.waitForTimeout(500);
+    return (await transcript(page)).slice(before.length).replace(/\r?\n/g, '');
+  }
+
+  async function ready() {
+    await stand.open();
+    await stand.attach('wire');
+    await stand.page.click('#term');
+    await stand.page.waitForTimeout(500);
+  }
+
+  test('keydown, keyup, then the text: once', async () => {
+    await ready();
+    const added = await dictate(stand.page, 'abc', ['down', 'up', 'input']);
+    assert.equal(added, 'abc', `the chunk went out ${JSON.stringify(added)}`);
+  });
+
+  test('two chunks in a row: each once, in order', async () => {
+    await ready();
+    const one = await dictate(stand.page, 'ab', ['down', 'up', 'input']);
+    const two = await dictate(stand.page, 'cd', ['down', 'up', 'input']);
+    assert.equal(one + two, 'abcd');
+  });
+
+  test('keydown, text, keyup — the order typing has: once', async () => {
+    await ready();
+    const added = await dictate(stand.page, 'xy', ['down', 'input', 'up']);
+    assert.equal(added, 'xy');
+  });
+
+  test('text with no key at all (an emoji, a suggestion): once, not lost', async () => {
+    await ready();
+    const added = await dictate(stand.page, 'q', ['input']);
+    assert.equal(added, 'q');
+  });
+});

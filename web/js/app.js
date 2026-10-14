@@ -182,11 +182,19 @@ if (monoEmbedded && monoStack !== monoSystem && window.document.fonts && documen
 // input log, which is a switch and not a default.
 report('field-guard', { wired: !!term.textarea });
 let saidCleared = false;
+let echoes = 0;
 const fieldGuard = keepEmpty(term.textarea, {
   onClear: (len) => {
     if (saidCleared) return;
     saidCleared = true;
     report('field-clear', { len, first: true });
+  },
+  // A dictated chunk xterm would have sent twice (see echoGuard in
+  // js/imefield.js). Counted, and the first one said, so the phone can confirm
+  // the guard fires where the defect was.
+  onEcho: (len) => {
+    echoes++;
+    if (echoes === 1) report('input-echo', { len, first: true });
   },
   // A row of buttons must not sit under the word being typed. xterm draws what is
   // being composed at the cursor, inside the pane, and the answer row is drawn
