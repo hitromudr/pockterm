@@ -16,9 +16,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # tools/version.sh counts commits, so it needs all of them.
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # The number is worked out from the history, not taken from the tag: a
+      # tag that says something else would publish binaries that disagree with
+      # their own release page.
+      - name: The tag names the version
+        if: github.ref_type == 'tag'
+        run: |
+          want="v$(tools/version.sh)"
+          [ "$GITHUB_REF_NAME" = "$want" ] || {
+            echo "tag $GITHUB_REF_NAME, but this commit builds $want"; exit 1; }
       # A release nobody tested is worse than no release.
       - run: make lint test
       - run: make release

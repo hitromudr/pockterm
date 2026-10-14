@@ -19,12 +19,12 @@ import { installDecision, installText, isIOS } from './install.js';
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 
-// Version of the code actually running. Bumped with the service worker's cache
-// name — assets_test.go fails if the two drift, because a page that misreports
-// itself is a page that never looks out of date. An installed PWA can keep
-// running the version it was installed with, which is what makes the number
-// worth having at all.
-const APP_VERSION = 'v219';
+// Version of the code actually running. Nobody writes it: the binary stamps its
+// own over the mark as it serves this file (version.go), and the service
+// worker's cache name the same way, so the two cannot drift. An installed PWA
+// can keep running the version it was installed with, which is what makes the
+// number worth having at all.
+const APP_VERSION = '__PT_VERSION__';
 
 // Which install a journal line came from.
 //
@@ -3229,7 +3229,7 @@ renderInstall();
 const versionsEl = document.getElementById('versions');
 {
   const app = appVersion();
-  versionsEl.textContent = app ? `page ${APP_VERSION} · app ${app}` : `page ${APP_VERSION}`;
+  versionsEl.textContent = app ? `pockterm ${APP_VERSION} · app ${app}` : `pockterm ${APP_VERSION}`;
 }
 const smoothBtn = document.getElementById('smooth');
 function renderSmooth() {

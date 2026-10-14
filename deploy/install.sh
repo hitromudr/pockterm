@@ -204,7 +204,11 @@ build_binary() {
 	fi
 	if command -v go >/dev/null; then
 		log "building from source" >&2
-		(cd "$PROJECT_DIR" && go build -o bin/pockterm ./cmd/pockterm) >&2
+		# Stamped the way make/go.mk stamps it, so the page and `pockterm
+		# version` say which build this is.
+		(cd "$PROJECT_DIR" && go build \
+			-ldflags "-X github.com/hitromudr/pockterm.version=$(bash tools/version.sh)" \
+			-o bin/pockterm ./cmd/pockterm) >&2
 		echo "$PROJECT_DIR/bin/pockterm"
 		return
 	fi

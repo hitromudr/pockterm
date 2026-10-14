@@ -584,8 +584,8 @@ back to the previous one.
 
 An open page reconnects after the restart and carries on running the assets it
 already had. It cannot tell that by itself — its own code is the old code. So
-the server names the page version it serves in the `config` frame (`APP_VERSION`
-from its embedded `web/js/app.js`), the page compares it with its own and shows
+the server names the version it is in the `config` frame (its own, `pockterm
+version`), the page compares it with its own and shows
 a bar with an **Обновить** ("update") button. A reload on a tap rather than by
 itself: the composer can hold a half-written message. The service worker is
 network-first, so a plain reload is enough.
@@ -612,7 +612,20 @@ The link in a message carries no token.
 
 ```bash
 make check    # gofmt, vet, go tests, node --test
+make version  # the version this tree builds
 ```
+
+### Version
+
+A number like `1.4.2` is never written by hand: `tools/version.sh` counts it from
+the git history and the build stamps it into the binary. A `feat:` commit moves
+the second number, `feat!:` (any type with `!`) the first, any other commit that
+changes the binary's sources the third. Docs and tests move nothing. Counting
+starts at v219, the last number bumped by hand, which is 1.0.0. It shows in the
+settings (`pockterm 1.4.2`), in `pockterm version` and in the start line of the
+journal. A tree without its history (shallow clone, tarball) builds as
+`0.0.0-dev`. A release tag has to match the computed number (`v1.4.2`), or the
+release is not published.
 
 ### The pane's fonts
 

@@ -173,13 +173,16 @@ is rolled back. The host-side pieces live in `deploy/` and are covered by
 **That no-op needs a reproducible build**, which is why `BUILD_FLAGS` in `make/go.mk` is
 `-trimpath -buildvcs=false` and `make test-repro` builds the tree twice under different paths.
 It is two real cross-compiles, so it is not part of `make check` — run it when the build line
-changes. The cost is that the binary no longer says which commit it is; the page's
-`APP_VERSION` is what identity there is.
+changes. The binary does not say which commit it is; it says which version.
 
-**A page older than the server raises its own update bar**, so `APP_VERSION` in
-`web/js/app.js` and `VERSION` in `web/sw.js` are bumped by hand together — `assets_test.go`
-fails if they drift, because a page misreporting its version never looks out of date. The bar
-is a button rather than an automatic reload: the composer can hold half a message.
+**The version is never written by hand.** `tools/version.sh` counts it from the history —
+MAJOR.MINOR.PATCH from v219 = 1.0.0: `feat` is minor, `!` is major, any other commit touching
+the binary's sources is patch, docs and tests move nothing (so the no-op above survives) —
+and the build stamps it in with `-X`. `web/js/app.js` and `web/sw.js` carry only the mark
+`__PT_VERSION__`, which the binary writes over as it serves them (`version.go`). Visible as
+`pockterm X.Y.Z` in the drawer, `pockterm version`, the start line in the journal. **A page
+older than the server raises its own update bar**: a button rather than an automatic reload,
+since the composer can hold half a message.
 
 The deploy waits for nobody (removed 2026-08-03: the person waiting for the fix was the one
 holding it up). The signing key is the repo Actions secret `DEPLOY_HMAC_KEY` and

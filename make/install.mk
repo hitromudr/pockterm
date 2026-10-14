@@ -1,4 +1,4 @@
-.PHONY: install uninstall qr test-install test-deploy test-sessions-mk test-repro test-sh
+.PHONY: install uninstall qr test-install test-deploy test-sessions-mk test-repro test-version test-sh
 
 install: ## Install on this machine (binary, token, systemd unit)
 	sudo bash deploy/install.sh
@@ -27,4 +27,7 @@ test-sessions-mk: ## Exercise the kill target of deploy/sessions.mk.example (pri
 test-repro: ## Check that the same source builds to the same bytes
 	bash test/repro_test.sh
 
-test-sh: test-install test-deploy test-sessions-mk ## Run the shell test suites
+test-version: ## Exercise tools/version.sh against a throwaway history
+	bash test/version_test.sh
+
+test-sh: test-install test-deploy test-sessions-mk test-version ## Run the shell test suites

@@ -12,7 +12,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -40,6 +39,7 @@ const usage = `pockterm — mobile web terminal for your tmux sessions
   pockterm unit [flags]    print a systemd unit
   pockterm qr [url]        print the client URL as a QR code for your phone
   pockterm tg-setup        find your chat id and write the notification config
+  pockterm version         print the version of this binary
 
 Environment: POCKTERM_LISTEN, POCKTERM_TOKEN, POCKTERM_PUBLIC_URL,
 POCKTERM_TG_*, POCKTERM_IDLE, POCKTERM_NOTIFY_FILE, POCKTERM_PRESETS_FILE,
@@ -119,6 +119,10 @@ func subcommand(name string, args []string) error {
 
 	case "tg-setup":
 		return tgSetup(args)
+
+	case "version", "--version", "-v":
+		fmt.Println(pockterm.Version())
+		return nil
 
 	case "-h", "--help", "help":
 		fmt.Print(usage)
@@ -217,7 +221,7 @@ func serve() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	static, err := fs.Sub(pockterm.Web, "web")
+	static, err := pockterm.Static()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -301,7 +305,7 @@ func serve() {
 			}
 			return endpoint != "" && pusher.store.Has(endpoint), pusher.store.Count()
 		},
-		PageVersion: pockterm.PageVersion(),
+		PageVersion: pockterm.Version(),
 		WheelLines:  wheelLines,
 		StatusRows:  statusRows,
 		Static:      http.FileServer(http.FS(static)),
@@ -340,7 +344,7 @@ func serve() {
 			return restored, nil
 		},
 	})
-	log.Printf("pockterm listening on %s", cfg.Listen)
+	log.Printf("pockterm %s listening on %s", pockterm.Version(), cfg.Listen)
 	log.Fatal(http.ListenAndServe(cfg.Listen, h))
 }
 

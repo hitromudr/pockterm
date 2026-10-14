@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, existsSync } from 'node:fs';
 import { startStand, FAKE_IME } from './stand.mjs';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 // A one-pixel PNG, base64 — the smallest thing the server will accept.
 const PNG_B64 =
@@ -3289,6 +3290,12 @@ describe('a new version on the server', () => {
     await stand.attach();
     assert.equal(await page.locator('#update-bar').isVisible(), false,
       'the page is the one the server serves, so nothing should be offered');
+    // The page names the version the binary was stamped with, not a number of
+    // its own: the sources carry only a mark, written over as they are served.
+    const built = execFileSync(new URL('../../bin/pockterm', import.meta.url).pathname, ['version'])
+      .toString().trim();
+    assert.match(built, /^\d+\.\d+\.\d+/, `bin/pockterm version says ${built}`);
+    assert.equal(await page.locator('#versions').textContent(), `pockterm ${built}`);
 
     // A page from before the deploy, made the way the phone gets one: the
     // assets it is running are older than the ones on the server. Rewriting

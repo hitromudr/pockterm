@@ -1,4 +1,4 @@
-.PHONY: deps build build-arm64 build-amd64 release test test-v lint format check clean deploy
+.PHONY: version deps build build-arm64 build-amd64 release test test-v lint format check clean deploy
 
 GO      ?= go
 BIN_DIR := bin
@@ -12,8 +12,18 @@ BIN_DIR := bin
 # checkouts of one commit differed without it).
 BUILD_FLAGS := -trimpath -buildvcs=false
 
+# The version is worked out from the git history (tools/version.sh) and stamped
+# in, the same for every target. It moves only with a commit that changes the
+# binary's sources, so it does not break the above: a docs-only push builds the
+# same number into the same bytes. VERSION=… overrides it.
+VERSION ?= $(shell tools/version.sh)
+LDFLAGS := -X github.com/hitromudr/pockterm.version=$(VERSION)
+
 # Deploy target host, override: make deploy DEST=user@host
 DEST    ?=
+
+version: ## Print the version this tree builds
+	@echo $(VERSION)
 
 deps: ## Download and verify dependencies
 	$(GO) mod download
@@ -21,16 +31,16 @@ deps: ## Download and verify dependencies
 
 build: ## Build for the current platform into bin/
 	@mkdir -p $(BIN_DIR)
-	$(GO) build -o $(BIN_DIR)/ ./cmd/...
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/ ./cmd/...
 
 build-arm64: ## Cross-compile linux/arm64 into bin/$(PROJECT)-linux-arm64
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(BUILD_FLAGS) \
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(BUILD_FLAGS) -ldflags "$(LDFLAGS)" \
 		-o $(BIN_DIR)/$(PROJECT)-linux-arm64 ./cmd/$(PROJECT)
 
 build-amd64: ## Cross-compile linux/amd64 into bin/$(PROJECT)-linux-amd64
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(BUILD_FLAGS) \
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(BUILD_FLAGS) -ldflags "$(LDFLAGS)" \
 		-o $(BIN_DIR)/$(PROJECT)-linux-amd64 ./cmd/$(PROJECT)
 
 # What a release publishes: both binaries and the sums install.sh verifies

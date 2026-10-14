@@ -1,6 +1,7 @@
-// Version-stamped static cache. Bump VERSION on any static change:
-// the old cache is dropped on activate.
-const VERSION = 'v219';
+// Version-stamped static cache: the binary writes its version over the mark as
+// it serves this file (version.go), so a new build is a new worker and the old
+// cache is dropped on activate.
+const VERSION = '__PT_VERSION__';
 const PRECACHE = [
   '/',
   '/css/app.css',

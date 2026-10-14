@@ -63,7 +63,7 @@ commit that touched only this file. `BUILD_FLAGS` in `make/go.mk` is `-trimpath
 -buildvcs=false` for that reason, and `make test-repro` builds the tree twice under
 different paths to prove it. It is two real cross-compiles, so it is not part of `make
 check` — run it when the build line changes. The cost is that the binary no longer says
-which commit it is; the page's `APP_VERSION` is what identity there is.
+which commit it is; it says which version, below.
 
 The deploy used to wait for nobody to be looking, which cost a parked build, a retry
 timer, a `waiting` flag on `/api/presence` and a line in the menu explaining why the
@@ -75,11 +75,19 @@ bar with **Обновить** on it. A reload rather than an automatic one, beca
 can have half a message in it; the button is a plain `location.reload()`, the service
 worker being network-first.
 
-`APP_VERSION` in `web/js/app.js` and `VERSION` in `web/sw.js` are that mechanism's single
-number, bumped by hand in two files; `assets_test.go` fails if they drift, because a page
-misreporting its own version never looks out of date and no bar is ever raised. The server
-reads the number out of its own embedded `app.js` (`PageVersion` in `assets.go`) rather
-than keeping a third copy.
+Until 2026-10-14 that mechanism's number was `vNNN`, bumped by hand in `app.js` and
+`sw.js` together with a test to catch the drift — and still forgotten often enough to
+need a memory of its own. Now nobody writes it. `tools/version.sh` counts it from the git
+history: MAJOR.MINOR.PATCH starting at v219 = 1.0.0, `feat` moves the minor, a `!` in the
+type the major, any other commit touching the binary's sources the patch. Commits touching
+only docs, tests or CI move nothing, which is what keeps the reproducible no-op above
+alive: the number is in the bytes. The build stamps it in (`-X …/pockterm.version`,
+`make/go.mk` and `install.sh` alike); the two files carry the mark `__PT_VERSION__`, and
+the binary writes its version over it as it serves them (`Static` in `version.go`), so the
+page, the service worker's cache name and the `config` frame cannot disagree. A tree
+without the history (shallow clone, tarball, the copies of `test-repro`) is `0.0.0-dev`;
+the release workflow clones with full depth and refuses a tag that is not `v` plus the
+computed version. `test/version_test.sh` covers the counting.
 
 The host-side pieces — `pockterm-deploy`, its `.path` and `.service` — live in `deploy/`
 and are covered by `test/deploy_test.sh` (`make test-deploy`), which stubs systemctl.
