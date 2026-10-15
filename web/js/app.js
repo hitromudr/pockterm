@@ -112,6 +112,15 @@ const TABS_GAP = 8;
 let stripTop = false;
 try { stripTop = localStorage.getItem('pt-strip') === 'top'; } catch (_) {}
 screenTerm.classList.toggle('strip-top', stripTop);
+
+// Which side the drawer comes out of, and with it which end of the strip ☰
+// stands at: the right (the default since 2026-10-15, "меняем местами кнопки
+// настроек и плюса, настройки должны будут выезжать справа") or the left, where
+// both stood before. A setting like the strip's, per device. On the root, since
+// it moves things on both screens: ☰ and + in the strip, the drawer, its ❮.
+let drawerLeft = false;
+try { drawerLeft = localStorage.getItem('pt-drawer') === 'left'; } catch (_) {}
+document.documentElement.classList.toggle('drawer-right', !drawerLeft);
 if (tabsEl && typeof ResizeObserver === 'function') {
   const header = tabsEl.parentElement;
   const backBtn = document.getElementById('back');
@@ -1217,10 +1226,10 @@ function toggleDrawer() {
 drawerScrim.addEventListener('click', closeDrawer);
 drawerCloseBtn.addEventListener('click', closeDrawer);
 
-// A swipe to the left puts the drawer away, next to ✕ and the scrim.
+// A swipe towards its edge puts the drawer away, next to ❮ and the scrim.
 //
-// It is where the panel goes anyway — the closed state is a transform off the
-// left edge — so the gesture and the animation say the same thing. Nothing here
+// It is where the panel goes anyway — the closed state is a transform off its
+// edge, the right one by default — so the gesture and the animation say the same thing. Nothing here
 // makes the panel follow the finger: it closes once the swipe is unmistakably a
 // swipe, and the transition carries the rest.
 //
@@ -1280,7 +1289,9 @@ screenSessions.addEventListener('touchmove', (e) => {
     showSettings(true);
     return;
   }
-  if (dx > -DRAWER_SWIPE || Math.abs(dx) <= Math.abs(dy)) return;
+  // Towards the edge the drawer lives at, whichever that is.
+  const away = drawerLeft ? -dx : dx;
+  if (away < DRAWER_SWIPE || Math.abs(dx) <= Math.abs(dy)) return;
   drawerTouch = null;
   closeDrawer();
 }, { passive: true });
@@ -2909,7 +2920,8 @@ gestureArea.addEventListener('touchmove', (e) => {
   if (touchY === null) return;
   const y = e.touches[0].clientY;
   if (swipeFrom) {
-    const dx = e.touches[0].clientX - swipeFrom.x;
+    // Away from the edge the drawer comes out of: rightward for the left one.
+    const dx = (e.touches[0].clientX - swipeFrom.x) * (drawerLeft ? 1 : -1);
     if (dx > DRAWER_SWIPE && dx > Math.abs(y - swipeFrom.y)) {
       swipeFrom = null;
       touchY = null;
@@ -3299,7 +3311,7 @@ smoothBtn.addEventListener('click', () => {
 
 const stripPosBtn = document.getElementById('strip-pos');
 function renderStripPos() {
-  stripPosBtn.textContent = stripTop ? '▀ Вкладки сверху' : '▄ Вкладки снизу';
+  stripPosBtn.textContent = stripTop ? '▀ Сверху' : '▄ Снизу';
 }
 renderStripPos();
 stripPosBtn.addEventListener('click', () => {
@@ -3309,6 +3321,21 @@ stripPosBtn.addEventListener('click', () => {
   renderStripPos();
   refit();
   report('strip', { top: stripTop });
+});
+
+const drawerSideBtn = document.getElementById('drawer-side');
+function renderDrawerSide() {
+  drawerSideBtn.textContent = drawerLeft ? '☰ Слева' : '☰ Справа';
+  // The chevron points the way the drawer goes back.
+  document.getElementById('drawer-close').textContent = drawerLeft ? '❮' : '❯';
+}
+renderDrawerSide();
+drawerSideBtn.addEventListener('click', () => {
+  drawerLeft = !drawerLeft;
+  try { localStorage.setItem('pt-drawer', drawerLeft ? 'left' : 'right'); } catch (_) {}
+  document.documentElement.classList.toggle('drawer-right', !drawerLeft);
+  renderDrawerSide();
+  report('drawer-side', { left: drawerLeft });
 });
 
 // --- the composer's memory ------------------------------------------------

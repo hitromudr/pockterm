@@ -535,7 +535,7 @@ describe('the session list is a drawer', () => {
     // On the geometry, not the class: the drawer slides, so it is on screen a
     // fifth of a second after it is told to be.
     await page.waitForFunction(
-      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
       null, { timeout: 3000 },
     );
     let d = await drawer();
@@ -555,7 +555,8 @@ describe('the session list is a drawer', () => {
   test('the way back is the way in, at the top of the drawer', async () => {
     // ☰ opens it and ❮ closes it, and they were the same spot until the strip went
     // to the bottom of the screen (2026-10-15); the owner kept the drawer as it
-    // was. Same column and same box, so they still read as one button — asserted
+    // was. On either side: the default right drawer has ☰ at the right end of the
+    // strip and ❯ at the right of its header. Same column and same box, so they still read as one button — asserted
     // rather than left to the padding: ornament glyphs carry uneven side
     // bearings, so ❮ under the bar's usual padding sat visibly off to one side.
     await stand.open();
@@ -568,12 +569,12 @@ describe('the session list is a drawer', () => {
 
     const hamburger = await box('back');
     await stand.tapMenu();
-    // Exactly 0, not "within a pixel". This assertion compares rounded boxes, and
+    // Settled, not "within a pixel". This assertion compares rounded boxes, and
     // the drawer slides in on a transform: caught mid-animation at x = -0.6 the
     // chevron measures 9.4 and rounds to 9 against the hamburger's 10 — the test
     // failing about one run in three, with a one-pixel diff and nothing wrong.
     await page.waitForFunction(
-      () => document.getElementById('screen-sessions').getBoundingClientRect().x === 0,
+      () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
       null, { timeout: 3000 });
     const chevron = await box('drawer-close');
     assert.deepEqual({ ...chevron, y: 0 }, { ...hamburger, y: 0 }, 'the way out is not the way in');
@@ -665,9 +666,9 @@ describe('the session list is a drawer', () => {
     await stand.attach('demo');
     const { page } = stand;
     try {
-      assert.match(await page.textContent('#strip-pos'), /снизу/, 'the bottom is not the default');
+      assert.match(await page.textContent('#strip-pos'), /снизу/i, 'the bottom is not the default');
       await page.evaluate(() => document.getElementById('strip-pos').click());
-      assert.match(await page.textContent('#strip-pos'), /сверху/);
+      assert.match(await page.textContent('#strip-pos'), /сверху/i);
       const geo = () => page.evaluate(() => {
         const r = (sel) => document.querySelector(sel).getBoundingClientRect().toJSON();
         return { header: r('#screen-term header.bar'), term: r('#term'), modebar: r('#modebar'),
@@ -710,11 +711,12 @@ describe('the session list is a drawer', () => {
 
     await stand.tapMenu();
     await page.waitForFunction(
-      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
       null, { timeout: 3000 },
     );
-    // Outside the drawer, which is 86% of a 390px screen at most 360.
-    await page.mouse.click(380, 400);
+    // Outside the drawer, which is 86% of a 390px screen at most 360 and comes
+    // out of the right edge by default.
+    await page.mouse.click(10, 400);
     await page.waitForFunction(() => !document.getElementById('screen-sessions').classList.contains('open'));
 
     await stand.tapMenu();
@@ -727,9 +729,9 @@ describe('the session list is a drawer', () => {
     }, null, { timeout: 5000 });
   });
 
-  test('a swipe to the left puts it away, a drag down does not', async () => {
-    // The panel closes by sliding off the left edge, so the gesture that sends it
-    // there is the one the hand already expects. The list scrolls up and down
+  test('a swipe towards its edge puts it away, a drag down does not', async () => {
+    // The panel closes by sliding off its edge — the right one by default — so the
+    // gesture that sends it there is the one the hand already expects. The list scrolls up and down
     // under the same finger, which is why a mostly-vertical drag has to be left
     // alone — a drawer that closed on a scroll would be unusable.
     await stand.open();
@@ -737,10 +739,10 @@ describe('the session list is a drawer', () => {
     const { page } = stand;
     const cdp = await page.context().newCDPSession(page);
     const open = () => page.waitForFunction(
-      () => document.getElementById('screen-sessions').getBoundingClientRect().x === 0,
+      () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
       null, { timeout: 3000 });
     const drag = async (dx, dy) => {
-      let [x, y] = [250, 420];
+      let [x, y] = [200, 420];
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
       for (let i = 0; i < 8; i++) {
         x += dx / 8;
@@ -758,13 +760,13 @@ describe('the session list is a drawer', () => {
       await page.evaluate(() => document.getElementById('screen-sessions').classList.contains('open')),
       true, 'scrolling the list closed the drawer');
 
-    await drag(-160, 0);
+    await drag(160, 0);
     await page.waitForFunction(
       () => !document.getElementById('screen-sessions').classList.contains('open'),
       null, { timeout: 3000 });
   });
 
-  test('a swipe to the right over the terminal brings it back', async () => {
+  test('a swipe away from its edge over the terminal brings it back', async () => {
     // The mirror of the swipe that puts it away, and it has to share a finger
     // with the terminal's own gesture: ☰ is at the top edge of a phone and the
     // thumb is at the bottom, which is the whole reason for the gesture. The
@@ -776,7 +778,7 @@ describe('the session list is a drawer', () => {
     const { page } = stand;
     const cdp = await page.context().newCDPSession(page);
     const drag = async (dx, dy) => {
-      let [x, y] = [100, 300];
+      let [x, y] = [300, 300];
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
       for (let i = 0; i < 8; i++) {
         x += dx / 8;
@@ -795,11 +797,77 @@ describe('the session list is a drawer', () => {
     // leaving it there would be the next test's problem.
     try { stand.tmux(['send-keys', '-t', 'demo', '-X', 'cancel']); } catch (_) { /* no mode */ }
 
-    await drag(160, 0);
+    await drag(-160, 0);
     await page.waitForFunction(
-      () => document.getElementById('screen-sessions').getBoundingClientRect().x === 0,
+      () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
       null, { timeout: 3000 });
     await page.click('#drawer-close');
+  });
+
+  test('the drawer comes out of the right, or of the left by setting', async () => {
+    // "меняем на панели местами кнопки настроек и плюса. настройки должны будут
+    // выезжать справа. по опции как панели": ☰ at the right end of the strip and
+    // + at the left, the drawer out of the right edge — and the left, as it was,
+    // by a per-device setting that outlives a reload.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    const cdp = await page.context().newCDPSession(page);
+    const drag = async (x, dx) => {
+      const y = 300;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let i = 1; i <= 8; i++) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + dx * i / 8, y }] });
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+    const settled = () => page.waitForFunction(
+      () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
+      null, { timeout: 3000 });
+    const closed = () => page.waitForFunction(
+      () => !document.getElementById('screen-sessions').classList.contains('open'),
+      null, { timeout: 3000 });
+    const look = () => page.evaluate(() => {
+      const r = (id) => document.getElementById(id).getBoundingClientRect();
+      return { back: r('back').left, plus: r('new-term').left, drawer: r('screen-sessions').toJSON(),
+        chevron: document.getElementById('drawer-close').textContent,
+        label: document.getElementById('drawer-side').textContent, vw: innerWidth };
+    });
+    try {
+      // The default: the right.
+      await drag(300, -160);
+      await settled();
+      let l = await look();
+      assert.ok(l.back > l.plus, `☰ is not right of +: ${JSON.stringify(l)}`);
+      assert.ok(Math.abs(l.drawer.right - l.vw) < 0.5 && l.drawer.left > 0,
+        `the drawer is not at the right edge: ${JSON.stringify(l)}`);
+      assert.equal(l.chevron, '❯');
+      assert.match(l.label, /Справа/);
+      // A swipe to the left over the list is not "away" for it.
+      await drag(300, -160);
+      await page.waitForTimeout(400);
+      assert.ok(await page.evaluate(() => document.getElementById('screen-sessions').classList.contains('open')),
+        'a swipe away from its edge closed the right drawer');
+      await drag(200, 160);
+      await closed();
+
+      // The left, by the setting, and still the left after a reload.
+      await stand.openSettings();
+      await page.click('#drawer-side');
+      await stand.open();
+      await stand.attach('demo');
+      await drag(100, 160);
+      await settled();
+      l = await look();
+      assert.ok(l.back < l.plus, `☰ is not left of +: ${JSON.stringify(l)}`);
+      assert.ok(Math.abs(l.drawer.left) < 0.5, `the drawer is not at the left edge: ${JSON.stringify(l)}`);
+      assert.equal(l.chevron, '❮');
+      assert.match(l.label, /Слева/);
+      await drag(250, -160);
+      await closed();
+    } finally {
+      await page.evaluate(() => { try { localStorage.removeItem('pt-drawer'); } catch (_) {} });
+    }
   });
 
   test('closing the tab you are in steps back to the one you came from', async () => {
@@ -814,7 +882,7 @@ describe('the session list is a drawer', () => {
 
     await stand.tapMenu();
     await page.waitForFunction(
-      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
       null, { timeout: 3000 });
     const row = page.locator('#session-list li:has-text("other")');
     await row.locator('button.close').click();
@@ -1571,7 +1639,7 @@ describe('closing the last session there is', () => {
     await stand.attach('only');
     await stand.tapMenu();
     await page.waitForFunction(
-      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
       null, { timeout: 3000 });
 
     const row = page.locator('#session-list li:has-text("only")');
@@ -1582,8 +1650,9 @@ describe('closing the last session there is', () => {
     // Nothing behind it, so nothing offers a way out: no chevron, no scrim.
     assert.equal(await page.locator('#drawer-close').isVisible(), false, 'a way out of an empty page');
     assert.equal(await page.evaluate(() => document.getElementById('drawer-scrim').hidden), true);
-    // And it stays put even if something does tap where they were.
-    await page.mouse.click(380, 400);
+    // And it stays put even if something does tap where they were — beside the
+    // drawer, which is the right edge by default.
+    await page.mouse.click(10, 400);
     await page.waitForTimeout(400);
     assert.equal(
       await page.evaluate(() => document.getElementById('screen-sessions').classList.contains('open')),
@@ -1602,7 +1671,7 @@ describe('closing the last session there is', () => {
     await page.waitForSelector('#screen-term:not([hidden])');
     await stand.tapMenu();
     await page.waitForFunction(
-      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
       null, { timeout: 3000 });
     assert.equal(await page.locator('#drawer-close').isVisible(), true, 'no way back with a session behind it');
     await page.click('#drawer-close');
@@ -2449,7 +2518,7 @@ describe('starting and renaming sessions', () => {
 
     await stand.tapMenu();
     await page.waitForFunction(
-      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
       null, { timeout: 3000 });
     const victim = page.locator('#session-list li').last();
     const name = (await victim.locator('.name').textContent()).trim();

@@ -296,7 +296,7 @@ export async function startStand({
       () => document.getElementById('screen-sessions').classList.contains('open'));
     if (!open) await tapMenu();
     await page.waitForFunction(
-      () => Math.abs(document.getElementById('screen-sessions').getBoundingClientRect().x) < 1,
+      () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
       null, { timeout: 5000 },
     );
   }
@@ -323,7 +323,9 @@ export async function startStand({
     // still covering it — which is a swipe that never reaches the page.
     await page.waitForFunction(() => {
       const el = document.getElementById('screen-sessions');
-      return !el.classList.contains('open') && el.getBoundingClientRect().right <= 0;
+      // Off whichever edge it lives at: the right by default, the left by setting.
+      const r = el.getBoundingClientRect();
+      return !el.classList.contains('open') && (r.right <= 0 || r.left >= innerWidth);
     }, null, { timeout: 5000 });
   }
 
@@ -382,7 +384,8 @@ export async function startStand({
         document.getElementById('status').hidden);
       await page.waitForFunction(() => {
         const el = document.getElementById('screen-sessions');
-        return !el.classList.contains('open') && el.getBoundingClientRect().right <= 0;
+        const r = el.getBoundingClientRect();
+        return !el.classList.contains('open') && (r.right <= 0 || r.left >= innerWidth);
       }, null, { timeout: 5000 });
     },
     async stop() {

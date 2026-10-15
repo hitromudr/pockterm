@@ -126,7 +126,7 @@ html, body {
            0 env(safe-area-inset-left);
 }
 
-/* The session list slides in from the left over the terminal and slides back on
+/* The session list slides in from the side over the terminal and slides back on
    the same button. It used to be a screen of its own, which meant the terminal
    was torn down to look at the list — and the list is something you open to see
    what else is running, not to leave what you are in.
@@ -150,6 +150,23 @@ html, body {
   transition: transform 200ms ease;
 }
 #screen-sessions.open { transform: none; }
+/* Or from the right, the default since 2026-10-15 (#drawer-side): ☰ went to the
+   right end of the strip, and the drawer comes out of the edge its button is at.
+   The mirror of the above — the inset, the border and the way off-screen. */
+html.drawer-right #screen-sessions {
+  left: auto;
+  right: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 0;
+  border-right: none;
+  border-left: 1px solid #2a3345;
+  transform: translateX(101%);
+}
+html.drawer-right #screen-sessions.open { transform: none; }
+/* ❯ at the edge it slides back to, and ☰ and + trading ends of the strip: by
+   `order`, one strip and one set of handlers, as with the strip's own place. */
+html.drawer-right #screen-sessions header.bar #drawer-close { order: 1; }
+html.drawer-right #screen-term header.bar #back { order: 1; }
+html.drawer-right #screen-term header.bar #new-term { order: -1; }
 /* The chevron is centred by the box rather than by padding: ornament glyphs
    like ❮ carry their own uneven side bearings, so `padding: 8px 12px` — which
    is what every other bar button uses — leaves it visibly off to one side. Same
@@ -640,7 +657,6 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
    this grid. Flex weights cannot say it — the buttons are border-box with
    padding, and `flex: 2` came out 5px short of two columns and a gap. */
 #settings .row.thirds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-#settings .row.thirds .span2 { grid-column: span 2; }
 /* The owner's own session buttons. A row is a label, the command under it, and
    one tap to remove — removing a button is not closing a session, so it does not
    ask twice. */

@@ -65,6 +65,15 @@ than by `hidden` — a transform animates and leaves the terminal untouched, whe
 scrim closes it. The tab strip is the same list in miniature, so it carries the same `+`
 with the same handler.
 
+**Either side, by setting** (`#drawer-side`, `pt-drawer`, since 2026-10-15): "меняем
+местами кнопки настроек и плюса. настройки должны будут выезжать справа. по опции как
+панели". The right is the default — ☰ at the right end of the strip, `+` at the left,
+the drawer out of the right edge and its ❮ turned ❯ at the right of its header — and
+the left is how it stood before. One class on the root (`drawer-right`) and `order` in
+the strip, as with the strip's own place; the swipes below read their direction off
+the same flag. Everything below says "left" and "right" for the left drawer; the right
+one is the mirror.
+
 **A swipe to the left closes it**, which is where the panel goes anyway. It closes once
 the drag is unmistakably horizontal and past 45px; nothing follows the finger, the
 transition already covering the distance. Two other drags must not trigger it, and both
