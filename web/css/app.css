@@ -943,8 +943,12 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   position: relative;
   /* A desktop browser draws the strip's scrollbar in the layout: its thickness is
      measured into --tabs-sb (see app.js; a phone's scrollbar overlays and
-     measures 0), and the header makes room for it over the row. */
-  padding-top: calc(8px + var(--tabs-sb, 0px));
+     measures 0), and the header makes room for it over the row — as much as puts
+     the bar half way between the keys and the tabs: "расстояние до верхних
+     кнопок от верха бара и до нижних от низа одинаковое". That is 8px each side
+     of it, measured to the tab rather than to ☰, which is taller by an amount the
+     fonts decide, so the page measures it (--tabs-pad, app.js). */
+  padding-top: var(--tabs-pad, 8px);
   padding-bottom: calc(8px + env(safe-area-inset-bottom));
 }
 /* The strip's scrollbar over the tabs rather than under them: "симметрично как
@@ -968,6 +972,23 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   margin-bottom: -9px;
 }
 #screen-term header.bar #tabs > * { scale: 1 -1; }
+/* And as thin as the pane's own bar (#scroll-thumb): a 6px thumb in the accent on
+   a faint 4px rail. Only where a mouse is the pointer — a phone's scrollbar
+   overlays and comes only while scrolling, and a styled one would take room
+   there for good — and only where the -webkit- pseudo-elements exist: the
+   standard scrollbar-width, set to thin for every element on the page, switches
+   them off, so it is put back to auto here, which Firefox would read as wide. */
+@media (pointer: fine) {
+  @supports selector(::-webkit-scrollbar) {
+    #screen-term header.bar #tabs { scrollbar-width: auto; scrollbar-color: auto; }
+    #screen-term header.bar #tabs::-webkit-scrollbar { height: 6px; }
+    #screen-term header.bar #tabs::-webkit-scrollbar-track {
+      background: linear-gradient(to bottom, transparent 1px, #ffffff14 1px, #ffffff14 5px, transparent 5px);
+    }
+    #screen-term header.bar #tabs::-webkit-scrollbar-thumb { border-radius: 3px; background: #7aa2f7cc; }
+    #screen-term header.bar #tabs::-webkit-scrollbar-button { display: none; }
+  }
+}
 /* The presets on the terminal screen: an overlay over the header, so opening it
    does not resize the terminal underneath.
    Anchored to the header itself (`bottom: 100%`) and never over it. When the

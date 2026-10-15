@@ -32,9 +32,19 @@ with it, each for a reason of its own:
   lays the scrollbar out in the box; its thickness is measured into `--tabs-sb` on the
   header, which makes room for it over the row. 1.2.1 hung it into the bottom padding
   instead, without making room: the strip ran past the screen by the scrollbar, the page
-  grew a vertical scrollbar of its own, and the strip's went off the edge. Headless
-  Chromium draws no scrollbar, so the test stands a bottom border in for it and asserts
-  the page does not scroll.
+  grew a vertical scrollbar of its own, and the strip's went off the edge.
+- **Half way between the keys and the tabs, and thin.** 1.2.2 left it 2.5px under Paste
+  and 8px over the tabs, the 2.5 being half of how much taller ☰ is than a tab — which
+  the fonts decide, so the page measures it (`--tabs-pad`, app.js) and puts 8px each side
+  of the bar. Thin like the pane's own bar: a 6px accent thumb through
+  `::-webkit-scrollbar`, which the page-wide `scrollbar-width: thin` switches off, so the
+  strip puts it back to `auto` — under `(pointer: fine)` and `@supports
+  selector(::-webkit-scrollbar)`, since a phone overlays its scrollbar and Firefox would
+  read `auto` as wide.
+- **The desktop stand draws scrollbars.** Playwright launches with `--hide-scrollbars`,
+  which hid every one of the above; `startStand({ desktop: true })` drops that flag, and
+  `the tab strip on a desktop` measures the real bar. It failed on 1.2.2 with exactly
+  the two things the owner reported: not thin, 2.5px over it.
 - **The drawer's header stayed at the top.** It went down with the strip for an hour, so
   that ❮ stood exactly where ☰ is, and came back: "список сессий оставь как был, сверху".
   ❮ keeps ☰'s column and box. `the tab strip is the bottom edge of the screen` holds the

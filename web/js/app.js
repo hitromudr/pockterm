@@ -97,11 +97,26 @@ let tabsSignature = null;
 // strip's margin. It comes and goes with the strip overflowing, so it is watched
 // rather than measured once — on the border box, which is what the scrollbar
 // changes and the margin it feeds does not.
+//
+// And where there is a bar, the header's top padding (--tabs-pad) that puts it
+// half way between the keys above and the tabs below, 8px each side. The tabs
+// are centred on ☰, which is taller by whatever the fonts make it, so that
+// difference is measured rather than written down: it sits between the keys and
+// the bar as well. Without a bar it is the plain 8px over the row.
+const TABS_GAP = 8;
 if (tabsEl && typeof ResizeObserver === 'function') {
-  new ResizeObserver(() => {
+  const header = tabsEl.parentElement;
+  const backBtn = document.getElementById('back');
+  const fit = () => {
     const sb = Math.max(0, tabsEl.offsetHeight - tabsEl.clientHeight);
-    tabsEl.parentElement.style.setProperty('--tabs-sb', `${sb}px`);
-  }).observe(tabsEl, { box: 'border-box' });
+    header.style.setProperty('--tabs-sb', `${sb}px`);
+    const tab = tabsEl.querySelector('button');
+    const slack = tab && backBtn ? Math.max(0, (backBtn.offsetHeight - tab.offsetHeight) / 2) : 0;
+    header.style.setProperty('--tabs-pad', sb > 0 ? `${2 * TABS_GAP + sb - slack}px` : `${TABS_GAP}px`);
+  };
+  const watch = new ResizeObserver(fit);
+  watch.observe(tabsEl, { box: 'border-box' });
+  if (backBtn) watch.observe(backBtn);
 }
 
 // Returns {sessions} or {error}. The distinction matters: "no sessions" and

@@ -611,36 +611,16 @@ describe('the session list is a drawer', () => {
       return { keys: paste.top - keys, over: row.top - paste.bottom, under: r('#screen-term').bottom - row.bottom };
     });
     assert.deepEqual(g, { keys: 4, over: 8, under: 8 }, 'the strip is not spaced twice the keys');
-    // A desktop browser lays the strip's scrollbar out in the box, and it belongs
-    // over the tabs — "симметрично как он был под ними, когда они были наверху".
-    // Headless Chromium draws none, so a bottom border stands in for it: the same
-    // gap between offsetHeight and clientHeight, at the same edge of the box,
-    // which the turned strip shows on top. In 1.2.1 the strip ran past the screen
-    // by the scrollbar, and the page grew a scrollbar of its own that pushed the
-    // strip's off the edge.
+    // Nothing runs past the screen: in 1.2.1 the strip did, and the page grew a
+    // scrollbar of its own. The scrollbar itself is the desktop's — see 'the tab
+    // strip on a desktop'.
     const scroll = await page.evaluate(() => document.scrollingElement.scrollHeight - innerHeight);
-    assert.equal(scroll, 0, 'the page scrolls without a scrollbar on the strip');
-    await page.addStyleTag({ content: '#tabs { border-bottom: 10px solid transparent; }' });
-    await page.waitForFunction(() => document.querySelector('#screen-term header.bar').style.getPropertyValue('--tabs-sb') === '10px');
-    const withSb = await page.evaluate(() => {
-      const r = (sel) => document.querySelector(sel).getBoundingClientRect();
-      const tab = r('#tabs button');
-      return {
-        over: r('#back').top - r('#paste').bottom,
-        under: r('#screen-term').bottom - r('#back').bottom,
-        barOverTabs: r('#tabs').top + 10 <= tab.top && r('#tabs').top >= r('#paste').bottom,
-        hit: document.elementFromPoint(tab.left + 10, tab.top + tab.height / 2)?.closest('#tabs button') !== null,
-        scroll: document.scrollingElement.scrollHeight - innerHeight,
-      };
-    });
-    assert.deepEqual(withSb, { over: 18, under: 8, barOverTabs: true, hit: true, scroll: 0 },
-      'the strip\'s scrollbar is not over the tabs, or the strip runs past the screen');
+    assert.equal(scroll, 0, 'the page scrolls');
 
     await page.click('#new-term');
     await page.waitForSelector('#new-menu-term:not([hidden])');
     const menu = await page.evaluate(() => document.getElementById('new-menu-term').getBoundingClientRect().toJSON());
-    const headerTop = (await edges()).header.top;
-    assert.ok(Math.abs(menu.bottom - headerTop) < 0.5 && menu.top >= 0,
+    assert.ok(Math.abs(menu.bottom - e.header.top) < 0.5 && menu.top >= 0,
       `the presets do not hang over the strip: ${JSON.stringify(menu)}`);
     // Closed by a tap on the +, which lands on the scrim lying over it.
     const plus = await page.locator('#new-term').boundingBox();
@@ -903,6 +883,50 @@ describe('the session list is a drawer', () => {
     await page.goto(stand.base);
     await stand.openDrawer();
     assert.equal(await page.evaluate(() => document.getElementById('settings').hidden), true);
+  });
+});
+
+describe('the tab strip on a desktop', () => {
+  // A laptop's Chrome lays the strip's scrollbar out in the page, where a phone's
+  // overlays it — and with a mouse it is the one way along the strip, since a drag
+  // carries a tab. The stand draws it here (no --hide-scrollbars on a desktop).
+  const names = Array.from({ length: 12 }, (_, i) => `session-long-name-${i}`);
+  let stand;
+  before(async () => { stand = await startStand({ sessions: names, desktop: true }); });
+  after(async () => { await stand.stop(); });
+
+  test('its scrollbar is thin, over the tabs, and half way between them and the keys', async () => {
+    // Over the tabs: "симметрично как он был под ними, когда они были наверху".
+    // Half way: "расстояние до верхних кнопок от верха бара и до нижних от низа
+    // одинаковое". Thin: "как вертикальный у нас", the pane's 6px thumb. And in
+    // 1.2.1 it ran past the bottom of the screen and the page grew a vertical
+    // scrollbar of its own, which pushed this one off the edge.
+    await stand.open();
+    await stand.attach(names[0]);
+    const { page } = stand;
+    await page.waitForFunction((n) => document.querySelectorAll('#tabs button[data-session]').length === n,
+      names.length, { timeout: 8000 });
+    await page.waitForFunction(() => {
+      const t = document.getElementById('tabs');
+      return t.offsetHeight - t.clientHeight > 0;
+    }, null, { timeout: 3000 });
+    const m = await page.evaluate(() => {
+      const r = (sel) => document.querySelector(sel).getBoundingClientRect();
+      const t = document.getElementById('tabs');
+      const sb = t.offsetHeight - t.clientHeight;
+      const box = r('#tabs');
+      const tab = r('#tabs button');
+      return {
+        thin: sb <= 6,
+        over: box.top - r('#paste').bottom,
+        under: tab.top - (box.top + sb),
+        belowRow: r('#screen-term').bottom - r('#back').bottom,
+        scroll: document.scrollingElement.scrollHeight - innerHeight,
+        hit: document.elementFromPoint(tab.left + 10, tab.top + tab.height / 2)?.closest('#tabs button') !== null,
+      };
+    });
+    assert.deepEqual(m, { thin: true, over: 8, under: 8, belowRow: 8, scroll: 0, hit: true },
+      'the strip\'s scrollbar is not where it belongs');
   });
 });
 

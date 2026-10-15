@@ -243,7 +243,15 @@ export async function startStand({
   const base = `http://127.0.0.1:${port}`;
   await waitForServer(`${base}/api/sessions`);
 
-  const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
+  // Scrollbars are drawn on the desktop, which is the point of having one:
+  // Playwright launches with --hide-scrollbars, and a laptop's Chrome lays its
+  // scrollbars out in the page — the tab strip's took room nobody had measured
+  // until it showed on the owner's screen (2026-10-15).
+  const browser = await chromium.launch({
+    executablePath: CHROME,
+    args: ['--no-sandbox'],
+    ...(desktop ? { ignoreDefaultArgs: ['--hide-scrollbars'] } : {}),
+  });
   // A phone, not a desktop: touch, a narrow viewport, and the clipboard
   // permissions Chrome would ask a human for.
   // A phone by default. `desktop` is the other client this serves — the owner's
