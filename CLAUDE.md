@@ -196,3 +196,13 @@ toolchain is present, refusing a binary whose checksum does not match. What else
 installer does instead of asking a reader — refusing a host without `tmux`, installing the
 session Makefile without ever overwriting one, restarting only when the env file changed,
 `--tg` — is in `docs/lessons/install-and-deploy.md`, with `test/install_test.sh` covering each.
+
+## NEWS.md — what is new, for people (since 2026-10-15)
+
+`NEWS.md` is this project's feed on sharashka.tech: a timer on the Pi reads it
+from Forgejo and the site shows it within minutes (owner's word: «надо чтоб
+вживую»). A change people can see gets a line there in the same commit:
+under today's `## YYYY-MM-DD` (newest on top), `- ` one line, in Russian,
+plain words, affirmative, about what a user gets. No machine names, addresses,
+ports, service names or internals — the open edition's leak tests stop the
+whole feed on such a line.
