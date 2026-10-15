@@ -941,16 +941,33 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    own 6px on top of these 8). */
 #screen-term header.bar {
   position: relative;
+  /* A desktop browser draws the strip's scrollbar in the layout: its thickness is
+     measured into --tabs-sb (see app.js; a phone's scrollbar overlays and
+     measures 0), and the header makes room for it over the row. */
+  padding-top: calc(8px + var(--tabs-sb, 0px));
   padding-bottom: calc(8px + env(safe-area-inset-bottom));
 }
+/* The strip's scrollbar over the tabs rather than under them: "симметрично как
+   он был под ними, когда они были наверху". A scrollbar is drawn at the bottom
+   of its box whatever the box is doing, so the strip is turned upside down and
+   every tab turned back — `scale` rather than `transform`, which composes with
+   the carried tab's own lift instead of replacing it. Layout is not turned, so
+   the room is laid out the way it is seen: the paddings swap ends (the plates'
+   9px is the bottom seen, the heads' 8px the top seen, the scrollbar over that),
+   and the margins give back exactly what is over and under the tabs, so the row
+   stays centred on ☰ as on a phone.
+
+   Giving the scrollbar back without making room for it was 1.2.1: the strip ran
+   past the bottom of the screen by the scrollbar's thickness, the page grew a
+   scrollbar of its own, and the strip's went off the edge. */
 #screen-term header.bar #tabs {
-  /* A desktop browser draws the strip's scrollbar in the layout, under the tabs,
-     and the header grew by it — the gap under the row was the scrollbar plus the
-     8px. Its thickness is measured into --tabs-sb (see app.js) and hung into the
-     header's bottom padding with the plates' room, so the row keeps the height of
-     ☰ beside it. A phone's scrollbar overlays and measures 0. */
-  margin-bottom: calc(-9px - var(--tabs-sb, 0px));
+  scale: 1 -1;
+  padding-top: 9px;
+  padding-bottom: 8px;
+  margin-top: calc(-8px - var(--tabs-sb, 0px));
+  margin-bottom: -9px;
 }
+#screen-term header.bar #tabs > * { scale: 1 -1; }
 /* The presets on the terminal screen: an overlay over the header, so opening it
    does not resize the terminal underneath.
    Anchored to the header itself (`bottom: 100%`) and never over it. When the

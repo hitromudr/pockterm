@@ -611,22 +611,36 @@ describe('the session list is a drawer', () => {
       return { keys: paste.top - keys, over: row.top - paste.bottom, under: r('#screen-term').bottom - row.bottom };
     });
     assert.deepEqual(g, { keys: 4, over: 8, under: 8 }, 'the strip is not spaced twice the keys');
-    // A desktop browser lays the strip's scrollbar out under the tabs, and the
-    // header grew by it. Headless Chromium draws none, so a bottom border stands
-    // in for it: the same gap between offsetHeight and clientHeight, the same
-    // growth of the box. Without --tabs-sb the row moved to 10.5 and 10.5.
+    // A desktop browser lays the strip's scrollbar out in the box, and it belongs
+    // over the tabs — "симметрично как он был под ними, когда они были наверху".
+    // Headless Chromium draws none, so a bottom border stands in for it: the same
+    // gap between offsetHeight and clientHeight, at the same edge of the box,
+    // which the turned strip shows on top. In 1.2.1 the strip ran past the screen
+    // by the scrollbar, and the page grew a scrollbar of its own that pushed the
+    // strip's off the edge.
+    const scroll = await page.evaluate(() => document.scrollingElement.scrollHeight - innerHeight);
+    assert.equal(scroll, 0, 'the page scrolls without a scrollbar on the strip');
     await page.addStyleTag({ content: '#tabs { border-bottom: 10px solid transparent; }' });
-    await page.waitForFunction(() => document.getElementById('tabs').style.getPropertyValue('--tabs-sb') === '10px');
-    const sb = await page.evaluate(() => {
+    await page.waitForFunction(() => document.querySelector('#screen-term header.bar').style.getPropertyValue('--tabs-sb') === '10px');
+    const withSb = await page.evaluate(() => {
       const r = (sel) => document.querySelector(sel).getBoundingClientRect();
-      return { over: r('#back').top - r('#paste').bottom, under: r('#screen-term').bottom - r('#back').bottom };
+      const tab = r('#tabs button');
+      return {
+        over: r('#back').top - r('#paste').bottom,
+        under: r('#screen-term').bottom - r('#back').bottom,
+        barOverTabs: r('#tabs').top + 10 <= tab.top && r('#tabs').top >= r('#paste').bottom,
+        hit: document.elementFromPoint(tab.left + 10, tab.top + tab.height / 2)?.closest('#tabs button') !== null,
+        scroll: document.scrollingElement.scrollHeight - innerHeight,
+      };
     });
-    assert.deepEqual(sb, { over: 8, under: 8 }, 'a scrollbar under the tabs moves the row');
+    assert.deepEqual(withSb, { over: 18, under: 8, barOverTabs: true, hit: true, scroll: 0 },
+      'the strip\'s scrollbar is not over the tabs, or the strip runs past the screen');
 
     await page.click('#new-term');
     await page.waitForSelector('#new-menu-term:not([hidden])');
     const menu = await page.evaluate(() => document.getElementById('new-menu-term').getBoundingClientRect().toJSON());
-    assert.ok(Math.abs(menu.bottom - e.header.top) < 0.5 && menu.top >= 0,
+    const headerTop = (await edges()).header.top;
+    assert.ok(Math.abs(menu.bottom - headerTop) < 0.5 && menu.top >= 0,
       `the presets do not hang over the strip: ${JSON.stringify(menu)}`);
     // Closed by a tap on the +, which lands on the scrim lying over it.
     const plus = await page.locator('#new-term').boundingBox();

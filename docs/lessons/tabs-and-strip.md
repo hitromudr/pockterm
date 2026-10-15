@@ -24,10 +24,17 @@ with it, each for a reason of its own:
   click handler's skip list.
 - **8px over the row and 8px under it**, twice the 4px between the keys above — asked for
   in those words the same day, the row having come out 14px under Paste (`#modebar`'s own
-  6px on top of the header's 8). A desktop browser lays the strip's scrollbar out under
-  the tabs and the header grew by it, so its thickness is measured into `--tabs-sb` and
-  hung into the header's bottom padding; headless Chromium draws no scrollbar, so the test
-  stands a bottom border in for it.
+  6px on top of the header's 8).
+- **The strip's scrollbar is over the tabs**, the mirror of where it was with the strip on
+  top: "симметрично как он был под ними, когда они были наверху". A scrollbar is drawn at
+  the bottom of its box, so `#tabs` is turned upside down (`scale: 1 -1`) and every tab
+  turned back — `scale`, which composes with the carried tab's `transform` lift. A desktop
+  lays the scrollbar out in the box; its thickness is measured into `--tabs-sb` on the
+  header, which makes room for it over the row. 1.2.1 hung it into the bottom padding
+  instead, without making room: the strip ran past the screen by the scrollbar, the page
+  grew a vertical scrollbar of its own, and the strip's went off the edge. Headless
+  Chromium draws no scrollbar, so the test stands a bottom border in for it and asserts
+  the page does not scroll.
 - **The drawer's header stayed at the top.** It went down with the strip for an hour, so
   that ❮ stood exactly where ☰ is, and came back: "список сессий оставь как был, сверху".
   ❮ keeps ☰'s column and box. `the tab strip is the bottom edge of the screen` holds the

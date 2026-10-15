@@ -92,14 +92,15 @@ const statusEl = document.getElementById('status');
 let tabsSignature = null;
 
 // The strip's scrollbar, where the browser lays one out rather than overlaying
-// it (a desktop; a phone measures 0): its thickness goes to --tabs-sb, which the
-// stylesheet hangs into the header's bottom padding. It comes and goes with the
-// strip overflowing, so it is watched rather than measured once — on the border
-// box, which is what the scrollbar changes and the margin it feeds does not.
+// it (a desktop; a phone measures 0): its thickness goes to --tabs-sb on the
+// header, which makes room for it under the row and takes it back from the
+// strip's margin. It comes and goes with the strip overflowing, so it is watched
+// rather than measured once — on the border box, which is what the scrollbar
+// changes and the margin it feeds does not.
 if (tabsEl && typeof ResizeObserver === 'function') {
   new ResizeObserver(() => {
     const sb = Math.max(0, tabsEl.offsetHeight - tabsEl.clientHeight);
-    tabsEl.style.setProperty('--tabs-sb', `${sb}px`);
+    tabsEl.parentElement.style.setProperty('--tabs-sb', `${sb}px`);
   }).observe(tabsEl, { box: 'border-box' });
 }
 
