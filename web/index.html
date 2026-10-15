@@ -101,7 +101,13 @@
              nothing is showing — so "нет уведомлений" took a day to tell from "нет
              событий", and the shade being empty after a successful call (a system
              channel switched off for the installed app) looked like neither. -->
-        <button id="notify-test" title="Прислать пробное уведомление на это устройство">&#128276; Проверить уведомление</button>
+        <button id="notify-test" title="Прислать пробное уведомление на это устройство">&#128276; Проверить</button>
+        <!-- Where the tab strip stands: at the bottom, under the keys, where the
+             thumb is (the default since 2026-10-15), or at the top, where it stood
+             before. Per device, like the smooth lever: a phone and a laptop are
+             held differently. Shares a row with the probe since 2026-10-15: two
+             full-width rows of one button each were the owner's complaint. -->
+        <button id="strip-pos" title="Where the tab strip stands">&#9604; Вкладки снизу</button>
       </div>
       <!-- The answer, where the button is. Not the toast: that one lives inside
            the terminal screen, which is hidden behind the drawer the settings
@@ -122,13 +128,6 @@
              journal. Off by default: one line per keystroke, and the second tap
              records the typed text itself. -->
         <button id="input-diag" title="Record what the keyboard does">&#128269; Input log</button>
-      </div>
-      <div class="row">
-        <!-- Where the tab strip stands: at the bottom, under the keys, where the
-             thumb is (the default since 2026-10-15), or at the top, where it stood
-             before. Per device, like the smooth lever: a phone and a laptop are
-             held differently. -->
-        <button id="strip-pos" title="Where the tab strip stands">&#9604; Вкладки снизу</button>
       </div>
       <!-- The session buttons: the four the page starts with and whatever the
            owner added beside them, one list. A label to tap and a command to
