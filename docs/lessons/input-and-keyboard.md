@@ -472,3 +472,39 @@ latch and the pad it opens, ▾/▴, the strip, +, 📎, ✂ and the way out of 
 measures the pane's own field by identity, since the composer is a textarea too and
 💬 is supposed to focus it. Checked against the defect: with the two names taken out
 of the list again, the case fails on `#cmds`.
+
+## The keyboard takes no rows from the pane
+
+Reported 2026-10-15 as «история теряется после остановки агента. только экран видно.
+потом куски» — on a pane where Claude Code was on the normal screen (`alternate_on 0`),
+and with nothing in this repository clearing anything: no `clear-history` here, no
+`ESC[3J` from the agent.
+
+Measured on a private stand at 57x45 (Claude Code 2.1.300, an answer of 120 numbered
+lines): the turn itself kept all 120. Each change of the window's height lost about the
+height of the agent's own frame — the input box and the footer, five lines there — on
+the shrink *and* on the grow, always the lines right above the prompt, which is the
+answer just given. Three round trips 45→25→45 took 81–85, 76–80, 71–75. In the binary
+it is the renderer's `"resize"` full reset: on the normal screen it erases what is on
+screen and repaints its frame only, so what tmux hands back out of the history when the
+pane grows is painted over. And the page resized the pane both ways on every keyboard
+(`interactive-widget=resizes-content` → `visualViewport` resize → `refit` →
+`sendResize`) — which comes up exactly when a turn is over and there is something to
+answer. Hence "after the agent stops".
+
+So while the keyboard is up, at the same width, `fitNow` keeps the pane's rows
+(`rowsHeld`) and `liftHeldRows` draws the grid against the box with a negative margin
+(the transform belongs to the swipe). How far it lifts is what tmux would have done when
+shrinking: the empty rows under the cursor go first, then the top ones. The first
+version pinned the grid to the bottom outright and the test caught the prompt of a
+near-empty pane 320px above the box. tmux's status line is skipped in that count — it
+is never empty and is not the pane's — and left under the bottom edge. The lift is
+re-read on every render while held, since the output moves the cursor.
+
+The page step (`pageNotches`) counts the rows the box shows, not the pane's, or a page
+would step over the rows hidden under the top edge.
+
+What it does not cover: a change of width (rotation) still resizes, and so does anything
+else that changes the box with the keyboard down. Lines already eaten do not come back.
+`the keyboard takes no rows from the pane` holds `#{pane_height}` through a keyboard up
+and down, on a near-empty pane and a full one.

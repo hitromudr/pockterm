@@ -4780,6 +4780,78 @@ describe('the console pad over an agent', () => {
     assert.equal(height(), before, 'closing it moved the pane');
   });
 
+  test('the keyboard takes no rows from the pane', async () => {
+    // Reported 2026-10-15 as the agent's history going missing once a turn ended:
+    // the screen, then fragments. Claude Code on the normal screen answers every
+    // change of height by erasing what is on screen and repainting only its own
+    // frame, so the lines tmux pulled back out of the history on the way up are
+    // wiped — measured on a private stand at 57x45, five lines above the prompt
+    // gone on each shrink and each grow. The keyboard was a resize each way, and
+    // it comes up exactly when the turn is over and there is something to answer.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    await page.setViewportSize({ width: 390, height: 780 });
+    await page.click('#term');
+    const height = () => Number(stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_height}']).trim());
+    await page.waitForTimeout(400);
+    const before = height();
+    assert.ok(before > 20, `the pane is ${before} rows, too short to tell anything`);
+    stand.tmux(['send-keys', '-t', 'demo', 'kb-hold-mark', 'Enter']);
+    await page.waitForFunction(
+      () => (document.querySelector('.xterm-rows')?.textContent || '').includes('kb-hold-mark'),
+      null, { timeout: 5000 });
+    // Where the cursor row sits in the box it is drawn in: what is typed next lands
+    // there, so it is the row a keyboard must not cover. `cat` echoes the line and
+    // prints it back, and the cursor is on the row under the second copy.
+    const cursorRow = () => page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.xterm-rows > div')];
+      let y = rows.length - 1;
+      while (y > 0 && !rows[y - 1].textContent.includes('kb-hold-mark')) y--;
+      const box = document.getElementById('term').getBoundingClientRect();
+      const r = rows[y].getBoundingClientRect();
+      return { y, top: r.top - box.top, bottom: box.bottom - r.bottom };
+    });
+
+    const firstRowTop = () => page.evaluate(() => {
+      const box = document.getElementById('term').getBoundingClientRect();
+      return document.querySelector('.xterm-rows > div').getBoundingClientRect().top - box.top;
+    });
+    const keyboard = async (up) => {
+      await page.setViewportSize({ width: 390, height: up ? 420 : 780 });
+      await page.waitForFunction((v) => document.documentElement.dataset.kb === v,
+        up ? '1' : '0', { timeout: 5000 });
+      await page.waitForTimeout(600);
+    };
+
+    // A pane with a few lines in it: the prompt is near the top, and a grid simply
+    // pinned to the bottom of the box took it out of sight — which is how the first
+    // version of this failed, the row being typed on 320px above the box.
+    await keyboard(true);
+    assert.equal(height(), before, 'the keyboard took rows from the pane');
+    let at = await cursorRow();
+    assert.ok(at.top >= 0 && at.bottom >= 0, `the row being typed on is off the box: ${JSON.stringify(at)}`);
+    assert.ok(Math.abs(await firstRowTop()) < 1, 'a near-empty pane was lifted for nothing');
+    await keyboard(false);
+    assert.equal(height(), before, 'the keyboard going down moved the pane');
+
+    // A full pane, which is the agent's: then it is the top rows that go under the
+    // edge, and it is the output arriving with the keyboard up that has to move it.
+    await keyboard(true);
+    for (let i = 0; i < before; i++) stand.tmux(['send-keys', '-t', 'demo', `kb-hold-mark ${i}`, 'Enter']);
+    await page.waitForFunction((n) => (document.querySelector('.xterm-rows')?.textContent || '')
+      .includes(`kb-hold-mark ${n}`), before - 1, { timeout: 5000 });
+    await page.waitForTimeout(300);
+    assert.equal(height(), before, 'the keyboard took rows from the pane');
+    at = await cursorRow();
+    assert.ok(at.top >= 0 && at.bottom >= 0, `the row being typed on is off the box: ${JSON.stringify(at)}`);
+    assert.ok(await firstRowTop() < -1, 'a full pane was not lifted, so its bottom is under the keyboard');
+
+    await keyboard(false);
+    assert.equal(height(), before, 'the keyboard going down moved the pane');
+    assert.ok(Math.abs(await firstRowTop()) < 1, 'the first row did not come back to the top');
+  });
+
   test('with the agent\'s own box on screen the first tap only asks', async () => {
     // `clear` typed into that box is not a command run anywhere: it is a turn sent
     // to Claude, paid for in tokens and answered in prose. The box is what the page

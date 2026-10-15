@@ -61,6 +61,12 @@ them instead of deriving them again.
   (`endEditByBlur`). `sawKeyboard` tells the two machines
   apart, learned by watching a keyboard appear rather than guessed from the
   user agent.
+- **The keyboard takes no rows from the pane.** Claude Code on the normal screen
+  answers every change of height by repainting only its own frame, and the lines
+  tmux hands back from the history on the way up are wiped — five above the
+  prompt per resize at 57x45, the answer just given. While the keyboard is up the
+  pane keeps its rows (`rowsHeld`) and the grid is lifted over the box
+  (`liftHeldRows`) the way tmux would shrink it: empty rows under the cursor first.
 - **The keyboard is measured, not assumed** (`measureKeyboard`: the viewport,
   not focus) and the answer is published as `data-kb` on the root element.
   Tests wait on that rather than on the viewport's own number — a shrink and a

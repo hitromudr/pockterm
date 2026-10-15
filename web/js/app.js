@@ -2869,7 +2869,7 @@ setScrollStep();
 // renders while it is being opened, and a handler that reaches `scroller`
 // before this line would throw on load — which is how the page once died with
 // a ReferenceError and the phone showed an empty session list.
-term.onRender((e) => noteScreenMoved(e.start, e.end));
+term.onRender((e) => { noteScreenMoved(e.start, e.end); if (rowsHeld) liftHeldRows(); });
 
 let touchY = null;
 // The whole terminal screen scrolls it, not just the box the text is drawn in.
@@ -5043,8 +5043,13 @@ const PAGE_OVERLAP = 2;
 // not read is the one failure here that says nothing about itself. And the step
 // is tmux's own (`wheelLines`, asked of the running server), so a stock host
 // pages in fives and the owner's in ones.
+//
+// The rows on screen, not the pane's: with the keyboard up the pane keeps rows
+// the box no longer shows (see fitNow), and a page of the pane would step over
+// the ones hidden under the top edge.
 function pageNotches() {
-  const rows = Math.max(1, (term.rows | 0) - PAGE_OVERLAP);
+  const shown = Math.floor(termBox.clientHeight / rowHeight()) || term.rows;
+  const rows = Math.max(1, Math.min(term.rows | 0, shown) - PAGE_OVERLAP);
   return Math.max(1, Math.floor(rows / Math.max(1, wheelLines)));
 }
 
@@ -5702,11 +5707,25 @@ let refitTimer = null;
 // the fit debounced, that size was still the previous session's — and the
 // redraw arrived wrapped against the wrong width, which is what covered the
 // screen in the same line repeated with mangled characters.
+//
+// The keyboard takes no rows from the pane. Claude Code on the normal screen
+// answers every change of height by erasing what is on screen and repainting its
+// own frame only, so the lines tmux hands back out of the history when the pane
+// grows again are wiped — five above the prompt each way at 57x45 (2026-10-15),
+// and the keyboard is up and down with every reply. So while it is up, at the
+// same width, the pane keeps its rows and the grid is drawn against the bottom
+// of the box instead, lifted the way tmux would have shrunk it: the empty rows
+// under the cursor go first, then the top ones — so a near-empty pane keeps its
+// prompt in view and a full one shows its bottom.
+let rowsHeld = false;
 function fitNow() {
   const box = document.getElementById('term');
   if (screenTerm.hidden || !box || box.clientWidth < 8 || box.clientHeight < 8) return false;
   try {
-    fit.fit();
+    const want = fit.proposeDimensions();
+    rowsHeld = !!(keyboardUp && want && want.cols === term.cols && want.rows <= term.rows);
+    if (!rowsHeld) fit.fit();
+    liftHeldRows();
   } catch (e) {
     report('fit-failed', { message: String((e && e.message) || e).slice(0, 120) });
     return false;
@@ -5719,6 +5738,31 @@ function fitNow() {
   // and a fit changes both — a keyboard coming up is the common one.
   paintScrollbar();
   return true;
+}
+
+// Re-read on every render while held, since the cursor moves with the output.
+// A negative margin rather than a transform: the transform on the screen element
+// is the swipe's (trackScreen), and two owners of one property is one too many.
+function liftHeldRows() {
+  const el = term.element;
+  if (!el) return;
+  let lift = 0;
+  if (rowsHeld) {
+    const over = el.offsetHeight - termBox.clientHeight;
+    const buf = term.buffer.active;
+    // tmux's status line is drawn into the grid but is not the pane's, and it is
+    // never empty: counted, it ended the count at once and lifted the prompt of a
+    // near-empty pane off the top. Left under the bottom edge instead.
+    let empty = 0;
+    for (let y = term.rows - 1 - Math.max(0, statusRows); y > buf.cursorY; y--) {
+      const line = buf.getLine(buf.viewportY + y);
+      if (line && line.translateToString(true) !== '') break;
+      empty++;
+    }
+    lift = Math.max(0, over - (empty + Math.max(0, statusRows)) * rowHeight());
+  }
+  const margin = lift > 0 ? `-${lift.toFixed(1)}px` : '';
+  if (el.style.marginTop !== margin) el.style.marginTop = margin;
 }
 
 function refit() {
