@@ -154,6 +154,10 @@ html, body {
    like ❮ carry their own uneven side bearings, so `padding: 8px 12px` — which
    is what every other bar button uses — leaves it visibly off to one side. Same
    box as ☰ on the terminal's header, because it stands in the same place. */
+/* At the bottom of the drawer, like the terminal's header at the bottom of the
+   screen, and for the same reason it pays the system's bottom inset: it is the
+   last thing in the column. */
+#screen-sessions header.bar { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
 #screen-sessions header.bar #drawer-close {
   display: flex;
   align-items: center;
@@ -503,8 +507,8 @@ button.session .agents .count { font-size: 10px; line-height: 13px; }
    a WebView answering it with "select text" instead would take the gesture. */
 #tabs button { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 
-/* The answer to that press. A plate under the tab, because the strip is the top
-   edge of the screen and there is nothing above it to hang one on. Fixed, so the
+/* The answer to that press. A plate over the tab, because the strip is the
+   bottom edge of the screen and there is nothing below it to hang one on. Fixed, so the
    sideways scroll of the strip cannot carry it off, and pointer-events off so it
    is never in the way of the tab it is about. */
 #kind-help {
@@ -522,8 +526,8 @@ button.session .agents .count { font-size: 10px; line-height: 13px; }
 }
 /* The same plate while a tab is carried, and a different claim: not what this
    mark means but which session is in hand and where it has got to. Framed in the
-   accent so the two are not read as one thing, and dropped clear of the thumb by
-   js (CARRY_DROP) rather than sitting under the tab. */
+   accent so the two are not read as one thing, and lifted clear of the thumb by
+   js (CARRY_DROP) rather than sitting on the tab. */
 #kind-help.carrying { border-color: var(--accent); color: var(--accent); }
 
 /* Someone who has asked not to be moved gets the colour and not the movement —
@@ -542,14 +546,14 @@ button.session .agents .count { font-size: 10px; line-height: 13px; }
 }
 #refresh { margin-left: auto; }
 
-/* Presets for a new session, and the rename field. Both hang under the
+/* Presets for a new session, and the rename field. Both stand over the
    header of the list screen, where the decision is being made. */
 #new-menu, #rename-box {
   display: flex;
   gap: 6px;
   padding: 6px 8px;
   background: var(--bar);
-  border-bottom: 1px solid #2a3345;
+  border-top: 1px solid #2a3345;
 }
 #new-menu { flex-wrap: wrap; }
 #new-menu button {
@@ -601,7 +605,7 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
    the screen. */
 #settings-toggle {
   flex: 0 0 auto;
-  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  padding: 12px 14px;
   color: #8b93a7;
   background: #11161f;
   border: none;
@@ -772,18 +776,16 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
 #new-menu button.own, #new-menu-term button.own { color: #ffe9a8; }
 
 /* --- session list --- */
-/* The bottom safe-area inset is the reason the last session was unreachable
-   on a phone: the screen itself only pads top/left/right (see #screen-*
-   above), and the terminal screen makes up for it in its bottom bars — which
-   this screen does not have, so the list ran under the gesture bar.
-   flex:1 with min-height:0 goes with it: the list, not its content, owns the
-   space between the header and the bottom edge, so it scrolls as one. */
+/* flex:1 with min-height:0: the list, not its content, owns the space between
+   the top edge and what is pinned under it, so it scrolls as one. The bottom
+   safe-area inset is paid by the header, which is the last thing on this screen
+   now — the list once ran under the gesture bar for want of it. */
 #session-list {
   flex: 1;
   min-height: 0;
   list-style: none;
   overflow-y: auto;
-  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  padding: 8px;
 }
 #session-list li { margin-bottom: 8px; }
 button.session {
@@ -897,7 +899,7 @@ button.session .line .kind:not(:empty) { margin-right: 6px; }
   min-height: 0;
   list-style: none;
   overflow-y: auto;
-  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  padding: 8px;
 }
 #folder-list li { margin-bottom: 8px; }
 button.folder {
@@ -931,26 +933,32 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #empty code { color: var(--fg); background: #1b2230; padding: 2px 6px; border-radius: 4px; }
 
 /* --- terminal screen --- */
-/* The presets on the terminal screen: an overlay under the header, so opening it
+/* The header is the last bar of the column (since 2026-10-15), so it is the one
+   that pays the system's bottom inset for everything above it. Positioned so the
+   presets can hang off it, and with no z-index, which would make it a stacking
+   context and put the popup under the scrim. */
+#screen-term header.bar {
+  position: relative;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+}
+/* The presets on the terminal screen: an overlay over the header, so opening it
    does not resize the terminal underneath.
-   `top` is not decoration. An absolutely positioned child of a flex container
-   starts at the container's content box — which is behind the header — so
-   without it this popup covered ☰, the tabs and the very + that opens it: the
-   tap meant to dismiss the menu landed on a preset and started a session
-   instead. Reported as there being no way to cancel it. The same trap caught
-   #update-bar earlier. */
+   Anchored to the header itself (`bottom: 100%`) and never over it. When the
+   header was at the top this popup once covered ☰, the tabs and the very + that
+   opens it: the tap meant to dismiss the menu landed on a preset and started a
+   session instead, reported as there being no way to cancel it. */
 #new-menu-term {
   position: absolute;
   left: 0;
   right: 0;
-  top: 52px;
+  bottom: 100%;
   z-index: 13;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   padding: 6px 8px;
   background: var(--bar);
-  border-bottom: 1px solid #2a3345;
+  border-top: 1px solid #2a3345;
 }
 #new-menu-term button {
   flex: 1 1 45%;
@@ -968,11 +976,10 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   position: absolute;
   left: 0;
   right: 0;
-  /* Under the header, for the same reason as the popup above: an absolutely
-     positioned flex child starts at the content box, so without this the
-     reconnect banner covered ☰ and the tabs — and a reconnect is exactly when
+  /* At the top edge, clear of the system's inset: the header that once had to
+     be stepped over is at the bottom now, and a reconnect is exactly when
      somebody reaches for another session. */
-  top: 52px;
+  top: env(safe-area-inset-top);
   z-index: 10;
   background: #7a3b3b;
   color: #fff;
@@ -983,16 +990,14 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 /* Overlay, like #status and #toast: a new version arriving must not resize the
    terminal under the thumb that is scrolling it. Green rather than the
    reconnect banner's red — nothing is wrong, there is something to take.
-   Placed like the toast, and full width would be wrong for a different reason
-   than looks: an absolutely positioned child of a flex container starts at the
-   container's content box, which is behind the header — so a bar spanning the
-   top covers ☰ and the session tabs, and this one stays until it is tapped.
-   The browser test found that by being unable to reach ☰. */
+   Placed like the toast. When the header was at the top, a bar spanning it
+   covered ☰ and the session tabs, and this one stays until it is tapped — the
+   browser test found that by being unable to reach ☰. */
 #update-bar {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  top: 52px;
+  top: env(safe-area-inset-top);
   z-index: 12;
   display: flex;
   align-items: center;
@@ -1054,7 +1059,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  top: 52px;
+  top: env(safe-area-inset-top);
   z-index: 11;
   max-width: 90%;
   padding: 8px 14px;
@@ -1310,10 +1315,10 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 }
 #show-bars {
   position: absolute;
-  /* Left of the pager: with every bar hidden the terminal reaches the bottom of
-     the screen, so the two would otherwise stand in the same corner. */
+  /* Left of the pager, at the pager's own height: both are inside #term, whose
+     box ends at the tab strip, which stays on screen when the bars are hidden. */
   right: 76px;
-  bottom: calc(10px + env(safe-area-inset-bottom));
+  bottom: calc(10px + var(--over-h, 0px));
   transition: right 0.25s ease;
   z-index: 12;
   width: 44px;
@@ -1644,9 +1649,8 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 4px;
-  /* Last element on the screen, so this is the one that pays the bottom
-     system inset for everything above it. */
-  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  /* Not the last bar any more: the header under it pays the bottom inset. */
+  padding: 6px;
   background: var(--bar);
   /* What the clip's popup hangs from. */
   position: relative;

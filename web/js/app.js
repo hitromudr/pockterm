@@ -1569,16 +1569,17 @@ function hideKindHelp() {
   }
 }
 
-// placePlate puts the plate under the box it is about, clamped to the screen: the
-// strip scrolls sideways, so a tab can sit at either edge of it.
+// placePlate puts the plate over the box it is about, clamped to the screen: the
+// strip scrolls sideways, so a tab can sit at either edge of it, and the strip is
+// the bottom edge of the screen, so there is nothing under it to hang one on.
 function placePlate(r, drop, centred) {
   const w = kindHelpEl.offsetWidth;
   const want = centred ? r.left + r.width / 2 - w / 2 : r.left;
   kindHelpEl.style.left = `${Math.max(4, Math.min(want, window.innerWidth - w - 4))}px`;
-  kindHelpEl.style.top = `${r.bottom + drop}px`;
+  kindHelpEl.style.top = `${r.top - drop - kindHelpEl.offsetHeight}px`;
 }
 
-// showKindHelp puts the plate under the tab it is about, clamped to the screen:
+// showKindHelp puts the plate over the tab it is about, clamped to the screen:
 // the strip scrolls sideways, so a tab can sit at either edge of it.
 function showKindHelp(btn) {
   if (!kindHelpEl) return;
@@ -1601,9 +1602,9 @@ function showKindHelp(btn) {
 // cannot see. It says which session is in hand and it follows the tab, so where
 // the tab has got to is readable without lifting the finger to look.
 //
-// Dropped clear of the thumb rather than sitting under the tab like the other
-// plate — a pad is about a centimetre and a half, and a plate four pixels below
-// the strip is under it.
+// Lifted clear of the thumb rather than sitting on the tab like the other plate
+// — a pad is about a centimetre and a half, and a plate four pixels above the
+// strip is under it.
 const CARRY_DROP = 44;
 
 function paintCarryPlate(btn) {
@@ -1616,7 +1617,7 @@ function paintCarryPlate(btn) {
   kindHelpEl.textContent = mark ? `${mark} ${name}` : name;
   kindHelpEl.hidden = false;
   kindHelpEl.classList.add('carrying');
-  // Centred under the tab, since this one is about where the tab is.
+  // Centred over the tab, since this one is about where the tab is.
   placePlate(btn.getBoundingClientRect(), CARRY_DROP, true);
 }
 
@@ -2607,9 +2608,10 @@ document.getElementById('term').addEventListener('click', (e) => {
   // `cmd-hide`. Its buttons take no focus and give up what the field holds — and
   // none of that survives this handler handing the focus straight back a moment
   // later. Anything drawn inside #term has to be named here; the list is the
-  // mechanism, not a set of exceptions.
+  // mechanism, not a set of exceptions. ▴ joined it when it moved inside #term
+  // with the header going to the bottom of the screen.
   if (e.target instanceof Element
-    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds')) return;
+    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds, #show-bars')) return;
   term.focus();
   refit();
 });
@@ -2840,8 +2842,9 @@ function ownsGesture(target) {
 
 // And a swipe to the right brings the drawer, which is the mirror of the swipe
 // that puts it away: the panel lives off the left edge, so pulling rightwards is
-// pulling it out from there. ☰ is at the top of a phone and the thumb is at the
-// bottom, which is the whole reason for it.
+// pulling it out from there. ☰ was at the top of a phone and the thumb at the
+// bottom, which was the whole reason for it; the header has gone down since
+// (2026-10-15), and the swipe stays as the way that needs no aim.
 //
 // It rides on the terminal's own gesture rather than beside it, because the two
 // share a finger and only one of them can have it. The scroll is vertical, so the

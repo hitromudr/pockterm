@@ -71,8 +71,10 @@ transition already covering the distance. Two other drags must not trigger it, a
 were the reason for the guard: the list scrolls vertically under the same finger, and
 the rename field drags a caret sideways.
 
-**And a swipe to the right over the terminal brings it back.** ☰ is at the top edge and
-the thumb is at the bottom, so the way in cost a reach the way out did not. It rides on
+**And a swipe to the right over the terminal brings it back.** ☰ was at the top edge and
+the thumb at the bottom, so the way in cost a reach the way out did not. (Since
+2026-10-15 both headers are at the bottom — see "The strip is the bottom edge" in
+`tabs-and-strip.md` — and the swipe stays as the way that needs no aim.) It rides on
 the terminal's own gesture, the two sharing a finger: the drawer takes the swipe only
 when it is unmistakably sideways (past `DRAWER_SWIPE` and further across than down), and
 takes it whole — `scroller.cancel` ends the swipe the way a browser stealing it does,

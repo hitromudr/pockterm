@@ -5,6 +5,27 @@ rule and a pointer; the derivation, the measurements and the dates are here. Rea
 ones your change touches before making it — every one of them was paid for at least
 twice.
 
+## The strip is the bottom edge of the screen
+
+Asked for on 2026-10-15 as "верхнюю панель с меню, вкладками и плюсом опустить в самый
+низ экрана, под пейст, копи": ☰, the tabs and + are the last bar of `#screen-term`, under
+the row with ✂ and 📥. The top edge of a phone is the one place a thumb does not reach,
+and the keys the owner switches sessions from were a hand's width below it. What moved
+with it, each for a reason of its own:
+
+- **It pays the bottom inset**, being last in the column; `#modebar` no longer does. With
+  the keyboard up it is the bar that sits on the keyboard.
+- **The presets hang off it** (`#new-menu-term` inside the header, `bottom: 100%`) rather
+  than off `top: 52px`, a guess about the header's height that only held at the top.
+- **The plates go over the tab** (`placePlate`): there is nothing under the strip to hang
+  one on, and a thumb comes from below, so the carry plate is lifted rather than dropped.
+- **▴ is inside `#term`** beside the pager: the strip stays when the bars are hidden, so a
+  corner measured off the viewport put it on the tabs. Being in `#term` it is named in the
+  click handler's skip list.
+- **The drawer's header went down too**, because ❮ stands exactly where ☰ is — the test
+  `the way back sits exactly where the way in was` holds that, and `the tab strip is the
+  bottom edge of the screen` holds the rest.
+
 ## A tab carries three answers, and none of them is the others
 
 Which sessions exist is the row, which one you are in is a **frame**, and what
@@ -362,7 +383,7 @@ carried the browser must not take the gesture as its own sideways scroll.
 
 **Where the tab goes is the finger's x, and reading the y as well is what broke
 it.** The first version asked `elementFromPoint` what was under the finger, which
-needs the finger to stay inside a strip 34px tall at the top edge of the screen; a
+needs the finger to stay inside a strip 34px tall at the edge of the screen; a
 thumb travelling sideways arcs out of it within a centimetre, the point lands on the
 terminal, and the row stops rearranging while the gesture is plainly still going.
 `dropIndex` in `web/js/carry.js` counts how many of the other tabs the finger is past

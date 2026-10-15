@@ -340,27 +340,28 @@ describe('the order of the tabs', () => {
     await page.waitForTimeout(700);
     const target = Math.round(to.x + 4);
     // The finger leaves the strip on the way, which is what a thumb does: the row
-    // is 34px tall at the very top edge of the screen and a sideways travel arcs
-    // out of it within a centimetre. The carry reads the x and nothing else, so
-    // this must rearrange the row exactly as a travel along the strip does — it
-    // did not, and that is what was reported as the carrying stopping.
-    let below = y;
+    // is 34px tall at the very edge of the screen and a sideways travel arcs out
+    // of it within a centimetre — upwards, now that the strip is at the bottom.
+    // The carry reads the x and nothing else, so this must rearrange the row
+    // exactly as a travel along the strip does — it did not, and that is what was
+    // reported as the carrying stopping.
+    let off = y;
     while (x > target) {
       x = Math.max(target, x - 20);
-      below = Math.min(below + 25, y + 200);
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: below }] });
+      off = Math.max(off - 25, y - 200);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: off }] });
       await page.waitForTimeout(30);
     }
     // And the finger covers the tab it is holding, so what is in hand is said on a
-    // plate below it — the row rearranging under a thumb is otherwise unreadable.
+    // plate above it — the row rearranging under a thumb is otherwise unreadable.
     const plate = await page.evaluate(() => {
       const el = document.getElementById('kind-help');
       if (!el || el.hidden) return null;
-      return { text: el.textContent, carrying: el.classList.contains('carrying'), top: el.getBoundingClientRect().top };
+      return { text: el.textContent, carrying: el.classList.contains('carrying'), bottom: el.getBoundingClientRect().bottom };
     });
     assert.ok(plate, 'nothing says which tab is being carried');
     assert.ok(plate.carrying && plate.text.includes('gamma'), `the plate says ${plate?.text}`);
-    assert.ok(plate.top > from.y + from.height + 20, 'the plate sits under the thumb holding the tab');
+    assert.ok(plate.bottom < from.y - 20, 'the plate sits under the thumb holding the tab');
 
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     assert.equal(await page.evaluate(() => document.getElementById('kind-help').hidden), true,
@@ -575,6 +576,48 @@ describe('the session list is a drawer', () => {
       null, { timeout: 3000 });
     const chevron = await box('drawer-close');
     assert.deepEqual(chevron, hamburger, 'the way out is not where the way in was');
+  });
+
+  test('the tab strip is the bottom edge of the screen', async () => {
+    // Asked for as "опустить в самый низ экрана, под пейст, копи": ☰, the tabs and
+    // + under the row with ✂ and 📥, where the thumb already is. And the presets
+    // its + opens hang over it rather than out of the screen's bottom.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    const edges = () => page.evaluate(() => {
+      const r = (sel) => document.querySelector(sel).getBoundingClientRect();
+      return {
+        header: r('#screen-term header.bar'),
+        modebar: r('#modebar'),
+        term: r('#term'),
+        screen: r('#screen-term'),
+      };
+    });
+    const e = await edges();
+    assert.ok(e.header.top >= e.modebar.bottom - 0.5,
+      `the strip is not under the row with Paste: ${JSON.stringify(e)}`);
+    assert.ok(Math.abs(e.header.bottom - e.screen.bottom) < 0.5, 'something is under the strip');
+    assert.ok(e.term.top < e.modebar.top, 'the pane is not at the top');
+
+    await page.click('#new-term');
+    await page.waitForSelector('#new-menu-term:not([hidden])');
+    const menu = await page.evaluate(() => document.getElementById('new-menu-term').getBoundingClientRect().toJSON());
+    assert.ok(Math.abs(menu.bottom - e.header.top) < 0.5 && menu.top >= 0,
+      `the presets do not hang over the strip: ${JSON.stringify(menu)}`);
+    // Closed by a tap on the +, which lands on the scrim lying over it.
+    const plus = await page.locator('#new-term').boundingBox();
+    await page.mouse.click(plus.x + plus.width / 2, plus.y + plus.height / 2);
+    await page.waitForSelector('#new-menu-term', { state: 'hidden' });
+
+    // With the bars hidden the strip stays, and ▴ stands over it rather than on it.
+    await page.click('#hide');
+    await page.waitForSelector('#show-bars:not([hidden])');
+    const up = await page.evaluate(() => document.getElementById('show-bars').getBoundingClientRect().toJSON());
+    const top = (await edges()).header.top;
+    assert.ok(up.bottom <= top, `▴ is on the strip: ${JSON.stringify({ up, top })}`);
+    await page.click('#show-bars');
+    await page.waitForSelector('#keybar:not([hidden])');
   });
 
   test('a tap outside closes it, and a session in it switches', async () => {
