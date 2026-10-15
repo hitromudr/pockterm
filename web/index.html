@@ -23,6 +23,24 @@
        not to leave what you are in. -->
   <div id="drawer-scrim" hidden></div>
   <div id="screen-sessions">
+    <header class="bar">
+      <!-- At the top, where ☰ stood until the terminal's header went to the
+           bottom of the screen (2026-10-15): the owner kept the drawer as it
+           was. The same box as ☰, so it is still the same button. A chevron
+           rather than a cross: the drawer slides back, it does not go away, and
+           ✕ next to the title read like closing pockterm itself. -->
+      <button id="drawer-close" title="Slide the list back">&#10094;</button>
+      <span class="title">pockterm</span>
+      <!-- The folders of the projects root, as somewhere to start a session.
+           A second view of the drawer rather than a section under the list:
+           two scrolling lists on a phone leave neither of them a full thumb's
+           worth of room, and the list you came for is the sessions. -->
+      <button id="folders" title="Projects">&#128193;</button>
+      <!-- With no session left there is nowhere to type the command that
+           would make one: this is the way back in. -->
+      <button id="new" title="New session">&plus;</button>
+      <button id="refresh" title="Refresh">&#8635;</button>
+    </header>
     <!-- The install offer, on the screen a scanned link lands on.
          It used to be only the button at the bottom of this drawer's settings
          (#install below): the browser hands over its prompt, the button appears
@@ -35,9 +53,25 @@
       <button id="install-do" type="button" hidden>Установить</button>
       <button id="install-close" type="button" title="Позже">&#10005;</button>
     </div>
+    <div id="new-menu" hidden>
+      <!-- Which folder the preset will start in. Written by the page: the same
+           four buttons serve the plain + (the projects root) and a folder that
+           was just tapped, and a menu that did not say which would start a
+           session somewhere the owner did not mean. -->
+      <span id="new-where" hidden></span>
+      <!-- The buttons themselves are written by the page from the host's list:
+           the four defaults are entries in it, editable and removable like any
+           other, so a menu spelled out here would be a second answer to what
+           exists. See renderButtons in js/app.js. -->
+    </div>
+    <div id="rename-box" hidden>
+      <input id="rename-input" type="text" autocomplete="off" placeholder="new name">
+      <button id="rename-save">Save</button>
+      <button id="rename-cancel">&#10005;</button>
+    </div>
     <ul id="session-list"></ul>
     <!-- The other view of the drawer: the folders of the projects root, the
-         root itself first. Tapping one opens the presets below for it, and the
+         root itself first. Tapping one opens the presets above for it, and the
          session it starts is named after the folder. -->
     <ul id="folder-list" hidden></ul>
     <div id="empty" hidden>
@@ -125,42 +159,6 @@
     <!-- Pinned under the list, so opening the drawer never costs the settings a
          scroll and the settings never cost the list one. -->
     <button id="settings-toggle" title="Settings">&#9881; Настройки</button>
-    <!-- The presets and the rename field, over the header whose + and whose
-         rows open them: in the flow, so the list gives them the room. -->
-    <div id="new-menu" hidden>
-      <!-- Which folder the preset will start in. Written by the page: the same
-           four buttons serve the plain + (the projects root) and a folder that
-           was just tapped, and a menu that did not say which would start a
-           session somewhere the owner did not mean. -->
-      <span id="new-where" hidden></span>
-      <!-- The buttons themselves are written by the page from the host's list:
-           the four defaults are entries in it, editable and removable like any
-           other, so a menu spelled out here would be a second answer to what
-           exists. See renderButtons in js/app.js. -->
-    </div>
-    <div id="rename-box" hidden>
-      <input id="rename-input" type="text" autocomplete="off" placeholder="new name">
-      <button id="rename-save">Save</button>
-      <button id="rename-cancel">&#10005;</button>
-    </div>
-    <header class="bar">
-      <!-- Where ☰ is on the terminal's header, so the same spot opens and
-           closes it — which is why this header went to the bottom of the drawer
-           when that one went to the bottom of the screen (2026-10-15). A chevron rather than a cross: the drawer slides back, it
-           does not go away, and ✕ next to the title read like closing pockterm
-           itself. -->
-      <button id="drawer-close" title="Slide the list back">&#10094;</button>
-      <span class="title">pockterm</span>
-      <!-- The folders of the projects root, as somewhere to start a session.
-           A second view of the drawer rather than a section under the list:
-           two scrolling lists on a phone leave neither of them a full thumb's
-           worth of room, and the list you came for is the sessions. -->
-      <button id="folders" title="Projects">&#128193;</button>
-      <!-- With no session left there is nowhere to type the command that
-           would make one: this is the way back in. -->
-      <button id="new" title="New session">&plus;</button>
-      <button id="refresh" title="Refresh">&#8635;</button>
-    </header>
   </div>
 
   <!-- Screen 2: the attached terminal. -->

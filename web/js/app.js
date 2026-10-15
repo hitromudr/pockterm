@@ -91,6 +91,18 @@ const tabsEl = document.getElementById('tabs');
 const statusEl = document.getElementById('status');
 let tabsSignature = null;
 
+// The strip's scrollbar, where the browser lays one out rather than overlaying
+// it (a desktop; a phone measures 0): its thickness goes to --tabs-sb, which the
+// stylesheet hangs into the header's bottom padding. It comes and goes with the
+// strip overflowing, so it is watched rather than measured once — on the border
+// box, which is what the scrollbar changes and the margin it feeds does not.
+if (tabsEl && typeof ResizeObserver === 'function') {
+  new ResizeObserver(() => {
+    const sb = Math.max(0, tabsEl.offsetHeight - tabsEl.clientHeight);
+    tabsEl.style.setProperty('--tabs-sb', `${sb}px`);
+  }).observe(tabsEl, { box: 'border-box' });
+}
+
 // Returns {sessions} or {error}. The distinction matters: "no sessions" and
 // "you are not allowed to ask" look identical to a user staring at an empty
 // list, and the second one sends them looking for a tmux problem that does

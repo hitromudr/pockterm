@@ -22,9 +22,16 @@ with it, each for a reason of its own:
 - **▴ is inside `#term`** beside the pager: the strip stays when the bars are hidden, so a
   corner measured off the viewport put it on the tabs. Being in `#term` it is named in the
   click handler's skip list.
-- **The drawer's header went down too**, because ❮ stands exactly where ☰ is — the test
-  `the way back sits exactly where the way in was` holds that, and `the tab strip is the
-  bottom edge of the screen` holds the rest.
+- **8px over the row and 8px under it**, twice the 4px between the keys above — asked for
+  in those words the same day, the row having come out 14px under Paste (`#modebar`'s own
+  6px on top of the header's 8). A desktop browser lays the strip's scrollbar out under
+  the tabs and the header grew by it, so its thickness is measured into `--tabs-sb` and
+  hung into the header's bottom padding; headless Chromium draws no scrollbar, so the test
+  stands a bottom border in for it.
+- **The drawer's header stayed at the top.** It went down with the strip for an hour, so
+  that ❮ stood exactly where ☰ is, and came back: "список сессий оставь как был, сверху".
+  ❮ keeps ☰'s column and box. `the tab strip is the bottom edge of the screen` holds the
+  rest of this section.
 
 ## A tab carries three answers, and none of them is the others
 

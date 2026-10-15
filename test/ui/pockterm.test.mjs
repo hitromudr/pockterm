@@ -552,11 +552,12 @@ describe('the session list is a drawer', () => {
       'the terminal was reset by a trip to the list');
   });
 
-  test('the way back sits exactly where the way in was', async () => {
-    // ☰ opens it and ❮ closes it, and they are the same spot — that is the whole
-    // idea, so the box is asserted rather than left to the padding. Ornament
-    // glyphs carry uneven side bearings, so ❮ under the bar's usual padding sat
-    // visibly off to one side.
+  test('the way back is the way in, at the top of the drawer', async () => {
+    // ☰ opens it and ❮ closes it, and they were the same spot until the strip went
+    // to the bottom of the screen (2026-10-15); the owner kept the drawer as it
+    // was. Same column and same box, so they still read as one button — asserted
+    // rather than left to the padding: ornament glyphs carry uneven side
+    // bearings, so ❮ under the bar's usual padding sat visibly off to one side.
     await stand.open();
     await stand.attach('demo');
     const { page } = stand;
@@ -575,7 +576,8 @@ describe('the session list is a drawer', () => {
       () => document.getElementById('screen-sessions').getBoundingClientRect().x === 0,
       null, { timeout: 3000 });
     const chevron = await box('drawer-close');
-    assert.deepEqual(chevron, hamburger, 'the way out is not where the way in was');
+    assert.deepEqual({ ...chevron, y: 0 }, { ...hamburger, y: 0 }, 'the way out is not the way in');
+    assert.ok(chevron.y < 60, `the way out is not at the top of the drawer: ${chevron.y}`);
   });
 
   test('the tab strip is the bottom edge of the screen', async () => {
@@ -599,6 +601,27 @@ describe('the session list is a drawer', () => {
       `the strip is not under the row with Paste: ${JSON.stringify(e)}`);
     assert.ok(Math.abs(e.header.bottom - e.screen.bottom) < 0.5, 'something is under the strip');
     assert.ok(e.term.top < e.modebar.top, 'the pane is not at the top');
+    // And 8px over the row and under it, twice the 4px between the keys above:
+    // asked for in those words, the row having stood 14px under Paste.
+    const g = await page.evaluate(() => {
+      const r = (sel) => document.querySelector(sel).getBoundingClientRect();
+      const keys = r('#keybar button[data-key="tab"]').bottom;
+      const paste = r('#paste');
+      const row = r('#back');
+      return { keys: paste.top - keys, over: row.top - paste.bottom, under: r('#screen-term').bottom - row.bottom };
+    });
+    assert.deepEqual(g, { keys: 4, over: 8, under: 8 }, 'the strip is not spaced twice the keys');
+    // A desktop browser lays the strip's scrollbar out under the tabs, and the
+    // header grew by it. Headless Chromium draws none, so a bottom border stands
+    // in for it: the same gap between offsetHeight and clientHeight, the same
+    // growth of the box. Without --tabs-sb the row moved to 10.5 and 10.5.
+    await page.addStyleTag({ content: '#tabs { border-bottom: 10px solid transparent; }' });
+    await page.waitForFunction(() => document.getElementById('tabs').style.getPropertyValue('--tabs-sb') === '10px');
+    const sb = await page.evaluate(() => {
+      const r = (sel) => document.querySelector(sel).getBoundingClientRect();
+      return { over: r('#back').top - r('#paste').bottom, under: r('#screen-term').bottom - r('#back').bottom };
+    });
+    assert.deepEqual(sb, { over: 8, under: 8 }, 'a scrollbar under the tabs moves the row');
 
     await page.click('#new-term');
     await page.waitForSelector('#new-menu-term:not([hidden])');

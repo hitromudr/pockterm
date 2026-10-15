@@ -153,11 +153,8 @@ html, body {
 /* The chevron is centred by the box rather than by padding: ornament glyphs
    like ❮ carry their own uneven side bearings, so `padding: 8px 12px` — which
    is what every other bar button uses — leaves it visibly off to one side. Same
-   box as ☰ on the terminal's header, because it stands in the same place. */
-/* At the bottom of the drawer, like the terminal's header at the bottom of the
-   screen, and for the same reason it pays the system's bottom inset: it is the
-   last thing in the column. */
-#screen-sessions header.bar { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+   box as ☰ on the terminal's header: it stood in the same place until that
+   header went to the bottom (2026-10-15), and it is still the same button. */
 #screen-sessions header.bar #drawer-close {
   display: flex;
   align-items: center;
@@ -546,14 +543,14 @@ button.session .agents .count { font-size: 10px; line-height: 13px; }
 }
 #refresh { margin-left: auto; }
 
-/* Presets for a new session, and the rename field. Both stand over the
+/* Presets for a new session, and the rename field. Both hang under the
    header of the list screen, where the decision is being made. */
 #new-menu, #rename-box {
   display: flex;
   gap: 6px;
   padding: 6px 8px;
   background: var(--bar);
-  border-top: 1px solid #2a3345;
+  border-bottom: 1px solid #2a3345;
 }
 #new-menu { flex-wrap: wrap; }
 #new-menu button {
@@ -605,7 +602,7 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
    the screen. */
 #settings-toggle {
   flex: 0 0 auto;
-  padding: 12px 14px;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
   color: #8b93a7;
   background: #11161f;
   border: none;
@@ -776,16 +773,18 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
 #new-menu button.own, #new-menu-term button.own { color: #ffe9a8; }
 
 /* --- session list --- */
-/* flex:1 with min-height:0: the list, not its content, owns the space between
-   the top edge and what is pinned under it, so it scrolls as one. The bottom
-   safe-area inset is paid by the header, which is the last thing on this screen
-   now — the list once ran under the gesture bar for want of it. */
+/* The bottom safe-area inset is the reason the last session was unreachable
+   on a phone: the screen itself only pads top/left/right (see #screen-*
+   above), and the terminal screen makes up for it in its bottom bars — which
+   this screen does not have, so the list ran under the gesture bar.
+   flex:1 with min-height:0 goes with it: the list, not its content, owns the
+   space between the header and the bottom edge, so it scrolls as one. */
 #session-list {
   flex: 1;
   min-height: 0;
   list-style: none;
   overflow-y: auto;
-  padding: 8px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
 }
 #session-list li { margin-bottom: 8px; }
 button.session {
@@ -899,7 +898,7 @@ button.session .line .kind:not(:empty) { margin-right: 6px; }
   min-height: 0;
   list-style: none;
   overflow-y: auto;
-  padding: 8px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
 }
 #folder-list li { margin-bottom: 8px; }
 button.folder {
@@ -937,9 +936,20 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    that pays the system's bottom inset for everything above it. Positioned so the
    presets can hang off it, and with no z-index, which would make it a stacking
    context and put the popup under the scrim. */
+/* 8px over the row and 8px under it, twice the 4px between the keys above:
+   asked for in those words, the strip having stood 14px under Paste (#modebar's
+   own 6px on top of these 8). */
 #screen-term header.bar {
   position: relative;
   padding-bottom: calc(8px + env(safe-area-inset-bottom));
+}
+#screen-term header.bar #tabs {
+  /* A desktop browser draws the strip's scrollbar in the layout, under the tabs,
+     and the header grew by it — the gap under the row was the scrollbar plus the
+     8px. Its thickness is measured into --tabs-sb (see app.js) and hung into the
+     header's bottom padding with the plates' room, so the row keeps the height of
+     ☰ beside it. A phone's scrollbar overlays and measures 0. */
+  margin-bottom: calc(-9px - var(--tabs-sb, 0px));
 }
 /* The presets on the terminal screen: an overlay over the header, so opening it
    does not resize the terminal underneath.
@@ -1649,8 +1659,9 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 4px;
-  /* Not the last bar any more: the header under it pays the bottom inset. */
-  padding: 6px;
+  /* Nothing at the bottom: the header under it starts with the 8px that stand
+     between the two, and it pays the system inset too. */
+  padding: 6px 6px 0;
   background: var(--bar);
   /* What the clip's popup hangs from. */
   position: relative;

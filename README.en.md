@@ -200,7 +200,7 @@ make qr PUBLIC_URL=https://pockterm.example.com
 
 The QR code is printed straight into the terminal: point the camera at it and
 the address opens, token included. **The page then offers to install itself** —
-a bar at the top of the session list with an "Установить" button: on Android,
+a bar under the session list's header with an "Установить" button: on Android,
 Chrome builds and installs a real package, so pockterm turns up in the app list
 and opens in its own window without tabs. Safari has no install event at all, so
 there the same bar names the route instead: Share → "Add to Home Screen".
