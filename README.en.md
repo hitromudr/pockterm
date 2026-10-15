@@ -353,7 +353,9 @@ phone must find the same buttons, and CI restarts the binary several times a day
 
 Everything that used to sit behind `⋯` over the terminal moved into the same panel —
 text size, notifications and the probe that checks them, `〰 smooth`, the keyboard
-mode, the input log, the version and Install. Moved rather than copied: two places holding one lever drift apart. The
+mode, the input log, the version and Install. Also there: `▄ Вкладки снизу` /
+`▀ Вкладки сверху`, where the strip with `☰`, the tabs and `+` stands — at the bottom
+under the keys by default, where the thumb is; per device. Moved rather than copied: two places holding one lever drift apart. The
 `▾` that hides the bars stayed on the key bar, being an action on the working
 surface rather than a setting.
 

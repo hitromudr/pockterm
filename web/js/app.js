@@ -104,6 +104,14 @@ let tabsSignature = null;
 // difference is measured rather than written down: it sits between the keys and
 // the bar as well. Without a bar it is the plain 8px over the row.
 const TABS_GAP = 8;
+
+// Where the strip stands: at the bottom (the default since 2026-10-15) or at the
+// top, where it stood before. A per-device setting, like the smooth lever, and
+// applied here, before anything is laid out, so the page never draws one and
+// then moves to the other.
+let stripTop = false;
+try { stripTop = localStorage.getItem('pt-strip') === 'top'; } catch (_) {}
+screenTerm.classList.toggle('strip-top', stripTop);
 if (tabsEl && typeof ResizeObserver === 'function') {
   const header = tabsEl.parentElement;
   const backBtn = document.getElementById('back');
@@ -1597,14 +1605,17 @@ function hideKindHelp() {
   }
 }
 
-// placePlate puts the plate over the box it is about, clamped to the screen: the
-// strip scrolls sideways, so a tab can sit at either edge of it, and the strip is
-// the bottom edge of the screen, so there is nothing under it to hang one on.
+// placePlate puts the plate on the pane's side of the box it is about, clamped to
+// the screen: the strip scrolls sideways, so a tab can sit at either edge of it,
+// and it is an edge of the screen itself — the bottom by default, the top by
+// setting — so there is nothing on the other side to hang one on.
 function placePlate(r, drop, centred) {
   const w = kindHelpEl.offsetWidth;
   const want = centred ? r.left + r.width / 2 - w / 2 : r.left;
   kindHelpEl.style.left = `${Math.max(4, Math.min(want, window.innerWidth - w - 4))}px`;
-  kindHelpEl.style.top = `${r.top - drop - kindHelpEl.offsetHeight}px`;
+  kindHelpEl.style.top = stripTop
+    ? `${r.bottom + drop}px`
+    : `${r.top - drop - kindHelpEl.offsetHeight}px`;
 }
 
 // showKindHelp puts the plate over the tab it is about, clamped to the screen:
@@ -2637,9 +2648,10 @@ document.getElementById('term').addEventListener('click', (e) => {
   // none of that survives this handler handing the focus straight back a moment
   // later. Anything drawn inside #term has to be named here; the list is the
   // mechanism, not a set of exceptions. ▴ joined it when it moved inside #term
-  // with the header going to the bottom of the screen.
+  // with the header going to the bottom of the screen, and the banners when the
+  // strip became a setting.
   if (e.target instanceof Element
-    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds, #show-bars')) return;
+    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds, #show-bars, #status, #update-bar, #toast')) return;
   term.focus();
   refit();
 });
@@ -3283,6 +3295,20 @@ smoothBtn.addEventListener('click', () => {
   // Whatever the shift was at that moment belongs to the mode being left.
   trackScreen(0);
   report('smooth', { on: smoothScroll });
+});
+
+const stripPosBtn = document.getElementById('strip-pos');
+function renderStripPos() {
+  stripPosBtn.textContent = stripTop ? '▀ Вкладки сверху' : '▄ Вкладки снизу';
+}
+renderStripPos();
+stripPosBtn.addEventListener('click', () => {
+  stripTop = !stripTop;
+  try { localStorage.setItem('pt-strip', stripTop ? 'top' : 'bottom'); } catch (_) {}
+  screenTerm.classList.toggle('strip-top', stripTop);
+  renderStripPos();
+  refit();
+  report('strip', { top: stripTop });
 });
 
 // --- the composer's memory ------------------------------------------------

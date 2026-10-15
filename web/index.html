@@ -123,6 +123,13 @@
              records the typed text itself. -->
         <button id="input-diag" title="Record what the keyboard does">&#128269; Input log</button>
       </div>
+      <div class="row">
+        <!-- Where the tab strip stands: at the bottom, under the keys, where the
+             thumb is (the default since 2026-10-15), or at the top, where it stood
+             before. Per device, like the smooth lever: a phone and a laptop are
+             held differently. -->
+        <button id="strip-pos" title="Where the tab strip stands">&#9604; Вкладки снизу</button>
+      </div>
       <!-- The session buttons: the four the page starts with and whatever the
            owner added beside them, one list. A label to tap and a command to
            run — and for a default, no command at all: its own name is the make
@@ -168,19 +175,24 @@
          screen, and there is nothing below it to hang a plate on. -->
     <div id="kind-help" hidden></div>
     <div id="menu-scrim" hidden></div>
-    <div id="status" hidden></div>
-    <!-- CI installs a build the moment it arrives, so the unit restarts under
-         whoever is looking and the page reconnects still running the previous
-         assets. It cannot tell that by itself — its own code is the old code —
-         so the server names the version it serves and this appears. A button
-         rather than an automatic reload: a page that reloaded itself would
-         throw away whatever was half-typed in the composer. -->
-    <div id="update-bar" hidden>
-      <span id="update-text"></span>
-      <button id="update-now" type="button">Обновить</button>
-    </div>
-    <div id="toast" hidden></div>
     <div id="term">
+      <!-- The banners: the reconnect line, the update offer, the toast. Inside
+           #term so they hang from the top of the pane wherever the tab strip is —
+           over it or under it, a setting since 2026-10-15 — and can never cover
+           the tabs, which is what each of them did once from `top: 52px`. Named
+           in the click handler's skip list with everything else in here. -->
+      <div id="status" hidden></div>
+      <!-- CI installs a build the moment it arrives, so the unit restarts under
+           whoever is looking and the page reconnects still running the previous
+           assets. It cannot tell that by itself — its own code is the old code —
+           so the server names the version it serves and this appears. A button
+           rather than an automatic reload: a page that reloaded itself would
+           throw away whatever was half-typed in the composer. -->
+      <div id="update-bar" hidden>
+        <span id="update-text"></span>
+        <button id="update-now" type="button">Обновить</button>
+      </div>
+      <div id="toast" hidden></div>
       <!-- Selection mode lays a frozen copy of the screen over the live
            terminal; see #snapshot in css/app.css. -->
       <pre id="snapshot" hidden></pre>

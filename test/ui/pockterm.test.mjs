@@ -637,6 +637,52 @@ describe('the session list is a drawer', () => {
     await page.waitForSelector('#keybar:not([hidden])');
   });
 
+  test('the strip can stand at the top, as it did, and stays there', async () => {
+    // "добавить в настройки переключатель панель снизу как сейчас или сверху как
+    // была", the bottom being the default. Per device: in localStorage, which the
+    // stand keeps across page loads — so it is put back whatever happens here.
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    try {
+      assert.match(await page.textContent('#strip-pos'), /снизу/, 'the bottom is not the default');
+      await page.evaluate(() => document.getElementById('strip-pos').click());
+      assert.match(await page.textContent('#strip-pos'), /сверху/);
+      const geo = () => page.evaluate(() => {
+        const r = (sel) => document.querySelector(sel).getBoundingClientRect().toJSON();
+        return { header: r('#screen-term header.bar'), term: r('#term'), modebar: r('#modebar'),
+          screen: r('#screen-term'), top: document.getElementById('screen-term').classList.contains('strip-top') };
+      });
+      let g = await geo();
+      assert.ok(g.top, 'the setting did not move the strip');
+      assert.ok(Math.abs(g.header.top - g.screen.top) < 0.5 && g.header.bottom <= g.term.top + 0.5,
+        `the strip is not over the pane: ${JSON.stringify(g)}`);
+      assert.ok(Math.abs(g.modebar.bottom - g.screen.bottom) < 0.5, 'the keys are not the bottom edge');
+
+      // The presets hang down from it, and the banners start under it rather than
+      // over the tabs.
+      await page.click('#new-term');
+      await page.waitForSelector('#new-menu-term:not([hidden])');
+      const menu = await page.evaluate(() => document.getElementById('new-menu-term').getBoundingClientRect().toJSON());
+      assert.ok(Math.abs(menu.top - g.header.bottom) < 0.5, `the presets do not hang under the strip: ${JSON.stringify(menu)}`);
+      const plus = await page.locator('#new-term').boundingBox();
+      await page.mouse.click(plus.x + plus.width / 2, plus.y + plus.height / 2);
+      await page.waitForSelector('#new-menu-term', { state: 'hidden' });
+      await page.evaluate(() => { document.getElementById('toast').hidden = false; });
+      const toast = await page.evaluate(() => document.getElementById('toast').getBoundingClientRect().toJSON());
+      assert.ok(toast.top >= g.header.bottom - 0.5, `the toast covers the strip: ${JSON.stringify(toast)}`);
+      await page.evaluate(() => { document.getElementById('toast').hidden = true; });
+
+      // And a reload keeps it.
+      await stand.open();
+      await stand.attach('demo');
+      g = await geo();
+      assert.ok(g.top && g.header.bottom <= g.term.top + 0.5, 'a reload put the strip back at the bottom');
+    } finally {
+      await page.evaluate(() => { try { localStorage.removeItem('pt-strip'); } catch (_) {} });
+    }
+  });
+
   test('a tap outside closes it, and a session in it switches', async () => {
     await stand.open();
     await stand.attach('demo');
@@ -927,6 +973,40 @@ describe('the tab strip on a desktop', () => {
     });
     assert.deepEqual(m, { thin: true, over: 8, under: 8, belowRow: 8, scroll: 0, hit: true },
       'the strip\'s scrollbar is not where it belongs');
+  });
+
+  test('at the top, its scrollbar is under the tabs, half way to the pane', async () => {
+    // The mirror of the above, which is where it stood before the strip went down.
+    await stand.open();
+    const { page } = stand;
+    try {
+      await page.evaluate(() => localStorage.setItem('pt-strip', 'top'));
+      await stand.open();
+      await stand.attach(names[0]);
+      await page.waitForFunction((n) => document.querySelectorAll('#tabs button[data-session]').length === n,
+        names.length, { timeout: 8000 });
+      await page.waitForFunction(() => {
+        const t = document.getElementById('tabs');
+        return t.offsetHeight - t.clientHeight > 0;
+      }, null, { timeout: 3000 });
+      const m = await page.evaluate(() => {
+        const r = (sel) => document.querySelector(sel).getBoundingClientRect();
+        const t = document.getElementById('tabs');
+        const sb = t.offsetHeight - t.clientHeight;
+        const box = r('#tabs');
+        const tab = r('#tabs button');
+        return {
+          over: box.bottom - sb - tab.bottom,
+          under: r('#term').top - box.bottom,
+          aboveRow: r('#back').top - r('#screen-term').top,
+          scroll: document.scrollingElement.scrollHeight - innerHeight,
+        };
+      });
+      assert.deepEqual(m, { over: 8, under: 8, aboveRow: 8, scroll: 0 },
+        'the strip\'s scrollbar is not where it belongs at the top');
+    } finally {
+      await page.evaluate(() => { try { localStorage.removeItem('pt-strip'); } catch (_) {} });
+    }
   });
 });
 

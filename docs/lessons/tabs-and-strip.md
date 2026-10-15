@@ -50,6 +50,16 @@ with it, each for a reason of its own:
   ❮ keeps ☰'s column and box. `the tab strip is the bottom edge of the screen` holds the
   rest of this section.
 
+**Or at the top, by setting.** `#strip-pos` in the drawer's settings, per device in
+`localStorage` (`pt-strip`), bottom by default — asked for the same day. One header moved
+by `order: -1` under `#screen-term.strip-top`, and every point above mirrored there: not
+turned, so the scrollbar is under the tabs; `--tabs-pad` under the row; the presets
+hanging down; the plates under the tab; `#modebar` paying the bottom inset again. The
+banners (`#status`, `#update-bar`, `#toast`) moved inside `#term` for it, so they hang
+from the pane's top edge whichever side the strip is on — from `top: 52px` each of them
+once covered the tabs. Tests: `the strip can stand at the top, as it did, and stays
+there`, and its desktop twin for the scrollbar.
+
 ## A tab carries three answers, and none of them is the others
 
 Which sessions exist is the row, which one you are in is a **frame**, and what

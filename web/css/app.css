@@ -972,6 +972,34 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   margin-bottom: -9px;
 }
 #screen-term header.bar #tabs > * { scale: 1 -1; }
+
+/* Or at the top, where it stood before, for whoever holds the device that way —
+   a setting (#strip-pos), the bottom being the default. Moved by `order`, not by
+   a second copy of the header: one strip, one set of handlers. Everything about
+   it is the mirror of the above: not turned, so the scrollbar is under the tabs;
+   the measured room (--tabs-pad) under the row instead of over it; the presets
+   hanging down; and the system's bottom inset back on #modebar, which is the
+   last bar again. */
+#screen-term.strip-top header.bar {
+  order: -1;
+  padding-top: 8px;
+  padding-bottom: var(--tabs-pad, 8px);
+}
+#screen-term.strip-top header.bar #tabs {
+  scale: none;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  margin-top: -8px;
+  margin-bottom: calc(-8px - var(--tabs-sb, 0px));
+}
+#screen-term.strip-top header.bar #tabs > * { scale: none; }
+#screen-term.strip-top #new-menu-term {
+  top: 100%;
+  bottom: auto;
+  border-top: none;
+  border-bottom: 1px solid #2a3345;
+}
+#screen-term.strip-top #modebar { padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
 /* And as thin as the pane's own bar (#scroll-thumb): a 6px thumb in the accent on
    a faint 4px rail. Only where a mouse is the pointer — a phone's scrollbar
    overlays and comes only while scrolling, and a styled one would take room
@@ -1024,10 +1052,11 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   position: absolute;
   left: 0;
   right: 0;
-  /* At the top edge, clear of the system's inset: the header that once had to
-     be stepped over is at the bottom now, and a reconnect is exactly when
-     somebody reaches for another session. */
-  top: env(safe-area-inset-top);
+  /* At the top of the pane, which it is inside: the tab strip is over the pane
+     or under it (a setting), and this once covered ☰ and the tabs from
+     `top: 52px` — a reconnect is exactly when somebody reaches for another
+     session. */
+  top: 0;
   z-index: 10;
   background: #7a3b3b;
   color: #fff;
@@ -1038,14 +1067,14 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 /* Overlay, like #status and #toast: a new version arriving must not resize the
    terminal under the thumb that is scrolling it. Green rather than the
    reconnect banner's red — nothing is wrong, there is something to take.
-   Placed like the toast. When the header was at the top, a bar spanning it
+   Placed like the toast, inside the pane. A bar spanning the header once
    covered ☰ and the session tabs, and this one stays until it is tapped — the
    browser test found that by being unable to reach ☰. */
 #update-bar {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  top: env(safe-area-inset-top);
+  top: 0;
   z-index: 12;
   display: flex;
   align-items: center;
@@ -1107,7 +1136,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  top: env(safe-area-inset-top);
+  top: 0;
   z-index: 11;
   max-width: 90%;
   padding: 8px 14px;
