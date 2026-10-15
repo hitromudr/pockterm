@@ -637,6 +637,26 @@ describe('the session list is a drawer', () => {
     await page.waitForSelector('#keybar:not([hidden])');
   });
 
+  test('the notification probe stands under the switch it checks', async () => {
+    // "проверить должна быть под кнопкой уведомлений, потому что проверяется
+    // уведомление. вкладки сверху/снизу - слева": one row, the strip setting
+    // over the first two columns and the probe under #bell, edge for edge.
+    await stand.open();
+    await stand.attach('demo');
+    await stand.openSettings();
+    const r = await stand.page.evaluate(() => Object.fromEntries(['font-dec', 'bell', 'strip-pos', 'notify-test']
+      .map((id) => [id, document.getElementById(id).getBoundingClientRect().toJSON()])));
+    const near = (a, b) => Math.abs(a - b) < 1;
+    assert.ok(near(r['notify-test'].left, r.bell.left) && near(r['notify-test'].right, r.bell.right),
+      `the probe is not under the bell: ${JSON.stringify(r)}`);
+    assert.ok(r['notify-test'].top > r.bell.bottom, 'the probe is not below the bell');
+    assert.ok(near(r['strip-pos'].left, r['font-dec'].left) && near(r['strip-pos'].top, r['notify-test'].top),
+      `the strip setting is not on the left of that row: ${JSON.stringify(r)}`);
+    const clipped = await stand.page.evaluate(() => ['strip-pos', 'notify-test']
+      .filter((id) => { const b = document.getElementById(id); return b.scrollWidth > b.clientWidth; }));
+    assert.deepEqual(clipped, [], 'a label does not fit its button');
+  });
+
   test('the strip can stand at the top, as it did, and stays there', async () => {
     // "добавить в настройки переключатель панель снизу как сейчас или сверху как
     // была", the bottom being the default. Per device: in localStorage, which the

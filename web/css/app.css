@@ -635,6 +635,12 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
   white-space: nowrap;
 }
 #settings .row button.on { background: var(--accent); color: #0b0e14; }
+/* A row laid on the three columns of the row above it, so that a button can sit
+   exactly under another: equal flex items are (width - gaps) / 3 each, and so is
+   this grid. Flex weights cannot say it — the buttons are border-box with
+   padding, and `flex: 2` came out 5px short of two columns and a gap. */
+#settings .row.thirds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#settings .row.thirds .span2 { grid-column: span 2; }
 /* The owner's own session buttons. A row is a label, the command under it, and
    one tap to remove — removing a button is not closing a session, so it does not
    ask twice. */

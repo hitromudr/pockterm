@@ -496,7 +496,7 @@ device was notified and when, while the body is encrypted to keys only that
 device holds.
 
 **Whether one arrives is checked by a tap, not by waiting for an agent.**
-"🔔 Проверить" under the switch raises a probe and then asks the
+"Проверить" under the switch raises a probe and then asks the
 browser what is left standing in the shade; the answer is written under the
 button. "Уведомление доставлено" means the channel is live. "Браузер принял, но
 в шторке пусто" means the system ate it: an installed PWA has its own

@@ -94,20 +94,23 @@
              the host is actually set to. -->
         <button id="bell" title="Nothing is notified. Tap to notify this page">&#128276; Notify</button>
       </div>
-      <div class="row">
+      <div class="row thirds">
+        <!-- Where the tab strip stands: at the bottom, under the keys, where the
+             thumb is (the default since 2026-10-15), or at the top, where it stood
+             before. Per device, like the smooth lever: a phone and a laptop are
+             held differently. Two columns wide, on the left, so that the probe
+             beside it stands exactly under the switch it checks. -->
+        <button id="strip-pos" class="span2" title="Where the tab strip stands">&#9604; Вкладки снизу</button>
         <!-- Whether a notification reaches this device at all, answered by a tap
              instead of by waiting for an agent to finish. Everything else on that
              path is raised by the watcher, hours apart and only about a session
              nothing is showing — so "нет уведомлений" took a day to tell from "нет
              событий", and the shade being empty after a successful call (a system
-             channel switched off for the installed app) looked like neither. -->
-        <button id="notify-test" title="Прислать пробное уведомление на это устройство">&#128276; Проверить</button>
-        <!-- Where the tab strip stands: at the bottom, under the keys, where the
-             thumb is (the default since 2026-10-15), or at the top, where it stood
-             before. Per device, like the smooth lever: a phone and a laptop are
-             held differently. Shares a row with the probe since 2026-10-15: two
-             full-width rows of one button each were the owner's complaint. -->
-        <button id="strip-pos" title="Where the tab strip stands">&#9604; Вкладки снизу</button>
+             channel switched off for the installed app) looked like neither.
+             Under #bell, since that is what it checks ("проверить должна быть под
+             кнопкой уведомлений"). No 🔔 in the label: a third of a phone's
+             drawer is ~102px and the glyph made it 107. -->
+        <button id="notify-test" title="Прислать пробное уведомление на это устройство">Проверить</button>
       </div>
       <!-- The answer, where the button is. Not the toast: that one lives inside
            the terminal screen, which is hidden behind the drawer the settings
