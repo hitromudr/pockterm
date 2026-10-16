@@ -522,7 +522,13 @@ func ParsePaneMode(out string) PaneState {
 // attaching to the session directly would put both on the owner's own session.
 func Attach(target, webSession string) []string {
 	return []string{
-		"tmux", "new-session", "-A", "-s", webSession, "-t", target,
+		// -T hyperlinks declares this client able to show OSC 8 links. tmux
+		// keeps the links of every pane but writes them out only to a client
+		// with that feature, and the default features for xterm* omit it, so
+		// without this the page never saw a link Claude Code printed. Per
+		// client: the user's own terminals keep whatever they declare.
+		"tmux", "-T", "hyperlinks",
+		"new-session", "-A", "-s", webSession, "-t", target,
 		";", "set-option", "destroy-unattached", "on",
 		// mouse on lets the wheel/touch enter tmux copy-mode so scrollback
 		// works in the browser. Scoped to this grouped session, so the

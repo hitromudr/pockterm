@@ -508,3 +508,27 @@ What it does not cover: a change of width (rotation) still resizes, and so does 
 else that changes the box with the keyboard down. Lines already eaten do not come back.
 `the keyboard takes no rows from the pane` holds `#{pane_height}` through a keyboard up
 and down, on a near-empty pane and a full one.
+
+## A tap on a link raises no keyboard
+
+Asked for on 2026-10-16 as «нужны кликабельные ссылки». Two findings decided the shape.
+
+**tmux strips OSC 8 from a client that does not declare it.** Claude Code prints every
+URL as `ESC]8;id=…;https://…ESC\`, and `capture-pane -e` shows them in the panes, but
+the default `terminal-features` for `xterm*` has no `hyperlinks`, so the attach that
+feeds the page received the bare text. Measured on a private server, tmux 3.5a: the
+same pane, attached with and without `-T hyperlinks`, `]8;` in the output only with it.
+`-T` is per client, so `Attach` carries it and nobody's own terminal changes. Plain
+text URLs (a shell, `git push`) are found by `js/urls.js` along the run of wrapped
+rows, cell by cell so a wide character before a link does not shift it.
+
+**xterm focuses its field on every mousedown** (`this.focus()` first thing in the
+screen's mousedown listener), before its linkifier knows the press is on a link — and
+on Android the field is the keyboard. A tap's compatibility mousemove arrives first and
+makes the linkifier report the link through `hover`; so a capture-phase mousedown on
+`#term` that finds a hovered link under the press (checked against the cell, not
+trusted) keeps the press from xterm and from tmux, and the click opens it. With a
+mouse none of that happens: hover, click, focus as before. A non-web OSC 8 link
+(`file://`, which Claude Code uses for paths) is left unmade by xterm, so the tap on
+it is a tap on the text. `links in the pane` fails with either half reverted.
+

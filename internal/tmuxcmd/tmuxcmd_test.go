@@ -9,7 +9,8 @@ import (
 func TestAttach(t *testing.T) {
 	got := Attach("claude", "web-1")
 	want := []string{
-		"tmux", "new-session", "-A", "-s", "web-1", "-t", "claude",
+		"tmux", "-T", "hyperlinks",
+		"new-session", "-A", "-s", "web-1", "-t", "claude",
 		";", "set-option", "destroy-unattached", "on",
 		";", "set-option", "mouse", "on",
 	}

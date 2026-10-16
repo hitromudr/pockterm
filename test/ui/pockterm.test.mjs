@@ -7,6 +7,9 @@ import { readdirSync, existsSync } from 'node:fs';
 import { startStand, FAKE_IME } from './stand.mjs';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // A one-pixel PNG, base64 — the smallest thing the server will accept.
 const PNG_B64 =
@@ -4882,5 +4885,91 @@ describe('the console pad over an agent', () => {
       () => (document.querySelector('.xterm-rows')?.textContent || '').includes('pwd'),
       null, { timeout: 15000 });
     await page.waitForSelector('#cmdpad', { state: 'hidden' });
+  });
+});
+
+describe('links in the pane', () => {
+  // Asked for as «нужны кликабельные ссылки». Two kinds reach the page: OSC 8,
+  // which is how Claude Code prints every URL and which tmux wrote out to this
+  // client only once it declared `hyperlinks` — before that the page never saw
+  // one — and plain text, found by looking. On a phone a tap opens either, and
+  // must not raise the keyboard on its way out: xterm focuses its field on every
+  // press, before it knows the press is on a link.
+  let stand;
+  let dir;
+  before(async () => {
+    stand = await startStand();
+    dir = mkdtempSync(join(tmpdir(), 'pockterm-links-'));
+    const script = join(dir, 'show.sh');
+    writeFileSync(script, [
+      '#!/bin/sh',
+      "printf '\\033]8;;https://example.com/osc\\033\\\\OSCLINK\\033]8;;\\033\\\\\\n'",
+      "printf '\\033]8;;file:///etc/hostname\\033\\\\FILELINK\\033]8;;\\033\\\\\\n'",
+      `printf 'wrap https://example.org/${'a'.repeat(60)}/end tail\\n'`,
+      'exec sleep 600',
+      '',
+    ].join('\n'));
+    chmodSync(script, 0o755);
+    await stand.page.addInitScript(() => {
+      window.__opened = [];
+      window.open = (u) => { window.__opened.push(u); return null; };
+    });
+    await stand.open();
+    await stand.attach('demo');
+    stand.tmux(['respawn-pane', '-k', '-t', 'demo', script]);
+    await stand.page.waitForFunction(
+      () => (document.querySelector('.xterm-rows')?.textContent || '').includes('end tail'),
+      null, { timeout: 15000 });
+  });
+  after(async () => {
+    await stand.stop();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Tap the middle of a cell, counted on the grid the page draws.
+  async function tapCell(col, row) {
+    const { page } = stand;
+    const box = await page.locator('.xterm-screen').boundingBox();
+    const [cols, rows] = stand.tmux(['list-clients', '-F', '#{client_width} #{client_height}'])
+      .trim().split('\n')[0].split(' ').map(Number);
+    await page.evaluate(() => { document.activeElement?.blur(); window.__opened = []; });
+    await page.touchscreen.tap(box.x + (col + 0.5) * box.width / cols, box.y + (row + 0.5) * box.height / rows);
+    await page.waitForTimeout(400);
+    return page.evaluate(() => ({
+      opened: window.__opened.slice(),
+      focused: !!document.activeElement?.classList.contains('xterm-helper-textarea'),
+    }));
+  }
+  async function rowOf(text) {
+    return stand.page.evaluate((t) => [...document.querySelectorAll('.xterm-rows > div')]
+      .findIndex((r) => r.textContent.startsWith(t)), text);
+  }
+
+  test('a tap on a link the agent printed opens it, and raises no keyboard', async () => {
+    const got = await tapCell(2, await rowOf('OSCLINK'));
+    assert.deepEqual(got, { opened: ['https://example.com/osc'], focused: false });
+    assert.match(stand.serverLog(), /client: \{"event":"link","kind":"osc8","opened":true,"host":"example.com"/);
+  });
+
+  test('a plain URL wrapped over two rows opens whole from either', async () => {
+    const url = `https://example.org/${'a'.repeat(60)}/end`;
+    const row = await rowOf('wrap https');
+    assert.deepEqual(await tapCell(8, row), { opened: [url], focused: false });
+    assert.deepEqual(await tapCell(3, row + 1), { opened: [url], focused: false });
+  });
+
+  test('a link to a file on the host is no link at all', async () => {
+    // Claude Code links file paths as well, and they name a file on the host.
+    // xterm leaves a non-web OSC 8 link unmade, so the tap is a tap on the text.
+    assert.deepEqual(await tapCell(2, await rowOf('FILELINK')), { opened: [], focused: true });
+  });
+
+  test('a tap beside a link is still a tap on the terminal', async () => {
+    // The word in front of the wrapped link, on its own row, and an empty row
+    // under it: the keyboard comes up as it always did, and nothing is opened.
+    const row = await rowOf('wrap https');
+    for (const [col, r] of [[1, row], [6, row + 5]]) {
+      assert.deepEqual(await tapCell(col, r), { opened: [], focused: true }, `tap at ${col},${r}`);
+    }
   });
 });

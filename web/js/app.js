@@ -15,6 +15,7 @@ import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, M
 import { dropIndex } from './carry.js';
 import { thumb as thumbAt, backAt } from './bar.js';
 import { installDecision, installText, isIOS } from './install.js';
+import { linksOnRows, openable } from './urls.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -187,6 +188,113 @@ term.loadAddon(fit);
 // repeat rather than rows taken from tmux.
 const termBox = document.getElementById('term');
 term.open(termBox);
+
+// Links: a tap on one opens it in a new tab. See js/urls.js for the two kinds
+// and why only http(s) is opened. The journal line says which kind it was and
+// where to, by host only — a path can carry a token.
+function openLink(uri, kind) {
+  if (!openable(uri)) {
+    report('link', { kind, opened: false });
+    return;
+  }
+  report('link', { kind, opened: true, host: new URL(uri).host });
+  window.open(uri, '_blank', 'noopener');
+}
+
+// The link xterm has under the pointer, told through its hover and leave: the
+// range in buffer cells (1-based, end inclusive) and what it opens.
+let linkUnder = null;
+function hoverLink(uri, kind, range) { linkUnder = { uri, kind, range }; }
+function leaveLink() { linkUnder = null; }
+
+// OSC 8. xterm's own default asks confirm() first, which on a phone is a system
+// dialog over the pane for every link Claude Code prints.
+term.options.linkHandler = {
+  activate: (_e, uri) => openLink(uri, 'osc8'),
+  hover: (_e, uri, range) => hoverLink(uri, 'osc8', range),
+  leave: leaveLink,
+};
+
+// On a touch the link is opened here, not by xterm. xterm focuses its field on
+// every mousedown, before it knows the press is on a link, and on Android that
+// field is the keyboard — raised over a page that is about to leave for another
+// tab. A tap's mouse events are the browser's copies of the touch, and the first
+// of them, a mousemove, is what makes xterm find the link and report it hovered;
+// so by the mousedown the page knows, and keeps the press from xterm (and from
+// tmux, which would take it as a click into the pane). The click that follows
+// opens it, and the handler on #term below then has nothing to focus.
+//
+// With a mouse, xterm keeps all of it: hover underlines, the click opens through
+// the handlers above, and focus is how a desktop types at all.
+let touchedTermAt = -Infinity;
+let linkPressed = null;
+termBox.addEventListener('touchstart', () => { touchedTermAt = performance.now(); }, { passive: true, capture: true });
+function cellAt(e) {
+  const screen = termBox.querySelector('.xterm-screen');
+  if (!screen) return null;
+  const r = screen.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / (r.width / term.cols)) + 1;
+  const row = Math.floor((e.clientY - r.top) / (r.height / term.rows));
+  return { x, y: term.buffer.active.viewportY + row + 1 };
+}
+function inRange(c, { start, end }) {
+  if (c.y < start.y || c.y > end.y) return false;
+  if (c.y === start.y && c.x < start.x) return false;
+  return !(c.y === end.y && c.x > end.x);
+}
+termBox.addEventListener('mousedown', (e) => {
+  linkPressed = null;
+  if (performance.now() - touchedTermAt > 1000 || !linkUnder || selectMode) return;
+  // Only the grid itself: a button drawn over the pane (the answer row, the pad)
+  // can sit on top of a link's cells and is still that button.
+  if (!(e.target instanceof Element) || !e.target.closest('.xterm-screen')) return;
+  // The hover is the last one xterm reported, and it is checked against where
+  // this press really is: a stale one must not turn a tap beside a link into it.
+  const c = cellAt(e);
+  if (!c || !inRange(c, linkUnder.range)) return;
+  linkPressed = linkUnder;
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
+termBox.addEventListener('mouseup', (e) => { if (linkPressed) e.stopPropagation(); }, true);
+
+// Plain URLs, looked for along the run of wrapped rows a row belongs to. Bounded,
+// because a full screen of one wrapped line is a log, not a link.
+const WRAP_RUN = 24;
+term.registerLinkProvider({
+  provideLinks(y, callback) {
+    const buf = term.buffer.active;
+    const at = y - 1;
+    let top = at;
+    while (top > 0 && at - top < WRAP_RUN && buf.getLine(top)?.isWrapped) top--;
+    let bottom = at;
+    while (bottom - top < WRAP_RUN && buf.getLine(bottom + 1)?.isWrapped) bottom++;
+    const cell = buf.getNullCell();
+    const rows = [];
+    for (let i = top; i <= bottom; i++) {
+      const line = buf.getLine(i);
+      const cells = [];
+      for (let x = 0; line && x < line.length; x++) {
+        line.getCell(x, cell);
+        cells.push({ chars: cell.getChars(), width: cell.getWidth() });
+      }
+      rows.push({ cells });
+    }
+    const links = linksOnRows(rows)
+      .filter((l) => top + l.start.row <= at && top + l.end.row >= at)
+      .map((l) => ({
+        range: {
+          start: { x: l.start.col + 1, y: top + l.start.row + 1 },
+          end: { x: l.end.col + 1, y: top + l.end.row + 1 },
+        },
+        text: l.url,
+        activate: () => openLink(l.url, 'text'),
+        hover() { hoverLink(l.url, 'text', this.range); },
+        leave: leaveLink,
+      }));
+    callback(links.length ? links : undefined);
+  },
+});
 
 // And the embedded face goes on as soon as the file is really there. Waited for
 // rather than assumed: `font-display: swap` means the pane is readable in the
@@ -2663,6 +2771,15 @@ document.getElementById('term').addEventListener('click', (e) => {
   // strip became a setting.
   if (e.target instanceof Element
     && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds, #show-bars, #status, #update-bar, #toast')) return;
+  // A tap on a link (see linkPressed): open it, and focus nothing — the page is
+  // leaving for another tab, and a keyboard raised behind it is what would greet
+  // the person coming back.
+  if (linkPressed) {
+    const { uri, kind } = linkPressed;
+    linkPressed = null;
+    openLink(uri, kind);
+    return;
+  }
   term.focus();
   refit();
 });

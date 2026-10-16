@@ -38,6 +38,12 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   — drag it to go anywhere. It is drawn over the terminal rather than beside it:
   in the flow it would narrow the pane, tmux would redraw to the new width, and
   the page would be reading a screen its own scrollbar reflowed.
+- **Links open with a tap.** Tapping an address in the pane opens it in a new
+  tab without raising the keyboard. The links Claude Code draws (OSC 8) are
+  written out by tmux only to a client that declares `hyperlinks`, so pockterm
+  attaches with `-T hyperlinks`; plain `https://…` text is found by the page,
+  wrapped over several rows included. Only http(s) opens: links to files on the
+  host (`file://`) stay text.
 - **List and attach.** pockterm lists running tmux sessions and attaches
   to the one you pick. It never **creates** sessions — you start those on
   the server yourself.
