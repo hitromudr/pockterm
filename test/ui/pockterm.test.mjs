@@ -414,10 +414,14 @@ describe('the order of the tabs', () => {
     const last = before[before.length - 1];
     const from = await page.locator(`#tabs button[data-session="${last}"]`).boundingBox();
     const head = await page.locator(`#tabs button[data-session="${before[0]}"]`).boundingBox();
+    // By the part of it that is on screen: the strip is wider than a phone, and
+    // the middle of the last tab can be under ⊞ beside it (2026-10-16) — pressing
+    // there put the grid up instead of carrying anything.
+    const row = await page.locator('#tabs').boundingBox();
     const y = Math.round(from.y + from.height / 2);
-    await page.mouse.move(Math.round(from.x + from.width / 2), y);
+    let x = Math.round(Math.min(from.x + from.width / 2, row.x + row.width - 12));
+    await page.mouse.move(x, y);
     await page.mouse.down();
-    let x = Math.round(from.x + from.width / 2);
     const target = Math.round(head.x + 4);
     while (x > target) {
       x = Math.max(target, x - 20);

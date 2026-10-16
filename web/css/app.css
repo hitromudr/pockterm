@@ -167,6 +167,7 @@ html.drawer-right #screen-sessions.open { transform: none; }
 html.drawer-right #screen-sessions header.bar #drawer-close { order: 1; }
 html.drawer-right #screen-term header.bar #back { order: 1; }
 html.drawer-right #screen-term header.bar #new-term { order: -1; }
+html.drawer-right #screen-term header.bar #grid-toggle { order: -1; }
 /* The chevron is centred by the box rather than by padding: ornament glyphs
    like ❮ carry their own uneven side bearings, so `padding: 8px 12px` — which
    is what every other bar button uses — leaves it visibly off to one side. Same

@@ -44,7 +44,7 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   attaches with `-T hyperlinks`; plain `https://…` text is found by the page,
   wrapped over several rows included. Only http(s) opens: links to files on the
   host (`file://`) stay text.
-- **A grid: up to six tabs on one screen.** `⊞` in the session list's header (☰) splits the screen
+- **A grid: up to six tabs on one screen.** `⊞` beside `+` splits the screen
   into cells holding the tabs you pick: tapping a tab adds it, `✕` on a cell
   takes it out (the session stays), `⤢` opens that tab alone. The page picks the
   shape from the screen: six are 3×2 on a laptop or a phone on its side, 2×3 on

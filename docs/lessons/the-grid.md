@@ -88,14 +88,15 @@ so turning the phone re-shapes the grid.
 Cells are placed by CSS `order`, never by moving the iframe in the DOM: moving an
 iframe reloads it, which is a socket dropped and a pane redrawn.
 
-## ⊞ lives in the drawer, not in the strip
+## ⊞ stands in the strip, beside +
 
-It stood beside + in the strip first, and the full browser run found the cost:
-a button's width (~45px) out of a strip that on a phone is already wider than the
-screen. The last tab went under ⊞, the test that carries it with a mouse pressed
-⊞ instead and put the grid up. The owner's strip holds ten and more tabs, so the
-loss is real off the stand too. The grid is put up now and then and left by ⤢ on
-any cell, which is why the drawer is enough.
+It went into the drawer for an evening: beside + it takes a button's width
+(~45px) from a strip that on a phone is already wider than the screen, and the
+full browser run found it — the test that carries the last tab with a mouse
+grabbed the tab at its middle, which was now under ⊞, pressed ⊞ and put the grid
+up. The owner put it back beside + ("верни ⊞ в полосу вкладок рядом с плюсом"):
+it is switched while looking at the tabs it is about. The test now grabs the
+part of the tab that is on screen, which is what a hand does.
 
 ## Known limits of the first version
 

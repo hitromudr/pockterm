@@ -42,7 +42,6 @@ describe('the grid on a laptop', () => {
     const { page } = stand;
     await stand.open();
     await stand.attach('a');
-    await stand.openDrawer();
     await page.click('#grid-toggle');
     await page.waitForSelector('#grid:not([hidden]) .cell[data-session="a"]');
     assert.equal(await page.getAttribute('#grid', 'data-shape'), '1x1');
@@ -168,7 +167,6 @@ describe('the grid on a phone', () => {
     const { page } = stand;
     await stand.open();
     await stand.attach('s1');
-    await stand.openDrawer();
     await page.click('#grid-toggle');
     await page.waitForSelector('#grid:not([hidden])');
     for (const n of six.slice(1, 6)) {
