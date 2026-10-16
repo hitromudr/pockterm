@@ -35,6 +35,10 @@
            A second view of the drawer rather than a section under the list:
            two scrolling lists on a phone leave neither of them a full thumb's
            worth of room, and the list you came for is the sessions. -->
+      <!-- Several tabs at once, here on a phone (2026-10-17): the strip there
+           keeps ☰ alone, since ⊞ and + beside it left the tabs a third of the
+           row. The strip's own ⊞ stays for a mouse; one handler for both. -->
+      <button id="grid-drawer" class="grid-btn" title="Сетка: несколько вкладок на одном экране">&#8862;</button>
       <button id="folders" title="Projects">&#128193;</button>
       <!-- With no session left there is nowhere to type the command that
            would make one: this is the way back in. -->
@@ -509,8 +513,9 @@
            end of it. -->
       <!-- Several tabs at once (2026-10-16). Beside + in the strip, by the
            owner's word the same evening it was moved into the drawer: it is
-           switched while looking at the tabs it is about. -->
-      <button id="grid-toggle" title="Сетка: несколько вкладок на одном экране">&#8862;</button>
+           switched while looking at the tabs it is about. On a touch screen
+           neither it nor + is drawn here (2026-10-17, see app.css). -->
+      <button id="grid-toggle" class="grid-btn" title="Сетка: несколько вкладок на одном экране">&#8862;</button>
       <button id="new-term" title="New session">&plus;</button>
       <!-- The buttons, again. The same list as on the drawer screen and the same
            handler; a popup rather than a row, because the header has no space for

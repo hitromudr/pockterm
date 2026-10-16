@@ -6187,7 +6187,8 @@ if ('serviceWorker' in navigator && !CELL) {
 // it out, ⤢ opens that session alone and puts the grid away. The grid's sessions
 // are remembered per device and come back with ⊞ and on reload.
 const gridEl = document.getElementById('grid');
-const gridBtn = document.getElementById('grid-toggle');
+// ⊞ in the strip and ⊞ in the drawer's header: two places, one switch.
+const gridBtns = document.querySelectorAll('.grid-btn');
 const GRID_KEY = 'pt-grid';
 
 function saveGrid() {
@@ -6371,7 +6372,7 @@ function gridEnter(from = readGrid().names) {
   closeDrawer();
   screenTerm.classList.add('grid');
   gridEl.hidden = false;
-  gridBtn.classList.add('on');
+  for (const b of gridBtns) b.classList.add('on');
   gridHeight = 0;
   saveGrid();
   paintGrid();
@@ -6389,7 +6390,7 @@ function gridClose() {
   gridEl.style.height = '';
   gridEl.style.transform = '';
   screenTerm.classList.remove('grid');
-  gridBtn.classList.remove('on');
+  for (const b of gridBtns) b.classList.remove('on');
   if (ctrlKey) ctrlKey.classList.remove('on');
   for (const b of tabsEl.querySelectorAll('button.in-grid')) b.classList.remove('in-grid');
 }
@@ -6405,8 +6406,10 @@ function gridLeave(name) {
   if (to) attach(to); else showSessions();
 }
 
-gridBtn.addEventListener('click', () => { if (gridOn) gridLeave(); else gridEnter(); });
-keepsTerminalFocus(gridBtn);
+for (const b of gridBtns) {
+  b.addEventListener('click', () => { if (gridOn) gridLeave(); else gridEnter(); });
+  keepsTerminalFocus(b);
+}
 
 // What the bars send goes to the active cell.
 function gridSend(data) {

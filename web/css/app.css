@@ -1024,6 +1024,14 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   border-bottom: 1px solid #2a3345;
 }
 #screen-term.strip-top #modebar { padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
+/* On a touch screen the strip keeps ☰ alone (2026-10-17, the owner: "только меню
+   оставь, плюс убери, сетку перенеси в меню"). The tabs scroll, but three buttons
+   beside them left a phone a row of two and a half tabs, the last one cut by ⊞.
+   + is the drawer's own, and ⊞ is there too (#grid-drawer). A mouse keeps both:
+   a laptop's strip has the width. */
+@media (pointer: coarse) {
+  #screen-term header.bar #grid-toggle, #screen-term header.bar #new-term { display: none; }
+}
 /* And as thin as the pane's own bar (#scroll-thumb): a 6px thumb in the accent on
    a faint 4px rail. Only where a mouse is the pointer — a phone's scrollbar
    overlays and comes only while scrolling, and a styled one would take room
@@ -2037,7 +2045,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   display: block;
   background: var(--bg);
 }
-#grid-toggle.on { background: var(--accent); color: #0b0e14; }
+.grid-btn.on { background: var(--accent); color: #0b0e14; }
 /* A tab with a cell: underlined, which no other state of a tab uses. */
 #tabs button.in-grid { box-shadow: inset 0 -3px 0 #7aa2f7b0; }
 

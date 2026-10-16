@@ -88,7 +88,16 @@ so turning the phone re-shapes the grid.
 Cells are placed by CSS `order`, never by moving the iframe in the DOM: moving an
 iframe reloads it, which is a socket dropped and a pane redrawn.
 
-## ⊞ stands in the strip, beside +
+## ⊞ stands in the strip, beside + — on a desktop
+
+On a touch screen it does not (2026-10-17): the owner looked at the phone, saw
+two and a half tabs with the last one cut by ⊞, and asked for the strip to keep
+☰ alone — "только меню оставь, плюс убери, сетку перенеси в меню". So ⊞ is in
+the drawer's header (`#grid-drawer`, beside 📁 and +), and the strip's ⊞ and +
+are `display: none` under `@media (pointer: coarse)`. A mouse keeps both: a
+laptop's strip has the width. Both ⊞ are `.grid-btn`, one handler and one `on`.
+The history before that:
+
 
 It went into the drawer for an evening: beside + it takes a button's width
 (~45px) from a strip that on a phone is already wider than the screen, and the

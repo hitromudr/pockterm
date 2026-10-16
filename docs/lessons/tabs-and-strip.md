@@ -9,7 +9,8 @@ twice.
 
 Asked for on 2026-10-15 as "верхнюю панель с меню, вкладками и плюсом опустить в самый
 низ экрана, под пейст, копи": ☰, the tabs and + are the last bar of `#screen-term`, under
-the row with ✂ and 📥. The top edge of a phone is the one place a thumb does not reach,
+the row with ✂ and 📥 (on a touch screen ☰ and the tabs alone since 2026-10-17 — + and ⊞
+went to the drawer, see the-grid.md). The top edge of a phone is the one place a thumb does not reach,
 and the keys the owner switches sessions from were a hand's width below it. What moved
 with it, each for a reason of its own:
 

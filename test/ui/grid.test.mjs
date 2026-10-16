@@ -167,7 +167,9 @@ describe('the grid on a phone', () => {
     const { page } = stand;
     await stand.open();
     await stand.attach('s1');
-    await page.click('#grid-toggle');
+    // From the drawer: a phone's strip is ☰ and the tabs alone (2026-10-17).
+    await stand.openDrawer();
+    await page.click('#grid-drawer');
     await page.waitForSelector('#grid:not([hidden])');
     for (const n of six.slice(1, 6)) {
       await page.locator(`#tabs button[data-session="${n}"]`).scrollIntoViewIfNeeded();

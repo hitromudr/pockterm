@@ -589,9 +589,8 @@ describe('the session list is a drawer', () => {
   });
 
   test('the tab strip is the bottom edge of the screen', async () => {
-    // Asked for as "опустить в самый низ экрана, под пейст, копи": ☰, the tabs and
-    // + under the row with ✂ and 📥, where the thumb already is. And the presets
-    // its + opens hang over it rather than out of the screen's bottom.
+    // Asked for as "опустить в самый низ экрана, под пейст, копи": ☰ and the tabs
+    // under the row with ✂ and 📥, where the thumb already is.
     await stand.open();
     await stand.attach('demo');
     const { page } = stand;
@@ -625,15 +624,16 @@ describe('the session list is a drawer', () => {
     const scroll = await page.evaluate(() => document.scrollingElement.scrollHeight - innerHeight);
     assert.equal(scroll, 0, 'the page scrolls');
 
-    await page.click('#new-term');
-    await page.waitForSelector('#new-menu-term:not([hidden])');
-    const menu = await page.evaluate(() => document.getElementById('new-menu-term').getBoundingClientRect().toJSON());
-    assert.ok(Math.abs(menu.bottom - e.header.top) < 0.5 && menu.top >= 0,
-      `the presets do not hang over the strip: ${JSON.stringify(menu)}`);
-    // Closed by a tap on the +, which lands on the scrim lying over it.
-    const plus = await page.locator('#new-term').boundingBox();
-    await page.mouse.click(plus.x + plus.width / 2, plus.y + plus.height / 2);
-    await page.waitForSelector('#new-menu-term', { state: 'hidden' });
+    // ☰ alone beside the tabs, which have the rest of the row: "только меню
+    // оставь, плюс убери, сетку перенеси в меню" (2026-10-17). With ⊞ and + beside
+    // them a phone showed two and a half tabs, the last one cut by ⊞. Both are
+    // the drawer's now; a mouse keeps them in the strip ('the + in the strip').
+    const row = await page.evaluate(() => {
+      const r = (id) => document.getElementById(id).getBoundingClientRect();
+      return { grid: r('grid-toggle').width, plus: r('new-term').width,
+        tabs: Math.round(r('tabs').left), gap: Math.round(r('back').left - r('tabs').right) };
+    });
+    assert.deepEqual(row, { grid: 0, plus: 0, tabs: 10, gap: 8 }, 'the strip carries more than ☰ and the tabs');
 
     // With the bars hidden the strip stays, and ▴ stands over it rather than on it.
     await page.click('#hide');
@@ -687,15 +687,7 @@ describe('the session list is a drawer', () => {
         `the strip is not over the pane: ${JSON.stringify(g)}`);
       assert.ok(Math.abs(g.modebar.bottom - g.screen.bottom) < 0.5, 'the keys are not the bottom edge');
 
-      // The presets hang down from it, and the banners start under it rather than
-      // over the tabs.
-      await page.click('#new-term');
-      await page.waitForSelector('#new-menu-term:not([hidden])');
-      const menu = await page.evaluate(() => document.getElementById('new-menu-term').getBoundingClientRect().toJSON());
-      assert.ok(Math.abs(menu.top - g.header.bottom) < 0.5, `the presets do not hang under the strip: ${JSON.stringify(menu)}`);
-      const plus = await page.locator('#new-term').boundingBox();
-      await page.mouse.click(plus.x + plus.width / 2, plus.y + plus.height / 2);
-      await page.waitForSelector('#new-menu-term', { state: 'hidden' });
+      // The banners start under it rather than over the tabs.
       await page.evaluate(() => { document.getElementById('toast').hidden = false; });
       const toast = await page.evaluate(() => document.getElementById('toast').getBoundingClientRect().toJSON());
       assert.ok(toast.top >= g.header.bottom - 0.5, `the toast covers the strip: ${JSON.stringify(toast)}`);
@@ -836,7 +828,7 @@ describe('the session list is a drawer', () => {
       null, { timeout: 3000 });
     const look = () => page.evaluate(() => {
       const r = (id) => document.getElementById(id).getBoundingClientRect();
-      return { back: r('back').left, plus: r('new-term').left, drawer: r('screen-sessions').toJSON(),
+      return { back: r('back').left, tabs: r('tabs').left, drawer: r('screen-sessions').toJSON(),
         chevron: document.getElementById('drawer-close').textContent,
         label: document.getElementById('drawer-side').textContent, vw: innerWidth };
     });
@@ -845,7 +837,7 @@ describe('the session list is a drawer', () => {
       await drag(300, -160);
       await settled();
       let l = await look();
-      assert.ok(l.back > l.plus, `☰ is not right of +: ${JSON.stringify(l)}`);
+      assert.ok(l.back > l.tabs, `☰ is not right of the tabs: ${JSON.stringify(l)}`);
       assert.ok(Math.abs(l.drawer.right - l.vw) < 0.5 && l.drawer.left > 0,
         `the drawer is not at the right edge: ${JSON.stringify(l)}`);
       assert.equal(l.chevron, '❯');
@@ -866,7 +858,7 @@ describe('the session list is a drawer', () => {
       await drag(100, 160);
       await settled();
       l = await look();
-      assert.ok(l.back < l.plus, `☰ is not left of +: ${JSON.stringify(l)}`);
+      assert.ok(l.back < l.tabs, `☰ is not left of the tabs: ${JSON.stringify(l)}`);
       assert.ok(Math.abs(l.drawer.left) < 0.5, `the drawer is not at the left edge: ${JSON.stringify(l)}`);
       assert.equal(l.chevron, '❮');
       assert.match(l.label, /Слева/);
@@ -1102,6 +1094,98 @@ describe('the tab strip on a desktop', () => {
     } finally {
       await page.evaluate(() => { try { localStorage.removeItem('pt-strip'); } catch (_) {} });
     }
+  });
+});
+
+describe('the + in the strip, on a desktop', () => {
+  // A touch screen's strip is ☰ and the tabs alone (2026-10-17); a laptop's has
+  // the width for ⊞ and + beside them, and keeps both.
+  let stand;
+  before(async () => { stand = await startStand({ sessions: ['demo', 'work'], desktop: true }); });
+  after(async () => { await stand.stop(); });
+
+  test('the presets hang off the strip, over it at the bottom and under it at the top', async () => {
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    const header = () => page.evaluate(() => document.querySelector('#screen-term header.bar').getBoundingClientRect().toJSON());
+    const presets = async () => {
+      await page.click('#new-term');
+      await page.waitForSelector('#new-menu-term:not([hidden])');
+      const menu = await page.evaluate(() => document.getElementById('new-menu-term').getBoundingClientRect().toJSON());
+      // Closed by a click on the +, which lands on the scrim lying over it.
+      const plus = await page.locator('#new-term').boundingBox();
+      await page.mouse.click(plus.x + plus.width / 2, plus.y + plus.height / 2);
+      await page.waitForSelector('#new-menu-term', { state: 'hidden' });
+      return menu;
+    };
+    let h = await header();
+    let menu = await presets();
+    assert.ok(Math.abs(menu.bottom - h.top) < 0.5 && menu.top >= 0,
+      `the presets do not hang over the strip: ${JSON.stringify(menu)}`);
+    try {
+      await page.evaluate(() => localStorage.setItem('pt-strip', 'top'));
+      await stand.open();
+      await stand.attach('demo');
+      h = await header();
+      menu = await presets();
+      assert.ok(Math.abs(menu.top - h.bottom) < 0.5, `the presets do not hang under the strip: ${JSON.stringify(menu)}`);
+    } finally {
+      await page.evaluate(() => { try { localStorage.removeItem('pt-strip'); } catch (_) {} });
+    }
+  });
+
+  test('a session can be started without leaving the one you are in', async () => {
+    // The tab strip is the session list on the terminal screen, so the same plus
+    // belongs at the end of it — asked for from the phone, where going back to
+    // the list to start something means losing sight of what is running. Off the
+    // phone's strip since 2026-10-17 (the tabs had no room left), kept for a mouse.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    const before = await page.locator('#tabs button').count();
+
+    await page.click('#new-term');
+    await page.click('#new-menu-term button[data-preset="shell"]');
+    // The popup closes itself: it covers the top of the terminal.
+    await page.waitForSelector('#new-menu-term', { state: 'hidden' });
+
+    // The strip picks the session up on its own, and the terminal is still the
+    // one that was open.
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('#tabs button').length > n,
+      before,
+      { timeout: 8000 },
+    );
+    assert.equal(await page.locator('#screen-term:not([hidden])').count(), 1, 'it left the terminal');
+  });
+
+  test('the presets over the terminal can be dismissed', async () => {
+    // Reported as there being no way to cancel that plus. The popup was laid out
+    // from the top of the screen — an absolutely positioned flex child starts at
+    // the content box, which is behind the header — so it covered ☰, the tabs and
+    // the + itself: the tap meant to dismiss it landed on a preset and started a
+    // session.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    const before = await page.locator('#tabs button').count();
+
+    await page.click('#new-term');
+    await page.waitForSelector('#new-menu-term:not([hidden])');
+    // The header is reachable: what sits on the + is the scrim, not a preset.
+    const onThePlus = await page.evaluate(() => {
+      const r = document.getElementById('new-term').getBoundingClientRect();
+      const el = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return el ? (el.id || el.className) : '';
+    });
+    assert.match(onThePlus, /menu-scrim|new-term/, `a ${onThePlus} is sitting on the plus`);
+
+    // One tap anywhere outside closes it, and starts nothing.
+    await page.mouse.click(200, 400);
+    await page.waitForSelector('#new-menu-term', { state: 'hidden' });
+    await page.waitForTimeout(1200);
+    assert.equal(await page.locator('#tabs button').count(), before, 'dismissing it started a session');
   });
 });
 
@@ -2454,58 +2538,6 @@ describe('starting and renaming sessions', () => {
     );
   });
 
-  test('a session can be started without leaving the one you are in', async () => {
-    // The tab strip is the session list on the terminal screen, so the same plus
-    // belongs at the end of it — asked for from the phone, where going back to
-    // the list to start something means losing sight of what is running.
-    await stand.open();
-    await stand.attach();
-    const { page } = stand;
-    const before = await page.locator('#tabs button').count();
-
-    await page.click('#new-term');
-    await page.click('#new-menu-term button[data-preset="shell"]');
-    // The popup closes itself: it covers the top of the terminal.
-    await page.waitForSelector('#new-menu-term', { state: 'hidden' });
-
-    // The strip picks the session up on its own, and the terminal is still the
-    // one that was open.
-    await page.waitForFunction(
-      (n) => document.querySelectorAll('#tabs button').length > n,
-      before,
-      { timeout: 8000 },
-    );
-    assert.equal(await page.locator('#screen-term:not([hidden])').count(), 1, 'it left the terminal');
-  });
-
-  test('the presets over the terminal can be dismissed', async () => {
-    // Reported as there being no way to cancel that plus. The popup was laid out
-    // from the top of the screen — an absolutely positioned flex child starts at
-    // the content box, which is behind the header — so it covered ☰, the tabs and
-    // the + itself: the tap meant to dismiss it landed on a preset and started a
-    // session.
-    await stand.open();
-    await stand.attach();
-    const { page } = stand;
-    const before = await page.locator('#tabs button').count();
-
-    await page.click('#new-term');
-    await page.waitForSelector('#new-menu-term:not([hidden])');
-    // The header is reachable: what sits on the + is the scrim, not a preset.
-    const onThePlus = await page.evaluate(() => {
-      const r = document.getElementById('new-term').getBoundingClientRect();
-      const el = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-      return el ? (el.id || el.className) : '';
-    });
-    assert.match(onThePlus, /menu-scrim|new-term/, `a ${onThePlus} is sitting on the plus`);
-
-    // One tap anywhere outside closes it, and starts nothing.
-    await page.mouse.click(200, 400);
-    await page.waitForSelector('#new-menu-term', { state: 'hidden' });
-    await page.waitForTimeout(1200);
-    assert.equal(await page.locator('#tabs button').count(), before, 'dismissing it started a session');
-  });
-
   test('closing a session takes its tab with it', async () => {
     // Reported as the strip at the top not being redrawn when a terminal is
     // closed. It was only ever redrawn on an attach, so a closed session kept
@@ -2626,8 +2658,8 @@ describe('switching sessions', () => {
       '#keybar [data-mod="ctrl"]', '#ctrlpad [data-ctrl="a"]',
       // Hiding the bars and coming back.
       '#hide', '#show-bars',
-      // The strip, and the + at the end of it with the popup it opens.
-      '#tabs button:not(.active)', '#new-term', '#menu-scrim',
+      // The strip.
+      '#tabs button:not(.active)',
       // The clip's own popup, opened from the row that also carries ✂ and 💬.
       '#pick', '#menu-scrim',
       // Selection mode, and the way out of it.
