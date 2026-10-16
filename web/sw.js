@@ -22,6 +22,10 @@ const PRECACHE = [
   '/js/bar.js',
   '/js/link.js',
   '/js/compose.js',
+  '/js/install.js',
+  '/js/urls.js',
+  '/js/rotation.js',
+  '/js/vendor.js',
   // The pane's own font, cut down and carried here so the same screen is the
   // same screen on every machine — see --mono in css/app.css. Precached because
   // an installed PWA with no network would otherwise draw the pane in whatever
@@ -199,11 +203,20 @@ self.addEventListener('fetch', (e) => {
   // the code it was installed with — fixes shipped, and the phone went on
   // running the version that had the bug. Offline still works, because every
   // answer is written back into the cache on the way out.
+  //
+  // A gateway error counts as no network. The door answers for the tunnel behind
+  // it, and while the tunnel blinks it says 502 in HTML for every file: on
+  // 2026-10-16 that answer stood in for vendor/xterm.js, the page ran it as a
+  // script and stayed blank, and the cache took it over its good copy. An error
+  // the app itself gave (a 404 from the API) is still the answer.
   e.respondWith(
     fetch(e.request)
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
+      .then(async (res) => {
+        if (res.status >= 502 && res.status <= 504) return (await caches.match(e.request)) || res;
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
+        }
         return res;
       })
       .catch(() => caches.match(e.request))

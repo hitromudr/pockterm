@@ -17,6 +17,7 @@ import { thumb as thumbAt, backAt } from './bar.js';
 import { installDecision, installText, isIOS } from './install.js';
 import { linksOnRows, openable } from './urls.js';
 import { lockFamily, storedLock, rotationLabel, refusalText } from './rotation.js';
+import { bringBack } from './vendor.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -63,6 +64,18 @@ initDiag((line) => {
   } catch (_) { /* never break the app over a log line */ }
 });
 report('hello', environment(APP_VERSION));
+
+// See js/vendor.js: a blank screen until a reload is what this replaces. Here,
+// before any listener exists, because the await lets events in: one that fires
+// mid-module meets constants not yet declared (IME_DEFAULT, 2026-10-16).
+if (!window.Terminal || !window.FitAddon) {
+  for (const line of await bringBack({
+    win: window,
+    get: (src) => fetch(src, { cache: 'no-store' }),
+    run: (text) => { const el = document.createElement('script'); el.textContent = text; document.head.appendChild(el); },
+    wait: (ms) => new Promise((r) => setTimeout(r, ms)),
+  })) report('vendor', line);
+}
 
 // The keyboard mode the page asks for at startup — `raw` for the terminal
 // since it was finally measured rather than guessed (see IME_DEFAULT). The
