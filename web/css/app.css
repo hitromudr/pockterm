@@ -1969,3 +1969,91 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   #cmdpad button { min-height: 38px; font-size: 11px; }
   .bar { padding: 4px 8px; }
 }
+
+/* --- the grid: up to six sessions on one screen (js/grid.js) ---
+   Over the pane, inside #term, never in the flow: the cells are panes of their
+   own, and anything that moved them would resize every one of them. The shape
+   (columns, rows, a span for an odd fifth) is written by paintGrid. */
+#grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 100%;
+  z-index: 3;
+  display: grid;
+  gap: 3px;
+  background: #2a3345;
+}
+#grid[hidden] { display: none; }
+/* Nothing feeds the one pane while the cells are up, so it is not drawn under
+   them; the banners stay, they are this page's to show. */
+#screen-term.grid #term > :not(#grid):not(#status):not(#update-bar):not(#toast) { visibility: hidden; }
+#grid .cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+  outline: 1px solid transparent;
+}
+/* The active cell is the one the bars and the composer write into: the tab's
+   own frame, around the cell. An outline, not a border — a border that changed
+   width would resize the pane inside it on every choice. */
+#grid .cell.active { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 1; }
+#grid .cell-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding-left: 8px;
+  font-size: 12px;
+  color: #9aa5ce;
+  background: #151a24;
+  overflow: hidden;
+}
+#grid .cell.active .cell-head { color: var(--accent); font-weight: 600; }
+/* What the session is doing, in the strip's colours. */
+#grid .cell.done .cell-head { background: #1d3a2b; color: #7fdca4; }
+#grid .cell.working .cell-head { background: #2f2350; color: #e6dcff; }
+#grid .cell.asking .cell-head { background: #16233f; color: #dbe7ff; }
+#grid .cell-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#grid .cell-head button {
+  flex: none;
+  height: 24px;
+  min-width: 30px;
+  padding: 0 6px;
+  font-size: 13px;
+  color: inherit;
+  background: none;
+  border: none;
+}
+#grid .cell iframe {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  display: block;
+  background: var(--bg);
+}
+#grid-toggle.on { background: var(--accent); color: #0b0e14; }
+/* A tab with a cell: underlined, which no other state of a tab uses. */
+#tabs button.in-grid { box-shadow: inset 0 -3px 0 #7aa2f7b0; }
+
+/* The cell itself: this page inside an iframe of the grid, the pane and what is
+   drawn over it and nothing else. What it lacks the page around it has. */
+html.cell #screen-sessions,
+html.cell #drawer-scrim,
+html.cell #screen-term header.bar,
+html.cell #keybar,
+html.cell #modebar,
+html.cell #quickbar,
+html.cell #composer,
+html.cell #paste-target,
+html.cell #history-list,
+html.cell #update-bar,
+html.cell #install-bar,
+html.cell #kind-help,
+html.cell #cmds,
+html.cell #cmdpad,
+html.cell #show-bars { display: none !important; }

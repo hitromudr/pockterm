@@ -40,7 +40,7 @@ them instead of deriving them again.
   `position: absolute` inside `#term`, drawn over the last rows they repeat. A
   browser test asserts `#{pane_height}` does not move when one is shown.
 - **Anything drawn inside `#term` must be named in the click handler's skip list**
-  (`#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds`): the handler focuses the pane, so a
+  (`#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds, #grid`): the handler focuses the pane, so a
   control that takes no focus and even releases the field's still gets the focus handed back a
   moment later — which on Android is the keyboard. Four of the six names were added after the
   same report. `nothing but a tap on the terminal takes focus` walks the whole surface.
@@ -72,6 +72,14 @@ them instead of deriving them again.
   Tests wait on that rather than on the viewport's own number — a shrink and a
   restore in quick succession coalesce into one event, and the page then never
   sees a keyboard at all. It is a diagnostic first, like `data-size` beside it.
+- **A grid cell is the page itself, and it owns nothing of the screen.** Each
+  cell is `/?cell=<name>` in an iframe (`CELL` in app.js): it draws its pane and
+  what hangs over it, and leaves storage, notices, the worker, rotation and the
+  keyboard to the page around it — a cell made shorter at the same width read as
+  a keyboard and held its rows past its own bottom. While the grid is up the page
+  holds no socket (a full-size client would resize every cell's window), and its
+  bars press the active cell's own buttons (`ptCell.press`) rather than imitate
+  them. Iframes are placed by `order`, never moved: moving one reloads it.
 - **Never rebuild a row under the finger.** A rebuild takes the focused element
   with it (see above), and on a WebView that is the keyboard coming up; it also
   disarms a confirmation half way through. State is applied as classes and
@@ -161,6 +169,7 @@ understand what invariants a change must not break.
 | Uploads, limits, the journal | `docs/lessons/uploads-and-diagnostics.md` |
 | The fonts the pane is drawn in | `docs/lessons/the-pane-font.md` |
 | The installer | `docs/lessons/install-and-deploy.md` |
+| The grid of cells | `docs/lessons/the-grid.md` |
 
 ## Deploy
 

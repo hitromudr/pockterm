@@ -44,6 +44,14 @@ for example [Claude Code](https://claude.com/claude-code) or any TUI.
   attaches with `-T hyperlinks`; plain `https://…` text is found by the page,
   wrapped over several rows included. Only http(s) opens: links to files on the
   host (`file://`) stay text.
+- **A grid: up to six tabs on one screen.** `⊞` in the session list's header (☰) splits the screen
+  into cells holding the tabs you pick: tapping a tab adds it, `✕` on a cell
+  takes it out (the session stays), `⤢` opens that tab alone. The page picks the
+  shape from the screen: six are 3×2 on a laptop or a phone on its side, 2×3 on
+  a phone held upright or a monitor on its end; fewer cells go 2×2, 3×1, 1×3,
+  2×1. The keys, the composer and paste write into the active cell — the framed
+  one, chosen by touching it. Each cell is a tmux client of its own size; the
+  grid is remembered per device.
 - **List and attach.** pockterm lists running tmux sessions and attaches
   to the one you pick. It never **creates** sessions — you start those on
   the server yourself.

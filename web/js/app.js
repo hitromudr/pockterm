@@ -18,8 +18,26 @@ import { installDecision, installText, isIOS } from './install.js';
 import { linksOnRows, openable } from './urls.js';
 import { lockFamily, storedLock, rotationLabel, refusalText } from './rotation.js';
 import { bringBack } from './vendor.js';
+import { gridShape, gridPick, gridKeep, storedGrid, GRID_MAX } from './grid.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
+
+// A cell of the grid (see js/grid.js): this same page inside an iframe of the
+// page that owns the screen, showing one session and nothing but its pane. The
+// strip, the bars, the composer and the drawer belong to the page around it,
+// which hands its keys in through `window.ptCell` (see the end of this file).
+// One page per cell rather than six terminals in one page: everything below is
+// written for one pane and one socket, and an iframe gives each cell exactly
+// that.
+const CELL = new URLSearchParams(location.search).get('cell') || '';
+if (CELL) document.documentElement.classList.add('cell');
+// The page around the cells: whether the grid is up, which sessions it shows in
+// order, and their cells by name. Up here rather than with the rest of the grid
+// at the end of the file: the strip reads them, and the strip can be painted by
+// an event that arrives while this module is still waiting on the vendor scripts.
+let gridOn = false;
+let gridNames = [];
+const gridCells = new Map();
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
 
 // Version of the code actually running. Nobody writes it: the binary stamps its
@@ -63,7 +81,7 @@ initDiag((line) => {
     navigator.sendBeacon(`/api/log?${tokenQS}`, new Blob([JSON.stringify(out)], { type: 'application/json' }));
   } catch (_) { /* never break the app over a log line */ }
 });
-report('hello', environment(APP_VERSION));
+report('hello', CELL ? { ...environment(APP_VERSION), cell: true } : environment(APP_VERSION));
 
 // See js/vendor.js: a blank screen until a reload is what this replaces. Here,
 // before any listener exists, because the await lets events in: one that fires
@@ -798,6 +816,9 @@ async function killSession(name) {
       return;
     }
     toast(`closed ${name}`);
+    // A cell is let go by the strip's next poll; asked now, so the cell of a
+    // session just closed does not sit there reconnecting until then.
+    if (gridOn) { renderTabs(); loadSessions(); return; }
     if (current !== name) { loadSessions(); return; }
     // Read the strip while the closed tab is still in it: it is the fallback for
     // a session nothing was visited before, and a moment later it is gone.
@@ -1425,6 +1446,7 @@ for (const end of ['touchend', 'touchcancel']) {
 // terminal goes away with it and the drawer is all there is. That is where the
 // page starts, and where closing the last session lands.
 function showSessions() {
+  if (gridOn) gridClose();
   dropSocket();
   current = null;
   try { sessionStorage.removeItem('pt-session'); } catch (_) {}
@@ -1486,6 +1508,8 @@ async function stepBackFrom(closed, beside) {
 }
 
 function attach(name) {
+  // With the grid up a tab is a cell, not the one pane: see gridOpen.
+  if (gridOn) { gridOpen(name); return; }
   // The keyboard reappearing on a switch is not this code focusing anything: on
   // Android the textarea keeps focus after the keyboard is dismissed, and the
   // WebView re-shows it for a focused element when the layout moves. That is why
@@ -1518,10 +1542,14 @@ function attach(name) {
   rememberVisit(current);
   forget(name); // it is where you are now, not somewhere to go back to
   current = name;
-  try { sessionStorage.setItem('pt-session', name); } catch (_) {}
-  // And once more for the whole device, for the one launch that arrives in a
-  // window of its own: a share (see init).
-  try { localStorage.setItem('pt-last-session', name); } catch (_) {}
+  // A cell is not where the page is: it shares this tab's sessionStorage with the
+  // page around it, and writing here would reopen a cell's session on reload.
+  if (!CELL) {
+    try { sessionStorage.setItem('pt-session', name); } catch (_) {}
+    // And once more for the whole device, for the one launch that arrives in a
+    // window of its own: a share (see init).
+    try { localStorage.setItem('pt-last-session', name); } catch (_) {}
+  }
   screenTerm.hidden = false;
   // There is something behind the drawer again, so it has a way out again.
   drawerCloseBtn.hidden = false;
@@ -1573,11 +1601,16 @@ function attach(name) {
 // to go — the tab you were sitting in would have been the only one that could
 // not tell you whether its agent was still running.
 async function renderTabs() {
+  // A cell has no strip, and six of them polling would be six of the same fetch.
+  if (CELL) return;
   // Not while a tab is being carried: the row is the thing being rearranged, and
   // rebuilding it would take the button out from under the finger.
   if (dragName) return;
-  const { sessions } = await fetchSessions();
+  const { sessions, error } = await fetchSessions();
   const names = sessions.map((s) => s.name).join('\u0000');
+  // A session closed from anywhere takes its cell with it. Only off an answer:
+  // a failed fetch says nothing about what is running.
+  if (gridOn && !error) gridPrune(new Set(sessions.map((s) => s.name)));
 
   // Rebuilding the row would remove the button that was just tapped, and a
   // WebView answers the removal of the focused element by handing focus back
@@ -1648,7 +1681,13 @@ async function renderTabs() {
     // A question outranks the rest, and it cannot collide with them: the state is
     // one value, so the classes are exclusive by construction.
     b.classList.toggle('asking', st === 'asking');
+    b.classList.toggle('in-grid', gridOn && gridNames.includes(b.dataset.session));
     paintBackground(b, bg.get(b.dataset.session) || {});
+  }
+  // A cell's head says what its tab says, in the same three colours.
+  for (const [n, c] of gridCells) {
+    const st = state.get(n) || '';
+    for (const k of ['working', 'done', 'asking']) c.box.classList.toggle(k, st === k);
   }
   // The drawer's rows say the same thing off the same answer: one fetch, so a row
   // and a tab cannot describe one session out of two different moments.
@@ -2033,6 +2072,7 @@ let tabPoll = null;
 // nothing attached it is the only thing on screen — so the strip's own condition
 // would leave the list as a snapshot of the moment it opened.
 function pollTabs(on) {
+  if (CELL) return;
   const drawerOpen = screenSessions.classList.contains('open');
   const want = on && document.visibilityState === 'visible' && (!screenTerm.hidden || drawerOpen);
   if (want === !!tabPoll) return;
@@ -2206,6 +2246,11 @@ document.addEventListener('visibilitychange', () => {
 function onControl(raw) {
   let c = null;
   try { c = JSON.parse(raw); } catch (_) { return; }
+  // A cell passes what is about the whole host up to the page around it, which
+  // draws the notice and the update bar once for the screen — six cells hear
+  // the same notice six times. The pane's own facts stay here.
+  if (CELL && c && (c.type === 'notify' || c.type === 'config')) toParent({ kind: 'control', raw });
+  if (CELL && c && c.type === 'notify') return;
   if (c && c.type === 'mode') setCopyMode(!!c.in, c.back | 0, c.hist | 0, !!c.app, !!c.alt);
   if (c && c.type === 'notify') {
     // Drawn here only while nothing else can draw it. With a subscription in
@@ -2245,6 +2290,7 @@ function onControl(raw) {
 // gone. So the outcome is returned, and what is worth keeping is kept by
 // whoever knows it is worth keeping.
 function send(data) {
+  if (gridOn) return gridSend(data);
   if (!ws || ws.readyState !== WebSocket.OPEN) return false;
   ws.send(enc.encode(data));
   return true;
@@ -2320,6 +2366,7 @@ function leaveCopyMode(why, note) {
 }
 
 function sendInput(data) {
+  if (gridOn) return gridSend(data);
   if (copyMode) leaveCopyMode('typing');
   return send(data);
 }
@@ -2379,6 +2426,9 @@ const ctrlPad = document.getElementById('ctrlpad');
 function armCtrl(on) {
   ctrlArmed = on;
   if (ctrlKey) ctrlKey.classList.toggle('on', on);
+  // The Ctrl a cell is armed by is the one on the page around it, and that is
+  // the button that has to light up.
+  if (CELL) toParent({ kind: 'ctrl', on });
   if (ctrlPad) ctrlPad.hidden = !on || keyboardUp;
   liftFloaters();
   // A word in flight is not what the modifier was pressed for. Ended here, it goes
@@ -2749,6 +2799,9 @@ function setFont(sz) {
   fontSize = Math.max(9, Math.min(28, sz));
   term.options.fontSize = fontSize;
   try { localStorage.setItem('pt-font', String(fontSize)); } catch (_) {}
+  // A− and A+ are in the drawer of the page around the cells; the cells read
+  // the size once, on load, so a change is handed to each of them.
+  if (gridOn) for (const n of gridNames) { const c = cellOf(n); if (c) c.setFont(fontSize); }
   // A-/A+ stays useful while reading a frozen screen.
   snapshotEl.style.fontSize = `${fontSize}px`;
   refit();
@@ -2784,7 +2837,7 @@ document.getElementById('term').addEventListener('click', (e) => {
   // with the header going to the bottom of the screen, and the banners when the
   // strip became a setting.
   if (e.target instanceof Element
-    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds, #show-bars, #status, #update-bar, #toast')) return;
+    && e.target.closest('#pager, #scrollbar, #answers, #ctrlpad, #cmdpad, #cmds, #show-bars, #status, #update-bar, #toast, #grid')) return;
   // A tap on a link (see linkPressed): open it, and focus nothing — the page is
   // leaving for another tab, and a keyboard raised behind it is what would greet
   // the person coming back.
@@ -3019,7 +3072,7 @@ const gestureArea = document.getElementById('screen-term');
 // than scroll the terminal underneath.
 function ownsGesture(target) {
   return !(target instanceof Element) ||
-    !target.closest('#composer, #snapshot, header.bar, #answers, #ctrlpad, #history-list, #scrollbar');
+    !target.closest('#composer, #snapshot, header.bar, #answers, #ctrlpad, #history-list, #scrollbar, #grid');
 }
 
 // And a swipe to the right brings the drawer, which is the mirror of the swipe
@@ -3503,7 +3556,7 @@ function leaveFullscreen() {
 // switch off and says which step it was.
 function takeRotation(why) {
   const want = rotationLock;
-  if (!want) return;
+  if (!want || CELL) return;
   rotationArmed = false;
   let step = 'fullscreen';
   let entering;
@@ -3536,7 +3589,8 @@ function takeRotation(why) {
 }
 // Wait for a touch to put the lock back.
 function armRotation(why) {
-  if (!rotationLock || rotationArmed) return;
+  // The screen is turned by the page that owns it, never by a cell inside it.
+  if (CELL || !rotationLock || rotationArmed) return;
   rotationArmed = true;
   report('rotation', { lock: rotationLock, armed: true, why });
 }
@@ -4397,7 +4451,7 @@ async function attachFiles(list) {
   }
   if (!paths.length) { toast(`upload failed: ${failed[0] || 'nothing came back'}`); return; }
   // Trailing space so the next thing typed does not glue itself to the last path.
-  term.paste(`${paths.join(' ')} `);
+  pasteText(`${paths.join(' ')} `);
   // Same reason as after a copy: do not leave a frozen screen in the way of
   // what the user types next.
   if (selectMode) setSelectMode(false);
@@ -4430,7 +4484,7 @@ document.addEventListener('drop', (e) => {
 
 // One way in for pasted text, whichever path produced it.
 function pasteIntoTerminal(text) {
-  term.paste(text);
+  pasteText(text);
   toast(`pasted ${text.length} chars`);
 }
 
@@ -4455,7 +4509,7 @@ pasteTargetEl.addEventListener('paste', () => {
     const text = pasteTargetEl.value;
     closePasteTarget();
     if (!text) return;
-    term.paste(text);
+    pasteText(text);
     toast(`pasted ${text.length} chars`);
   }, 0);
 });
@@ -4596,7 +4650,7 @@ document.getElementById('paste').addEventListener('click', async () => {
   }
   // term.paste honours bracketed-paste mode, so a multi-line paste arrives
   // as one block instead of firing a message per line in Claude Code.
-  term.paste(text);
+  pasteText(text);
   toast(`pasted ${text.length} chars`);
 });
 
@@ -6059,7 +6113,12 @@ function measureKeyboard() {
   const w = Math.round(window.innerWidth);
   const h = Math.round(window.visualViewport ? window.visualViewport.height : window.innerHeight);
   tallestSeen.set(w, Math.max(tallestSeen.get(w) || 0, h));
-  keyboardUp = h < tallestSeen.get(w) * 0.8;
+  // A cell's window is the cell, and the grid makes one shorter at the same
+  // width every time a row of cells is added — which this measure reads as a
+  // keyboard, and holds the pane's rows past the bottom of the cell (the status
+  // line went under it). The keyboard is the page around the cells' to measure:
+  // it keeps the grid's height while one is up (liftGrid).
+  keyboardUp = !CELL && h < tallestSeen.get(w) * 0.8;
   if (keyboardUp) sawKeyboard = true;
   // Published for the same reason the grid is published on `#term`: this is the
   // answer three rules here turn on — whether the focus may be given up, whether
@@ -6087,7 +6146,7 @@ if (window.visualViewport) {
 }
 window.addEventListener('resize', measureKeyboard);
 
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !CELL) {
   navigator.serviceWorker.register('/sw.js');
   // The registration is what shows a notification on the phone, so it is kept:
   // `ready` rather than the register() promise, because a worker installed by a
@@ -6108,6 +6167,322 @@ if ('serviceWorker' in navigator) {
     if (msg.session && msg.session !== current) attach(msg.session);
     else showCurrentTab(true);
   });
+}
+
+// --- the grid: up to six sessions on one screen ---
+//
+// Asked for on 2026-10-16: several tabs at once, 3x2 or 2x3 by the shape of the
+// screen (js/grid.js decides the shape). Each cell is this same page in an
+// iframe, in the cell mode at the top of this file: one session, its pane and
+// what is drawn over the pane (the answer row, the pager, the scrollbar) and
+// nothing else. This page keeps the strip, the bars and the composer, and they
+// act on the active cell — the one with the frame, chosen by touching it.
+//
+// While the grid is up this page holds no socket of its own: every cell is a
+// client of its session, attached at the cell's own size, and a seventh client
+// at the full screen's size would size every window it shares back up under
+// the cell (`window-size latest`, see socket-and-attach.md).
+//
+// A tab tapped while the grid is up is put into it (gridPick); ✕ on a cell takes
+// it out, ⤢ opens that session alone and puts the grid away. The grid's sessions
+// are remembered per device and come back with ⊞ and on reload.
+const gridEl = document.getElementById('grid');
+const gridBtn = document.getElementById('grid-toggle');
+const GRID_KEY = 'pt-grid';
+
+function saveGrid() {
+  try { localStorage.setItem(GRID_KEY, JSON.stringify({ on: gridOn, names: gridNames })); } catch (_) {}
+}
+function readGrid() {
+  try { return storedGrid(localStorage.getItem(GRID_KEY)); } catch (_) { return storedGrid(null); }
+}
+
+// The cell's `window.ptCell`, once its page has got that far.
+function cellOf(name) {
+  const c = gridCells.get(name);
+  try { return (c && c.frame.contentWindow && c.frame.contentWindow.ptCell) || null; } catch (_) { return null; }
+}
+
+function cellURL(name) {
+  const q = new URLSearchParams();
+  if (token) q.set('token', token);
+  q.set('cell', name);
+  return `${location.pathname}?${q}`;
+}
+
+function gridCell(name) {
+  let c = gridCells.get(name);
+  if (c) return c;
+  const box = document.createElement('div');
+  box.className = 'cell';
+  box.dataset.session = name;
+  const head = document.createElement('div');
+  head.className = 'cell-head';
+  const label = document.createElement('span');
+  label.className = 'cell-name';
+  label.textContent = name;
+  const full = document.createElement('button');
+  full.type = 'button';
+  full.className = 'cell-full';
+  full.title = 'Открыть одну эту вкладку';
+  full.textContent = '⤢';
+  const drop = document.createElement('button');
+  drop.type = 'button';
+  drop.className = 'cell-drop';
+  drop.title = 'Убрать из сетки (сессия останется)';
+  drop.textContent = '✕';
+  head.append(label, full, drop);
+  for (const b of [full, drop]) keepsTerminalFocus(b);
+  head.addEventListener('click', (e) => {
+    const t = e.target instanceof Element ? e.target : null;
+    if (t && t.closest('.cell-full')) gridLeave(name);
+    else if (t && t.closest('.cell-drop')) gridDrop(name);
+    else gridActivate(name);
+  });
+  const frame = document.createElement('iframe');
+  frame.title = name;
+  // The cell reads and writes the clipboard for its own copy window.
+  frame.setAttribute('allow', 'clipboard-read; clipboard-write');
+  frame.src = cellURL(name);
+  box.append(head, frame);
+  gridEl.appendChild(box);
+  c = { box, frame };
+  gridCells.set(name, c);
+  return c;
+}
+
+// Lays the cells out. Their place is `order`, never the DOM: moving an iframe
+// in the document loads it again, which is a socket dropped and a pane redrawn.
+function paintGrid() {
+  if (!gridOn) return;
+  for (const [n, c] of gridCells) {
+    if (!gridNames.includes(n)) { c.box.remove(); gridCells.delete(n); }
+  }
+  const n = gridNames.length;
+  const { cols, rows, span } = gridShape(n, gridEl.clientWidth, gridEl.clientHeight);
+  gridEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+  gridEl.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+  gridEl.dataset.shape = `${cols}x${rows}`;
+  gridNames.forEach((name, i) => {
+    const c = gridCell(name);
+    c.box.style.order = String(i);
+    c.box.style.gridColumn = i === n - 1 && span > 1 ? `span ${span}` : '';
+    c.box.classList.toggle('active', name === current);
+  });
+  for (const b of tabsEl.querySelectorAll('button[data-session]')) {
+    b.classList.toggle('active', b.dataset.session === current);
+    b.classList.toggle('in-grid', gridNames.includes(b.dataset.session));
+  }
+  liftGrid();
+}
+
+// The keyboard takes no rows from the cells either. Raised for a cell, it
+// shrinks this page, and a grid that followed would resize all six panes at
+// once — and every one of them loses history to a resize (see CLAUDE.md, "The
+// keyboard takes no rows from the pane"). So the grid keeps the height it had
+// and is lifted until the active cell's bottom is above the keyboard.
+let gridHeight = 0;
+function liftGrid() {
+  if (!gridOn) return;
+  const visible = termBox.clientHeight;
+  if (!keyboardUp || !gridHeight) {
+    gridHeight = visible;
+    if (gridEl.style.height) gridEl.style.height = '';
+    if (gridEl.style.transform) gridEl.style.transform = '';
+    return;
+  }
+  gridEl.style.height = `${gridHeight}px`;
+  const c = gridCells.get(current);
+  const bottom = c ? c.box.offsetTop + c.box.offsetHeight : 0;
+  const lift = Math.max(0, bottom - visible);
+  gridEl.style.transform = lift ? `translateY(-${lift}px)` : '';
+}
+if (window.ResizeObserver) {
+  new ResizeObserver(() => { if (gridOn) paintGrid(); }).observe(termBox);
+}
+
+function gridActivate(name) {
+  if (!gridOn || !gridNames.includes(name)) return;
+  if (name !== current) {
+    // A Ctrl armed for one cell must not go off in another.
+    const was = cellOf(current);
+    if (was) was.ctrl(false);
+    if (ctrlKey) ctrlKey.classList.remove('on');
+    rememberVisit(current);
+    current = name;
+  }
+  paintGrid();
+  showCurrentTab(false);
+}
+
+// A tab tapped with the grid up (attach hands it here).
+function gridOpen(name) {
+  const what = gridPick(gridNames, name);
+  report('grid', { pick: what, n: gridNames.length });
+  if (what === 'full') { toast('в сетке уже шесть — уберите одну ✕'); return; }
+  if (what === 'add') { gridNames.push(name); saveGrid(); }
+  gridActivate(name);
+}
+
+function gridDrop(name) {
+  if (gridNames.length <= 1) { gridLeave(name); return; }
+  gridNames = gridNames.filter((n) => n !== name);
+  if (current === name) current = gridNames[0];
+  saveGrid();
+  paintGrid();
+}
+
+// Sessions that are gone leave the grid; the strip's poll calls this.
+function gridPrune(alive) {
+  const kept = gridKeep(gridNames, alive);
+  if (kept.length === gridNames.length) return;
+  gridNames = kept;
+  if (!kept.length) {
+    const was = current;
+    gridClose();
+    saveGrid();
+    stepBackFrom(was, null);
+    return;
+  }
+  if (!kept.includes(current)) current = kept[0];
+  saveGrid();
+  paintGrid();
+}
+
+function gridEnter(from = readGrid().names) {
+  if (gridOn || CELL) return;
+  let names = from.slice();
+  if (current && !names.includes(current)) {
+    names = names.slice(0, GRID_MAX - 1);
+    names.push(current);
+  }
+  if (!names.length) { toast('откройте вкладку, потом ⊞'); return; }
+  // The one pane gives way to the cells, its socket first (see above).
+  releaseTerminalFocus();
+  term.blur();
+  dropSocket();
+  if (selectMode) setSelectMode(false);
+  if (ctrlArmed) armCtrl(false);
+  gridOn = true;
+  gridNames = names;
+  if (!current || !names.includes(current)) current = names[0];
+  screenTerm.hidden = false;
+  drawerCloseBtn.hidden = false;
+  closeDrawer();
+  screenTerm.classList.add('grid');
+  gridEl.hidden = false;
+  gridBtn.classList.add('on');
+  gridHeight = 0;
+  saveGrid();
+  paintGrid();
+  renderTabs();
+  pollTabs(true);
+  report('grid', { on: true, n: names.length, shape: gridEl.dataset.shape });
+}
+
+// Takes the cells down; what the screen shows next is the caller's.
+function gridClose() {
+  for (const c of gridCells.values()) c.box.remove();
+  gridCells.clear();
+  gridOn = false;
+  gridEl.hidden = true;
+  gridEl.style.height = '';
+  gridEl.style.transform = '';
+  screenTerm.classList.remove('grid');
+  gridBtn.classList.remove('on');
+  if (ctrlKey) ctrlKey.classList.remove('on');
+  for (const b of tabsEl.querySelectorAll('button.in-grid')) b.classList.remove('in-grid');
+}
+
+// Back to one pane, on `name` or on the active cell.
+function gridLeave(name) {
+  if (!gridOn) return;
+  const to = name || current || gridNames[0];
+  gridClose();
+  saveGrid();
+  report('grid', { on: false });
+  current = null;
+  if (to) attach(to); else showSessions();
+}
+
+gridBtn.addEventListener('click', () => { if (gridOn) gridLeave(); else gridEnter(); });
+keepsTerminalFocus(gridBtn);
+
+// What the bars send goes to the active cell.
+function gridSend(data) {
+  const c = cellOf(current);
+  if (!c) { toast('ячейка ещё не загрузилась'); return false; }
+  return c.sendInput(data);
+}
+function pasteText(text) {
+  if (!gridOn) { term.paste(text); return; }
+  const c = cellOf(current);
+  if (c) c.paste(text); else toast('ячейка ещё не загрузилась');
+}
+
+// The keys whose handlers live with a pane are pressed in the cell's own copy
+// of them — the same handler, the same Ctrl latch, the same Enter that waits
+// for a word still being composed — rather than imitated here. Taken in the
+// capture phase, so this page's own handler for the key never runs.
+const CELL_KEYS = '#keybar button[data-key], #keybar button[data-mod], #modebar button[data-key], button[data-macro], #select';
+function cellSelector(b) {
+  if (b.id) return `#${b.id}`;
+  const box = b.closest('[id]');
+  for (const a of ['key', 'mod', 'macro']) {
+    if (b.dataset[a]) return `${box ? `#${box.id} ` : ''}[data-${a}="${b.dataset[a]}"]`;
+  }
+  return '';
+}
+screenTerm.addEventListener('click', (e) => {
+  if (!gridOn) return;
+  const b = e.target instanceof Element ? e.target.closest(CELL_KEYS) : null;
+  if (!b) return;
+  e.stopPropagation();
+  e.preventDefault();
+  const c = cellOf(current);
+  if (!c) { toast('ячейка ещё не загрузилась'); return; }
+  c.press(cellSelector(b));
+}, true);
+
+// What the cells say: which one was touched, whether its Ctrl is armed, and the
+// host's notices and config, which only the first cell passes on — every cell
+// hears the same ones.
+window.addEventListener('message', (e) => {
+  if (CELL || e.origin !== location.origin) return;
+  const m = e.data;
+  if (!m || m.pt !== 'cell') return;
+  let from = null;
+  for (const [n, c] of gridCells) {
+    if (c.frame.contentWindow === e.source) { from = n; break; }
+  }
+  if (!from) return;
+  if (m.kind === 'focus') gridActivate(from);
+  else if (m.kind === 'ctrl') { if (from === current && ctrlKey) ctrlKey.classList.toggle('on', !!m.on); }
+  else if (m.kind === 'control' && from === gridNames[0]) onControl(String(m.raw || ''));
+});
+
+// The cell's side of the same conversation.
+function toParent(msg) {
+  try { window.parent.postMessage({ pt: 'cell', ...msg }, location.origin); } catch (_) { /* no page around */ }
+}
+if (CELL) {
+  // A touch anywhere in a cell chooses it, and so does focus arriving by any
+  // other way (Tab on a laptop).
+  document.addEventListener('pointerdown', () => toParent({ kind: 'focus' }), true);
+  document.addEventListener('focusin', () => toParent({ kind: 'focus' }));
+  window.ptCell = {
+    session: CELL,
+    press(sel) {
+      const el = sel ? document.querySelector(sel) : null;
+      if (!el) return false;
+      el.click();
+      return true;
+    },
+    sendInput: (data) => sendInput(data),
+    paste: (text) => { term.paste(text); toast(`pasted ${text.length} chars`); },
+    setFont: (sz) => setFont(sz),
+    ctrl: (on) => { if (ctrlArmed !== !!on) armCtrl(!!on); },
+  };
 }
 
 // Which session to open on load.
@@ -6147,6 +6522,7 @@ async function takeShared() {
 }
 
 async function init() {
+  if (CELL) { attach(CELL); return; }
   const params = new URLSearchParams(location.search);
   const asked = params.get('session');
   const shared = params.get('shared');
@@ -6175,6 +6551,20 @@ async function init() {
     try { last = localStorage.getItem('pt-last-session'); } catch (_) {}
   }
   const want = asked || saved || last;
+  // The grid comes back as it was left, with a notification's session put into
+  // it. Not for a share: what was shared goes into the one pane's socket.
+  if (shared === null && readGrid().on) {
+    const { sessions, error } = await fetchSessions();
+    if (!error) {
+      const alive = new Set(sessions.map((s) => s.name));
+      const names = gridKeep(readGrid().names, alive);
+      if (names.length) {
+        current = want && alive.has(want) ? want : null;
+        gridEnter(names);
+        return;
+      }
+    }
+  }
   if (want) {
     const { sessions } = await fetchSessions();
     if (sessions.some((s) => s.name === want)) { attach(want); return; }
