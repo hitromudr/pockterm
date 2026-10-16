@@ -139,9 +139,9 @@
       <div class="row thirds">
         <!-- The rotation lock: holds the screen in the orientation it is in when
              pressed. The label says what holds now and is written by
-             renderRotation. Whether a lock works at all is the browser's call —
-             an installed app on Android, not a tab — so a refusal is said in
-             the line under it rather than in the toast, which the drawer covers. -->
+             renderRotation. Chrome locks only in fullscreen, so the switch takes
+             fullscreen too (see js/rotation.js); a refusal is said in the line
+             under it rather than in the toast, which the drawer covers. -->
         <button id="rotation" title="Не поворачивать экран вслед за телефоном">&#10227; Поворот</button>
       </div>
       <p id="rotation-note" hidden></p>

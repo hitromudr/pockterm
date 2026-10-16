@@ -3456,12 +3456,15 @@ drawerSideBtn.addEventListener('click', () => {
   report('drawer-side', { left: drawerLeft });
 });
 
-// The rotation lock (see js/rotation.js). Per device, like the levers above, and
-// put back at every load and every return to the page: Chrome lets a lock go with
-// the page it was taken on, and the setting is the owner's, not the page's.
+// The rotation lock (see js/rotation.js). Per device, like the levers above.
+// Chrome locks only in fullscreen and gives fullscreen only inside a touch, so
+// the lock is taken in two steps from one touch, and a lock Chrome let go — the
+// app reopened, a back gesture out of fullscreen — is put back at the next touch
+// anywhere (`rotationArmed`). The setting is the owner's, not the page's.
 const rotationBtn = document.getElementById('rotation');
 const rotationNoteEl = document.getElementById('rotation-note');
 let rotationLock = null;
+let rotationArmed = false;
 try { rotationLock = storedLock(localStorage.getItem('pt-rotation')); } catch (_) {}
 function renderRotation() {
   rotationBtn.textContent = rotationLabel(rotationLock);
@@ -3477,50 +3480,90 @@ function saveRotation() {
     else localStorage.removeItem('pt-rotation');
   } catch (_) {}
 }
-// Resolves to whether the screen is held now. A refusal turns the switch off and
-// says why: the browser is the only one who knows whether a lock works here.
-async function applyRotation(why) {
-  if (!rotationLock) return false;
+const inFullscreen = () => !!document.fullscreenElement;
+function leaveFullscreen() {
+  if (inFullscreen()) document.exitFullscreen().catch(() => {});
+}
+// Called inside a touch, or in fullscreen already: requestFullscreen spends the
+// touch at the moment it is called, so it is called here, synchronously, and the
+// lock follows once fullscreen is there. A refusal at either step turns the
+// switch off and says which step it was.
+function takeRotation(why) {
   const want = rotationLock;
+  if (!want) return;
+  rotationArmed = false;
+  let step = 'fullscreen';
+  let entering;
   try {
-    if (!screen.orientation || typeof screen.orientation.lock !== 'function') {
-      throw Object.assign(new Error('no screen.orientation.lock'), { name: 'NotSupportedError' });
-    }
-    await screen.orientation.lock(want);
-    report('rotation', { lock: want, ok: true, why });
-    return true;
+    entering = inFullscreen() ? Promise.resolve()
+      : document.documentElement.requestFullscreen({ navigationUI: 'hide' });
   } catch (e) {
-    report('rotation', { lock: want, ok: false, why, error: (e && e.name) || String(e) });
-    // Only the request that is still the setting turns it off: a tap that
-    // unlocked in the meantime has already said what it wants.
-    if (rotationLock === want) {
+    entering = Promise.reject(e);
+  }
+  entering
+    .then(() => {
+      step = 'lock';
+      if (!screen.orientation || typeof screen.orientation.lock !== 'function') {
+        throw Object.assign(new Error('no screen.orientation.lock'), { name: 'NotSupportedError' });
+      }
+      return screen.orientation.lock(want);
+    })
+    .then(() => report('rotation', { lock: want, ok: true, why }))
+    .catch((e) => {
+      report('rotation', { lock: want, ok: false, why, step, error: (e && e.name) || String(e) });
+      // Only the request that is still the setting turns it off: a tap that
+      // unlocked in the meantime has already said what it wants.
+      if (rotationLock !== want) return;
       rotationLock = null;
       saveRotation();
       renderRotation();
-    }
-    rotationNote(refusalText(e));
-    return false;
-  }
+      leaveFullscreen();
+      rotationNote(refusalText(e, step));
+    });
+}
+// Wait for a touch to put the lock back.
+function armRotation(why) {
+  if (!rotationLock || rotationArmed) return;
+  rotationArmed = true;
+  report('rotation', { lock: rotationLock, armed: true, why });
 }
 renderRotation();
-applyRotation('load');
+armRotation('load');
+// touchend is what a touch's activation is given on; click covers a mouse. The
+// switch itself is left to its own handler, which may be turning the lock off.
+for (const type of ['touchend', 'click']) {
+  document.addEventListener(type, (e) => {
+    if (!rotationArmed || !rotationLock) return;
+    if (e.target instanceof Element && e.target.closest('#rotation')) return;
+    takeRotation('touch');
+  }, true);
+}
+document.addEventListener('fullscreenchange', () => {
+  if (!inFullscreen()) armRotation('fullscreen-left');
+});
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && rotationLock) applyRotation('visible');
+  if (document.visibilityState !== 'visible' || !rotationLock) return;
+  // Still fullscreen: a lock needs no touch there. Otherwise the next touch.
+  if (inFullscreen()) takeRotation('visible');
+  else armRotation('visible');
 });
 rotationBtn.addEventListener('click', () => {
   rotationNote('');
   if (rotationLock) {
     rotationLock = null;
+    rotationArmed = false;
     saveRotation();
     renderRotation();
     try { screen.orientation.unlock(); } catch (_) {}
+    // Fullscreen is taken for the lock and for nothing else, so it goes with it.
+    leaveFullscreen();
     report('rotation', { lock: null, ok: true, why: 'tap' });
     return;
   }
   rotationLock = lockFamily(screen.orientation && screen.orientation.type);
   saveRotation();
   renderRotation();
-  applyRotation('tap');
+  takeRotation('tap');
 });
 
 // --- the composer's memory ------------------------------------------------

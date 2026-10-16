@@ -4975,21 +4975,49 @@ describe('links in the pane', () => {
 });
 
 describe('the rotation lock in the settings', () => {
-  // Asked for as «кнопку блокировки поворота экрана в настройках». The browser
-  // owns the lock — Chrome grants it to an installed app and refuses a tab — so
-  // the stand fakes `screen.orientation` and records what the page asked of it;
-  // the refusal is faked the same way, by the name Chrome rejects with.
+  // Asked for as «кнопку блокировки поворота экрана в настройках». The first
+  // version locked straight away and the owner's phone refused it — installed
+  // app, `standalone: true`, Chrome 155 — with SecurityError: Chromium locks only
+  // in fullscreen. The fake below is that browser: a lock outside fullscreen is
+  // refused with the same name, and fullscreen is refused without a touch
+  // (navigator.userActivation), which is what decides when the lock can be put
+  // back. `refuse` in sessionStorage makes the lock refuse even in fullscreen.
   let stand;
   before(async () => {
     stand = await startStand();
     await stand.page.addInitScript(() => {
       window.__orient = [];
+      let full = false;
+      Object.defineProperty(document, 'fullscreenElement', {
+        get: () => (full ? document.documentElement : null), configurable: true,
+      });
+      const change = () => document.dispatchEvent(new Event('fullscreenchange'));
+      Element.prototype.requestFullscreen = () => {
+        if (!navigator.userActivation.isActive) {
+          window.__orient.push('fullscreen refused');
+          return Promise.reject(new TypeError('Permissions check failed'));
+        }
+        window.__orient.push('fullscreen');
+        full = true;
+        setTimeout(change, 0);
+        return Promise.resolve();
+      };
+      document.exitFullscreen = () => {
+        window.__orient.push('exit');
+        full = false;
+        setTimeout(change, 0);
+        return Promise.resolve();
+      };
+      // What a back gesture does: fullscreen goes, and Chrome's lock with it.
+      window.__backGesture = () => { full = false; change(); };
       const fake = {
         type: 'portrait-primary',
         lock(o) {
           window.__orient.push(`lock ${o}`);
           const refuse = sessionStorage.getItem('refuse');
-          return refuse ? Promise.reject(new DOMException('no', refuse)) : Promise.resolve();
+          if (refuse) return Promise.reject(new DOMException('no', refuse));
+          if (!full) return Promise.reject(new DOMException('fullscreen required', 'SecurityError'));
+          return Promise.resolve();
         },
         unlock() { window.__orient.push('unlock'); },
         addEventListener() {},
@@ -5006,8 +5034,16 @@ describe('the rotation lock in the settings', () => {
     stored: localStorage.getItem('pt-rotation'),
     calls: window.__orient.slice(),
   }));
+  const calls = async () => (await state()).calls;
+  // A touch on the terminal, away from the drawer.
+  async function touchTerminal() {
+    await stand.shutDrawer();
+    const box = await stand.page.locator('#term').boundingBox();
+    await stand.page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 3);
+    await stand.page.waitForTimeout(200);
+  }
 
-  test('a tap holds the screen as it is, and a reload keeps it held', async () => {
+  test('a tap takes fullscreen and locks in it', async () => {
     const { page } = stand;
     await stand.open();
     await stand.openSettings();
@@ -5015,24 +5051,44 @@ describe('the rotation lock in the settings', () => {
 
     await page.click('#rotation');
     await page.waitForTimeout(200);
-    assert.deepEqual(await state(),
-      { label: '🔒 Портрет', on: true, note: '', stored: 'portrait', calls: ['lock portrait'] });
+    assert.deepEqual(await state(), {
+      label: '🔒 Портрет', on: true, note: '', stored: 'portrait', calls: ['fullscreen', 'lock portrait'],
+    });
     assert.match(stand.serverLog(), /client: \{"event":"rotation","lock":"portrait","ok":true,"why":"tap"/);
+  });
 
-    // Chrome lets a lock go with the page; the setting is put back at load.
+  test('a lock Chrome let go is put back at the next touch, not before', async () => {
+    const { page } = stand;
+    // The app reopened: no fullscreen, and none can be had without a touch.
     await stand.open();
     await page.waitForTimeout(200);
-    assert.deepEqual((await state()).calls, ['lock portrait']);
+    assert.deepEqual(await calls(), [], 'fullscreen asked for without a touch');
     assert.equal((await state()).label, '🔒 Портрет');
+    await stand.attach();
+    await touchTerminal();
+    assert.deepEqual(await calls(), ['fullscreen', 'lock portrait']);
 
+    // A back gesture out of fullscreen: the same, and only once per touch.
+    await page.evaluate(() => { window.__orient = []; window.__backGesture(); });
+    await page.waitForTimeout(100);
+    assert.deepEqual(await calls(), []);
+    await touchTerminal();
+    await touchTerminal();
+    assert.deepEqual(await calls(), ['fullscreen', 'lock portrait']);
+  });
+
+  test('a tap unlocks, and fullscreen goes with the lock', async () => {
+    const { page } = stand;
+    await page.evaluate(() => { window.__orient = []; });
     await stand.openSettings();
     await page.click('#rotation');
     await page.waitForTimeout(200);
     assert.deepEqual(await state(),
-      { label: '⟳ Поворот', on: false, note: '', stored: null, calls: ['lock portrait', 'unlock'] });
+      { label: '⟳ Поворот', on: false, note: '', stored: null, calls: ['unlock', 'exit'] });
     await stand.open();
-    await page.waitForTimeout(200);
-    assert.deepEqual((await state()).calls, [], 'an unlocked setting locked again at load');
+    await stand.attach();
+    await touchTerminal();
+    assert.deepEqual(await calls(), [], 'an unlocked setting took fullscreen');
   });
 
   test('a refusal is said under the switch, and the switch goes back off', async () => {
@@ -5043,15 +5099,18 @@ describe('the rotation lock in the settings', () => {
     await page.click('#rotation');
     await page.waitForFunction(() => !document.getElementById('rotation-note').hidden);
     const got = await state();
-    assert.deepEqual({ ...got, note: !!got.note },
-      { label: '⟳ Поворот', on: false, note: true, stored: null, calls: ['lock portrait'] });
-    assert.match(got.note, /установленном приложении/);
-    assert.match(stand.serverLog(), /"event":"rotation","lock":"portrait","ok":false,"why":"tap","error":"NotSupportedError"/);
+    assert.deepEqual({ ...got, note: !!got.note }, {
+      label: '⟳ Поворот', on: false, note: true, stored: null, calls: ['fullscreen', 'lock portrait', 'exit'],
+    });
+    assert.match(got.note, /здесь поворот не блокируется/);
+    assert.match(stand.serverLog(),
+      /"event":"rotation","lock":"portrait","ok":false,"why":"tap","step":"lock","error":"NotSupportedError"/);
     // The second tap tries again rather than unlocking a lock nobody holds.
     await page.evaluate(() => sessionStorage.removeItem('refuse'));
     await page.click('#rotation');
     await page.waitForTimeout(200);
     const again = await state();
-    assert.deepEqual([again.label, again.note, again.calls.at(-1)], ['🔒 Портрет', '', 'lock portrait']);
+    assert.deepEqual([again.label, again.note, again.calls.slice(-2)],
+      ['🔒 Портрет', '', ['fullscreen', 'lock portrait']]);
   });
 });

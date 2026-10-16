@@ -25,9 +25,12 @@ test('the button says what holds now', () => {
   assert.equal(rotationLabel('landscape'), '🔒 Альбом');
 });
 
-test('a refusal is said in words', () => {
-  assert.match(refusalText({ name: 'NotSupportedError' }), /установленном приложении/);
-  assert.match(refusalText({ name: 'SecurityError' }), /установленном приложении/);
+test('a refusal is said in words, by the step that refused', () => {
+  assert.match(refusalText({ name: 'NotSupportedError' }), /здесь поворот не блокируется/);
+  // What the owner's phone answered outside fullscreen, installed app and all.
+  assert.match(refusalText({ name: 'SecurityError' }), /только в полноэкранном режиме/);
+  assert.doesNotMatch(refusalText({ name: 'SecurityError' }), /установленном/);
   assert.match(refusalText({ name: 'AbortError' }), /сбросил/);
-  assert.match(refusalText(new TypeError('x')), /не дал/);
+  assert.match(refusalText(new TypeError('x')), /не дал заблокировать/);
+  assert.match(refusalText(new TypeError('Permissions check failed'), 'fullscreen'), /не дал полный экран/);
 });

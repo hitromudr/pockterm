@@ -300,16 +300,26 @@ above every startup failure and far below any session anyone used.
 The recipe lives in two files that must not diverge — `deploy/sessions.mk.example` here
 and the `pockterm_app` role's template in the devops repository.
 
-## The rotation lock belongs to the browser
+## The rotation lock belongs to the browser, and the browser wants fullscreen
 
-Asked for on 2026-10-16. `screen.orientation.lock` is the whole mechanism, and Chrome
-decides whether it works: granted to an installed app (the owner's phone runs the PWA)
-and to fullscreen, refused to a tab and to the desktop with `NotSupportedError`. So the
-lever never claims a lock it was not given — a refusal turns it back off and says why
-in `#rotation-note` under it (the toast lives behind the drawer), and `rotation` in the
-journal carries the error name. The lock holds a family (`portrait`, `landscape`), not
-the exact type, so upside down is still the same lock. Chrome lets a lock go with the
-page, so the setting is applied at every load and every return to visible. The stand
-cannot be granted a lock, so `the rotation lock in the settings` fakes
-`screen.orientation`; the phone is the judge, through the journal line.
+Asked for on 2026-10-16. `screen.orientation.lock` is the whole mechanism. The first
+version assumed Chrome grants it to an installed app as it is, and the owner's phone
+said otherwise within minutes: `standalone: true` in the hello line, Chrome 155, and
+`"error":"SecurityError"` on every tap — Chromium's name for "fullscreen required".
+The note under the switch meanwhile said «только в установленном приложении» to a
+person holding the installed app: a guess written as a reason.
 
+So the switch takes fullscreen (`navigationUI: 'hide'`) and locks in it, both from one
+touch — `requestFullscreen` spends the activation the moment it is called, so it is
+called synchronously in the handler and the lock follows its promise. Chrome lets
+fullscreen go, and the lock with it, when the app is reopened or a back gesture leaves
+fullscreen; fullscreen cannot be had again without a touch, so the setting is armed
+(`rotationArmed`) and put back at the next `touchend` or `click` anywhere — once, not on
+every touch. Turning it off leaves fullscreen too: it is taken for the lock and nothing
+else. A refusal turns the lever off and says which step refused (`step` in the journal
+line, `refusalText(err, step)`). The lock holds a family, so upside down is the same
+lock.
+
+The stand cannot be granted either, so `the rotation lock in the settings` fakes that
+Chrome: a lock outside fullscreen refused with SecurityError, fullscreen refused
+without `navigator.userActivation`. It fails against the first version.

@@ -365,10 +365,12 @@ default, where the thumb is; and `☰ Справа` / `☰ Слева`, which en
 stands at and which side the session list slides out of (the right by default, `+`
 then on the left; a swipe towards that edge puts the list away, one away from it
 over the terminal brings it back); and `⟳ Поворот`, the rotation lock: it holds
-the screen the way it was when pressed (`🔒 Портрет` / `🔒 Альбом`) and puts the
-lock back at every load. The browser grants the lock — Chrome on Android to an
-installed app, not to a tab; a refusal is said in a line under the button, and the
-button turns back off. Per device. Moved rather than copied: two places holding one lever drift apart. The
+the screen the way it was when pressed (`🔒 Портрет` / `🔒 Альбом`). Chrome locks
+only in fullscreen — an installed app included — so the button takes fullscreen
+too: the status and navigation bars go for as long as the lock holds. Chrome grants
+fullscreen only on a touch, so after the app is reopened or a back gesture the lock
+comes back at the first touch. A refusal is said in a line under the button, and
+the button turns back off. Per device. Moved rather than copied: two places holding one lever drift apart. The
 `▾` that hides the bars stayed on the key bar, being an action on the working
 surface rather than a setting.
 
