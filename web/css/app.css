@@ -781,6 +781,7 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
    one more: the toast lives inside the terminal screen, which is behind the
    drawer these settings are in. */
 #notify-note,
+#rotation-note,
 #custom-note {
   margin-top: 6px;
   padding: 8px 10px;
@@ -790,7 +791,7 @@ button.close.armed { color: #ffb4b4; background: #3a2530; border-color: #6b3340;
   border: 1px solid #4a3a1c;
   border-radius: 8px;
 }
-#notify-note { margin-bottom: 8px; white-space: normal; }
+#notify-note, #rotation-note { margin-bottom: 8px; white-space: normal; }
 /* A custom entry under +, next to the four presets it joins. */
 #new-menu button.own, #new-menu-term button.own { color: #ffe9a8; }
 

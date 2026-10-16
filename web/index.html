@@ -136,6 +136,15 @@
              records the typed text itself. -->
         <button id="input-diag" title="Record what the keyboard does">&#128269; Input log</button>
       </div>
+      <div class="row thirds">
+        <!-- The rotation lock: holds the screen in the orientation it is in when
+             pressed. The label says what holds now and is written by
+             renderRotation. Whether a lock works at all is the browser's call —
+             an installed app on Android, not a tab — so a refusal is said in
+             the line under it rather than in the toast, which the drawer covers. -->
+        <button id="rotation" title="Не поворачивать экран вслед за телефоном">&#10227; Поворот</button>
+      </div>
+      <p id="rotation-note" hidden></p>
       <!-- The session buttons: the four the page starts with and whatever the
            owner added beside them, one list. A label to tap and a command to
            run — and for a default, no command at all: its own name is the make

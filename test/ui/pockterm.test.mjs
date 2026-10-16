@@ -4973,3 +4973,85 @@ describe('links in the pane', () => {
     }
   });
 });
+
+describe('the rotation lock in the settings', () => {
+  // Asked for as «кнопку блокировки поворота экрана в настройках». The browser
+  // owns the lock — Chrome grants it to an installed app and refuses a tab — so
+  // the stand fakes `screen.orientation` and records what the page asked of it;
+  // the refusal is faked the same way, by the name Chrome rejects with.
+  let stand;
+  before(async () => {
+    stand = await startStand();
+    await stand.page.addInitScript(() => {
+      window.__orient = [];
+      const fake = {
+        type: 'portrait-primary',
+        lock(o) {
+          window.__orient.push(`lock ${o}`);
+          const refuse = sessionStorage.getItem('refuse');
+          return refuse ? Promise.reject(new DOMException('no', refuse)) : Promise.resolve();
+        },
+        unlock() { window.__orient.push('unlock'); },
+        addEventListener() {},
+      };
+      Object.defineProperty(screen, 'orientation', { value: fake, configurable: true });
+    });
+  });
+  after(async () => { await stand.stop(); });
+
+  const state = () => stand.page.evaluate(() => ({
+    label: document.getElementById('rotation').textContent,
+    on: document.getElementById('rotation').classList.contains('on'),
+    note: document.getElementById('rotation-note').hidden ? '' : document.getElementById('rotation-note').textContent,
+    stored: localStorage.getItem('pt-rotation'),
+    calls: window.__orient.slice(),
+  }));
+
+  test('a tap holds the screen as it is, and a reload keeps it held', async () => {
+    const { page } = stand;
+    await stand.open();
+    await stand.openSettings();
+    assert.deepEqual(await state(), { label: '⟳ Поворот', on: false, note: '', stored: null, calls: [] });
+
+    await page.click('#rotation');
+    await page.waitForTimeout(200);
+    assert.deepEqual(await state(),
+      { label: '🔒 Портрет', on: true, note: '', stored: 'portrait', calls: ['lock portrait'] });
+    assert.match(stand.serverLog(), /client: \{"event":"rotation","lock":"portrait","ok":true,"why":"tap"/);
+
+    // Chrome lets a lock go with the page; the setting is put back at load.
+    await stand.open();
+    await page.waitForTimeout(200);
+    assert.deepEqual((await state()).calls, ['lock portrait']);
+    assert.equal((await state()).label, '🔒 Портрет');
+
+    await stand.openSettings();
+    await page.click('#rotation');
+    await page.waitForTimeout(200);
+    assert.deepEqual(await state(),
+      { label: '⟳ Поворот', on: false, note: '', stored: null, calls: ['lock portrait', 'unlock'] });
+    await stand.open();
+    await page.waitForTimeout(200);
+    assert.deepEqual((await state()).calls, [], 'an unlocked setting locked again at load');
+  });
+
+  test('a refusal is said under the switch, and the switch goes back off', async () => {
+    const { page } = stand;
+    await stand.open();
+    await page.evaluate(() => sessionStorage.setItem('refuse', 'NotSupportedError'));
+    await stand.openSettings();
+    await page.click('#rotation');
+    await page.waitForFunction(() => !document.getElementById('rotation-note').hidden);
+    const got = await state();
+    assert.deepEqual({ ...got, note: !!got.note },
+      { label: '⟳ Поворот', on: false, note: true, stored: null, calls: ['lock portrait'] });
+    assert.match(got.note, /установленном приложении/);
+    assert.match(stand.serverLog(), /"event":"rotation","lock":"portrait","ok":false,"why":"tap","error":"NotSupportedError"/);
+    // The second tap tries again rather than unlocking a lock nobody holds.
+    await page.evaluate(() => sessionStorage.removeItem('refuse'));
+    await page.click('#rotation');
+    await page.waitForTimeout(200);
+    const again = await state();
+    assert.deepEqual([again.label, again.note, again.calls.at(-1)], ['🔒 Портрет', '', 'lock portrait']);
+  });
+});

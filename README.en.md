@@ -364,7 +364,11 @@ where the strip with `☰`, the tabs and `+` stands — at the bottom under the 
 default, where the thumb is; and `☰ Справа` / `☰ Слева`, which end of the strip `☰`
 stands at and which side the session list slides out of (the right by default, `+`
 then on the left; a swipe towards that edge puts the list away, one away from it
-over the terminal brings it back). Per device. Moved rather than copied: two places holding one lever drift apart. The
+over the terminal brings it back); and `⟳ Поворот`, the rotation lock: it holds
+the screen the way it was when pressed (`🔒 Портрет` / `🔒 Альбом`) and puts the
+lock back at every load. The browser grants the lock — Chrome on Android to an
+installed app, not to a tab; a refusal is said in a line under the button, and the
+button turns back off. Per device. Moved rather than copied: two places holding one lever drift apart. The
 `▾` that hides the bars stayed on the key bar, being an action on the working
 surface rather than a setting.
 

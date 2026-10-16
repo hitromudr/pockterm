@@ -16,6 +16,7 @@ import { dropIndex } from './carry.js';
 import { thumb as thumbAt, backAt } from './bar.js';
 import { installDecision, installText, isIOS } from './install.js';
 import { linksOnRows, openable } from './urls.js';
+import { lockFamily, storedLock, rotationLabel, refusalText } from './rotation.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
@@ -3453,6 +3454,73 @@ drawerSideBtn.addEventListener('click', () => {
   document.documentElement.classList.toggle('drawer-right', !drawerLeft);
   renderDrawerSide();
   report('drawer-side', { left: drawerLeft });
+});
+
+// The rotation lock (see js/rotation.js). Per device, like the levers above, and
+// put back at every load and every return to the page: Chrome lets a lock go with
+// the page it was taken on, and the setting is the owner's, not the page's.
+const rotationBtn = document.getElementById('rotation');
+const rotationNoteEl = document.getElementById('rotation-note');
+let rotationLock = null;
+try { rotationLock = storedLock(localStorage.getItem('pt-rotation')); } catch (_) {}
+function renderRotation() {
+  rotationBtn.textContent = rotationLabel(rotationLock);
+  rotationBtn.classList.toggle('on', !!rotationLock);
+}
+function rotationNote(text) {
+  rotationNoteEl.textContent = text;
+  rotationNoteEl.hidden = !text;
+}
+function saveRotation() {
+  try {
+    if (rotationLock) localStorage.setItem('pt-rotation', rotationLock);
+    else localStorage.removeItem('pt-rotation');
+  } catch (_) {}
+}
+// Resolves to whether the screen is held now. A refusal turns the switch off and
+// says why: the browser is the only one who knows whether a lock works here.
+async function applyRotation(why) {
+  if (!rotationLock) return false;
+  const want = rotationLock;
+  try {
+    if (!screen.orientation || typeof screen.orientation.lock !== 'function') {
+      throw Object.assign(new Error('no screen.orientation.lock'), { name: 'NotSupportedError' });
+    }
+    await screen.orientation.lock(want);
+    report('rotation', { lock: want, ok: true, why });
+    return true;
+  } catch (e) {
+    report('rotation', { lock: want, ok: false, why, error: (e && e.name) || String(e) });
+    // Only the request that is still the setting turns it off: a tap that
+    // unlocked in the meantime has already said what it wants.
+    if (rotationLock === want) {
+      rotationLock = null;
+      saveRotation();
+      renderRotation();
+    }
+    rotationNote(refusalText(e));
+    return false;
+  }
+}
+renderRotation();
+applyRotation('load');
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && rotationLock) applyRotation('visible');
+});
+rotationBtn.addEventListener('click', () => {
+  rotationNote('');
+  if (rotationLock) {
+    rotationLock = null;
+    saveRotation();
+    renderRotation();
+    try { screen.orientation.unlock(); } catch (_) {}
+    report('rotation', { lock: null, ok: true, why: 'tap' });
+    return;
+  }
+  rotationLock = lockFamily(screen.orientation && screen.orientation.type);
+  saveRotation();
+  renderRotation();
+  applyRotation('tap');
 });
 
 // --- the composer's memory ------------------------------------------------

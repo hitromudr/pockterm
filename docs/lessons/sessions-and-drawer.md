@@ -299,3 +299,17 @@ above every startup failure and far below any session anyone used.
 
 The recipe lives in two files that must not diverge — `deploy/sessions.mk.example` here
 and the `pockterm_app` role's template in the devops repository.
+
+## The rotation lock belongs to the browser
+
+Asked for on 2026-10-16. `screen.orientation.lock` is the whole mechanism, and Chrome
+decides whether it works: granted to an installed app (the owner's phone runs the PWA)
+and to fullscreen, refused to a tab and to the desktop with `NotSupportedError`. So the
+lever never claims a lock it was not given — a refusal turns it back off and says why
+in `#rotation-note` under it (the toast lives behind the drawer), and `rotation` in the
+journal carries the error name. The lock holds a family (`portrait`, `landscape`), not
+the exact type, so upside down is still the same lock. Chrome lets a lock go with the
+page, so the setting is applied at every load and every return to visible. The stand
+cannot be granted a lock, so `the rotation lock in the settings` fakes
+`screen.orientation`; the phone is the judge, through the journal line.
+
