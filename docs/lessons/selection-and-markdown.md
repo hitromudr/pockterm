@@ -451,3 +451,33 @@ from the stand:
 - **A box that is not a table did not appear at all** on those panes — the agent's input box is two
   horizontal rules rather than a box — so the `┬` rule is a guard against a shape that has not
   turned up in the wild yet, and it stays a guard.
+
+## A mouse drag over the live pane is tmux's, and its copy came back as OSC 52
+
+Reported 2026-10-18 from the laptop: text selected with the mouse, nothing in the clipboard, and
+the screen snapping back to normal. The journal named the device — `sawKeyboard:false`, and
+`mode in:true` followed by `mode in:false` a second later, which is tmux's copy-mode and not this
+page's selection mode.
+
+The pane's `mouse` is on (the wheel needs it), so xterm reports the drag to tmux rather than making a
+selection of its own. tmux enters copy-mode, highlights, and on release runs its default
+`MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel`: the text goes into tmux's buffer, the mode is
+left — the snap back — and tmux tells the outer terminal through **OSC 52**, because
+`set-clipboard` is `external` and the client's `TERM=xterm-256color` carries the `clipboard`
+feature (`client_termfeatures` says so, tmux 3.5a). xterm.js has no handler for 52 and dropped it.
+
+So the page takes it (`js/osc52.js`, registered on `term.parser`) and writes it through the same
+`writeClipboard` as the Copy button, with the same toast and a `copy … via:"osc52"` line. Two
+bounds:
+
+- **A read is never answered.** `52;c;?` asks the terminal to type the clipboard into the pane;
+  refused, and said in the journal as `osc52 why:read`.
+- **Only the page somebody is working takes it.** tmux sends the sequence to every client showing
+  the pane, so the phone beside the laptop got the laptop's copy as well — and a phone writing its
+  clipboard behind its owner's back, or toasting a failure about a copy nobody made there, is the
+  wrong answer. Transient user activation (`navigator.userActivation.isActive`, a press or a key
+  within seconds) picks the client; the others write `osc52 why:inactive` and show nothing.
+
+The browser test drags across typed text on a desktop stand and reads the clipboard back; with the
+handler removed it holds what it held before the drag and the journal is silent. tmux ends the
+selection on the cell before the release, which is why it asserts a prefix.

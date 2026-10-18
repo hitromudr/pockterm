@@ -27,6 +27,7 @@ const PRECACHE = [
   '/js/rotation.js',
   '/js/vendor.js',
   '/js/grid.js',
+  '/js/osc52.js',
   // The pane's own font, cut down and carried here so the same screen is the
   // same screen on every machine — see --mono in css/app.css. Precached because
   // an installed PWA with no network would otherwise draw the pane in whatever

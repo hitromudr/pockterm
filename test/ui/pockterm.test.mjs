@@ -2477,6 +2477,61 @@ describe('selection and the clipboard', () => {
   });
 });
 
+describe('a mouse drag over the live pane', () => {
+  let stand;
+  before(async () => { stand = await startStand({ desktop: true }); });
+  after(async () => { await stand.stop(); });
+
+  test('what tmux copies on release reaches the clipboard', async () => {
+    // Reported from the laptop as a drag that highlights, snaps back to the live
+    // screen and leaves the clipboard as it was. The drag is tmux's (mouse on): it
+    // copies on release, leaves copy-mode and hands the text over as OSC 52, which
+    // the page used to drop.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    await page.evaluate(() => navigator.clipboard.writeText('before the drag'));
+    await page.click('#term');
+    await page.keyboard.type('drag me to the clipboard');
+    await page.waitForFunction(() => document.querySelector('.xterm-rows')?.textContent?.includes('drag me to the clipboard'));
+
+    // Where the words are drawn, from the row's own text.
+    const box = await page.evaluate(() => {
+      const row = [...document.querySelectorAll('.xterm-rows > div')]
+        .find((r) => r.textContent.includes('drag me to the clipboard'));
+      const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+      const range = document.createRange();
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const at = n.textContent.indexOf('drag me');
+        if (at < 0) continue;
+        range.setStart(n, at);
+        range.setEnd(n, at + 'drag me'.length);
+        const r = range.getBoundingClientRect();
+        return { x: r.left, y: r.top + r.height / 2, w: r.width };
+      }
+      return null;
+    });
+    assert.ok(box, 'the typed words are not split across one text node');
+    const y = Math.round(box.y);
+    await page.mouse.move(Math.round(box.x + 2), y);
+    await page.mouse.down();
+    for (let x = box.x + 2; x < box.x + box.w - 2; x += 8) {
+      await page.mouse.move(Math.round(x), y);
+      await page.waitForTimeout(20);
+    }
+    await page.mouse.move(Math.round(box.x + box.w - 2), y);
+    await page.mouse.up();
+
+    await page.waitForFunction(async () => (await navigator.clipboard.readText()) !== 'before the drag',
+      null, { timeout: 5000 }).catch(() => {});
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    // tmux ends the selection on the cell before the release, hence a prefix.
+    assert.match(clip, /^drag m/, `clipboard holds ${JSON.stringify(clip)}; journal: ${
+      (stand.serverLog().match(/\{"event":"(osc52|copy)".*/g) || ['nothing']).join(' | ')}`);
+    assert.match(stand.serverLog(), /"event":"copy","how":"\w+","chars":\d+,"via":"osc52"/);
+  });
+});
+
 describe('typing and deleting', () => {
   let stand;
   before(async () => { stand = await startStand(); });

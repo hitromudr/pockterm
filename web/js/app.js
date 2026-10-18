@@ -17,6 +17,7 @@ import { thumb as thumbAt, backAt } from './bar.js';
 import { installDecision, installText, isIOS } from './install.js';
 import { linksOnRows, openable } from './urls.js';
 import { lockFamily, storedLock, rotationLabel, refusalText } from './rotation.js';
+import { osc52Text } from './osc52.js';
 import { bringBack } from './vendor.js';
 import { gridShape, gridPick, gridKeep, storedGrid, GRID_MAX } from './grid.js';
 
@@ -4242,6 +4243,33 @@ async function writeClipboard(text) {
 }
 let lastCopyError = '';
 let copyingViaFallback = false;
+
+// A mouse drag over the pane is tmux's (see js/osc52.js): it copies on release,
+// leaves copy-mode, and hands the text to the outer terminal as OSC 52 — which
+// is this page. tmux sends it to every client showing the pane, so the phone in
+// a pocket gets the laptop's copy too; only the page somebody is working right
+// now takes it (transient user activation: a press or a key within seconds),
+// and the rest say so in the journal and nothing on screen.
+term.parser.registerOscHandler(52, (data) => {
+  const text = osc52Text(data);
+  if (text === null) {
+    report('osc52', { written: false, why: data.endsWith('?') ? 'read' : 'malformed' });
+    return true;
+  }
+  const ua = navigator.userActivation;
+  const active = ua ? ua.isActive : document.hasFocus();
+  if (!active || !text) {
+    report('osc52', { written: false, why: text ? 'inactive' : 'empty', chars: text.length });
+    return true;
+  }
+  lastCopyError = '';
+  writeClipboard(text).then((how) => {
+    report('copy', { how, chars: text.length, via: 'osc52', error: lastCopyError });
+    if (!how) { toast(`copy failed: ${lastCopyError || 'blocked by the browser'}`); return; }
+    toast(`copied ${text.length} chars (${how}): ${preview(text)}`);
+  });
+  return true;
+});
 
 // Read an image out of the clipboard where the browser allows it. Wrapped
 // because navigator.clipboard.read is missing on Firefox and throws on a
