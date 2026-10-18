@@ -309,6 +309,38 @@ test('the question is still read through the last option\'s own wrap', () => {
   assert.equal(q.options.length, 2);
 });
 
+// Captured off the owner's phone on 2026-10-18: the agent ended its turn with two
+// questions of its own, numbered, and waited for words. The last one ends in a
+// question mark, so the list read as an offer with its question drawn straight
+// under it, and two buttons stood over the box — each would have sent a bare
+// digit for an answer that needed a sentence. The items are the questions here,
+// not the choices: an option before the last that itself ends in "?" says so.
+const QUESTIONS_ASKED = [
+  '● Сделает её та же вкладка, что потом разобьёт гараж',
+  '  (техника / малые машины / транспорт): это одно окно, и',
+  '  делить его между двумя вкладками нельзя.',
+  '',
+  '  Два коротких вопроса, ответ впишу в заявку:',
+  '  1. «Не ясно, что разрабатывает, где готовое» я понял',
+  '     так: слева то, что вы сейчас собираете, а готовое —',
+  '     то, что сохранено кнопкой «ЗАПОМНИТЬ». Верно? Или в',
+  '     лабе должно идти изучение со временем, как исследование?',
+  '  2. Что значит «транспорт» в гараже, рядом с техникой и',
+  '     малыми машинами?',
+  '',
+  '✻ Cogitated for 49s · done 2:21 PM',
+  '───────────────────────────────────',
+  '❯\u00a0',
+  '───────────────────────────────────',
+  '  ctx 30% | dms@ai:~/work/anabasis $ | Opus 5',
+];
+
+test('a list of the agent\'s own questions is not an offer', () => {
+  assert.equal(detectOffer(QUESTIONS_ASKED), null,
+    'questions waiting for words were offered as digits');
+  assert.equal(detectPrompt(QUESTIONS_ASKED), null);
+});
+
 test('a numbered list with no agent and no box is not an offer', () => {
   // A shell printing a list is the case the chrome rule was written for: there
   // is nothing here to type a digit into.

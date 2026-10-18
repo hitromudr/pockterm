@@ -127,6 +127,17 @@ does not read offers, so the tab's blue and the "asks for an answer" notice keep
 meaning a menu is on screen; otherwise an agent that ends every second answer with
 a list would have a phone buzzing about its prose.
 
+**That "drawn with no gap" reading took a list of questions for an offer on
+2026-10-18.** The agent closed its turn with "Два коротких вопроса, ответ впишу в
+заявку:" and two numbered questions, each wanting a sentence. The last one ends in
+`?`, and through the last option's wrap that is exactly the tight offer above, so
+two buttons stood over an empty box offering "1" and "2" as answers. What tells the
+two apart is the items themselves: in an offer they are the choices and the question
+is separate, in a questionnaire every item is a question. So an option *before the
+last* whose own text ends in `?` (`asksItself`) means no offer. An offer whose
+choices are themselves phrased as questions loses its buttons — the cheap failure
+again. The screen is `QUESTIONS_ASKED` in `test/detect.test.mjs`.
+
 **And the agent's own input box is not a menu, though it is drawn like one.** It
 carries the very same `❯`, and under it is whatever is being typed: a message
 beginning "1. …" newline "2. …" drew two answer buttons before it had been sent,

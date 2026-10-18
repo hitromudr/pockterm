@@ -581,6 +581,20 @@ function askedUnder(block, last) {
   return boxGlyphs(block[end]).endsWith('?') && closes(end + 1);
 }
 
+// Whether an option before the last ends in a question mark: its own text runs
+// from its number down to the last line with words on it before the next one.
+function asksItself(block, at) {
+  for (let k = 0; k + 1 < at.length; k++) {
+    for (let i = at[k + 1] - 1; i >= at[k]; i--) {
+      const text = boxGlyphs(block[i]);
+      if (text === '') continue;
+      if (text.endsWith('?')) return true;
+      break;
+    }
+  }
+  return false;
+}
+
 export function detectOffer(lines) {
   const plain = lines.map(stripAnsi);
   // The input box, and nothing typed into it: the lowest one, since the
@@ -612,14 +626,26 @@ export function detectOffer(lines) {
     if (!m) continue;
     if (run && m[2] === String(run.opts.length + 1)) {
       run.opts.push({ key: m[2], label: label(m[3]) });
+      run.lines.push(i);
       run.last = i;
       continue;
     }
     if (run && run.opts.length >= 2) best = run;
-    run = m[2] === '1' ? { start: i, last: i, opts: [{ key: '1', label: label(m[3]) }] } : null;
+    run = m[2] === '1'
+      ? { start: i, last: i, lines: [i], opts: [{ key: '1', label: label(m[3]) }] }
+      : null;
   }
   if (run && run.opts.length >= 2) best = run;
   if (!best) return null;
+
+  // The items have to be the choices, not the questions. On the owner's screen
+  // of 2026-10-18 the agent closed its turn with "Два коротких вопроса:" and two
+  // numbered questions, each wanting a sentence; the last one ended in "?", which
+  // askedUnder reads as the question drawn straight under the list, and two
+  // buttons offered a bare digit for each. An item before the last that itself
+  // ends in a question mark says the list is the asking. An offer phrased as
+  // questions goes unanswered by a button — the cheap failure.
+  if (asksItself(block, best.lines)) return null;
 
   // And the question has to be the list's own: drawn under it, with nothing else
   // in between.
