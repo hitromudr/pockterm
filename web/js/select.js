@@ -353,10 +353,40 @@ const OSC_ANY = /\x1b\][^\x1b\x07]*(?:\x1b\\|\x07)?/g;
 // half a URL, or a short word (`yarr` under `…/yarr.git`) that this has no way to
 // tell from one — and rewriting what is on screen into a longer address is the kind
 // of guess that reads as the right answer.
+//
+// **Unless the rows under it spell the rest of the address.** Claude Code's login
+// screen (2.1.308, captured at 51 columns) wraps its URL itself and puts the link on
+// the first row only: the span carries the whole target, the rows below are bare
+// text at column 0. Left to `unwrapFrom` they were joined as prose, a space at every
+// row — a URL that does not open. So a span that is the start of its address takes
+// the following rows when, escapes and margins off, they are the rest of it letter
+// for letter and end exactly where it ends. Anything short of that is the old answer.
 const stripSGR = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 // Every escape, whatever kind: what is left is what a person sees.
 const ESC_ANY = /\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x1b\x07]*(?:\x1b\\|\x07)?|[()][A-Za-z0-9]|\\)/g;
 const stripEscapes = (s) => s.replace(ESC_ANY, '');
+
+// The bare rows after a link span that spell `rest`, the part of its address the span
+// did not draw: where they end in `text`, and the escapes they carried. Null unless
+// every row taken is address and nothing else, and the address ends with a row.
+function restOf(text, rest) {
+  let at = 0;
+  let escapes = '';
+  while (rest) {
+    const nl = text.indexOf('\n', at);
+    if (nl < 0) return null;
+    const tail = text.slice(at, nl);
+    if (stripEscapes(tail).trim()) return null;
+    const end = text.indexOf('\n', nl + 1);
+    const row = text.slice(nl + 1, end < 0 ? text.length : end);
+    const seen = stripEscapes(row).trim();
+    if (!seen || !rest.startsWith(seen)) return null;
+    escapes += [tail, row].map((s) => (s.match(ESC_ANY) || []).join('')).join('');
+    rest = rest.slice(seen.length);
+    at = end < 0 ? text.length : end;
+  }
+  return { at, escapes };
+}
 
 function linksFrom(src) {
   if (!src.includes('\x1b]')) return src;
@@ -406,11 +436,17 @@ function linksFrom(src) {
       // escapes of everything it replaces are kept, in order: a colour reset thrown
       // away here would leave the colour on, and one of those colours is what a code
       // span is read from a line later.
+      const escapes = () => run
+        .map((r) => (((r.uri === undefined ? r.text : r.body).match(ESC_ANY)) || []).join(''))
+        .join('');
+      const after = parts[j];
+      const rest = spans.length === 1 && uri.startsWith(visible) && after && after.uri === undefined
+        ? restOf(after.text, uri.slice(visible.length)) : null;
       if (spans.length > 1 || visible === uri) {
-        const escapes = run
-          .map((r) => (((r.uri === undefined ? r.text : r.body).match(ESC_ANY)) || []).join(''))
-          .join('');
-        out += uri + escapes;
+        out += uri + escapes();
+      } else if (rest) {
+        out += uri + escapes() + rest.escapes;
+        after.text = after.text.slice(rest.at);
       } else out += asText();
       continue;
     }

@@ -258,6 +258,17 @@ wrote, unless the run was wrapped, a label broken across lines being worse as a 
 text it already is. A single span whose text is a *piece* of its address stays text: half a URL, or
 a short word (`yarr` under `…/yarr.git`), and this cannot tell them apart.
 
+**And a link can cover its first row only.** Reported on 2026-10-22 as the login URL of Claude
+Code pasting with a space in it. Its login screen (2.1.308) wraps the URL itself and puts the
+OSC 8 span on the first row alone: the span carries the whole target, the rows below are bare
+text at column 0. So the span was "a piece of its address", stayed text, and `unwrapFrom` joined
+the bare rows to it as prose — a space at every row. On the owner's pane, 252 columns wide, that
+was one space after the 252nd character (`user% 3Asessions`), measured off the journal: a line tap
+took 466 characters, a word tap 252. Reproduced on a private stand at 51 and 252 columns with a
+throwaway `CLAUDE_CONFIG_DIR`. Now a span that is the start of its address takes the rows after
+it when, escapes and margins off, they spell the rest of it letter for letter and end exactly
+where it ends; short of that the old answer stands.
+
 **And the gap between two spans is whitespace only once the escapes are out of it.** Between them
 sits `\n     \x1b[94m` — the pane closes the colour at the end of a line and opens it again on the
 next — so a gap tested with the escapes still in it is never whitespace and nothing was ever

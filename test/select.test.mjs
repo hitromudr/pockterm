@@ -358,6 +358,32 @@ test('a bare URL the pane wrapped comes out whole and once', () => {
   assert.equal(markdownFrom(wrapped), uri);
 });
 
+test('a URL whose link covers its first row only is still one URL', () => {
+  // The login screen of Claude Code 2.1.308, captured off a private stand at 51
+  // columns: the OSC 8 span holds the whole address but only the first row of its
+  // text, and the rows under it are bare. Read as prose they were joined with a
+  // space at every row — reported from a pane 252 wide, where the one space split
+  // the URL in two.
+  const uri = 'https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a'
+    + '&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth'
+    + '&scope=user%3Aprofile&state=6bzYijykrdjDCZf1vi-l8WAxdFE4P80WcvBbLfDwgow';
+  for (const cols of [51, 120]) {
+    const rows = uri.match(new RegExp(`.{1,${cols}}`, 'g'));
+    const pane = ` Browser didn't open? Use the url below to sign in\n\n${link(uri, rows[0])}\n`
+      + `${rows.slice(1).join('\n')}\n\n\x1b[39m Paste code here if prompted >`;
+    assert.equal(markdownFrom(pane, cols),
+      ` Browser didn't open? Use the url below to sign in\n\n${uri}\n\n Paste code here if prompted >`);
+  }
+});
+
+test('bare rows under a link that do not spell the rest of it stay as they are', () => {
+  // Only the address itself, letter for letter, is evidence enough to take rows the
+  // link does not cover.
+  const uri = 'https://example.org/aaa/bbb/ccc';
+  const pane = `${link(uri, 'https://example.org/aaa')}\n     /bbb/xxx`;
+  assert.equal(markdownFrom(pane), 'https://example.org/aaa\n     /bbb/xxx');
+});
+
 test('a word that happens to sit inside its address is left as the word', () => {
   // `yarr` under `…/yarr.git` cannot be told from half a wrapped URL, and rewriting
   // what is on screen into a longer address is the guess that reads as right.
