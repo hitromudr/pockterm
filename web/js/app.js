@@ -4010,6 +4010,7 @@ snapshotEl.addEventListener('pointerdown', (e) => {
   // click it is waiting for. Same rule as the tab strip's hold.
   holdFired = false;
   holdTouch = false;
+  pressFrom = { x: e.clientX, y: e.clientY };
   if (e.pointerType === 'mouse') return;
   const para = e.target && e.target.closest ? e.target.closest('.para') : null;
   if (!para) return;
@@ -4306,10 +4307,20 @@ function preview(text) {
 // Without it the only way out is the Done button, and every report so far has
 // been that selection mode hangs the terminal — because from the outside a
 // frozen screen and a hung one are the same picture.
+//
+// **A drag is not a tap either.** A mouse drag taken to the end of a line lets go
+// in the room beside the text, and the browser sends the click to what both ends
+// share — this <pre>, no paragraph — so the selection just made closed the mode
+// with nothing copied. Reported as happening "almost always" when the end of a
+// line was in the selection.
+let pressFrom = null;
 snapshotEl.addEventListener('click', (e) => {
   // The click a long press ends in is not a tap, and this is the one place it
   // would cost something: it would leave the mode the pick was made in.
   if (holdFired) { holdFired = false; return; }
+  const from = pressFrom;
+  pressFrom = null;
+  if (from && (Math.abs(e.clientX - from.x) > PARA_TRAVEL || Math.abs(e.clientY - from.y) > PARA_TRAVEL)) return;
   const onPara = !!(e.target && e.target.closest && e.target.closest('.para'));
   // The pair is counted before anything else can return: a tap on a highlight used
   // to leave here, which left the pair that should narrow it measuring against a

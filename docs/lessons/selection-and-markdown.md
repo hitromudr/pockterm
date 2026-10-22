@@ -117,6 +117,12 @@ Five things that were each a way to be wrong:
   side of the window. A window wide enough for a slow pair is a mode that takes half a second to
   leave. So a tap on text does what it already did with paragraphs picked — nothing — and the ways
   out are the ones in plain sight: `✕ Done`, the blank room, Android's own Copy.
+- **A drag is not a tap, wherever it lets go.** Reported 2026-10-22 from a desktop: a mouse
+  selection taken to the end of a line "almost always" closed the mode with nothing copied. The
+  release lands in the room beside the text, and the browser sends the click to what the press and
+  the release share — the `<pre>`, no paragraph — so it read as a tap on the blank room. A click
+  more than `PARA_TRAVEL` from its own press is now nobody's tap; the browser test drags off the
+  end of a line and fails without that.
 
 ## Less than a paragraph is this page's own doing
 

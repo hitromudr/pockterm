@@ -2259,6 +2259,54 @@ describe('selection and the clipboard', () => {
     await page.waitForSelector('#snapshot', { state: 'hidden', timeout: 5000 });
   });
 
+  test('a mouse drag that ends past the line keeps the mode and the selection', async () => {
+    // Reported as "the selection ends with the mode closed and nothing copied" for a
+    // drag taken to the end of a line: the release lands in the room beside the text,
+    // and the browser sends the click to what both ends share — the <pre> itself.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+
+    await page.click('#term');
+    await page.keyboard.type('\ndrag past me\n');
+    await page.waitForFunction(
+      () => document.querySelector('.xterm-rows')?.textContent?.includes('drag past me'));
+    await page.click('#select');
+    await page.waitForSelector('#snapshot[data-from="host"]', { timeout: 5000 });
+
+    const at = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('#snapshot .para')].find((e) => e.textContent.includes('drag past me'));
+      el.scrollIntoView({ block: 'center' });
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const range = document.createRange();
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const i = n.textContent.indexOf('drag past me');
+        if (i < 0) continue;
+        range.setStart(n, i);
+        range.setEnd(n, i + 'drag past me'.length);
+        const r = range.getBoundingClientRect();
+        const box = document.getElementById('snapshot').getBoundingClientRect();
+        const y = Math.round(r.y + r.height / 2);
+        const x = Math.round(Math.min(r.right + 40, box.right - 30));
+        return { x0: Math.round(r.left + 1), x, y, onPara: !!document.elementFromPoint(x, y)?.closest?.('.para') };
+      }
+      return null;
+    });
+    assert.ok(at, 'the line is not in one text node');
+    assert.equal(at.onPara, false, `the drag does not end in the room beside the text: ${JSON.stringify(at)}`);
+    await page.mouse.move(at.x0, at.y);
+    await page.mouse.down();
+    for (let x = at.x0; x < at.x; x += 10) await page.mouse.move(x, at.y);
+    await page.mouse.move(at.x, at.y);
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+
+    assert.ok(await page.locator('#snapshot').isVisible(), 'the drag closed the copy mode');
+    assert.match(await page.evaluate(() => String(window.getSelection())), /^drag past me/);
+    await page.click('#copy');
+    assert.match((await page.evaluate(() => navigator.clipboard.readText())), /^drag past me/);
+  });
+
   test('the Markdown the pane drew is in the copy, not the drawing of it', async () => {
     // Reported as the copy losing Markdown, and that is what it was: what the agent
     // wrote as `**слово**` reaches the pane as an attribute and left the clipboard
