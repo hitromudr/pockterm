@@ -50,6 +50,13 @@ type Config struct {
 	// Who a push service should complain to about this sender. RFC 8292 wants a
 	// mailto: or an https URL; empty names the program.
 	PushSubject string // POCKTERM_PUSH_SUBJECT
+
+	// The host's way out, shown in the drawer's header: names for gateways and
+	// devices ("192.168.1.1=роутер,usb0=свисток"); empty shows nothing. The
+	// public address beside it is asked of the services listed in PublicIPURLs
+	// (comma-separated, tried in order); empty asks nobody.
+	Uplinks      string // POCKTERM_UPLINKS
+	PublicIPURLs string // POCKTERM_PUBLIC_IP_URLS
 }
 
 func FromEnv(getenv func(string) string) (Config, error) {
@@ -73,6 +80,8 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		VapidFile:      getenv("POCKTERM_VAPID_FILE"),
 		PushFile:       getenv("POCKTERM_PUSH_FILE"),
 		PushSubject:    getenv("POCKTERM_PUSH_SUBJECT"),
+		Uplinks:        getenv("POCKTERM_UPLINKS"),
+		PublicIPURLs:   getenv("POCKTERM_PUBLIC_IP_URLS"),
 	}
 	if err := c.validate(); err != nil {
 		return Config{}, err

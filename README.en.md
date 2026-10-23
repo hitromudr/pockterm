@@ -247,6 +247,8 @@ URL.
 | `POCKTERM_PRESETS_FILE` | a file in the user's config dir | Where the custom session buttons are remembered; `off` keeps them in memory. |
 | `POCKTERM_UPLOAD_DIR` | user cache dir | Where attached files are saved (images and documents alike); `off` disables uploads. |
 | `POCKTERM_SESSION_DIR` | the service's working dir | Where the session Makefile lives (the + button); `off` refuses to start any. |
+| `POCKTERM_UPLINKS` | empty | Names for the ways out, comma-separated: `192.168.1.1=router,usb0=dongle`. An address key names a gateway, any other key a device; the gateway is matched first. Set, the drawer's header shows the current way out (by the default route) in place of the title. Empty shows nothing. |
+| `POCKTERM_PUBLIC_IP_URLS` | empty | Services that echo the public address back (`https://api.ipify.org`), comma-separated, tried in order. Set, the address is shown under the way out; asked past `HTTPS_PROXY`, every 5 minutes and at once when the way out changes. Empty asks nobody. |
 
 ## Starting sessions from the phone (the + button)
 

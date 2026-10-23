@@ -1326,6 +1326,33 @@ function scrollableDown(el) {
 const drawerScrim = document.getElementById('drawer-scrim');
 const drawerCloseBtn = document.getElementById('drawer-close');
 
+// The host's way out, in place of the name in the drawer's header. A server that
+// does not report it answers 404 once and is not asked again; a failed fetch
+// leaves the lines as they were rather than blank them on a flaky link.
+const uplinkEl = document.getElementById('uplink');
+const uplinkName = document.querySelector('#screen-sessions .bar .title .name');
+let uplinkOff = !!CELL;
+async function loadUplink() {
+  if (uplinkOff) return;
+  let u;
+  try {
+    const res = await fetch(`/api/uplink?${tokenQS}`);
+    if (res.status === 404) { uplinkOff = true; return; }
+    if (!res.ok) return;
+    u = await res.json();
+  } catch (_) { return; }
+  const way = u.way || 'нет сети';
+  const addr = u.way ? u.address || '' : '';
+  const w = uplinkEl.querySelector('.way');
+  const a = uplinkEl.querySelector('.addr');
+  if (w.textContent !== way) w.textContent = way;
+  if (a.textContent !== addr) a.textContent = addr;
+  uplinkEl.title = u.way ? `pockterm · выход в сеть: ${[way, addr].filter(Boolean).join(', ')}`
+    : 'pockterm · у хоста нет маршрута по умолчанию';
+  uplinkEl.hidden = false;
+  uplinkName.hidden = true;
+}
+
 // With no session attached the drawer is the only thing on the page: the
 // terminal screen is hidden, and ☰ lives in its header. Closing it then left a
 // black page with nothing to tap and no way back but a reload — which is what
@@ -1340,6 +1367,7 @@ function openDrawer() {
   // does not write "closed" down.
   paintSettings(settingsWanted());
   loadSessions();
+  loadUplink();
   // The rows carry the state now, so the list is worth polling for while it is
   // open — including with nothing attached, when it is the only thing on screen.
   pollTabs(true);
@@ -2086,6 +2114,7 @@ function pollTabs(on) {
 // there is.
 function tickState() {
   if (!screenTerm.hidden || screenSessions.classList.contains('open')) renderTabs();
+  if (screenSessions.classList.contains('open')) loadUplink();
 }
 // Coming back to the page is when the answer is most out of date: the session was
 // working when the phone went into the pocket and has probably finished since.

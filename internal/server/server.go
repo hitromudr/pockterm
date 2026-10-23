@@ -154,6 +154,11 @@ type Options struct {
 	// is looking at the settings panel proves nothing about it. Ten seconds is
 	// enough to press the button and put the phone down.
 	PushTest func(delay time.Duration) error
+
+	// Uplink names the host's way out to the world and the address the world
+	// sees it from, either "" while unknown; a way of "" is no default route at
+	// all. nil leaves /api/uplink absent, and the page draws nothing.
+	Uplink func() (way, address string)
 }
 
 // modePoll is how often a client's pane is checked for tmux copy-mode. The
@@ -221,6 +226,7 @@ func Handler(o Options) http.Handler {
 	mux.HandleFunc("/api/sessions/rename", func(w http.ResponseWriter, r *http.Request) { serveRename(o, w, r) })
 	mux.HandleFunc("/api/sessions/kill", func(w http.ResponseWriter, r *http.Request) { serveKill(o, w, r) })
 	mux.HandleFunc("/api/sessions/order", func(w http.ResponseWriter, r *http.Request) { serveOrder(o, w, r) })
+	mux.HandleFunc("/api/uplink", func(w http.ResponseWriter, r *http.Request) { serveUplink(o, w, r) })
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) { serveWS(o, w, r) })
 	return mux
 }
@@ -310,6 +316,26 @@ func servePresence(o Options, w http.ResponseWriter, r *http.Request) {
 		Clients int `json:"clients"`
 		Visible int `json:"visible"`
 	}{clients, visible})
+}
+
+// serveUplink answers which way the host goes out and from what address. It
+// says which network the owner's terminal depends on, so it is behind the token
+// like everything else.
+func serveUplink(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if o.Uplink == nil {
+		http.Error(w, "uplink is not reported", http.StatusNotFound)
+		return
+	}
+	way, addr := o.Uplink()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Way     string `json:"way"`
+		Address string `json:"address"`
+	}{way, addr})
 }
 
 // serveNotifyMode reads and sets the one switch both notification channels

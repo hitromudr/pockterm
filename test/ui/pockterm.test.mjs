@@ -512,6 +512,56 @@ describe('the order of the tabs', () => {
   });
 });
 
+describe('the drawer says which way the host goes out', () => {
+  // Asked for 2026-10-23: the RPi5 falls back from the router to a 4G dongle on
+  // its own, and nothing on screen said which one the terminal is riding.
+  // Every device is named here, since which one carries the stand's default
+  // route depends on the machine running it.
+  const devs = readFileSync('/proc/net/route', 'utf8').split('\n').slice(1)
+    .map((l) => l.split(/\s+/)[0]).filter(Boolean);
+  const names = [...new Set(devs)].map((d) => `${d}=выход-${d}`).join(',');
+  const hasDefault = /^\S+\s+00000000\s+\S+\s+\S*[13579bdf]\s/m.test(readFileSync('/proc/net/route', 'utf8'));
+
+  test('the way out in the title, and the header no taller for it', async () => {
+    const plain = await startStand({ sessions: ['demo'] });
+    const named = await startStand({ sessions: ['demo'], uplinks: names || 'eth0=выход-eth0' });
+    try {
+      const look = async (stand, wait) => {
+        await stand.open();
+        await stand.attach('demo');
+        await stand.tapMenu();
+        await stand.page.waitForFunction(
+          () => getComputedStyle(document.getElementById('screen-sessions')).transform === 'none',
+          null, { timeout: 3000 });
+        if (wait) {
+          await stand.page.waitForFunction(() => !document.getElementById('uplink').hidden, null, { timeout: 5000 });
+        }
+        return stand.page.evaluate(() => {
+          const el = document.getElementById('uplink');
+          return {
+            shown: !el.hidden,
+            text: el.querySelector('.way').textContent,
+            name: !document.querySelector('#screen-sessions .bar .title .name').hidden,
+            header: Math.round(document.querySelector('#screen-sessions header.bar').getBoundingClientRect().height),
+          };
+        });
+      };
+      const off = await look(plain);
+      assert.equal(off.shown, false, `a host that names nothing shows a line: ${JSON.stringify(off)}`);
+      assert.equal(off.name, true, 'the name went missing on a host that names nothing');
+
+      const on = await look(named, true);
+      if (hasDefault) assert.match(on.text, /^выход-\S+$/, `not the named way out: ${JSON.stringify(on)}`);
+      else assert.equal(on.text, 'нет сети');
+      assert.equal(on.name, false, 'the name and the way out both in a box ninety pixels wide');
+      assert.equal(on.header, off.header, `the line made the header taller: ${on.header} vs ${off.header}`);
+    } finally {
+      await plain.stop();
+      await named.stop();
+    }
+  });
+});
+
 describe('the session list is a drawer', () => {
   let stand;
   before(async () => { stand = await startStand({ sessions: ['demo', 'other'] }); });

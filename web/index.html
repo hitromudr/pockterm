@@ -30,7 +30,15 @@
            rather than a cross: the drawer slides back, it does not go away, and
            ✕ next to the title read like closing pockterm itself. -->
       <button id="drawer-close" title="Slide the list back">&#10094;</button>
-      <span class="title">pockterm</span>
+      <!-- In place of the name, the host's way out and under it the address the
+           world sees it from (2026-10-23): the RPi5 falls back from the router to
+           a 4G dongle on its own, and nothing else on the screen says so. In the
+           title's box rather than a row of its own, so the header keeps the height
+           the strip's is measured against; instead of the name rather than under
+           it, because at a phone's width the box is ninety pixels and an address
+           cut in half is no address. The name is still at the foot of the
+           settings. Drawn only where the server reports it (POCKTERM_UPLINKS). -->
+      <span class="title"><span class="name">pockterm</span><span id="uplink" hidden><span class="way"></span><span class="addr"></span></span></span>
       <!-- The folders of the projects root, as somewhere to start a session.
            A second view of the drawer rather than a section under the list:
            two scrolling lists on a phone leave neither of them a full thumb's

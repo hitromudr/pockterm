@@ -123,6 +123,9 @@ export async function startStand({
   // the session Makefile lives in — the drawer offers these to start a session
   // in, and names the session after the one that was tapped.
   projects = ['alpha', 'beta'],
+  // POCKTERM_UPLINKS: the names of the host's ways out, which turn on the line
+  // under the drawer's title. Off unless asked, like on a host nobody named.
+  uplinks = '',
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'pockterm-ui-'));
   const port = await freePort();
@@ -153,6 +156,9 @@ export async function startStand({
     // test can watch a tab go from working to done inside one run — the same
     // threshold the notification uses, and the state the strip is coloured by.
     POCKTERM_IDLE: '2s',
+    POCKTERM_UPLINKS: uplinks,
+    // Never a real lookup from a test run.
+    POCKTERM_PUBLIC_IP_URLS: '',
   };
   // Inside a tmux session these two point every child at that session's
   // server, whatever TMUX_TMPDIR says.

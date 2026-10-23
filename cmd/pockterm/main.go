@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hitromudr/pockterm"
@@ -28,6 +29,7 @@ import (
 	"github.com/hitromudr/pockterm/internal/setup"
 	"github.com/hitromudr/pockterm/internal/telegram"
 	"github.com/hitromudr/pockterm/internal/tmuxcmd"
+	"github.com/hitromudr/pockterm/internal/uplink"
 	"github.com/hitromudr/pockterm/internal/upload"
 	"github.com/hitromudr/pockterm/internal/watch"
 )
@@ -229,6 +231,10 @@ func serve() {
 	pref := notifyPref(cfg)
 	buttons := customButtons(cfg)
 	pusher := pushChannel(cfg)
+	way, err := uplinkReporter(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
 	h := server.Handler(server.Options{
 		Token:        cfg.Token,
 		ListSessions: sessionLister(cfg),
@@ -308,6 +314,7 @@ func serve() {
 		PageVersion: pockterm.Version(),
 		WheelLines:  wheelLines,
 		StatusRows:  statusRows,
+		Uplink:      way,
 		Static:      http.FileServer(http.FS(static)),
 		SaveUpload:  uploader(cfg),
 		// The browser has no console anyone can open on the phone this
@@ -819,6 +826,53 @@ func notifyPref(cfg config.Config) *watch.Pref {
 // answer costs one tmux call against a page that will be open for hours.
 // statusRows asks tmux how many rows its status line takes. The page keeps them
 // still while it shifts the rest to follow a finger — see StatusLines.
+// uplinkReporter reads the default route each time it is asked — the page asks
+// only while the drawer is open — and writes a change of it to the journal,
+// which is where a fallback the owner did not see is looked for afterwards.
+// nil when POCKTERM_UPLINKS is empty.
+func uplinkReporter(cfg config.Config) (func() (string, string), error) {
+	if cfg.Uplinks == "" {
+		return nil, nil
+	}
+	names, err := uplink.ParseNames(cfg.Uplinks)
+	if err != nil {
+		return nil, fmt.Errorf("POCKTERM_UPLINKS: %w", err)
+	}
+	var prober *uplink.Prober
+	if urls := strings.FieldsFunc(cfg.PublicIPURLs, func(r rune) bool { return r == ',' || r == ' ' }); len(urls) > 0 {
+		prober = uplink.NewProber(urls)
+	}
+	var mu sync.Mutex
+	var last uplink.Route
+	seen := false
+	return func() (string, string) {
+		f, err := os.Open("/proc/net/route")
+		if err != nil {
+			return "", ""
+		}
+		rt, ok := uplink.DefaultRoute(f)
+		f.Close()
+		mu.Lock()
+		if !seen || rt != last {
+			if ok {
+				log.Printf("uplink: %s via %s (%s)", rt.Dev, rt.Gateway, names.Label(rt))
+			} else {
+				log.Printf("uplink: no default route")
+			}
+			last, seen = rt, true
+		}
+		mu.Unlock()
+		if !ok {
+			return "", ""
+		}
+		addr := ""
+		if prober != nil {
+			addr = prober.Address(rt)
+		}
+		return names.Label(rt), addr
+	}, nil
+}
+
 func statusRows() int {
 	argv := tmuxcmd.StatusLines()
 	out, err := exec.Command(argv[0], argv[1:]...).Output()

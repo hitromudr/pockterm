@@ -129,6 +129,46 @@ func TestPresenceEndpointReportsWhoIsLooking(t *testing.T) {
 	}
 }
 
+func TestUplinkEndpoint(t *testing.T) {
+	opts := testOptions("s3cret")
+	srv := httptest.NewServer(Handler(opts))
+	t.Cleanup(srv.Close)
+	// Not configured: absent, and the page draws nothing.
+	off, err := http.Get(srv.URL + "/api/uplink?token=s3cret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	off.Body.Close()
+	if off.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d without Uplink, want 404", off.StatusCode)
+	}
+
+	opts.Uplink = func() (string, string) { return "свисток", "198.51.100.9" }
+	srv2 := httptest.NewServer(Handler(opts))
+	t.Cleanup(srv2.Close)
+	// Which network the owner depends on is not for anyone who reaches the port.
+	bare, err := http.Get(srv2.URL + "/api/uplink")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bare.Body.Close()
+	if bare.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d without a token, want 401", bare.StatusCode)
+	}
+	resp, err := http.Get(srv2.URL + "/api/uplink?token=s3cret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got["way"] != "свисток" || got["address"] != "198.51.100.9" {
+		t.Fatalf("uplink = %v", got)
+	}
+}
+
 func TestPresenceEndpointNeedsTheToken(t *testing.T) {
 	// It says whether the owner is at the terminal right now; that is not for
 	// anyone who reaches the port.

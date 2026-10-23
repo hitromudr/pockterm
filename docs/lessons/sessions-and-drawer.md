@@ -323,3 +323,27 @@ lock.
 The stand cannot be granted either, so `the rotation lock in the settings` fakes that
 Chrome: a lock outside fullscreen refused with SecurityError, fullscreen refused
 without `navigator.userActivation`. It fails against the first version.
+
+## The way out stands in for the name, and is forgotten with the route
+
+Asked for on 2026-10-23: the RPi5 falls back from the router to a 4G dongle (and then
+to the phone's hotspot) on its own, through `wired-wifi-toggle`, and the owner had no
+way to see from the terminal which one it was riding. `internal/uplink` reads the
+default route from `/proc/net/route` (lowest metric, `RTF_UP`) and names it from
+`POCKTERM_UPLINKS`; the gateway is matched before the device, because on the RPi5 the
+same `wlan0` reaches the home router and the phone, while the router answers at one
+address over the wire and the Wi-Fi alike.
+
+The public address is asked of `POCKTERM_PUBLIC_IP_URLS` with the proxy turned off:
+the unit's environment carries `HTTPS_PROXY` for the push services, and through it the
+answer would be the proxy's address — right-looking and wrong. For the same reason the
+address belongs to the route it was learnt on and is dropped the moment the route
+changes, rather than shown for the dongle while the new lookup is in flight. An
+operator's stub page (2026-10-23, the SIM's internet cut) is not an address, so a
+reply that does not parse as one moves on to the next service.
+
+It takes the name's place rather than a line under it: at 390 px the title box is 89
+px wide, and `свисток · 178.176.74.211` came out as `свисток · 178.1…`. Two lines in
+that box keep the drawer's header at its height, and
+`the way out in the title, and the header no taller for it` fails at a line-height of
+1.6 (59 px against 50).
