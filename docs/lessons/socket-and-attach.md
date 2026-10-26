@@ -243,6 +243,14 @@ What came out of measuring it:
 - **The door is the host's fact.** It comes in the config frame, not in the page's sources; a
   cell learns it from its own frame, because a cell owns no storage.
 
+The drawer's header says which way the socket goes, as a glyph before the address — ⌂ direct,
+↗ the long way, nothing on a host with one way. It is drawn from the socket in hand, not from
+the host's way out above it: at home on the direct path the uplink blinking does not touch the
+terminal, and the two read as one fact otherwise. A glyph because the box is 89 px on a phone
+and «роутер» fills it; next to the glyph a fifteen-character address loses its last digits
+(measured 94–97 px needed), which the owner accepted on 2026-10-26 over moving the address into
+the tooltip.
+
 `test/ui/direct.test.mjs` plays the door with the same binary under `localhost` while the page
 is on `127.0.0.1` — two origins as the browser counts them — so the real cross-origin socket and
 the trust list are what is tested. Without the trusted origin the first case fails.

@@ -2,7 +2,7 @@ import { keyBytes, applyCtrl } from './keys.js';
 import { detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNotice } from './notify.js';
 import { linkAction } from './link.js';
-import { directBase, tryDirect, worthTrying } from './direct.js';
+import { directBase, tryDirect, worthTrying, viaMark } from './direct.js';
 import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
 import { snapshotText, chunks, pickedText, markdownFrom } from './select.js';
 import { initDiag, environment, report } from './diag.js';
@@ -1356,10 +1356,33 @@ async function loadUplink() {
   const a = uplinkEl.querySelector('.addr');
   if (w.textContent !== way) w.textContent = way;
   if (a.textContent !== addr) a.textContent = addr;
-  uplinkEl.title = u.way ? `pockterm · выход в сеть: ${[way, addr].filter(Boolean).join(', ')}`
+  uplinkWords = u.way ? `pockterm · выход в сеть: ${[way, addr].filter(Boolean).join(', ')}`
     : 'pockterm · у хоста нет маршрута по умолчанию';
   uplinkEl.hidden = false;
   uplinkName.hidden = true;
+  paintVia();
+}
+
+// The mark before the address: which way this page's socket goes (see
+// js/direct.js). The host's way out above it is a different fact — at home on
+// the direct path a blinking uplink does not touch the terminal at all — so the
+// mark is drawn from the socket in hand and repainted whenever that changes.
+// The box is ninety pixels on a phone and the address already fills most of it,
+// so the mark is a glyph and the words are in the tooltip.
+let uplinkWords = '';
+const VIA = {
+  direct: ['⌂', 'сокет: напрямую по домашней сети'],
+  long: ['↗', 'сокет: через интернет'],
+};
+function paintVia() {
+  const [glyph, words] = VIA[viaMark(direct, location, via)] || ['', ''];
+  const v = uplinkEl.querySelector('.via');
+  if (v.textContent !== glyph) v.textContent = glyph;
+  const sub = uplinkEl.querySelector('.sub');
+  const empty = !glyph && !uplinkEl.querySelector('.addr').textContent;
+  if (sub.hidden !== empty) sub.hidden = empty;
+  const title = [uplinkWords, words].filter(Boolean).join('\n');
+  if (uplinkEl.title !== title) uplinkEl.title = title;
 }
 
 // With no session attached the drawer is the only thing on the page: the
@@ -2166,6 +2189,7 @@ function dropSocket() {
   const dead = ws;
   ws = null;
   via = '';
+  paintVia();
   dead.onmessage = null;
   dead.onclose = null;
   try { dead.close(); } catch (_) { /* already gone */ }
@@ -2249,6 +2273,7 @@ function learnDirect(url) {
   if (url === direct) return;
   direct = url;
   directMiss = 0;
+  paintVia();
   if (!CELL) { try { if (url) localStorage.setItem('pt-direct', url); else localStorage.removeItem('pt-direct'); } catch (_) {} }
 }
 
@@ -2257,6 +2282,7 @@ function learnDirect(url) {
 function adopt(sock, how) {
   ws = sock;
   via = how;
+  paintVia();
   ws.binaryType = 'arraybuffer';
   ws.onmessage = (e) => {
     noteLink();

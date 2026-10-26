@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { directBase, tryDirect, worthTrying, DIRECT_WAIT, MISS_HOLD } from '../web/js/direct.js';
+import { directBase, tryDirect, worthTrying, viaMark, DIRECT_WAIT, MISS_HOLD } from '../web/js/direct.js';
 
 const page = { host: 'cc.example', protocol: 'https:' };
 
@@ -105,4 +105,16 @@ test('a miss is believed for MISS_HOLD, then the door is asked again', () => {
   assert.equal(worthTrying(0, 1000), true);
   assert.equal(worthTrying(1000, 1000 + MISS_HOLD - 1), false);
   assert.equal(worthTrying(1000, 1000 + MISS_HOLD), true);
+});
+
+test('the header says which way the socket goes, and only where there are two ways', () => {
+  const door = 'https://lan.example:8135';
+  assert.equal(viaMark(door, page, 'direct'), 'direct');
+  assert.equal(viaMark(door, page, 'host'), 'long');
+  // No socket in hand: nothing to report, rather than the last answer.
+  assert.equal(viaMark(door, page, ''), '');
+  // A host with no door has one way, and saying "the long way" would be noise.
+  assert.equal(viaMark('', page, 'host'), '');
+  // A page opened through the door itself goes direct, whatever its socket says.
+  assert.equal(viaMark(door, { host: 'lan.example:8135', protocol: 'https:' }, 'host'), 'direct');
 });

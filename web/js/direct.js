@@ -88,3 +88,16 @@ export function tryDirect(url, opts, done) {
 export function worthTrying(lastMiss, now) {
   return !lastMiss || now - lastMiss >= MISS_HOLD;
 }
+
+// viaMark(direct, loc, via) → which way the socket in hand goes, as the drawer's
+// header draws it: 'direct', 'long', or '' for nothing to say. Nothing when the
+// host has no door — every socket goes the one way there is — and nothing while
+// no socket is in hand. A page opened through the door itself is direct by
+// definition, whatever its socket was called.
+export function viaMark(direct, loc, via) {
+  if (!via || !direct) return '';
+  let u;
+  try { u = new URL(direct); } catch (_) { return ''; }
+  if (u.host === loc.host || via === 'direct') return 'direct';
+  return via === 'host' ? 'long' : '';
+}

@@ -211,8 +211,8 @@ html.drawer-right #screen-term header.bar #grid-toggle { order: -1; }
 .bar .title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #uplink:not([hidden]) { display: flex; flex-direction: column; line-height: 1.15; }
 #uplink > span { overflow: hidden; text-overflow: ellipsis; }
-#uplink .addr { font-size: 11px; font-weight: 400; opacity: 0.75; }
-#uplink .addr:empty { display: none; }
+#uplink .sub { font-size: 11px; font-weight: 400; opacity: 0.75; white-space: nowrap; }
+#uplink .via:not(:empty) { margin-right: 3px; }
 
 /* Session tabs: a horizontally scrollable row; tap a tab to switch. */
 #tabs {

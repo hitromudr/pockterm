@@ -40,6 +40,19 @@ async function typed(page, text) {
     text, { timeout: 20000 });
 }
 
+// The mark in the drawer's header, read with the drawer open. It sits in the
+// line POCKTERM_UPLINKS turns on, so the stands below name a way out.
+async function mark(stand) {
+  await stand.openDrawer();
+  await stand.page.waitForFunction(() => !document.getElementById('uplink').hidden, null, { timeout: 5000 });
+  const m = await stand.page.evaluate(() => ({
+    glyph: document.querySelector('#uplink .via').textContent,
+    title: document.getElementById('uplink').title,
+  }));
+  await stand.shutDrawer();
+  return m;
+}
+
 async function clients(page) {
   return page.evaluate(async () => {
     const res = await fetch('/api/presence');
@@ -51,7 +64,7 @@ describe('a door on the same network', () => {
   let stand;
   let sockets;
   before(async () => {
-    stand = await startStand({ sessions: ['alpha', 'beta'], door: 'live' });
+    stand = await startStand({ sessions: ['alpha', 'beta'], door: 'live', uplinks: 'eth0=роутер' });
     sockets = watchSockets(stand.page);
   });
   after(async () => { await stand.stop(); });
@@ -71,6 +84,9 @@ describe('a door on the same network', () => {
     assert.equal(new URL(page.url()).host, hostName, 'the page itself moved');
     assert.equal(await clients(page), 1, 'the swap left a second client attached');
     await typed(page, 'via the door');
+    const m = await mark(stand);
+    assert.equal(m.glyph, '⌂', `the header does not say the socket is direct: ${JSON.stringify(m)}`);
+    assert.match(m.title, /напрямую/);
     assert.deepEqual(stand.pageErrors, []);
   });
 
@@ -93,7 +109,7 @@ describe('a door that is not there', () => {
   let stand;
   let sockets;
   before(async () => {
-    stand = await startStand({ sessions: ['alpha', 'beta'], door: 'dead' });
+    stand = await startStand({ sessions: ['alpha', 'beta'], door: 'dead', uplinks: 'eth0=роутер' });
     sockets = watchSockets(stand.page);
   });
   after(async () => { await stand.stop(); });
@@ -107,6 +123,8 @@ describe('a door that is not there', () => {
     await page.waitForTimeout(4000);
     await stand.attach('beta');
     await typed(page, 'still the long way');
+    const m = await mark(stand);
+    assert.equal(m.glyph, '↗', `the header does not say the socket goes the long way: ${JSON.stringify(m)}`);
     const open = sockets.filter((s) => s.open);
     assert.deepEqual(open.map((s) => s.host), [hostName]);
     assert.equal(await clients(page), 1);
