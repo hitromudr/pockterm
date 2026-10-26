@@ -126,6 +126,12 @@ export async function startStand({
   // POCKTERM_UPLINKS: the names of the host's ways out, which turn on the line
   // under the drawer's title. Off unless asked, like on a host nobody named.
   uplinks = '',
+  // The nearer door (POCKTERM_DIRECT_URL). 'live' is this same server under
+  // another name — the page is opened on 127.0.0.1, the door is localhost, and
+  // the two are different origins as a browser counts them, so the door takes
+  // the page's socket only because its origin is listed. 'dead' is a port
+  // nobody listens on.
+  door = '',
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'pockterm-ui-'));
   const port = await freePort();
@@ -160,6 +166,12 @@ export async function startStand({
     // Never a real lookup from a test run.
     POCKTERM_PUBLIC_IP_URLS: '',
   };
+  if (door === 'live') {
+    env.POCKTERM_DIRECT_URL = `http://localhost:${port}`;
+    env.POCKTERM_TRUSTED_ORIGINS = `http://127.0.0.1:${port}`;
+  } else if (door === 'dead') {
+    env.POCKTERM_DIRECT_URL = `http://localhost:${await freePort()}`;
+  }
   // Inside a tmux session these two point every child at that session's
   // server, whatever TMUX_TMPDIR says.
   delete env.TMUX;

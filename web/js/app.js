@@ -2,6 +2,7 @@ import { keyBytes, applyCtrl } from './keys.js';
 import { detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNotice } from './notify.js';
 import { linkAction } from './link.js';
+import { directBase, tryDirect, worthTrying } from './direct.js';
 import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
 import { snapshotText, chunks, pickedText, markdownFrom } from './select.js';
 import { initDiag, environment, report } from './diag.js';
@@ -411,6 +412,14 @@ term.attachCustomKeyEventHandler((e) => {
 let ws = null;
 let current = null; // attached session name, or null on the list screen
 let retry = 1000;
+// The nearer door to this host, as the server last named it (see js/direct.js),
+// and which way the socket in hand went: 'direct', 'host', or '' for none. A
+// cell owns no storage, so it learns the door from its own first config frame.
+let direct = '';
+if (!CELL) { try { direct = localStorage.getItem('pt-direct') || ''; } catch (_) {} }
+let via = '';
+let directMiss = 0;      // when the door last failed to open
+let directAttempt = null; // cancel() of an attempt in flight
 const enc = new TextEncoder();
 
 // --- session list screen ---
@@ -2141,25 +2150,28 @@ let reconnectTimer = null;
 // both, so what doubles is the picture rather than the typing — which is why it
 // reads as the session repeating itself rather than as anything being sent
 // twice.
+//
+// **And an attempt at the door.** It is a socket too, only not yet handed over,
+// and left to open it would be handed over beside whatever replaced it.
 function dropSocket() {
   if (reconnectTimer !== null) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  if (directAttempt) {
+    directAttempt();
+    directAttempt = null;
+  }
   if (!ws) return;
   const dead = ws;
   ws = null;
+  via = '';
   dead.onmessage = null;
   dead.onclose = null;
   try { dead.close(); } catch (_) { /* already gone */ }
 }
 
-function connect() {
-  if (!current) return;
-  // One page, one socket, by construction rather than by every caller
-  // remembering: whatever is in hand goes before another is opened.
-  dropSocket();
-  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+function socketQS() {
   // The size travels in the address, not in the first message after it.
   //
   // tmux attaches a client at whatever size its pty has, and sessions here are
@@ -2171,28 +2183,81 @@ function connect() {
   // which is halves of two lines in one row and a cursor landing nowhere —
   // reported from the phone twice, "потом прошло" being the resize arriving a
   // moment later. Every tab switch made a new one.
-  const qs = [
+  return [
     tokenQS,
     `session=${encodeURIComponent(current)}`,
     `cols=${term.cols}`,
     `rows=${term.rows}`,
   ].filter(Boolean).join('&');
-  ws = new WebSocket(`${scheme}://${location.host}/ws?${qs}`);
+}
+
+// connect tries the nearer door first when there is one and it has not just
+// failed, and goes the way it always went otherwise — or once the door has had
+// its DIRECT_WAIT. The address is asked for again at the fallback, because the
+// size in it may have changed while the door was being waited for.
+function connect() {
+  if (!current) return;
+  // One page, one socket, by construction rather than by every caller
+  // remembering: whatever is in hand goes before another is opened.
+  dropSocket();
+  const base = directBase(direct, location);
+  if (!base || !worthTrying(directMiss, Date.now())) {
+    connectHost();
+    return;
+  }
+  directAttempt = tryDirect(`${base}/ws?${socketQS()}`, null, (sock, why, ms) => {
+    directAttempt = null;
+    report('socket-via', { via: sock ? 'direct' : 'host', why, ms });
+    if (sock) { adopt(sock, 'direct'); opened(); return; }
+    directMiss = Date.now();
+    connectHost();
+  });
+}
+
+function connectHost() {
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  const sock = new WebSocket(`${scheme}://${location.host}/ws?${socketQS()}`);
+  adopt(sock, 'host');
+  sock.onopen = opened;
+}
+
+// While the socket goes the long way and the door is known, the door is asked
+// again in the background — at most once per MISS_HOLD, and only on screen,
+// where the clock is honest. That is how coming home is noticed without a drop,
+// and how a page that fell back while the host restarted (every deploy) finds
+// its way back to the door. A door that opens takes over; one that does not
+// leaves the socket in hand alone and says nothing, since away from home that
+// is every half a minute.
+function tryDirectAside() {
+  if (via !== 'host' || directAttempt || !current) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN || document.visibilityState !== 'visible') return;
+  const base = directBase(direct, location);
+  if (!base || !worthTrying(directMiss, Date.now())) return;
+  directAttempt = tryDirect(`${base}/ws?${socketQS()}`, null, (sock, why, ms) => {
+    directAttempt = null;
+    if (!sock) { directMiss = Date.now(); return; }
+    report('socket-via', { via: 'direct', why: 'aside', ms });
+    dropSocket();
+    adopt(sock, 'direct');
+    opened();
+  });
+}
+
+// learnDirect takes the door from a config frame. Every frame names it or names
+// none, so a door taken off the host is forgotten on the next connect.
+function learnDirect(url) {
+  if (url === direct) return;
+  direct = url;
+  directMiss = 0;
+  if (!CELL) { try { if (url) localStorage.setItem('pt-direct', url); else localStorage.removeItem('pt-direct'); } catch (_) {} }
+}
+
+// adopt makes sock the page's socket. A socket from the door arrives open, so
+// its onopen has fired already and opened() is called by whoever adopts it.
+function adopt(sock, how) {
+  ws = sock;
+  via = how;
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => {
-    statusEl.hidden = true;
-    retry = 1000;
-    noteLink();
-    sendResize();
-    sendVisible();
-    // Files shared from another app go into the first pane there is a socket
-    // for: the paths are typed, and typing into a socket not yet open is lost.
-    if (pendingShared) {
-      const files = pendingShared;
-      pendingShared = null;
-      attachFiles(files);
-    }
-  };
   ws.onmessage = (e) => {
     noteLink();
     if (typeof e.data === 'string') { onControl(e.data); return; }
@@ -2217,6 +2282,21 @@ function connect() {
   };
 }
 
+function opened() {
+  statusEl.hidden = true;
+  retry = 1000;
+  noteLink();
+  sendResize();
+  sendVisible();
+  // Files shared from another app go into the first pane there is a socket
+  // for: the paths are typed, and typing into a socket not yet open is lost.
+  if (pendingShared) {
+    const files = pendingShared;
+    pendingShared = null;
+    attachFiles(files);
+  }
+}
+
 // --- is the socket still there? ---
 //
 // A black-holed connection looks exactly like a quiet one from in here, which is
@@ -2232,6 +2312,7 @@ function noteLink() {
 
 function checkLink() {
   if (!ws) return;
+  tryDirectAside();
   const action = linkAction({
     open: ws.readyState === WebSocket.OPEN,
     visible: document.visibilityState === 'visible',
@@ -2309,6 +2390,8 @@ function onControl(raw) {
   // arrives, so this frame is also how a reconnect after that restart is told
   // apart from any other reconnect.
   if (c && c.type === 'config') offerUpdate(c.version);
+  // And the nearer door, if this host has one.
+  if (c && c.type === 'config') learnDirect(typeof c.direct === 'string' ? c.direct : '');
 }
 
 // send(data) → whether the socket took it.

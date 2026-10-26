@@ -236,8 +236,10 @@ func serve() {
 		log.Fatal(err)
 	}
 	h := server.Handler(server.Options{
-		Token:        cfg.Token,
-		ListSessions: sessionLister(cfg),
+		Token:          cfg.Token,
+		DirectURL:      cfg.DirectURL,
+		TrustedOrigins: cfg.TrustedOrigins,
+		ListSessions:   sessionLister(cfg),
 		Attach: func(id int64, target string) []string {
 			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 		},

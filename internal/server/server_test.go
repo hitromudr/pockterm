@@ -1395,6 +1395,77 @@ func TestConfigFrameIsSkippedWhenThereIsNothingToSay(t *testing.T) {
 	}
 }
 
+// The direct door is the same server reached another way, and the page using it
+// was served by the public one — so the socket arrives with a foreign Origin and
+// must be taken exactly when that origin is listed. Over a real socket, because
+// the upgrader asks the question a second time.
+func TestWSFromATrustedPage(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		trusted []string
+		want    int
+	}{
+		{"listed", []string{"https://cc.example"}, http.StatusSwitchingProtocols},
+		{"not listed", nil, http.StatusForbidden},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			opts := testOptions("")
+			opts.TrustedOrigins = c.trusted
+			srv := httptest.NewServer(Handler(opts))
+			defer srv.Close()
+			conn, resp, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"),
+				http.Header{"Origin": {"https://cc.example"}})
+			if conn != nil {
+				conn.Close()
+			}
+			if resp == nil {
+				t.Fatalf("no answer: %v", err)
+			}
+			if resp.StatusCode != c.want {
+				t.Fatalf("status %d, want %d (%v)", resp.StatusCode, c.want, err)
+			}
+		})
+	}
+}
+
+// The page learns the nearer door from the server it reached, on every connect,
+// because the address is the host's fact and the page's sources are the same
+// for every host.
+func TestConfigFrameNamesTheDirectDoor(t *testing.T) {
+	opts := testOptions("")
+	opts.DirectURL = "https://lan.example:8135"
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "?session=demo"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("waiting for the config frame: %v", err)
+		}
+		if mt != websocket.TextMessage {
+			continue
+		}
+		var f struct {
+			Type   string `json:"type"`
+			Direct string `json:"direct"`
+		}
+		if err := json.Unmarshal(data, &f); err != nil || f.Type != "config" {
+			continue
+		}
+		if f.Direct != "https://lan.example:8135" {
+			t.Fatalf("config = %+v, want the direct door", f)
+		}
+		return
+	}
+}
+
 func TestConfigFrameSaysHowMuchOfTheBottomIsTmux(t *testing.T) {
 	// The page shifts the rows to follow a finger between whole lines, and
 	// tmux's status line is the bottom row of the same grid — so it rode along,
@@ -2142,17 +2213,35 @@ func TestOriginOK(t *testing.T) {
 		{"a foreign page", "https://evil.example", "cc.example", false},
 		{"junk", "://", "cc.example", false},
 	}
+	// The direct door: a page opened through the public one, named in the list,
+	// and nothing that merely resembles it.
+	trusted := []string{"https://cc.example"}
+	viaDoor := []struct {
+		name, origin, host string
+		want               bool
+	}{
+		{"a trusted page", "https://cc.example", "lan.example:8135", true},
+		{"a trusted host on another port", "https://cc.example:8443", "lan.example:8135", false},
+		{"a trusted host over plain http", "http://cc.example", "lan.example:8135", false},
+		{"a trusted name as a suffix", "https://evil-cc.example", "lan.example:8135", false},
+		{"a trusted name inside another", "https://cc.example.evil", "lan.example:8135", false},
+		{"a foreign page at the direct door", "https://evil.example", "lan.example:8135", false},
+	}
+	check := func(t *testing.T, origin, host string, trusted []string, want bool) {
+		r := httptest.NewRequest(http.MethodGet, "/ws?session=demo", nil)
+		r.Host = host
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		if got := originOK(r, trusted); got != want {
+			t.Fatalf("originOK(origin=%q, host=%q, trusted=%q) = %v, want %v", origin, host, trusted, got, want)
+		}
+	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodGet, "/ws?session=demo", nil)
-			r.Host = c.host
-			if c.origin != "" {
-				r.Header.Set("Origin", c.origin)
-			}
-			if got := originOK(r); got != c.want {
-				t.Fatalf("originOK(origin=%q, host=%q) = %v, want %v", c.origin, c.host, got, c.want)
-			}
-		})
+		t.Run(c.name, func(t *testing.T) { check(t, c.origin, c.host, nil, c.want) })
+	}
+	for _, c := range viaDoor {
+		t.Run(c.name, func(t *testing.T) { check(t, c.origin, c.host, trusted, c.want) })
 	}
 }
 

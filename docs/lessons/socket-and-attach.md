@@ -209,3 +209,46 @@ the agent's own line breaks are not its to undo, which is why the narrow copy
 stays narrow under a wide pane. Measured with a model of Ink under `tmux -L` while
 chasing the above — worth knowing before reading a scrollback as evidence of what
 a width used to be.
+
+## The nearer door: only the socket goes, and only when it opens
+
+2026-10-26: laptops at home opened the page through the public address, so their socket
+went out to the relay and back down the host's tunnel. The home line blinked six times that
+morning and the host hopped between the wire and the spare uplink; each was a
+`socket-stalled` for a person sitting a room away from the host. The infrastructure side
+opened a door on the home network to the same server, with the same client certificates.
+
+Two things were decided before any code. **The page stays where it was opened**: an installed
+app lives in its origin, and moving the whole page to the home address was turned down by the
+owner. **Nothing guesses whether the door is reachable**: away from home its address is
+somebody else's network or nobody's, a router's rebind protection may not resolve the name,
+the browser may ask permission to reach a private address or refuse it. The only test is a
+socket that opens within `DIRECT_WAIT` (`js/direct.js`), and every failure looks the same and
+ends the same way — the socket goes the way it always went.
+
+What came out of measuring it:
+
+- **The door's server takes a page it did not serve.** `originOK` compared Origin with Host
+  only, so the home door answered the public page's socket with 403. It now also takes the
+  origins named in `POCKTERM_TRUSTED_ORIGINS`, exactly — scheme, host and port — rather than
+  anything that resembles ours.
+- **A miss held for `MISS_HOLD` alone would have stranded the page after every deploy.** The
+  restart refuses at the door, the reconnect falls back, and the hold kept the next connects
+  off the door — so a page at home would sit on the long way until something dropped it. Hence
+  the attempt *aside*: while the socket goes the long way, the door is tried again in the
+  background (on screen only, at most once per hold) and takes over when it opens. That is
+  also how coming home is noticed without waiting for a drop.
+- **An attempt in flight is a socket.** `dropSocket` cancels it, or a tab switch during the
+  wait would get the door's socket handed over beside the new one.
+- **The door is the host's fact.** It comes in the config frame, not in the page's sources; a
+  cell learns it from its own frame, because a cell owns no storage.
+
+`test/ui/direct.test.mjs` plays the door with the same binary under `localhost` while the page
+is on `127.0.0.1` — two origins as the browser counts them — so the real cross-origin socket and
+the trust list are what is tested. Without the trusted origin the first case fails.
+
+Not measured on a device yet: what Chrome's Local Network Access does to a socket from a public
+page to a private address (a one-time permission prompt is likely, and a prompt that outlasts
+`DIRECT_WAIT` is a miss until the answer is remembered), and how the client-certificate prompt
+for the second host behaves on Android. Both end in the fallback rather than a dead terminal;
+the journal line is `socket-via`.

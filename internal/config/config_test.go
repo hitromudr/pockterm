@@ -155,3 +155,38 @@ func TestInvalidListenRejected(t *testing.T) {
 		t.Fatal("expected error for listen without port")
 	}
 }
+
+// The direct door and the pages it trusts are compared as browsers write
+// origins, so what is read is normalised to that and anything that could never
+// match — a path, a trailing slash — is refused at start rather than left to
+// turn the door off in silence.
+func TestDirectDoorOrigins(t *testing.T) {
+	c, err := FromEnv(env(map[string]string{
+		"POCKTERM_DIRECT_URL":      "https://LAN.example:8135",
+		"POCKTERM_TRUSTED_ORIGINS": " https://cc.example , ,http://127.0.0.1:8130",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DirectURL != "https://lan.example:8135" {
+		t.Fatalf("DirectURL = %q", c.DirectURL)
+	}
+	want := []string{"https://cc.example", "http://127.0.0.1:8130"}
+	if len(c.TrustedOrigins) != len(want) || c.TrustedOrigins[0] != want[0] || c.TrustedOrigins[1] != want[1] {
+		t.Fatalf("TrustedOrigins = %q, want %q", c.TrustedOrigins, want)
+	}
+
+	none, err := FromEnv(env(nil))
+	if err != nil || none.DirectURL != "" || none.TrustedOrigins != nil {
+		t.Fatalf("defaults: %+v, %v", none, err)
+	}
+
+	for _, bad := range []string{"https://cc.example/", "https://cc.example/ws", "cc.example", "wss://cc.example", "https://u@cc.example", "https://cc.example?x=1"} {
+		if _, err := FromEnv(env(map[string]string{"POCKTERM_TRUSTED_ORIGINS": bad})); err == nil {
+			t.Errorf("trusted origin %q accepted", bad)
+		}
+		if _, err := FromEnv(env(map[string]string{"POCKTERM_DIRECT_URL": bad})); err == nil {
+			t.Errorf("direct URL %q accepted", bad)
+		}
+	}
+}

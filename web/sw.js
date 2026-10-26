@@ -21,6 +21,7 @@ const PRECACHE = [
   '/js/carry.js',
   '/js/bar.js',
   '/js/link.js',
+  '/js/direct.js',
   '/js/compose.js',
   '/js/install.js',
   '/js/urls.js',

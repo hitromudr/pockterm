@@ -5,7 +5,9 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -57,6 +59,15 @@ type Config struct {
 	// (comma-separated, tried in order); empty asks nobody.
 	Uplinks      string // POCKTERM_UPLINKS
 	PublicIPURLs string // POCKTERM_PUBLIC_IP_URLS
+
+	// A second door to this same server, nearer than the one a page was opened
+	// through: the page tries its socket there first and keeps its own address
+	// for everything else (an origin, "https://lan.example:8135"; empty tries
+	// nothing). The server behind that door has to take a socket from a page it
+	// did not serve, so it names the pages it trusts — origins, comma-separated —
+	// on top of its own, which is always trusted.
+	DirectURL      string   // POCKTERM_DIRECT_URL
+	TrustedOrigins []string // POCKTERM_TRUSTED_ORIGINS
 }
 
 func FromEnv(getenv func(string) string) (Config, error) {
@@ -82,6 +93,18 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		PushSubject:    getenv("POCKTERM_PUSH_SUBJECT"),
 		Uplinks:        getenv("POCKTERM_UPLINKS"),
 		PublicIPURLs:   getenv("POCKTERM_PUBLIC_IP_URLS"),
+	}
+	if c.DirectURL, err = origin("POCKTERM_DIRECT_URL", getenv("POCKTERM_DIRECT_URL")); err != nil {
+		return Config{}, err
+	}
+	for _, v := range strings.Split(getenv("POCKTERM_TRUSTED_ORIGINS"), ",") {
+		o, err := origin("POCKTERM_TRUSTED_ORIGINS", v)
+		if err != nil {
+			return Config{}, err
+		}
+		if o != "" {
+			c.TrustedOrigins = append(c.TrustedOrigins, o)
+		}
 	}
 	if err := c.validate(); err != nil {
 		return Config{}, err
@@ -119,6 +142,23 @@ func orDefault(v, def string) string {
 		return def
 	}
 	return v
+}
+
+// origin reads an origin as a browser writes one: scheme and host, lower case,
+// nothing after them. A path or a trailing slash is refused rather than cut,
+// because the server compares origins as strings, and an entry that never
+// matches would turn a door off with nothing to say why.
+func origin(name, v string) (string, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "", nil
+	}
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" ||
+		u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return "", fmt.Errorf("invalid %s %q: want an origin such as https://host:port, nothing after it", name, v)
+	}
+	return strings.ToLower(u.Scheme + "://" + u.Host), nil
 }
 
 func duration(v string, def time.Duration) (time.Duration, error) {

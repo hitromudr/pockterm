@@ -249,6 +249,8 @@ URL.
 | `POCKTERM_SESSION_DIR` | the service's working dir | Where the session Makefile lives (the + button); `off` refuses to start any. |
 | `POCKTERM_UPLINKS` | empty | Names for the ways out, comma-separated: `192.168.1.1=router,usb0=dongle`. An address key names a gateway, any other key a device; the gateway is matched first. Set, the drawer's header shows the current way out (by the default route) in place of the title. Empty shows nothing. |
 | `POCKTERM_PUBLIC_IP_URLS` | empty | Services that echo the public address back (`https://api.ipify.org`), comma-separated, tried in order. Set, the address is shown under the way out; asked past `HTTPS_PROXY`, every 5 minutes and at once when the way out changes. Empty asks nobody. |
+| `POCKTERM_DIRECT_URL` | empty | A second, nearer door to this same server (`https://lan.example:8135`), scheme and host only. Set, the page tries the terminal socket through it first (1.5 s to answer) and goes the usual way otherwise; the page itself stays at its address. A miss is tried again after 30 s, in the background; a hit moves the socket over. |
+| `POCKTERM_TRUSTED_ORIGINS` | empty | Pages opened through another door (`https://cc.example`) whose sockets this server takes besides its own; comma-separated, scheme, host and port matched exactly. Needed on the server behind the nearer door. |
 
 ## Starting sessions from the phone (the + button)
 

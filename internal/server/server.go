@@ -89,10 +89,15 @@ type Options struct {
 	// SetNotifyMode stores a new mode. Refusing an unknown one is its job, not
 	// the handler's — the vocabulary belongs to whoever owns the state.
 	SetNotifyMode func(mode string) error
-	PageVersion   string       // version of the page this binary serves; "" says nothing
-	WheelLines    func() int   // lines tmux scrolls per wheel notch; nil leaves the page on its default
-	StatusRows    func() int   // rows tmux's status line takes at the bottom; nil says nothing
-	Static        http.Handler // the embedded PWA
+	PageVersion   string // version of the page this binary serves; "" says nothing
+	// DirectURL is the nearer door to this server, sent to the page in the
+	// config frame; "" sends nothing. TrustedOrigins are the pages, served
+	// through another door, whose sockets this one takes besides its own.
+	DirectURL      string
+	TrustedOrigins []string
+	WheelLines     func() int   // lines tmux scrolls per wheel notch; nil leaves the page on its default
+	StatusRows     func() int   // rows tmux's status line takes at the bottom; nil says nothing
+	Static         http.Handler // the embedded PWA
 	// SaveUpload stores what the browser sent under the name it gave (which
 	// may be empty) and returns the path it landed in; nil disables
 	// /api/upload.
@@ -231,12 +236,9 @@ func Handler(o Options) http.Handler {
 	return mux
 }
 
-// The PWA is served from the same host; foreign origins have no business
-// opening terminal sockets. Non-browser clients send no Origin header.
-var upgrader = websocket.Upgrader{CheckOrigin: originOK}
-
 // originOK compares the page's origin with the host it asked on, and the
-// comparison includes the port — `https://host:8443` is not `host`.
+// comparison includes the port — `https://host:8443` is not `host`. Non-browser
+// clients send no Origin header, and they are not what this check is for.
 //
 // That strictness is right and it is also a trap for whoever puts this behind a
 // proxy on a non-standard port. nginx's `$host` drops the port, so a page served
@@ -246,13 +248,30 @@ var upgrader = websocket.Upgrader{CheckOrigin: originOK}
 // which is how it was reported on 2026-08-10. The fix belongs on the proxy
 // (`proxy_set_header Host $http_host`), so what is fixed here is the silence:
 // see serveWS for the line the journal now carries.
-func originOK(r *http.Request) bool {
+//
+// trusted is the one way past it: pages served through another door to this
+// same server, named one by one (POCKTERM_TRUSTED_ORIGINS). The direct door at
+// home takes the socket of a page opened through the public one, and the page
+// has to stay where it was opened — so its origin is listed, rather than the
+// check loosened to anything that looks like ours.
+func originOK(r *http.Request, trusted []string) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		return true
 	}
 	u, err := url.Parse(origin)
-	return err == nil && u.Host == r.Host
+	if err != nil {
+		return false
+	}
+	if u.Host == r.Host {
+		return true
+	}
+	for _, t := range trusted {
+		if origin == t {
+			return true
+		}
+	}
+	return false
 }
 
 var nextID atomic.Int64
@@ -877,13 +896,16 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 	// "reconnecting…" for ever and nothing anywhere says which of the two it is.
 	// The proxy in front is the usual cause — it is the only thing that can make
 	// Host disagree with the address a browser typed.
-	if !originOK(r) {
-		log.Printf("ws refused: origin %q is not the host it asked on (%q) — a proxy that rewrites Host, or drops its port, is the usual cause",
+	if !originOK(r, o.TrustedOrigins) {
+		log.Printf("ws refused: origin %q is not the host it asked on (%q) nor a trusted one — a proxy that rewrites Host, or drops its port, is the usual cause",
 			r.Header.Get("Origin"), r.Host)
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
+	// The same question again inside the upgrader, so the check stands even
+	// for whoever moves the one above.
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return originOK(r, o.TrustedOrigins) }}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -963,7 +985,12 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 			// for as long as that request took.
 			Notify   string `json:"notify,omitempty"`
 			Telegram bool   `json:"telegram,omitempty"`
-		}{Type: "config", Version: o.PageVersion}
+			// The nearer door to this server, which the page tries its next
+			// socket through (see connect in app.js). Here rather than in the
+			// page's sources because it is the host's fact, and it reaches
+			// a page opened through either door.
+			Direct string `json:"direct,omitempty"`
+		}{Type: "config", Version: o.PageVersion, Direct: o.DirectURL}
 		if o.WheelLines != nil {
 			if n := o.WheelLines(); n > 0 {
 				cfg.WheelLines = n
@@ -977,7 +1004,7 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 		if o.NotifyMode != nil {
 			cfg.Notify, cfg.Telegram = o.NotifyMode()
 		}
-		if cfg.WheelLines > 0 || cfg.Version != "" || cfg.StatusRows > 0 || cfg.Notify != "" {
+		if cfg.WheelLines > 0 || cfg.Version != "" || cfg.StatusRows > 0 || cfg.Notify != "" || cfg.Direct != "" {
 			writeMu.Lock()
 			conn.WriteJSON(cfg)
 			writeMu.Unlock()
