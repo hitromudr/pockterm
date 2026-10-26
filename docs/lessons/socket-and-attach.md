@@ -260,3 +260,15 @@ page to a private address (a one-time permission prompt is likely, and a prompt 
 `DIRECT_WAIT` is a miss until the answer is remembered), and how the client-certificate prompt
 for the second host behaves on Android. Both end in the fallback rather than a dead terminal;
 the journal line is `socket-via`.
+
+Measured on the owner's devices the same day, once the host named the door (16:06):
+
+- **The phone (Android, Chrome 155, installed app) at home:** the first connect missed with
+  `timeout` at 1501 ms and nothing reached the door's nginx. The attempt aside thirty seconds
+  later opened in 69 ms, and every connect after it went direct in 16–72 ms. Which of the
+  first-time prompts the first miss waited on was not seen. It is a one-time cost, and the
+  aside is what paid it back; with the hold alone the phone would have stayed on the long way.
+- **A Windows laptop (Chrome 154):** `closed` in 56 ms, and again nothing in the door's access
+  log, so it was refused before any HTTP: the browser's own refusal (Local Network Access),
+  or a proxy on the machine that does not carry a private address. Not resolved at the time
+  of writing; the page there keeps the long way and asks the door again every half minute.
