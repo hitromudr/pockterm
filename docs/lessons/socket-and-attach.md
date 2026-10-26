@@ -270,5 +270,7 @@ Measured on the owner's devices the same day, once the host named the door (16:0
   aside is what paid it back; with the hold alone the phone would have stayed on the long way.
 - **A Windows laptop (Chrome 154):** `closed` in 56 ms, and again nothing in the door's access
   log, so it was refused before any HTTP: the browser's own refusal (Local Network Access),
-  or a proxy on the machine that does not carry a private address. Not resolved at the time
-  of writing; the page there keeps the long way and asks the door again every half minute.
+  or a proxy on the machine that does not carry a private address. A second refusal at 16:32
+  (10 ms); from 16:37 every connect went direct in 15–242 ms. What changed on the laptop in
+  between was not recorded — a one-time refusal that a browser decision then lifted, rather
+  than anything on the host, which was not touched.
