@@ -134,6 +134,22 @@
            the terminal screen, which is hidden behind the drawer the settings
            are in — a probe whose result cannot be read is not a probe. -->
       <p id="notify-note" hidden></p>
+      <div class="row thirds">
+        <!-- Tabs of one project folded into one tab, which opens the list of them
+             (2026-10-29). Per device, off by default; lit while on, like smooth.
+             The project is the folder the pane is in (js/groups.js). Straight
+             under the strip's side by the owner's word ("поставь ее снизу от
+             «снизу»"): both are about the strip — which is why this row stands
+             right under that one, the rotation lock beside it. -->
+        <button id="tab-groups" title="Вкладки одного проекта — одной вкладкой со списком">&#9636; Группы</button>
+        <!-- The rotation lock: holds the screen in the orientation it is in when
+             pressed. The label says what holds now and is written by
+             renderRotation. Chrome locks only in fullscreen, so the switch takes
+             fullscreen too (see js/rotation.js); a refusal is said in the line
+             under it rather than in the toast, which the drawer covers. -->
+        <button id="rotation" title="Не поворачивать экран вслед за телефоном">&#10227; Поворот</button>
+      </div>
+      <p id="rotation-note" hidden></p>
       <div class="row">
         <!-- Which keyboard the app is asked for. `?ime=` was meant to make the
              next attempt cost a reload rather than an APK release, but the
@@ -150,19 +166,6 @@
              records the typed text itself. -->
         <button id="input-diag" title="Record what the keyboard does">&#128269; Input log</button>
       </div>
-      <div class="row thirds">
-        <!-- The rotation lock: holds the screen in the orientation it is in when
-             pressed. The label says what holds now and is written by
-             renderRotation. Chrome locks only in fullscreen, so the switch takes
-             fullscreen too (see js/rotation.js); a refusal is said in the line
-             under it rather than in the toast, which the drawer covers. -->
-        <button id="rotation" title="Не поворачивать экран вслед за телефоном">&#10227; Поворот</button>
-        <!-- Tabs of one project folded into one tab, which opens the list of them
-             (2026-10-29). Per device, off by default; lit while on, like smooth.
-             The project is the folder the pane is in (js/groups.js). -->
-        <button id="tab-groups" title="Вкладки одного проекта — одной вкладкой со списком">&#10697; Группы</button>
-      </div>
-      <p id="rotation-note" hidden></p>
       <!-- The session buttons: the four the page starts with and whatever the
            owner added beside them, one list. A label to tap and a command to
            run — and for a default, no command at all: its own name is the make

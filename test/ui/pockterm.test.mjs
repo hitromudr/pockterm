@@ -702,7 +702,7 @@ describe('the session list is a drawer', () => {
     await stand.open();
     await stand.attach('demo');
     await stand.openSettings();
-    const r = await stand.page.evaluate(() => Object.fromEntries(['font-dec', 'bell', 'strip-pos', 'notify-test']
+    const r = await stand.page.evaluate(() => Object.fromEntries(['font-dec', 'bell', 'strip-pos', 'tab-groups', 'notify-test']
       .map((id) => [id, document.getElementById(id).getBoundingClientRect().toJSON()])));
     const near = (a, b) => Math.abs(a - b) < 1;
     assert.ok(near(r['notify-test'].left, r.bell.left) && near(r['notify-test'].right, r.bell.right),
@@ -710,7 +710,14 @@ describe('the session list is a drawer', () => {
     assert.ok(r['notify-test'].top > r.bell.bottom, 'the probe is not below the bell');
     assert.ok(near(r['strip-pos'].left, r['font-dec'].left) && near(r['strip-pos'].top, r['notify-test'].top),
       `the strip setting is not on the left of that row: ${JSON.stringify(r)}`);
-    const clipped = await stand.page.evaluate(() => ['strip-pos', 'notify-test']
+    // "поставь ее снизу от «снизу»" (2026-10-29): the groups switch is the next
+    // row's first, edge for edge under the strip's side, and as tall as it — its
+    // first glyph came from a maths font and made it 5px taller than its row.
+    assert.ok(near(r['tab-groups'].left, r['strip-pos'].left) && near(r['tab-groups'].right, r['strip-pos'].right)
+      && r['tab-groups'].top > r['strip-pos'].bottom && r['tab-groups'].top - r['strip-pos'].bottom < 20,
+    `the groups switch is not under the strip setting: ${JSON.stringify(r)}`);
+    assert.ok(near(r['tab-groups'].height, r['strip-pos'].height), `the groups switch is taller: ${JSON.stringify(r)}`);
+    const clipped = await stand.page.evaluate(() => ['strip-pos', 'tab-groups', 'notify-test']
       .filter((id) => { const b = document.getElementById(id); return b.scrollWidth > b.clientWidth; }));
     assert.deepEqual(clipped, [], 'a label does not fit its button');
   });

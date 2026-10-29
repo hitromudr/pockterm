@@ -383,7 +383,7 @@ only in fullscreen — an installed app included — so the button takes fullscr
 too: the status and navigation bars go for as long as the lock holds. Chrome grants
 fullscreen only on a touch, so after the app is reopened or a back gesture the lock
 comes back at the first touch. A refusal is said in a line under the button, and
-the button turns back off. And `⧉ Группы`: the tabs of one project fold into one,
+the button turns back off. And `▤ Группы`: the tabs of one project fold into one,
 carrying the name of the tab chosen in it (the one on screen, else the last one
 visited; the project's name until one is), a circle with how many tabs it holds and everything
 running in all of them (shells, monitors, subagents, workflows) summed; a tap

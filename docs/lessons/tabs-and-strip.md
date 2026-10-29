@@ -634,7 +634,7 @@ swallowed.
 ## A project's tabs fold into one, by setting
 
 Asked for on 2026-10-29, with six `anabasis-*` tabs and three of exante's on the
-owner's strip: `⧉ Группы` in the drawer's settings (`#tab-groups`, per device in
+owner's strip: `▤ Группы` in the drawer's settings (`#tab-groups`, per device in
 `localStorage` as `pt-groups`, off by default) folds the tabs of one project into one
 tab, and a tap on that tab opens the list of them (`#group-menu`) — up from a strip at
 the bottom, down from one at the top — where a row switches.
