@@ -929,16 +929,60 @@ func TestBackgroundFollowsTheFooter(t *testing.T) {
 		t.Fatalf("after the footer stopped claiming: %+v", got)
 	}
 
-	// Quiet for long enough to be "done" — and the footer is still the footer.
+	// Quiet for long enough to be "done" — but a monitor still alive is the session
+	// waiting on it, and the footer is still the footer.
 	screen = "❯ \n  ctx 4% | dms@ai:~/work (main) $\n  bypass permissions on · 1 monitor ·"
 	w.Tick()
 	now = now.Add(2 * time.Minute)
 	w.Tick()
-	if got := w.Activity("build"); got != ActivityDone {
-		t.Fatalf("activity = %q, want %q", got, ActivityDone)
+	if got := w.Activity("build"); got != ActivityWorking {
+		t.Fatalf("activity = %q, want %q while a monitor runs", got, ActivityWorking)
 	}
 	if got := w.Background("build"); got.Monitors != 1 {
 		t.Fatalf("a monitor outliving the agent's last word: %+v", got)
+	}
+}
+
+func TestATurnThatLeftWorkRunningIsNotFinished(t *testing.T) {
+	// "Закончил не всегда соответствует действительности: если шелл и мониторы
+	// висят, то не закончил." The agent stops speaking with a monitor watching and a
+	// shell running, and both will wake it: the tab stayed green and the phone was
+	// told the session had finished.
+	var lines []string
+	h := newHarness(30 * time.Second)
+	h.w.o.Log = func(l string) { lines = append(lines, l) }
+	footer := "\n  ⏵⏵ bypass permissions on · 1 shell, 1 monitor · ← for agents\n"
+	h.screen = turnRunning + footer
+	h.w.Tick()
+	h.screen = turnOver + footer
+	h.settle()
+	h.advance(time.Minute)
+	h.w.Tick()
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want none while the shell and monitor run", h.events)
+	}
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("activity = %q, want %q", got, ActivityWorking)
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], "still running") {
+		t.Fatalf("lines = %q, want one line saying why nothing was announced", lines)
+	}
+	// The last of them goes without the agent taking another turn: that is the end,
+	// and it is announced then, with green counted from then.
+	h.screen = turnOver
+	h.w.Tick()
+	if got := h.kinds(); len(got) != 1 || got[0] != Done {
+		t.Fatalf("events = %+v, want one done once nothing is left", h.events)
+	}
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("activity = %q, want %q", got, ActivityDone)
+	}
+	if last := lines[len(lines)-1]; !strings.Contains(last, "have finished") {
+		t.Fatalf("last line = %q, want the reason to be what it left", last)
+	}
+	h.advance(doneFresh - time.Second)
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("green counted from the turn, not from the monitor's end: %q", got)
 	}
 }
 
@@ -1300,15 +1344,15 @@ func TestGreenFadesWhenItStopsBeingNews(t *testing.T) {
 	if got := h.w.Activity("claude"); got != ActivityDone {
 		t.Fatalf("finished again: %q, want %q", got, ActivityDone)
 	}
-	// The badge is not news and does not fade: what is still running is a fact
-	// about now, however long ago the agent stopped speaking.
+	// Neither the badge nor the work fades: what is still running is a fact about
+	// now, however long ago the agent stopped speaking.
 	h.screen = turnOver + "\n  ⏵⏵ bypass permissions on · 2 monitors · ← for agents\n"
 	h.w.Tick()
 	h.advance(2 * doneFresh)
 	if got := h.w.Background("claude"); got.Monitors != 2 {
 		t.Fatalf("background = %+v, want the monitors it still has", got)
 	}
-	if got := h.w.Activity("claude"); got != ActivityUnknown {
-		t.Fatalf("stale with monitors alive: %q, want %q", got, ActivityUnknown)
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("hours on with monitors alive: %q, want %q", got, ActivityWorking)
 	}
 }

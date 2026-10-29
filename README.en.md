@@ -431,8 +431,8 @@ is doing (**the fill**):
 | Look | Meaning |
 |---|---|
 | plain | the watcher has nothing to claim: quiet since it started looking |
-| moving purple | output is arriving right now |
-| green | gone quiet after doing something — the same event the "finished" notification is raised from |
+| moving purple | output is arriving right now, or the agent has gone quiet with its shells or monitors still running |
+| green | gone quiet after doing something, with nothing left running — the same event the "finished" notification is raised from |
 | moving blue with a yellow `!` over its top edge | the agent is waiting for an answer: a menu is on screen and nothing happens until it gets one |
 
 Blue outranks the rest and waits for no history: a menu on screen is the one state
@@ -463,9 +463,9 @@ Besides the colour a tab carries a **green heraldic shield in its bottom-right
 corner** (flat top, pointed bottom) — how
 many shells and monitors the agent still has running. In the corner rather than
 after the name: the row scrolls sideways and the names are what is read along it.
-It is a second answer rather than a shade of the first: the colour goes out the
-moment the agent stops speaking, while what it left running does not stop with it,
-and "gone quiet" is not "gone quiet with two monitors watching". The count is read
+It is a second answer rather than a shade of the first: the colour says the session
+has not finished while any shell or monitor is alive — what they report will wake the
+agent again — and the shield says which of them it is waiting on. The count is read
 off the agent's own status line (`1 shell, 1 monitor`) and travels in the same
 session list as `shells` and `monitors`. The "… still running" line an agent prints
 when a turn ends does not count: it was true then and says nothing about now.
