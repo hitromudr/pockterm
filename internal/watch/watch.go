@@ -67,14 +67,6 @@ func (w *Watcher) Activity(session string) Activity {
 	if st.live {
 		return ActivityWorking
 	}
-	// Nor is a session finished while the shells and monitors it started are still
-	// running. The agent has stopped speaking, but it will be woken by what they
-	// report and speak again: a monitor is it waiting for an answer, a shell is
-	// work it handed off. Painted green with both alive, the tab claimed the turn
-	// was over — "закончил не всегда соответствует действительности".
-	if st.bg.Total() > 0 {
-		return ActivityWorking
-	}
 	// And once this session has been seen counting, the counter is the whole
 	// answer: no counter, no turn. What the screen does in between is somebody
 	// typing their next message, and a tab that called that "working" was
@@ -151,9 +143,11 @@ func (w *Watcher) fresh(st *state, a Activity) Activity {
 // Background reports what the agent still has running in that session — the
 // shells and monitors it counts in its own footer.
 //
-// It is a second answer beside Activity rather than inside it because it says
-// what kind: Activity answers only that the session is not finished while any of
-// these is alive, and the plates say which of them it is waiting on.
+// It is a second answer and not part of Activity because it answers a
+// different question: Activity says whether the agent is speaking, this says
+// whether anything is working while it is quiet. A session sitting at "done"
+// with two monitors alive is not the same thing as one with nothing left, and
+// on a strip of tabs that difference is the whole reason to look.
 func (w *Watcher) Background(session string) detect.Background {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -172,6 +166,16 @@ type Event struct {
 	// pane worth showing a human — see Tail.
 	Prompt  string
 	Options []detect.Option
+	// Background is what the agent left running when the event was raised. A turn
+	// can end with shells and monitors still going, and what they report wakes it
+	// again — so "finished" is not the word for it, and whether such an end is
+	// worth a notice at all is the owner's call (Wait).
+	Background detect.Background
+	// Settled: the shells and monitors a reported end left running have all gone,
+	// and the agent took no new turn in between. Raised once, after a Done that
+	// carried them, and only that order gives it a meaning — it is the end the
+	// owner who waits for everything is told about.
+	Settled bool
 	// OnScreen: some page had this session visible when the event was raised.
 	//
 	// It is carried rather than acted on here, because the answer differs by
@@ -225,9 +229,9 @@ type state struct {
 	// reporting the human's typing as the machine's work.
 	live    bool
 	sawLive bool
-	// held is a turn whose end was put off by what it left running — written down
-	// once, when the counter goes with shells or monitors still alive, so the
-	// journal says why no "finished" followed.
+	// held is a turn whose end was reported with shells or monitors still
+	// running; the poll that sees the last of them go raises Settled. A new turn
+	// clears it — the agent woke up, and its own end will be reported.
 	held bool
 	// retrying is the retry line on screen at the last poll: the turn is held up
 	// by the API rather than working. It changes no decision — a retry is a turn,
@@ -487,21 +491,8 @@ func (w *Watcher) poll(session string) {
 	switch {
 	case menu != nil || st.live || st.doneSent:
 		// A question, a turn still counting, or a turn already reported.
-	case st.bg.Total() > 0:
-		// The agent has stopped speaking and left shells or monitors running, and
-		// what they report will wake it again: not finished, and not announced as
-		// such. The end is read when the last of them goes, by the rules below.
-		if !st.held && st.sawLive && !st.liveGone.IsZero() && w.o.Log != nil {
-			w.o.Log(fmt.Sprintf("watch: %s turn ended with %d shell(s), %d monitor(s) still running — not finished",
-				session, st.bg.Shells, st.bg.Monitors))
-		}
-		st.held = st.sawLive && !st.liveGone.IsZero()
 	case st.sawLive && !st.liveGone.IsZero() && now.Sub(st.liveGone) >= liveGrace:
 		why = fmt.Sprintf("counter gone for %s", now.Sub(st.liveGone).Round(time.Second))
-		if st.held {
-			why = "the shells and monitors it left have finished"
-			st.held = false
-		}
 	case st.sawLive:
 		// Missing, but not for long enough to be an answer yet.
 	case st.agent:
@@ -516,7 +507,15 @@ func (w *Watcher) poll(session string) {
 	if why != "" {
 		st.doneSent = true
 		st.quiet = now
-		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines)})
+		st.held = st.bg.Total() > 0
+		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines), Background: st.bg})
+	} else if st.held && st.bg.Total() == 0 && menu == nil && !st.live {
+		// What the reported end left running is gone, and the agent did not speak
+		// again in between. Nothing on the tab changes — it went green at the end
+		// of the turn — but this is the end for whoever waits for everything.
+		st.held = false
+		why = "the shells and monitors it left have finished"
+		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines), Settled: true})
 	}
 	notify := st.notify
 	w.mu.Unlock()
@@ -559,6 +558,9 @@ func (w *Watcher) poll(session string) {
 				reason = "menu on screen"
 			}
 			line := fmt.Sprintf("watch: %s %s (%s)", e.Kind, session, reason)
+			if bg := e.Background; bg.Total() > 0 {
+				line += fmt.Sprintf(" with %d shell(s), %d monitor(s) still running", bg.Shells, bg.Monitors)
+			}
 			if note != "" {
 				line += " — " + note
 			}

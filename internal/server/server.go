@@ -89,6 +89,10 @@ type Options struct {
 	// SetNotifyMode stores a new mode. Refusing an unknown one is its job, not
 	// the handler's — the vocabulary belongs to whoever owns the state.
 	SetNotifyMode func(mode string) error
+	// NotifyWait reports when a turn's end is announced ("turn", "all"), and
+	// SetNotifyWait stores a new one; nil leaves the page without the switch.
+	NotifyWait    func() string
+	SetNotifyWait func(wait string) error
 	PageVersion   string // version of the page this binary serves; "" says nothing
 	// DirectURL is the nearer door to this server, sent to the page in the
 	// config frame; "" sends nothing. TrustedOrigins are the pages, served
@@ -384,26 +388,46 @@ func serveNotifyMode(o Options, w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "the mode is fixed on this host", http.StatusNotFound)
 			return
 		}
+		// Either switch, or both: the mode, and when a turn's end is announced.
 		var body struct {
 			Mode string `json:"mode"`
+			Wait string `json:"wait"`
 		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil {
-			http.Error(w, "expected {\"mode\": …}", http.StatusBadRequest)
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil ||
+			(body.Mode == "" && body.Wait == "") {
+			http.Error(w, "expected {\"mode\": …} or {\"wait\": …}", http.StatusBadRequest)
 			return
 		}
-		if err := o.SetNotifyMode(body.Mode); err != nil {
-			// The page sends a mode it got from here, so a refusal means the two
-			// disagree about the vocabulary — worth the client's while to hear.
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if body.Wait != "" && o.SetNotifyWait == nil {
+			http.Error(w, "the wait is fixed on this host", http.StatusNotFound)
 			return
+		}
+		if body.Mode != "" {
+			if err := o.SetNotifyMode(body.Mode); err != nil {
+				// The page sends a mode it got from here, so a refusal means the two
+				// disagree about the vocabulary — worth the client's while to hear.
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		if body.Wait != "" {
+			if err := o.SetNotifyWait(body.Wait); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 	}
 	mode, telegram := o.NotifyMode()
+	wait := ""
+	if o.NotifyWait != nil {
+		wait = o.NotifyWait()
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(struct {
 		Mode     string `json:"mode"`
 		Telegram bool   `json:"telegram"`
-	}{mode, telegram})
+		Wait     string `json:"wait,omitempty"`
+	}{mode, telegram, wait})
 }
 
 // servePush hands out the key a browser subscribes with, and takes the
@@ -985,6 +1009,8 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 			// for as long as that request took.
 			Notify   string `json:"notify,omitempty"`
 			Telegram bool   `json:"telegram,omitempty"`
+			// When a turn's end is announced, the switch beside the mode.
+			NotifyWait string `json:"notifyWait,omitempty"`
 			// The nearer door to this server, which the page tries its next
 			// socket through (see connect in app.js). Here rather than in the
 			// page's sources because it is the host's fact, and it reaches
@@ -1003,6 +1029,9 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 		}
 		if o.NotifyMode != nil {
 			cfg.Notify, cfg.Telegram = o.NotifyMode()
+		}
+		if o.NotifyWait != nil {
+			cfg.NotifyWait = o.NotifyWait()
 		}
 		if cfg.WheelLines > 0 || cfg.Version != "" || cfg.StatusRows > 0 || cfg.Notify != "" || cfg.Direct != "" {
 			writeMu.Lock()

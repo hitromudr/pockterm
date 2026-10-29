@@ -17,17 +17,51 @@ const (
 	maxLineLen  = 200
 	promptLabel = "❓ %s просит ответ"
 	doneLabel   = "✅ %s закончил"
+	// A turn that ended with shells or monitors still running. It is not
+	// "закончил": what they report wakes the agent and it speaks again — the
+	// owner's word, 2026-10-29. The counts follow, as the footer gives them.
+	waitLabel = "⏳ %s ждёт: %s"
 )
+
+// title is what a notice is headed with, the same in both channels.
+func title(e Event) string {
+	if e.Kind == Question {
+		return fmt.Sprintf(promptLabel, e.Session)
+	}
+	if e.Background.Total() > 0 {
+		return fmt.Sprintf(waitLabel, e.Session, running(e.Background))
+	}
+	return fmt.Sprintf(doneLabel, e.Session)
+}
+
+// running says what is still running in words: "1 шелл, 2 монитора".
+func running(bg detect.Background) string {
+	var parts []string
+	if bg.Shells > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", bg.Shells, plural(bg.Shells, "шелл", "шелла", "шеллов")))
+	}
+	if bg.Monitors > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", bg.Monitors, plural(bg.Monitors, "монитор", "монитора", "мониторов")))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// plural picks the Russian form for n: one, few, many.
+func plural(n int, one, few, many string) string {
+	switch n10, n100 := n%10, n%100; {
+	case n10 == 1 && n100 != 11:
+		return one
+	case n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14):
+		return few
+	}
+	return many
+}
 
 // Format renders an event as the message body. With preview off only the
 // fact and the session name are sent — nothing read off the screen.
 func Format(e Event, link string, preview bool) string {
 	var b strings.Builder
-	if e.Kind == Question {
-		fmt.Fprintf(&b, promptLabel, e.Session)
-	} else {
-		fmt.Fprintf(&b, doneLabel, e.Session)
-	}
+	b.WriteString(title(e))
 	if preview {
 		if p := clip(e.Prompt); p != "" {
 			b.WriteString("\n" + p)
@@ -53,9 +87,9 @@ func Format(e Event, link string, preview bool) string {
 // It exists next to Format so both channels say the same thing in the same
 // words. Only the shape differs — Telegram gets one message, a notification
 // has a title of its own.
-func Notice(e Event) (title, body string) {
+func Notice(e Event) (head, body string) {
+	head = title(e)
 	if e.Kind == Question {
-		title = fmt.Sprintf(promptLabel, e.Session)
 		lines := make([]string, 0, maxOptions+1)
 		if p := clip(e.Prompt); p != "" {
 			lines = append(lines, p)
@@ -67,13 +101,12 @@ func Notice(e Event) (title, body string) {
 			}
 			lines = append(lines, clip(o.Key+". "+o.Label))
 		}
-		return title, strings.Join(lines, "\n")
+		return head, strings.Join(lines, "\n")
 	}
-	title = fmt.Sprintf(doneLabel, e.Session)
 	if p := clip(e.Prompt); p != "" {
-		return title, p
+		return head, p
 	}
-	return title, "Вывод остановился"
+	return head, "Вывод остановился"
 }
 
 // The mark an agent puts on its own lines, and the shape of the ones that name a

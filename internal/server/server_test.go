@@ -2453,3 +2453,43 @@ func TestPushEndpointsWantTheToken(t *testing.T) {
 		}
 	}
 }
+
+func TestNotifyWaitIsReadAndSetBesideTheMode(t *testing.T) {
+	// When a turn's end is announced is a second switch in the same place, and
+	// setting it leaves the mode alone: a page that sends only the wait must not
+	// be read as asking for a mode it did not name.
+	opts, mode := notifyOptions("pwa", true)
+	wait := "turn"
+	opts.NotifyWait = func() string { return wait }
+	opts.SetNotifyWait = func(v string) error {
+		if v != "turn" && v != "all" {
+			return fmt.Errorf("unknown notification wait %q", v)
+		}
+		wait = v
+		return nil
+	}
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+
+	post := func(body string) (int, string) {
+		res, err := http.Post(srv.URL+"/api/notify", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var got struct {
+			Wait string `json:"wait"`
+		}
+		json.NewDecoder(res.Body).Decode(&got)
+		return res.StatusCode, got.Wait
+	}
+	if code, got := post(`{"wait":"all"}`); code != http.StatusOK || got != "all" {
+		t.Fatalf("POST wait: status %d, answered %q", code, got)
+	}
+	if wait != "all" || *mode != "pwa" {
+		t.Fatalf("stored wait %q, mode %q — want all and the mode untouched", wait, *mode)
+	}
+	if code, _ := post(`{"wait":"sometimes"}`); code != http.StatusBadRequest || wait != "all" {
+		t.Fatalf("an unknown wait: status %d, stored %q", code, wait)
+	}
+}

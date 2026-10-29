@@ -229,6 +229,7 @@ func serve() {
 	}
 	notices := server.NewNotices()
 	pref := notifyPref(cfg)
+	wait := notifyWait(cfg)
 	buttons := customButtons(cfg)
 	pusher := pushChannel(cfg)
 	way, err := uplinkReporter(cfg)
@@ -247,7 +248,7 @@ func serve() {
 		LeaveMode:  leaveMode,
 		ScrollTo:   scrollTo,
 		Capture:    capture,
-		Presence:   notifier(cfg, notices, pref, pusher),
+		Presence:   notifier(cfg, notices, pref, wait, pusher),
 		Notices:    notices,
 		NotifyMode: func() (string, bool) { return string(pref.Mode()), cfg.Notify() },
 		SetNotifyMode: func(m string) error {
@@ -261,6 +262,18 @@ func serve() {
 				log.Printf("notifications: %v", err)
 			}
 			log.Printf("notifications: %s", mode)
+			return nil
+		},
+		NotifyWait: func() string { return string(wait.Wait()) },
+		SetNotifyWait: func(v string) error {
+			w, ok := watch.ParseWait(v)
+			if !ok {
+				return fmt.Errorf("unknown notification wait %q", v)
+			}
+			if err := wait.Set(w); err != nil {
+				log.Printf("notifications: %v", err)
+			}
+			log.Printf("notifications wait: %s", w)
 			return nil
 		},
 		PushKey: func() string {
@@ -580,7 +593,7 @@ func firstLine(s string) string {
 // the background. Telegram is optional; the watcher is not, because the page
 // no longer works out on its own when a run ended — it renders what it is
 // told, and there has to be someone to tell it.
-func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref, pusher *pushOut) server.Presence {
+func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref, wait *watch.WaitPref, pusher *pushOut) server.Presence {
 	var bot *telegram.Client
 	if cfg.Notify() {
 		bot = &telegram.Client{Token: cfg.TGToken, Chat: cfg.TGChat, API: cfg.TGAPI}
@@ -613,6 +626,13 @@ func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref, push
 			// The switch is read at the event and not at the attach: it is
 			// changed from a page that may not be the one attached, and the
 			// answer has to be the one in force now.
+			// The end of a turn that left shells or monitors running, or the later
+			// end when they have gone: one of the two is wanted, and which is the
+			// owner's switch, read at the event like the mode.
+			if w := wait.Wait(); !watch.Wanted(e, w) {
+				log.Printf("notify: %s %s not sent: waiting for %s", e.Kind, e.Session, w)
+				return
+			}
 			page, tg := watch.Deliver(pref.Mode(), bot != nil)
 			if page {
 				title, body := watch.Notice(e)
@@ -821,6 +841,25 @@ func notifyPref(cfg config.Config) *watch.Pref {
 		path = filepath.Join(dir, "pockterm", "notify")
 	}
 	return watch.LoadPref(path, watch.ModeBoth)
+}
+
+// notifyWait loads when a turn's end is announced, kept beside the mode and
+// forgotten with it: POCKTERM_NOTIFY_FILE=off keeps both in memory only. The
+// default is the end of every turn, which is what this binary did before the
+// switch existed.
+func notifyWait(cfg config.Config) *watch.WaitPref {
+	path := cfg.NotifyFile
+	switch path {
+	case "off":
+		return watch.LoadWaitPref("", watch.WaitTurn)
+	case "":
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			return watch.LoadWaitPref("", watch.WaitTurn)
+		}
+		path = filepath.Join(dir, "pockterm", "notify")
+	}
+	return watch.LoadWaitPref(path+"-wait", watch.WaitTurn)
 }
 
 // wheelLines asks tmux how many lines its copy-mode wheel binding scrolls.

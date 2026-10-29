@@ -431,8 +431,8 @@ is doing (**the fill**):
 | Look | Meaning |
 |---|---|
 | plain | the watcher has nothing to claim: quiet since it started looking |
-| moving purple | output is arriving right now, or the agent has gone quiet with its shells or monitors still running |
-| green | gone quiet after doing something, with nothing left running — the same event the "finished" notification is raised from |
+| moving purple | output is arriving right now |
+| green | gone quiet after doing something — the same event the "finished" notification is raised from |
 | moving blue with a yellow `!` over its top edge | the agent is waiting for an answer: a menu is on screen and nothing happens until it gets one |
 
 Blue outranks the rest and waits for no history: a menu on screen is the one state
@@ -463,9 +463,9 @@ Besides the colour a tab carries a **green heraldic shield in its bottom-right
 corner** (flat top, pointed bottom) — how
 many shells and monitors the agent still has running. In the corner rather than
 after the name: the row scrolls sideways and the names are what is read along it.
-It is a second answer rather than a shade of the first: the colour says the session
-has not finished while any shell or monitor is alive — what they report will wake the
-agent again — and the shield says which of them it is waiting on. The count is read
+It is a second answer rather than a shade of the first: the colour goes out the
+moment the agent stops speaking, while what it left running does not stop with it,
+and "gone quiet" is not "gone quiet with two monitors watching". The count is read
 off the agent's own status line (`1 shell, 1 monitor`) and travels in the same
 session list as `shells` and `monitors`. The "… still running" line an agent prints
 when a turn ends does not count: it was true then and says nothing about now.
@@ -481,6 +481,16 @@ with `capture-pane` and tells two events apart:
 - **finished** — the agent's own counter (`✻ Pondering… (4m 23s · …)`) has left
   the screen and stayed away for 4s; or, for a pane with no counter to read, the
   screen has not changed for `POCKTERM_IDLE` after something happened.
+
+**"Finished" and "waiting" are not the same.** A turn can end with the agent's
+shells or monitors still running, and what they report wakes it again — so such
+an end is headed differently: `⏳ <session> ждёт: 1 шелл, 2 монитора`. When to be
+told is the "⏳ Ждать" button in Settings: by default at the end of every turn, as
+it always was; lit, only once the shells and monitors have gone as well, and then a
+single `✅ закончил` arrives. Like the mode it lives on the server (a file beside
+it, `<POCKTERM_NOTIFY_FILE>-wait`) and Telegram obeys it too. The tab's colour does
+not depend on it: the agent stopped speaking, the tab is green, and the plates in
+its corner say what was left running.
 
 **One decision, two channels.** The event goes to Telegram and, as a frame
 on the websocket, to an open page, which raises a system notification (in

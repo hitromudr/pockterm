@@ -244,23 +244,8 @@ running.** `watch.Background` reads the shells and monitors off the agent's own
 footer (`detect.ReadBackground`, on the same poll as the colour) and the tab
 carries how many in its bottom-right corner — in the corner rather than after the
 name because the row scrolls sideways and the names are what is worth reading
-along it.
-
-**A turn that left shells or monitors running has not finished** (since
-2026-10-29). The colour used to answer only whether the agent was speaking, so a
-session went green — and the phone was told "finished" — the moment the counter
-went, with a monitor still watching and a shell still building. The owner: «закончил
-не всегда соответствует действительности, если шелл и мониторы висят, то не
-закончил». They are right in the agent's own terms: what those report wakes it, and
-it speaks again. So `Activity` answers `working` while `bg.Total()` is above zero,
-and no `done` is raised; the end is read when the last of them goes — by the next
-turn's counter, usually, or straight away if the agent takes none, in which case the
-journal says `the shells and monitors it left have finished` where it would say
-`counter gone`. The hold itself is written down once (`turn ended with 1 shell(s),
-1 monitor(s) still running — not finished`). Subagents and workflows do not hold
-it: the list they are read from keeps a subagent that has finished and not been
-collected (`ReadAgents`), so a head is not proof of anything still running. The cost is a shell started and forgotten — a dev server — keeping its
-tab purple for as long as it runs; the plate says which.
+along it. A session at "done" with two monitors alive is not one with nothing
+left, and the colour cannot say so.
 
 **One plate per kind.** The sum answered "is anything still running" and refused
 every follow-up: a shell is something started and forgotten, a monitor something

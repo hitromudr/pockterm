@@ -116,3 +116,24 @@ func TestPrefCreatesItsDirectory(t *testing.T) {
 		t.Fatalf("file holds %q", b)
 	}
 }
+
+func TestWaitPrefRemembersAndRefuses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notify-wait")
+	p := LoadWaitPref(path, WaitTurn)
+	if p.Wait() != WaitTurn {
+		t.Fatalf("default = %q", p.Wait())
+	}
+	if err := p.Set(WaitAll); err != nil {
+		t.Fatal(err)
+	}
+	if got := LoadWaitPref(path, WaitTurn).Wait(); got != WaitAll {
+		t.Fatalf("after a restart: %q, want %q", got, WaitAll)
+	}
+	if err := p.Set("sometimes"); err == nil || p.Wait() != WaitAll {
+		t.Fatalf("an unknown wait: err %v, now %q", err, p.Wait())
+	}
+	os.WriteFile(path, []byte("garbage\n"), 0o600)
+	if got := LoadWaitPref(path, WaitTurn).Wait(); got != WaitTurn {
+		t.Fatalf("a file it does not understand: %q, want the default", got)
+	}
+}

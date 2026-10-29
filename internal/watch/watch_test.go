@@ -929,60 +929,16 @@ func TestBackgroundFollowsTheFooter(t *testing.T) {
 		t.Fatalf("after the footer stopped claiming: %+v", got)
 	}
 
-	// Quiet for long enough to be "done" — but a monitor still alive is the session
-	// waiting on it, and the footer is still the footer.
+	// Quiet for long enough to be "done" — and the footer is still the footer.
 	screen = "❯ \n  ctx 4% | dms@ai:~/work (main) $\n  bypass permissions on · 1 monitor ·"
 	w.Tick()
 	now = now.Add(2 * time.Minute)
 	w.Tick()
-	if got := w.Activity("build"); got != ActivityWorking {
-		t.Fatalf("activity = %q, want %q while a monitor runs", got, ActivityWorking)
+	if got := w.Activity("build"); got != ActivityDone {
+		t.Fatalf("activity = %q, want %q", got, ActivityDone)
 	}
 	if got := w.Background("build"); got.Monitors != 1 {
 		t.Fatalf("a monitor outliving the agent's last word: %+v", got)
-	}
-}
-
-func TestATurnThatLeftWorkRunningIsNotFinished(t *testing.T) {
-	// "Закончил не всегда соответствует действительности: если шелл и мониторы
-	// висят, то не закончил." The agent stops speaking with a monitor watching and a
-	// shell running, and both will wake it: the tab stayed green and the phone was
-	// told the session had finished.
-	var lines []string
-	h := newHarness(30 * time.Second)
-	h.w.o.Log = func(l string) { lines = append(lines, l) }
-	footer := "\n  ⏵⏵ bypass permissions on · 1 shell, 1 monitor · ← for agents\n"
-	h.screen = turnRunning + footer
-	h.w.Tick()
-	h.screen = turnOver + footer
-	h.settle()
-	h.advance(time.Minute)
-	h.w.Tick()
-	if len(h.events) != 0 {
-		t.Fatalf("events = %+v, want none while the shell and monitor run", h.events)
-	}
-	if got := h.w.Activity("claude"); got != ActivityWorking {
-		t.Fatalf("activity = %q, want %q", got, ActivityWorking)
-	}
-	if len(lines) != 1 || !strings.Contains(lines[0], "still running") {
-		t.Fatalf("lines = %q, want one line saying why nothing was announced", lines)
-	}
-	// The last of them goes without the agent taking another turn: that is the end,
-	// and it is announced then, with green counted from then.
-	h.screen = turnOver
-	h.w.Tick()
-	if got := h.kinds(); len(got) != 1 || got[0] != Done {
-		t.Fatalf("events = %+v, want one done once nothing is left", h.events)
-	}
-	if got := h.w.Activity("claude"); got != ActivityDone {
-		t.Fatalf("activity = %q, want %q", got, ActivityDone)
-	}
-	if last := lines[len(lines)-1]; !strings.Contains(last, "have finished") {
-		t.Fatalf("last line = %q, want the reason to be what it left", last)
-	}
-	h.advance(doneFresh - time.Second)
-	if got := h.w.Activity("claude"); got != ActivityDone {
-		t.Fatalf("green counted from the turn, not from the monitor's end: %q", got)
 	}
 }
 
@@ -1344,15 +1300,128 @@ func TestGreenFadesWhenItStopsBeingNews(t *testing.T) {
 	if got := h.w.Activity("claude"); got != ActivityDone {
 		t.Fatalf("finished again: %q, want %q", got, ActivityDone)
 	}
-	// Neither the badge nor the work fades: what is still running is a fact about
-	// now, however long ago the agent stopped speaking.
+	// The badge is not news and does not fade: what is still running is a fact
+	// about now, however long ago the agent stopped speaking.
 	h.screen = turnOver + "\n  ⏵⏵ bypass permissions on · 2 monitors · ← for agents\n"
 	h.w.Tick()
 	h.advance(2 * doneFresh)
 	if got := h.w.Background("claude"); got.Monitors != 2 {
 		t.Fatalf("background = %+v, want the monitors it still has", got)
 	}
-	if got := h.w.Activity("claude"); got != ActivityWorking {
-		t.Fatalf("hours on with monitors alive: %q, want %q", got, ActivityWorking)
+	if got := h.w.Activity("claude"); got != ActivityUnknown {
+		t.Fatalf("stale with monitors alive: %q, want %q", got, ActivityUnknown)
+	}
+}
+
+func TestATurnThatLeftWorkRunningSaysSo(t *testing.T) {
+	// "Закончил" for a turn that ended with a monitor watching and a shell running
+	// is not true: what they report wakes the agent again. The end is raised as it
+	// always was — when, is the owner's switch (Wanted) — but it carries what is
+	// left, and when the last of it goes a second end is raised for whoever waits
+	// for everything.
+	var lines []string
+	h := newHarness(30 * time.Second)
+	h.w.o.Log = func(l string) { lines = append(lines, l) }
+	footer := "\n  ⏵⏵ bypass permissions on · 1 shell, 2 monitors · ← for agents\n"
+	h.screen = turnRunning + footer
+	h.w.Tick()
+	h.screen = turnOver + footer
+	h.settle()
+	if len(h.events) != 1 || h.events[0].Kind != Done || h.events[0].Settled {
+		t.Fatalf("events = %+v, want the end of the turn", h.events)
+	}
+	if bg := h.events[0].Background; bg.Shells != 1 || bg.Monitors != 2 {
+		t.Fatalf("background = %+v, want what the footer said", bg)
+	}
+	if head, _ := Notice(h.events[0]); head != "⏳ claude ждёт: 1 шелл, 2 монитора" {
+		t.Fatalf("title = %q", head)
+	}
+	if !strings.Contains(lines[0], "1 shell(s), 2 monitor(s) still running") {
+		t.Fatalf("line = %q, want what was left running", lines[0])
+	}
+	// The colour is what it was: the agent has stopped speaking.
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("activity = %q, want %q", got, ActivityDone)
+	}
+	h.advance(time.Minute)
+	h.w.Tick()
+	if len(h.events) != 1 {
+		t.Fatalf("events = %+v, want nothing more while they run", h.events)
+	}
+
+	h.screen = turnOver
+	h.w.Tick()
+	if len(h.events) != 2 || !h.events[1].Settled || h.events[1].Background.Total() != 0 {
+		t.Fatalf("events = %+v, want the settled end once nothing is left", h.events)
+	}
+	if head, _ := Notice(h.events[1]); head != "✅ claude закончил" {
+		t.Fatalf("title = %q", head)
+	}
+	h.w.Tick()
+	if len(h.events) != 2 {
+		t.Fatalf("events = %+v, want it once", h.events)
+	}
+
+	// A new turn in between is the agent woken by them, and its own end is the
+	// one reported — nothing settles behind it.
+	h.screen = turnRunning + footer
+	h.w.Tick()
+	h.screen = turnOver + footer
+	h.settle()
+	h.screen = turnRunning
+	h.w.Tick()
+	h.screen = turnOver
+	h.settle()
+	if got := h.events[len(h.events)-1]; got.Settled || got.Background.Total() != 0 {
+		t.Fatalf("last = %+v, want the plain end of the turn that followed", got)
+	}
+	if len(h.events) != 4 {
+		t.Fatalf("events = %+v, want two ends and no settled one", h.events)
+	}
+}
+
+func TestWantedPicksOneEndOfTwo(t *testing.T) {
+	left := detect.Background{Shells: 1}
+	turnWithWork := Event{Kind: Done, Background: left}
+	plain := Event{Kind: Done}
+	settled := Event{Kind: Done, Settled: true}
+	ask := Event{Kind: Question, Background: left}
+	cases := []struct {
+		e    Event
+		w    Wait
+		want bool
+	}{
+		// As it always was: every turn's end, and nothing when the work left goes.
+		{turnWithWork, WaitTurn, true},
+		{plain, WaitTurn, true},
+		{settled, WaitTurn, false},
+		// Waiting for everything: nothing while something is left.
+		{turnWithWork, WaitAll, false},
+		{plain, WaitAll, true},
+		{settled, WaitAll, true},
+		// A question is the person's business under either.
+		{ask, WaitTurn, true},
+		{ask, WaitAll, true},
+	}
+	for i, c := range cases {
+		if got := Wanted(c.e, c.w); got != c.want {
+			t.Fatalf("case %d: Wanted(%+v, %q) = %v", i, c.e, c.w, got)
+		}
+	}
+}
+
+func TestRunningIsSaidInRussian(t *testing.T) {
+	for _, c := range []struct {
+		bg   detect.Background
+		want string
+	}{
+		{detect.Background{Shells: 1}, "1 шелл"},
+		{detect.Background{Monitors: 3}, "3 монитора"},
+		{detect.Background{Shells: 5, Monitors: 11}, "5 шеллов, 11 мониторов"},
+		{detect.Background{Shells: 21, Monitors: 12}, "21 шелл, 12 мониторов"},
+	} {
+		if got := running(c.bg); got != c.want {
+			t.Fatalf("running(%+v) = %q, want %q", c.bg, got, c.want)
+		}
 	}
 }

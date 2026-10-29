@@ -717,9 +717,46 @@ describe('the session list is a drawer', () => {
       && r['tab-groups'].top > r['strip-pos'].bottom && r['tab-groups'].top - r['strip-pos'].bottom < 20,
     `the groups switch is not under the strip setting: ${JSON.stringify(r)}`);
     assert.ok(near(r['tab-groups'].height, r['strip-pos'].height), `the groups switch is taller: ${JSON.stringify(r)}`);
-    const clipped = await stand.page.evaluate(() => ['strip-pos', 'tab-groups', 'notify-test']
+    // When "закончил" is sent (2026-10-29) is a notification lever too, so it
+    // stands in their column, under the probe.
+    await stand.page.waitForSelector('#notify-wait:not([hidden])');
+    const nw = await stand.page.evaluate(() => document.getElementById('notify-wait').getBoundingClientRect().toJSON());
+    assert.ok(near(nw.left, r['notify-test'].left) && near(nw.right, r['notify-test'].right)
+      && near(nw.top, r['tab-groups'].top) && near(nw.height, r['tab-groups'].height),
+    `the wait switch is not under the probe: ${JSON.stringify({ nw, r })}`);
+    const clipped = await stand.page.evaluate(() => ['strip-pos', 'tab-groups', 'notify-test', 'notify-wait']
       .filter((id) => { const b = document.getElementById(id); return b.scrollWidth > b.clientWidth; }));
     assert.deepEqual(clipped, [], 'a label does not fit its button');
+  });
+
+  test('when "закончил" is sent is the host\'s switch, and the button shows its answer', async () => {
+    // "частоту уведомлений надо в настройках выбирать, как было или как стало":
+    // the end of every turn by default, as it always was; lit, it waits until the
+    // shells and monitors a turn left have gone too. The host holds it — Telegram
+    // obeys it — so the tap is taken as landed only when the host says so.
+    await stand.open();
+    await stand.attach('demo');
+    await stand.openSettings();
+    const { page } = stand;
+    await page.waitForSelector('#notify-wait:not([hidden])');
+    try {
+      assert.equal(await page.evaluate(() => document.getElementById('notify-wait').classList.contains('on')), false,
+        'the end of every turn is not the default');
+      await page.click('#notify-wait');
+      await page.waitForSelector('#notify-wait.on');
+      for (let i = 0; i < 50 && !/notifications wait: all/.test(stand.serverLog()); i++) await page.waitForTimeout(100);
+      assert.match(stand.serverLog(), /notifications wait: all/, 'the host did not take it');
+      // And a page loaded afresh is told by the host, not by its own memory.
+      await stand.open();
+      await stand.attach('demo');
+      await stand.openSettings();
+      await page.waitForSelector('#notify-wait.on');
+    } finally {
+      if (await page.evaluate(() => document.getElementById('notify-wait').classList.contains('on'))) {
+        await page.click('#notify-wait');
+        await page.waitForSelector('#notify-wait:not(.on)');
+      }
+    }
   });
 
   test('the strip can stand at the top, as it did, and stays there', async () => {

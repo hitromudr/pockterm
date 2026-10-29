@@ -234,3 +234,35 @@ server signs with its own. Nothing else about the session travels. `POCKTERM_VAP
 or `POCKTERM_PUSH_FILE=off` turns the whole channel off, and the page is told so by a 404
 on `/api/push` — at which point it goes back to drawing notices from the frame, which is
 what it did before and which reaches nothing once the phone suspends it.
+
+## A turn that left work running is "waiting", and when to hear of it is a switch
+
+Since 2026-10-29. A turn ended with a monitor watching and a shell building, and the
+phone was told `✅ … закончил` — not true, since what those report wakes the agent and
+it speaks again. The first answer held the tab purple and the notice back until they
+had gone, and was taken back the same hour by the owner's word: «я думал просто текст в
+пушах поправить, а частоту уведомлений надо в настройках выбирать, как было или как
+стало», and of the tab, «работает это работает, ждет это ждет». So three things, kept
+apart:
+
+- **The colour did not change.** `Activity` answers what the agent is doing; a session
+  whose agent has stopped is green, and the plates say what it left (see
+  `tabs-and-strip.md`). Purple for a session that is only waiting was the reverted part.
+- **The title says what is true.** A `Done` carries `Background` — what the footer
+  counted at that poll — and `title` heads it `⏳ <s> ждёт: 1 шелл, 2 монитора`
+  instead of `закончил`, in both channels.
+- **Which end is announced is `Wait`, the host's switch** (`turn` by default, `all`).
+  The watcher raises every end it sees: the turn's, carrying what is left, and a
+  `Settled` one when the last of it goes without the agent taking another turn (a new
+  turn clears that — the agent woke, and its own end is the one reported). `Wanted`
+  picks: under `turn` everything but `Settled`, which is exactly what was sent before;
+  under `all` only an end with nothing left. The filter sits in front of `Deliver` in
+  `main.go`, so the watcher's state — and the colour decided from it — is the same
+  under both, and a withheld one is written down (`notify: done X not sent: waiting
+  for all`). Kept beside the mode in `<POCKTERM_NOTIFY_FILE>-wait`, posted as
+  `{"wait": …}` to `/api/notify`, handed to the page in the config frame as
+  `notifyWait`; the button (`#notify-wait`) stands under «Проверить» with the other
+  notification levers and shows the host's answer, not the tap.
+
+Subagents and workflows do not count as left running: the list they are read from keeps
+a subagent that has finished and not been collected (`ReadAgents`).

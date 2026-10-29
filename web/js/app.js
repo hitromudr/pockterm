@@ -2738,6 +2738,7 @@ function onControl(raw) {
   // button is right the moment it is drawn — and it comes on every connect,
   // because the state is the host's and another page may have changed it.
   if (c && c.type === 'config' && typeof c.notify === 'string') applyMode(c.notify, !!c.telegram);
+  if (c && c.type === 'config' && typeof c.notifyWait === 'string') applyWait(c.notifyWait);
   // And which page the server serves. CI installs a build as soon as it
   // arrives, so this frame is also how a reconnect after that restart is told
   // apart from any other reconnect.
@@ -5373,6 +5374,41 @@ bellBtn.addEventListener('click', async () => {
   }
 });
 renderBell();
+
+// When "закончил" is sent: 'turn' at the end of every turn, 'all' only once the
+// shells and monitors a turn left running have gone as well. The host's switch,
+// like the mode — the watcher and Telegram are there — so the button shows what
+// the host answered, never what was tapped.
+const notifyWaitBtn = document.getElementById('notify-wait');
+let notifyWait = '';
+
+function applyWait(wait) {
+  notifyWait = wait;
+  notifyWaitBtn.hidden = false;
+  notifyWaitBtn.classList.toggle('on', wait === 'all');
+  notifyWaitBtn.title = wait === 'all'
+    ? '«Закончил» — только когда завершатся и шеллы с мониторами. Нажми: в конце каждого хода'
+    : '«Закончил» — в конце каждого хода. Нажми: только когда завершатся и шеллы с мониторами';
+}
+
+notifyWaitBtn.addEventListener('click', async () => {
+  const want = notifyWait === 'all' ? 'turn' : 'all';
+  try {
+    const res = await fetch(`/api/notify${tokenQS ? `?${tokenQS}` : ''}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wait: want }),
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    const body = await res.json();
+    applyWait(body && body.wait ? body.wait : want);
+    report('notify-wait', { wait: notifyWait });
+  } catch (e) {
+    // The label stays on what the host holds; the journal says why the tap did
+    // not land — the toast is behind the drawer this button is in.
+    report('notify-wait', { wait: notifyWait, error: (e && e.message) || 'error' });
+  }
+});
 
 // A WebView has no Notification API at all, so the app carries them.
 function nativeNotifier() {
