@@ -220,5 +220,10 @@ func (p *Prober) askOne(u string) (string, error) {
 	if ip == nil {
 		return "", fmt.Errorf("%s: not an address: %q", u, s)
 	}
+	// Only an address the world could have seen counts: Yandex has answered
+	// "127.0.0.1" with a 200, and the next service in line had the real one.
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return "", fmt.Errorf("%s: not a public address: %s", u, ip)
+	}
 	return ip.String(), nil
 }

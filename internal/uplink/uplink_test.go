@@ -169,6 +169,27 @@ func TestProberFallsBackToTheNextService(t *testing.T) {
 	waitAddr(t, p, Route{"eth0", "192.168.1.1"}, "203.0.113.7")
 }
 
+// Yandex answered "127.0.0.1" with a 200 on 2026-10-29 while ipify gave the
+// real address, and the drawer showed the loopback as the host's face to the
+// world. An address nobody outside could have seen is a wrong answer, not one.
+func TestProberSkipsAnAddressTheWorldCannotSee(t *testing.T) {
+	for _, bogus := range []string{`"127.0.0.1"`, "192.168.1.222", "10.0.0.5", "169.254.1.1", "0.0.0.0", "::1"} {
+		t.Run(bogus, func(t *testing.T) {
+			wrong := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintln(w, bogus)
+			}))
+			t.Cleanup(wrong.Close)
+			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintln(w, "109.252.78.115")
+			}))
+			t.Cleanup(up.Close)
+
+			p := NewProber([]string{wrong.URL, up.URL})
+			waitAddr(t, p, Route{"eth0", "192.168.1.1"}, "109.252.78.115")
+		})
+	}
+}
+
 func TestProberIgnoresTheProxy(t *testing.T) {
 	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:1")
 	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
