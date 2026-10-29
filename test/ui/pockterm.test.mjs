@@ -1218,6 +1218,40 @@ describe('tabs of one project, folded', () => {
     }
   });
 
+  test('opening the list gives the focus up, or Android raises the keyboard', async () => {
+    // "клик по вкладке открывает экранную клавиатуру на андроиде" (2026-10-29), and
+    // the journal named the tab: `kb up after:"group"` 175-211ms behind every
+    // `group-menu`. The folded tab takes no focus, the field kept the one it had,
+    // and the list coming up is the layout moving under it. The keyboard is played
+    // by the viewport and waited for on `data-kb`, as for the key bar.
+    const { page } = stand;
+    try {
+      await stand.open();
+      await stand.attach('demo');
+      await page.evaluate(() => localStorage.setItem('pt-groups', 'on'));
+      await stand.open();
+      await stand.attach('demo');
+      await page.waitForSelector('#tabs button[data-group="alpha"]', { timeout: 8000 });
+      const holdsFocus = () => page.evaluate(
+        () => document.activeElement === document.querySelector('.xterm-helper-textarea'));
+      await page.click('#term');
+      await page.setViewportSize({ width: 390, height: 420 });
+      await page.waitForFunction(() => document.documentElement.dataset.kb === '1', null, { timeout: 5000 });
+      await page.setViewportSize({ width: 390, height: 780 });
+      await page.waitForFunction(() => document.documentElement.dataset.kb === '0', null, { timeout: 5000 });
+      assert.equal(await holdsFocus(), true, 'the field had already lost the focus, so this proves nothing');
+
+      await page.click('#tabs button[data-group="alpha"]');
+      await page.waitForSelector('#group-menu:not([hidden])');
+      assert.equal(await holdsFocus(), false,
+        'the folded tab left the focus on the field, which on Android is the keyboard coming up');
+      await page.mouse.click(200, 200);
+      await page.waitForSelector('#group-menu', { state: 'hidden' });
+    } finally {
+      await page.evaluate(() => { try { localStorage.removeItem('pt-groups'); } catch (_) {} });
+    }
+  });
+
   test('the drawer folds them into the session named after the project, opened by its circle', async () => {
     // "группировку тоже в меню добавь через схлопывание с отображением значков",
     // "только там имя проекта пусть будет отображаться а не вкладка", and then

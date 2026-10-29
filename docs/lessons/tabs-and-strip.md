@@ -685,3 +685,11 @@ the bottom, down from one at the top — where a row switches.
   (`pt-expanded`), and toggled by hiding rows, never by rebuilding them. Test: `the
   drawer folds them into the session named after the project, opened by its circle`,
   checked against a head standing over the session named after the project.
+
+**Opening the list gives the focus up, inside the touch.** The folded tab takes no
+focus (`keepsTerminalFocus`), and that was taken for enough: the field kept the focus
+it had, the list coming up moved the layout, and Android raised a keyboard on every
+tap — `kb up after:"group"` 175-211ms behind each `group-menu` in the journal
+(2026-10-29, the same day it shipped). `openGroupMenu` calls `releaseTerminalFocus`
+first, as `attach` does. Test: `opening the list gives the focus up, or Android raises
+the keyboard`.

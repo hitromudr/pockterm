@@ -2016,6 +2016,11 @@ function groupButton(key) {
 
 function openGroupMenu(key) {
   if (!groupMenu) return;
+  // Inside the touch, before the list moves anything: the folded tab takes no
+  // focus, but the field keeps the one it had, and Android raised a keyboard for
+  // it the moment the list came up — `kb up after:"group" ms:175-211` behind every
+  // `group-menu` in the journal (2026-10-29). The same release a switch makes.
+  releaseTerminalFocus();
   showTermPopup('group');
   menuGroup = key;
   report('group-menu', { group: key, tabs: (groupMembers.get(key) || []).length });
