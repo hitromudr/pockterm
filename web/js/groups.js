@@ -84,3 +84,25 @@ export function stripSignature(sessions, grouped) {
     .join('\u0003');
   return `${names}\u0001${shape}`;
 }
+
+// The drawer's rows: a project's sessions under a head row of their own, which
+// they collapse into. The head is the project, named as the project ("только там
+// имя проекта пусть будет отображаться а не вкладка", 2026-10-29) — not one of its
+// sessions — so every session of it, the one named after it too, is a row under
+// it. It stands where the first of them stood.
+//
+// Each row is either a head — `head` (the project) and `members` (its sessions'
+// names, which its folded plates sum) — or a session, `s`, with `child` naming the
+// project it hangs under, or '' for one that stands alone.
+export function groupRows(sessions) {
+  const rows = [];
+  for (const it of groupSessions(sessions)) {
+    if (!it.group) {
+      rows.push({ s: it.sessions[0], child: '' });
+      continue;
+    }
+    rows.push({ head: it.key, members: it.sessions.map((s) => s.name) });
+    for (const s of it.sessions) rows.push({ s, child: it.key });
+  }
+  return rows;
+}

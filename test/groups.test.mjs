@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { projectOf, groupSessions, groupState, groupBackground, stripSignature } from '../web/js/groups.js';
+import { projectOf, groupSessions, groupState, groupBackground, stripSignature, groupRows } from '../web/js/groups.js';
 
 test('the project is the first segment of where the pane is', () => {
   assert.equal(projectOf({ dir: 'pockterm' }), 'pockterm');
@@ -64,4 +64,15 @@ test('a session moving into a project changes the signature only when folded', (
   // A cd inside one project is not a new row.
   const inside = [{ name: 'a', dir: 'x' }, { name: 'b', dir: 'x/other' }];
   assert.equal(stripSignature(after, true), stripSignature(inside, true));
+});
+
+test('the drawer heads a project with its name and hangs all of its sessions under it', () => {
+  const rows = groupRows(strip);
+  assert.deepEqual(rows.map((r) => (r.head ? `[${r.head}]` : r.child ? `  ${r.s.name}` : r.s.name)), [
+    '[exante]', '  exante', '  xnt-lr-845', '  xnt-lr-tdebt-527',
+    '[anabasis]', '  anabasis', '  anabasis-t-dozer',
+    'pockterm',
+    'loose',
+  ]);
+  assert.deepEqual(rows[0].members, ['exante', 'xnt-lr-845', 'xnt-lr-tdebt-527']);
 });

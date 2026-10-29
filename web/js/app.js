@@ -14,7 +14,7 @@ import { endingKeys, commitComposition, endEditByBlur } from './ender.js';
 import { pushHistory, previewOf } from './compose.js';
 import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, MARKS, CUSTOM_MARK } from './kinds.js';
 import { dropIndex } from './carry.js';
-import { groupSessions, groupState, groupBackground, stripSignature } from './groups.js';
+import { groupSessions, groupState, groupBackground, stripSignature, groupRows } from './groups.js';
 import { thumb as thumbAt, backAt } from './bar.js';
 import { installDecision, installText, isIOS } from './install.js';
 import { linksOnRows, openable } from './urls.js';
@@ -471,8 +471,22 @@ async function loadSessions() {
       '<p>Открой 📁 и выбери папку — сессия начнётся в ней и возьмёт её имя.</p>';
     return;
   }
-  for (const s of sessions) {
+  // Folded by project when the strip is (#tab-groups): a head row named as the
+  // project, its sessions under it and collapsed into it until it is opened.
+  lastSessions = sessions;
+  const rows = tabGroups ? groupRows(sessions) : sessions.map((s) => ({ s, child: '' }));
+  for (const row of rows) {
+    if (row.head) {
+      sessionList.appendChild(groupHeadRow(row.head, row.members));
+      continue;
+    }
+    const s = row.s;
     const li = document.createElement('li');
+    if (row.child) {
+      li.className = 'child';
+      li.dataset.child = row.child;
+      li.hidden = !expandedGroups.has(row.child);
+    }
     const b = document.createElement('button');
     b.className = 'session';
     // Three facts and each of them varies. Which button started it — the name is
@@ -611,7 +625,8 @@ function paintBackground(b, s) {
 // answers — and rewriting a child's text costs nothing.
 function paintRows(sessions) {
   const by = new Map(sessions.map((s) => [s.name, s]));
-  for (const b of sessionList.querySelectorAll('button.session')) {
+  for (const b of sessionList.querySelectorAll('button.session[data-group]')) paintGroupHead(b, by);
+  for (const b of sessionList.querySelectorAll('button.session[data-session]')) {
     const s = by.get(b.dataset.session);
     if (!s) continue;
     const st = s.state || '';
@@ -623,6 +638,67 @@ function paintRows(sessions) {
     const mark = b.querySelector('.line .kind');
     if (mark) mark.textContent = kindMark(s.kind || '', customButtons);
   }
+}
+
+// --- a project's sessions, collapsed into a head row ---
+//
+// The drawer's half of #tab-groups: what the strip folds into one tab the list
+// folds into one row, named as the project and saying, while collapsed, what all
+// of its sessions say at once — the most urgent state, the plates and heads
+// summed, a circle with how many, the frame when one of them is the session on
+// screen. A tap on it opens it, and its sessions hang under it. Opened, it gives
+// the answers back to the rows that own them and keeps only its name and count.
+//
+// Which ones are open is per device and survives the list being rebuilt
+// (`pt-expanded`); collapsed is the default — the point of folding is a shorter
+// list. Toggled by hiding rows, never by rebuilding them: the list is under a
+// finger, and the ✕ on a row may be armed.
+const expandedGroups = new Set();
+try {
+  for (const k of JSON.parse(localStorage.getItem('pt-expanded') || '[]')) expandedGroups.add(k);
+} catch (_) {}
+
+function groupHeadRow(key, members) {
+  const li = document.createElement('li');
+  li.className = 'group-head';
+  const b = document.createElement('button');
+  b.className = 'session group';
+  b.dataset.group = key;
+  b.dataset.members = members.join('\u0000');
+  b.style.animationDelay = workingPhase(key);
+  b.innerHTML = '<span class="line"><span class="chev"></span><span class="kind"></span>' +
+    `<span class="name">${escapeHtml(key)}</span><span class="gcount"></span></span>` +
+    '<span class="meta"></span><span class="bg"></span><span class="agents"></span>';
+  b.addEventListener('click', () => {
+    const open = !expandedGroups.has(key);
+    if (open) expandedGroups.add(key);
+    else expandedGroups.delete(key);
+    try { localStorage.setItem('pt-expanded', JSON.stringify([...expandedGroups])); } catch (_) {}
+    for (const row of sessionList.querySelectorAll('li.child')) {
+      if (row.dataset.child === key) row.hidden = !open;
+    }
+    paintGroupHead(b, new Map(lastSessions.map((s) => [s.name, s])));
+  });
+  li.appendChild(b);
+  return li;
+}
+
+function paintGroupHead(b, by) {
+  const key = b.dataset.group;
+  const members = b.dataset.members.split('\u0000');
+  const of = members.map((n) => by.get(n)).filter(Boolean);
+  const open = expandedGroups.has(key);
+  b.classList.toggle('open', open);
+  b.querySelector('.chev').textContent = open ? '▾' : '▸';
+  b.querySelector('.gcount').textContent = String(members.length);
+  b.querySelector('.kind').textContent = kindMark(groupKind(members), customButtons);
+  b.querySelector('.meta').textContent = tabsWord(members.length);
+  const st = open ? '' : groupState(of);
+  b.classList.toggle('working', st === 'working');
+  b.classList.toggle('done', st === 'done');
+  b.classList.toggle('asking', st === 'asking');
+  b.classList.toggle('current', !open && members.includes(current));
+  paintBackground(b, open ? {} : groupBackground(of));
 }
 
 // --- the folders of the projects root ---
@@ -3872,6 +3948,9 @@ tabGroupsBtn.addEventListener('click', () => {
   // The row is a different row now; with the terminal hidden the next attach
   // draws it anyway.
   if (!screenTerm.hidden) renderTabs();
+  // The list is the other surface it folds, and it is on screen: the switch is in
+  // the drawer.
+  loadSessions();
   report('tab-groups', { on: tabGroups });
 });
 

@@ -1180,6 +1180,56 @@ describe('tabs of one project, folded', () => {
       });
     }
   });
+
+  test('the drawer folds them under a row named as the project, and opens it on a tap', async () => {
+    // "группировку тоже в меню добавь через схлопывание с отображением значков" and
+    // "только там имя проекта пусть будет отображаться а не вкладка" (2026-10-29).
+    const { page } = stand;
+    try {
+      // Attached before folding, since folded its row is out of sight; a reload
+      // keeps the session and opens the drawer over it. And the page first in any
+      // case: storage belongs to its origin, and a blank page has none.
+      await stand.open();
+      await stand.attach('xnt-1');
+      await page.evaluate(() => { localStorage.setItem('pt-groups', 'on'); localStorage.removeItem('pt-expanded'); });
+      await stand.open();
+      const list = () => page.evaluate(() => [...document.querySelectorAll('#session-list li')]
+        .filter((li) => !li.hidden)
+        .map((li) => {
+          const b = li.querySelector('button.session');
+          return b.dataset.group
+            ? `[${b.querySelector('.name').textContent} ${b.querySelector('.gcount').textContent}${b.classList.contains('current') ? ' here' : ''}]`
+            : `${li.classList.contains('child') ? '  ' : ''}${b.dataset.session}`;
+        }));
+      await page.waitForSelector('#session-list button.session[data-group="alpha"]');
+      let rows = await list();
+      assert.ok(rows.includes('[alpha 3 here]') && rows.includes('beta') && rows.includes('demo') && rows.length === 3,
+        `collapsed, the list is ${JSON.stringify(rows)}`);
+
+      await page.click('#session-list button[data-group="alpha"]');
+      rows = await list();
+      const at = rows.indexOf('[alpha 3]');
+      assert.ok(at >= 0, `opened, the head still says it holds the session on screen: ${JSON.stringify(rows)}`);
+      assert.deepEqual(rows.slice(at, at + 4), ['[alpha 3]', '  alpha', '  xnt-1', '  xnt-2']);
+      // Opening is not switching.
+      assert.equal(await page.evaluate(() => document.getElementById('screen-sessions').classList.contains('open')), true);
+
+      // A row under it attaches like any other.
+      await page.click('#session-list button.session[data-session="xnt-2"]');
+      await page.waitForFunction(() => !document.getElementById('screen-sessions').classList.contains('open'));
+      await page.waitForFunction(() => document.querySelector('#tabs button.active')?.dataset.session === 'xnt-2',
+        null, { timeout: 5000 });
+
+      await stand.openDrawer();
+      await page.click('#session-list button[data-group="alpha"]');
+      rows = await list();
+      assert.ok(rows.includes('[alpha 3 here]') && rows.length === 3, `closed again, the list is ${JSON.stringify(rows)}`);
+    } finally {
+      await page.evaluate(() => {
+        try { localStorage.removeItem('pt-groups'); localStorage.removeItem('pt-expanded'); } catch (_) {}
+      });
+    }
+  });
 });
 
 describe('the tab strip on a desktop', () => {

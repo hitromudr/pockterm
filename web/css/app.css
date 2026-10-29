@@ -850,6 +850,29 @@ button.session {
 }
 button.session .name { font-size: 16px; font-weight: 600; color: var(--accent); }
 button.session .meta { font-size: 13px; color: #8b93a7; }
+/* A project's sessions folded under a head row (#tab-groups): the head is named
+   as the project, has no ✎ or ✕ of its own — it is not a session — and so runs
+   the width of the row; its sessions hang under it, indented by the chevron's
+   width, so whose they are is read off the edge. The circle is the strip's own
+   (#tabs .gcount), one size larger. */
+#session-list li.child { margin-left: 18px; }
+button.session.group .chev { width: 14px; margin-right: 4px; color: #8b93a7; font-size: 13px; }
+button.session.group .gcount {
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 8px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #c9cfdc;
+  color: #0f1b14;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  align-self: center;
+}
 
 /* --- a row says what its session is doing, in the strip's own vocabulary ---
 
