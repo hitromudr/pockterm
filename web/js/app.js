@@ -522,7 +522,13 @@ async function loadSessions() {
       `<span class="name">${escapeHtml(s.name)}</span></span>` +
       `<span class="meta">${escapeHtml(meta.join(' · '))}</span>` +
       '<span class="bg"></span><span class="agents"></span>';
-    b.addEventListener('click', () => attach(s.name));
+    if (row.parent) foldInto(b, row.parent, row.members);
+    b.addEventListener('click', (e) => {
+      // On the row a project is folded into, the chevron and the circle open and
+      // close it; the rest of the row is the session, as on any other.
+      if (row.parent && e.target.closest('.chev, .gcount')) { toggleGroup(row.parent); return; }
+      attach(s.name);
+    });
     li.appendChild(b);
 
     const ren = document.createElement('button');
@@ -625,29 +631,37 @@ function paintBackground(b, s) {
 // answers — and rewriting a child's text costs nothing.
 function paintRows(sessions) {
   const by = new Map(sessions.map((s) => [s.name, s]));
-  for (const b of sessionList.querySelectorAll('button.session[data-group]')) paintGroupHead(b, by);
-  for (const b of sessionList.querySelectorAll('button.session[data-session]')) {
-    const s = by.get(b.dataset.session);
-    if (!s) continue;
-    const st = s.state || '';
-    b.classList.toggle('working', st === 'working');
-    b.classList.toggle('done', st === 'done');
-    b.classList.toggle('asking', st === 'asking');
-    b.classList.toggle('current', s.name === current);
-    paintBackground(b, s);
-    const mark = b.querySelector('.line .kind');
-    if (mark) mark.textContent = kindMark(s.kind || '', customButtons);
+  for (const b of sessionList.querySelectorAll('button.session')) {
+    const s = b.dataset.session ? by.get(b.dataset.session) : null;
+    if (s) {
+      const st = s.state || '';
+      b.classList.toggle('working', st === 'working');
+      b.classList.toggle('done', st === 'done');
+      b.classList.toggle('asking', st === 'asking');
+      b.classList.toggle('current', s.name === current);
+      paintBackground(b, s);
+      const mark = b.querySelector('.line .kind');
+      if (mark) mark.textContent = kindMark(s.kind || '', customButtons);
+    }
+    // A row a project is folded into says the project's answers over its own
+    // while it is collapsed.
+    if (b.dataset.group) paintFold(b, by);
   }
 }
 
-// --- a project's sessions, collapsed into a head row ---
+// --- a project's sessions, collapsed into one row ---
 //
 // The drawer's half of #tab-groups: what the strip folds into one tab the list
 // folds into one row, named as the project and saying, while collapsed, what all
 // of its sessions say at once — the most urgent state, the plates and heads
 // summed, a circle with how many, the frame when one of them is the session on
-// screen. A tap on it opens it, and its sessions hang under it. Opened, it gives
-// the answers back to the rows that own them and keeps only its name and count.
+// screen. Its chevron and circle open it, and the other sessions hang under it.
+// Opened, it gives the answers back to the rows that own them.
+//
+// The row is the session named after the project where there is one (see
+// groupRows): then it keeps its ✎ and ✕, and a tap anywhere but the chevron and
+// the circle attaches, as on any row. Otherwise it is a head of its own, which is
+// not a session and opens on a tap anywhere.
 //
 // Which ones are open is per device and survives the list being rebuilt
 // (`pt-expanded`); collapsed is the default — the point of folding is a shorter
@@ -658,32 +672,49 @@ try {
   for (const k of JSON.parse(localStorage.getItem('pt-expanded') || '[]')) expandedGroups.add(k);
 } catch (_) {}
 
+function toggleGroup(key) {
+  const open = !expandedGroups.has(key);
+  if (open) expandedGroups.add(key);
+  else expandedGroups.delete(key);
+  try { localStorage.setItem('pt-expanded', JSON.stringify([...expandedGroups])); } catch (_) {}
+  for (const row of sessionList.querySelectorAll('li.child')) {
+    if (row.dataset.child === key) row.hidden = !open;
+  }
+  // The folded row goes back to its own answers, or takes the project's.
+  paintRows(lastSessions);
+}
+
+// foldInto makes a row the one its project is folded into: a chevron before the
+// mark and the circle after the name, both spans of their own, as the mark is.
+function foldInto(b, key, members) {
+  b.classList.add('group');
+  b.dataset.group = key;
+  b.dataset.members = members.join('\u0000');
+  const line = b.querySelector('.line');
+  const chev = document.createElement('span');
+  chev.className = 'chev';
+  line.insertBefore(chev, line.firstChild);
+  const count = document.createElement('span');
+  count.className = 'gcount';
+  line.appendChild(count);
+}
+
 function groupHeadRow(key, members) {
   const li = document.createElement('li');
   li.className = 'group-head';
   const b = document.createElement('button');
-  b.className = 'session group';
-  b.dataset.group = key;
-  b.dataset.members = members.join('\u0000');
+  b.className = 'session';
   b.style.animationDelay = workingPhase(key);
-  b.innerHTML = '<span class="line"><span class="chev"></span><span class="kind"></span>' +
-    `<span class="name">${escapeHtml(key)}</span><span class="gcount"></span></span>` +
+  b.innerHTML = '<span class="line"><span class="kind"></span>' +
+    `<span class="name">${escapeHtml(key)}</span></span>` +
     '<span class="meta"></span><span class="bg"></span><span class="agents"></span>';
-  b.addEventListener('click', () => {
-    const open = !expandedGroups.has(key);
-    if (open) expandedGroups.add(key);
-    else expandedGroups.delete(key);
-    try { localStorage.setItem('pt-expanded', JSON.stringify([...expandedGroups])); } catch (_) {}
-    for (const row of sessionList.querySelectorAll('li.child')) {
-      if (row.dataset.child === key) row.hidden = !open;
-    }
-    paintGroupHead(b, new Map(lastSessions.map((s) => [s.name, s])));
-  });
+  foldInto(b, key, members);
+  b.addEventListener('click', () => toggleGroup(key));
   li.appendChild(b);
   return li;
 }
 
-function paintGroupHead(b, by) {
+function paintFold(b, by) {
   const key = b.dataset.group;
   const members = b.dataset.members.split('\u0000');
   const of = members.map((n) => by.get(n)).filter(Boolean);
@@ -691,8 +722,14 @@ function paintGroupHead(b, by) {
   b.classList.toggle('open', open);
   b.querySelector('.chev').textContent = open ? '▾' : '▸';
   b.querySelector('.gcount').textContent = String(members.length);
-  b.querySelector('.kind').textContent = kindMark(groupKind(members), customButtons);
-  b.querySelector('.meta').textContent = tabsWord(members.length);
+  const head = !b.dataset.session;
+  if (head) {
+    b.querySelector('.kind').textContent = kindMark(groupKind(members), customButtons);
+    b.querySelector('.meta').textContent = tabsWord(members.length);
+  }
+  // Open, a session's row has already been painted as itself, and a head has
+  // nothing of its own to say.
+  if (open && !head) return;
   const st = open ? '' : groupState(of);
   b.classList.toggle('working', st === 'working');
   b.classList.toggle('done', st === 'done');

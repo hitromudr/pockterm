@@ -66,13 +66,34 @@ test('a session moving into a project changes the signature only when folded', (
   assert.equal(stripSignature(after, true), stripSignature(inside, true));
 });
 
-test('the drawer heads a project with its name and hangs all of its sessions under it', () => {
+const shown = (rows) => rows.map((r) => {
+  if (r.head) return `[${r.head}]`;
+  if (r.parent) return `[${r.s.name}]`;
+  return r.child ? `  ${r.s.name}` : r.s.name;
+});
+
+test('the drawer folds a project into the session named after it', () => {
+  // "лишняя сущность": a head named exante with a row exante under it is one
+  // thing twice, so the session is the head.
   const rows = groupRows(strip);
-  assert.deepEqual(rows.map((r) => (r.head ? `[${r.head}]` : r.child ? `  ${r.s.name}` : r.s.name)), [
-    '[exante]', '  exante', '  xnt-lr-845', '  xnt-lr-tdebt-527',
-    '[anabasis]', '  anabasis', '  anabasis-t-dozer',
+  assert.deepEqual(shown(rows), [
+    '[exante]', '  xnt-lr-845', '  xnt-lr-tdebt-527',
+    '[anabasis]', '  anabasis-t-dozer',
     'pockterm',
     'loose',
   ]);
+  assert.equal(rows[0].parent, 'exante');
+  assert.equal(rows[0].s.name, 'exante');
   assert.deepEqual(rows[0].members, ['exante', 'xnt-lr-845', 'xnt-lr-tdebt-527']);
+});
+
+test('a project with no session named after it gets a head that is not a session', () => {
+  const rows = groupRows([
+    { name: 'one', dir: 'x' }, { name: 'other', dir: 'y' }, { name: 'two', dir: 'x/a' },
+  ]);
+  assert.deepEqual(shown(rows), ['[x]', '  one', '  two', 'other']);
+  assert.equal(rows[0].s, undefined);
+  assert.deepEqual(rows[0].members, ['one', 'two']);
+  // The session named after it leads its rows even when it is not first.
+  assert.deepEqual(shown(groupRows([{ name: 'x-1', dir: 'x' }, { name: 'x', dir: 'x' }])), ['[x]', '  x-1']);
 });

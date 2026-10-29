@@ -85,15 +85,22 @@ export function stripSignature(sessions, grouped) {
   return `${names}\u0001${shape}`;
 }
 
-// The drawer's rows: a project's sessions under a head row of their own, which
-// they collapse into. The head is the project, named as the project ("только там
-// имя проекта пусть будет отображаться а не вкладка", 2026-10-29) — not one of its
-// sessions — so every session of it, the one named after it too, is a row under
-// it. It stands where the first of them stood.
+// The drawer's rows: a project's sessions collapsed into one row, which opens to
+// show the others under it. That row is named as the project ("только там имя
+// проекта пусть будет отображаться а не вкладка", 2026-10-29), and where a session
+// is named after it — `exante` over the `xnt-lr-*` it starts, `anabasis` over
+// `anabasis-t-*` — that session *is* the row: a head named `anabasis` with a row
+// `anabasis` under it was one thing twice ("лишняя сущность"). Only a project
+// with no such session gets a head of its own, which is not a session. Either
+// stands where the first of the project stood.
 //
-// Each row is either a head — `head` (the project) and `members` (its sessions'
-// names, which its folded plates sum) — or a session, `s`, with `child` naming the
-// project it hangs under, or '' for one that stands alone.
+// Each row is one of:
+// - a session that stands alone — `s`, `child: ''`;
+// - a session that is its project's row — `s`, `parent` (the project), `members`;
+// - a head that is not a session — `head` (the project), `members`;
+// - a session under one of those — `s`, `child` (the project).
+// `members` is every session of the project, the row's own included: what the
+// collapsed row sums.
 export function groupRows(sessions) {
   const rows = [];
   for (const it of groupSessions(sessions)) {
@@ -101,8 +108,13 @@ export function groupRows(sessions) {
       rows.push({ s: it.sessions[0], child: '' });
       continue;
     }
-    rows.push({ head: it.key, members: it.sessions.map((s) => s.name) });
-    for (const s of it.sessions) rows.push({ s, child: it.key });
+    const members = it.sessions.map((s) => s.name);
+    const own = it.sessions.find((s) => s.name === it.key.split('/').pop());
+    if (own) rows.push({ s: own, child: '', parent: it.key, members });
+    else rows.push({ head: it.key, members });
+    for (const s of it.sessions) {
+      if (s !== own) rows.push({ s, child: it.key });
+    }
   }
   return rows;
 }

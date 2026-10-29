@@ -1181,9 +1181,11 @@ describe('tabs of one project, folded', () => {
     }
   });
 
-  test('the drawer folds them under a row named as the project, and opens it on a tap', async () => {
-    // "группировку тоже в меню добавь через схлопывание с отображением значков" and
-    // "только там имя проекта пусть будет отображаться а не вкладка" (2026-10-29).
+  test('the drawer folds them into the session named after the project, opened by its circle', async () => {
+    // "группировку тоже в меню добавь через схлопывание с отображением значков",
+    // "только там имя проекта пусть будет отображаться а не вкладка", and then
+    // "лишняя сущность" of a head named alpha over a row alpha (2026-10-29): the
+    // session named after the project is the row it folds into.
     const { page } = stand;
     try {
       // Attached before folding, since folded its row is out of sight; a reload
@@ -1198,7 +1200,7 @@ describe('tabs of one project, folded', () => {
         .map((li) => {
           const b = li.querySelector('button.session');
           return b.dataset.group
-            ? `[${b.querySelector('.name').textContent} ${b.querySelector('.gcount').textContent}${b.classList.contains('current') ? ' here' : ''}]`
+            ? `[${b.dataset.session ? '' : 'head '}${b.querySelector('.name').textContent} ${b.querySelector('.gcount').textContent}${b.classList.contains('current') ? ' here' : ''}]`
             : `${li.classList.contains('child') ? '  ' : ''}${b.dataset.session}`;
         }));
       await page.waitForSelector('#session-list button.session[data-group="alpha"]');
@@ -1206,11 +1208,14 @@ describe('tabs of one project, folded', () => {
       assert.ok(rows.includes('[alpha 3 here]') && rows.includes('beta') && rows.includes('demo') && rows.length === 3,
         `collapsed, the list is ${JSON.stringify(rows)}`);
 
-      await page.click('#session-list button[data-group="alpha"]');
+      assert.equal(await page.evaluate(() => document.querySelector('#session-list button[data-group="alpha"]').dataset.session),
+        'alpha', 'the project is folded into a head of its own beside the session named after it');
+
+      await page.click('#session-list button[data-group="alpha"] .gcount');
       rows = await list();
       const at = rows.indexOf('[alpha 3]');
-      assert.ok(at >= 0, `opened, the head still says it holds the session on screen: ${JSON.stringify(rows)}`);
-      assert.deepEqual(rows.slice(at, at + 4), ['[alpha 3]', '  alpha', '  xnt-1', '  xnt-2']);
+      assert.ok(at >= 0, `opened, the row still says it holds the session on screen: ${JSON.stringify(rows)}`);
+      assert.deepEqual(rows.slice(at, at + 3), ['[alpha 3]', '  xnt-1', '  xnt-2']);
       // Opening is not switching.
       assert.equal(await page.evaluate(() => document.getElementById('screen-sessions').classList.contains('open')), true);
 
@@ -1221,9 +1226,13 @@ describe('tabs of one project, folded', () => {
         null, { timeout: 5000 });
 
       await stand.openDrawer();
-      await page.click('#session-list button[data-group="alpha"]');
+      await page.click('#session-list button[data-group="alpha"] .chev');
       rows = await list();
       assert.ok(rows.includes('[alpha 3 here]') && rows.length === 3, `closed again, the list is ${JSON.stringify(rows)}`);
+      // The rest of that row is the session it is.
+      await page.click('#session-list button[data-group="alpha"] .name');
+      await page.waitForFunction(() => document.querySelector('#tabs button.active')?.dataset.session === 'alpha',
+        null, { timeout: 5000 });
     } finally {
       await page.evaluate(() => {
         try { localStorage.removeItem('pt-groups'); localStorage.removeItem('pt-expanded'); } catch (_) {}

@@ -388,8 +388,9 @@ carrying the name of the tab chosen in it (the one on screen, else the last one
 visited; the project's name until one is), a circle with how many tabs it holds and everything
 running in all of them (shells, monitors, subagents, workflows) summed; a tap
 opens the list of its tabs — up from a strip at the bottom, down from one at the
-top — and a choice there switches to that tab. The session list folds the same way, into a row named as the project with the
-circle and the summed marks; a tap opens it, its sessions hanging under it. The
+top — and a choice there switches to that tab. The session list folds the same way, into one row — the session named after
+the project, where there is one — with the circle and the summed marks; a tap
+on the circle opens the rest under it. The
 project is the folder the session stands in, not its name. Off by default. Per device. Moved rather than copied: two places holding one lever drift apart. The
 `▾` that hides the bars stayed on the key bar, being an action on the working
 surface rather than a setting.

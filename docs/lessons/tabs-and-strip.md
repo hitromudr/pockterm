@@ -670,15 +670,18 @@ the bottom, down from one at the top — where a row switches.
   `#{pane_height}`), and painted on every poll rather than rebuilt while the same
   tabs are in it. Test: `one tab per project, a list off it towards the pane, and a
   row in it switches`, checked against the list hanging the wrong way at the top.
-- **The drawer folds the same projects, under a head row named as the project**
-  (asked the same day: "группировку тоже в меню добавь через схлопывание с
-  отображением значков", then "только там имя проекта пусть будет отображаться а не
-  вкладка"). The head is not a session — no ✎, no ✕, a tap opens or closes it — and
-  every session of the project, the one named after it too, is a row under it,
-  indented (`groupRows`). Collapsed, the head says what the folded tab says: the most
-  urgent state, the plates and heads summed, the count, the frame when the session on
-  screen is in it; opened, it keeps only its name and count and gives the rest back
-  to the rows. Collapsed by default, which ones are open per device (`pt-expanded`),
-  and toggled by hiding rows, never by rebuilding them. Test: `the drawer folds them
-  under a row named as the project, and opens it on a tap`, checked against the rows
-  standing open under a collapsed head.
+- **The drawer folds the same projects into one row named as the project** (asked
+  the same day: "группировку тоже в меню добавь через схлопывание с отображением
+  значков", then "только там имя проекта пусть будет отображаться а не вкладка").
+  The first cut put a head row over every session of the project, the one named
+  after it included, and the owner circled the pair: "лишняя сущность". So the
+  session named after the project *is* the row (`groupRows`): it keeps its ✎ and ✕,
+  a tap on it attaches, and its chevron and circle — padded to a finger — open and
+  close the rest, which hang under it indented. Only a project with no such session
+  gets a head of its own, which is not a session and opens on a tap anywhere.
+  Collapsed, the row says what the folded tab says: the most urgent state, the plates
+  and heads summed, the count, the frame when the session on screen is in it; opened,
+  it is its own session again. Collapsed by default, which ones are open per device
+  (`pt-expanded`), and toggled by hiding rows, never by rebuilding them. Test: `the
+  drawer folds them into the session named after the project, opened by its circle`,
+  checked against a head standing over the session named after the project.

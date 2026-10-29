@@ -856,7 +856,19 @@ button.session .meta { font-size: 13px; color: #8b93a7; }
    width, so whose they are is read off the edge. The circle is the strip's own
    (#tabs .gcount), one size larger. */
 #session-list li.child { margin-left: 18px; }
-button.session.group .chev { width: 14px; margin-right: 4px; color: #8b93a7; font-size: 13px; }
+/* On a row that is also a session the chevron and the circle are what open it,
+   and the rest of the row attaches — so both are made bigger to the finger than
+   to the eye: padding the chevron, an invisible margin round the circle. */
+button.session.group .chev {
+  display: inline-block;
+  width: 14px;
+  margin: -12px 6px -12px -10px;
+  padding: 12px 0 12px 10px;
+  color: #8b93a7;
+  font-size: 13px;
+}
+button.session.group .gcount { position: relative; }
+button.session.group .gcount::after { content: ''; position: absolute; inset: -12px -14px; }
 button.session.group .gcount {
   display: inline-block;
   box-sizing: border-box;
