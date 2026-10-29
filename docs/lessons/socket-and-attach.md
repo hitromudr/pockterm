@@ -274,3 +274,23 @@ Measured on the owner's devices the same day, once the host named the door (16:0
   (10 ms); from 16:37 every connect went direct in 15–242 ms. What changed on the laptop in
   between was not recorded — a one-time refusal that a browser decision then lifted, rather
   than anything on the host, which was not touched.
+
+**2026-10-29: the socket is never the first thing the door hears.** The laptop (Chrome 155
+Linux) went five days without one `direct`: 3922 `closed`, 337 `timeout`, and nothing from it
+in the door's access log, while curl from the same machine got the door's 400 in 83 ms. The
+infrastructure session reproduced it in headless Chrome there: a socket sent as the first
+request to the door is `WebSocket opening handshake was canceled` in ~16 ms, before any HTTP,
+and the same with Local Network Access checks switched off. A `fetch` to the door first
+(`no-cors`, `credentials: 'include'`) goes through with the auto-selected certificate, and the
+socket after it opens. Chrome picks a client certificate for a host only for an ordinary
+request, and keeps the choice until it restarts or its certificate cache is cleared — which is
+also what the Windows laptop's unexplained turn on 10-26 at 16:37 was: the door had been opened
+in an ordinary tab. The `AutoSelectCertificateForUrls` policy takes the prompt away, not the
+order.
+
+So `tryDirect` takes `warm`: a `HEAD` to the door's root first, the socket once that has any
+answer, both inside the one `DIRECT_WAIT`. A failed warm is no verdict — the socket still
+decides. The page asks for a warm until the door has opened from it and again after every miss
+(`doorWarm`), not on every connect, since every tab switch is one. `socket-via` carries
+`"warm"`. The browser test asserts that the door's first sight of the page is a request, not a
+socket; it ran `["ws"]` with the warm switched off.

@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { directBase, tryDirect, worthTrying, viaMark, DIRECT_WAIT, MISS_HOLD } from '../web/js/direct.js';
+import { directBase, tryDirect, warmAddress, worthTrying, viaMark, DIRECT_WAIT, MISS_HOLD } from '../web/js/direct.js';
 
 const page = { host: 'cc.example', protocol: 'https:' };
 
@@ -99,6 +99,94 @@ test('an address the constructor throws on is a miss, answered once', () => {
   assert.equal(s.calls.length, 0);
   s.clock.advance(0);
   assert.deepEqual(s.calls.map((c) => [c.sock, c.why]), [[null, 'closed']]);
+});
+
+// A fetch the test answers by hand, recording what it was asked.
+function door() {
+  const asked = [];
+  const fetch = (url, init) => new Promise((resolve, reject) => {
+    const req = { url, init, resolve, reject, aborted: false };
+    if (init.signal) init.signal.addEventListener('abort', () => { req.aborted = true; });
+    asked.push(req);
+  });
+  return { asked, fetch };
+}
+
+const settledPromises = () => new Promise((r) => setImmediate(r));
+
+test('a warm attempt asks the door over HTTP first, and opens the socket only after its answer', async () => {
+  // 2026-10-29: Chrome cancels a socket that is the first thing sent to a door
+  // wanting a client certificate; one ordinary request before it and it opens.
+  const s = stand();
+  const d = door();
+  tryDirect('wss://lan.example:8135/ws?session=a', { ...s.opts, warm: true, fetch: d.fetch }, s.done);
+  assert.equal(d.asked.length, 1);
+  assert.equal(d.asked[0].url, 'https://lan.example:8135/');
+  assert.equal(d.asked[0].init.mode, 'no-cors');
+  // Without credentials the browser sends no client certificate either.
+  assert.equal(d.asked[0].init.credentials, 'include');
+  assert.equal(s.sockets.length, 0, 'the socket went before the door had answered');
+  s.clock.advance(30);
+  d.asked[0].resolve({ type: 'opaque' });
+  await settledPromises();
+  assert.equal(s.sockets.length, 1);
+  assert.equal(s.sockets[0].url, 'wss://lan.example:8135/ws?session=a');
+  s.clock.advance(10);
+  s.sockets[0].onopen();
+  assert.deepEqual(s.calls.map((c) => [c.sock, c.why, c.ms]), [[s.sockets[0], 'open', 40]]);
+});
+
+test('a warm that fails is no verdict: the socket still decides', async () => {
+  const s = stand();
+  const d = door();
+  tryDirect('wss://lan.example:8135/ws', { ...s.opts, warm: true, fetch: d.fetch }, s.done);
+  d.asked[0].reject(new TypeError('Failed to fetch'));
+  await settledPromises();
+  assert.equal(s.sockets.length, 1);
+  s.sockets[0].onopen();
+  assert.equal(s.calls[0].why, 'open');
+});
+
+test('the warm and the socket share one DIRECT_WAIT', async () => {
+  const s = stand();
+  const d = door();
+  tryDirect('wss://lan.example:8135/ws', { ...s.opts, warm: true, fetch: d.fetch }, s.done);
+  s.clock.advance(DIRECT_WAIT);
+  assert.deepEqual(s.calls.map((c) => [c.sock, c.why]), [[null, 'timeout']]);
+  assert.equal(d.asked[0].aborted, true, 'the request outlived the attempt');
+  // An answer after the wait opens nothing.
+  d.asked[0].resolve({});
+  await settledPromises();
+  assert.equal(s.sockets.length, 0);
+  assert.equal(s.calls.length, 1);
+});
+
+test('an attempt cancelled during its warm never opens a socket', async () => {
+  const s = stand();
+  const d = door();
+  const cancel = tryDirect('wss://lan.example:8135/ws', { ...s.opts, warm: true, fetch: d.fetch }, s.done);
+  cancel();
+  assert.equal(d.asked[0].aborted, true);
+  d.asked[0].resolve({});
+  await settledPromises();
+  assert.equal(s.sockets.length, 0);
+  s.clock.advance(DIRECT_WAIT);
+  assert.equal(s.calls.length, 0);
+});
+
+test('without a warm the socket is the only thing sent', () => {
+  const s = stand();
+  const d = door();
+  tryDirect('wss://lan.example:8135/ws', { ...s.opts, fetch: d.fetch }, s.done);
+  assert.equal(d.asked.length, 0);
+  assert.equal(s.sockets.length, 1);
+});
+
+test('the warm goes to the door\'s own root, over the scheme its socket uses', () => {
+  assert.equal(warmAddress('wss://lan.example:8135/ws?token=x&session=a'), 'https://lan.example:8135/');
+  assert.equal(warmAddress('ws://192.168.1.222:8130/ws'), 'http://192.168.1.222:8130/');
+  assert.equal(warmAddress('wss://'), '');
+  assert.equal(warmAddress('https://lan.example/'), '');
 });
 
 test('a miss is believed for MISS_HOLD, then the door is asked again', () => {

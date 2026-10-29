@@ -419,6 +419,7 @@ let direct = '';
 if (!CELL) { try { direct = localStorage.getItem('pt-direct') || ''; } catch (_) {} }
 let via = '';
 let directMiss = 0;      // when the door last failed to open
+let doorWarm = false;    // the door has opened from this page, and not missed since
 let directAttempt = null; // cancel() of an attempt in flight
 const enc = new TextEncoder();
 
@@ -2217,7 +2218,9 @@ function socketQS() {
 
 // connect tries the nearer door first when there is one and it has not just
 // failed, and goes the way it always went otherwise — or once the door has had
-// its DIRECT_WAIT. The address is asked for again at the fallback, because the
+// its DIRECT_WAIT. Until the door has opened from this page, and after every
+// miss, the attempt asks it over HTTP first (opts.warm in js/direct.js): Chrome
+// picks the door's client certificate for nothing else. The address is asked for again at the fallback, because the
 // size in it may have changed while the door was being waited for.
 function connect() {
   if (!current) return;
@@ -2229,9 +2232,11 @@ function connect() {
     connectHost();
     return;
   }
-  directAttempt = tryDirect(`${base}/ws?${socketQS()}`, null, (sock, why, ms) => {
+  const warm = !doorWarm;
+  directAttempt = tryDirect(`${base}/ws?${socketQS()}`, { warm }, (sock, why, ms) => {
     directAttempt = null;
-    report('socket-via', { via: sock ? 'direct' : 'host', why, ms });
+    report('socket-via', { via: sock ? 'direct' : 'host', why, ms, warm });
+    doorWarm = !!sock;
     if (sock) { adopt(sock, 'direct'); opened(); return; }
     directMiss = Date.now();
     connectHost();
@@ -2257,10 +2262,12 @@ function tryDirectAside() {
   if (!ws || ws.readyState !== WebSocket.OPEN || document.visibilityState !== 'visible') return;
   const base = directBase(direct, location);
   if (!base || !worthTrying(directMiss, Date.now())) return;
-  directAttempt = tryDirect(`${base}/ws?${socketQS()}`, null, (sock, why, ms) => {
+  const warm = !doorWarm;
+  directAttempt = tryDirect(`${base}/ws?${socketQS()}`, { warm }, (sock, why, ms) => {
     directAttempt = null;
+    doorWarm = !!sock;
     if (!sock) { directMiss = Date.now(); return; }
-    report('socket-via', { via: 'direct', why: 'aside', ms });
+    report('socket-via', { via: 'direct', why: 'aside', ms, warm });
     dropSocket();
     adopt(sock, 'direct');
     opened();
@@ -2273,6 +2280,7 @@ function learnDirect(url) {
   if (url === direct) return;
   direct = url;
   directMiss = 0;
+  doorWarm = false;
   paintVia();
   if (!CELL) { try { if (url) localStorage.setItem('pt-direct', url); else localStorage.removeItem('pt-direct'); } catch (_) {} }
 }

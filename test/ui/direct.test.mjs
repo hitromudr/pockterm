@@ -24,6 +24,15 @@ function watchSockets(page) {
   return seen;
 }
 
+// What the page sends to a host, in order: 'http' for a request, 'ws' for a
+// socket.
+function watchHost(page, host) {
+  const seen = [];
+  page.on('request', (r) => { if (new URL(r.url()).host === host) seen.push('http'); });
+  page.on('websocket', (ws) => { if (new URL(ws.url()).host === host) seen.push('ws'); });
+  return seen;
+}
+
 async function waitFor(cond, what, ms = 10000) {
   const until = Date.now() + ms;
   while (!cond()) {
@@ -73,6 +82,7 @@ describe('a door on the same network', () => {
     const { page, base } = stand;
     const hostName = new URL(base).host;
     const door = `localhost:${new URL(base).port}`;
+    const toDoor = watchHost(page, door);
     await stand.open();
     await stand.attach('alpha');
     // A fresh page has never heard of the door: the first socket goes the way
@@ -82,6 +92,10 @@ describe('a door on the same network', () => {
     await waitFor(() => !sockets.some((s) => s.host === hostName && s.open), 'the long-way socket to close');
     assert.equal(sockets[0].host, hostName, 'the first socket was not the page\'s own host');
     assert.equal(new URL(page.url()).host, hostName, 'the page itself moved');
+    // The door is asked over HTTP before its socket: Chrome picks a client
+    // certificate for nothing else, and a socket sent first is cancelled.
+    assert.equal(toDoor[0], 'http', `the door's first sight of the page: ${JSON.stringify(toDoor)}`);
+    assert.match(stand.serverLog(), /socket-via.*"via":"direct".*"warm":true/);
     assert.equal(await clients(page), 1, 'the swap left a second client attached');
     await typed(page, 'via the door');
     const m = await mark(stand);
