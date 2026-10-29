@@ -351,6 +351,9 @@ export async function startStand({
     page,
     base,
     uploads,
+    // The projects root, for a test that needs a session standing in one of its
+    // folders.
+    root: dir,
     openDrawer,
     openSettings,
     shutDrawer,

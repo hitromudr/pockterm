@@ -383,7 +383,12 @@ only in fullscreen — an installed app included — so the button takes fullscr
 too: the status and navigation bars go for as long as the lock holds. Chrome grants
 fullscreen only on a touch, so after the app is reopened or a back gesture the lock
 comes back at the first touch. A refusal is said in a line under the button, and
-the button turns back off. Per device. Moved rather than copied: two places holding one lever drift apart. The
+the button turns back off. And `⧉ Группы`: the tabs of one project fold into one,
+carrying the project's name, a circle with how many tabs it holds and everything
+running in all of them (shells, monitors, subagents, workflows) summed; a tap
+opens the list of its tabs — up from a strip at the bottom, down from one at the
+top — and a choice there switches to that tab. The project is the folder the
+session stands in, not its name. Off by default. Per device. Moved rather than copied: two places holding one lever drift apart. The
 `▾` that hides the bars stayed on the key bar, being an action on the working
 surface rather than a setting.
 

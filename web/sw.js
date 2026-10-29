@@ -19,6 +19,7 @@ const PRECACHE = [
   '/js/ender.js',
   '/js/kinds.js',
   '/js/carry.js',
+  '/js/groups.js',
   '/js/bar.js',
   '/js/link.js',
   '/js/direct.js',

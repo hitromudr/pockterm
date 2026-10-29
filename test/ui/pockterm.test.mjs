@@ -7,7 +7,7 @@ import { readdirSync, existsSync } from 'node:fs';
 import { startStand, FAKE_IME } from './stand.mjs';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -1066,6 +1066,100 @@ describe('the session list is a drawer', () => {
     await page.goto(stand.base);
     await stand.openDrawer();
     assert.equal(await page.evaluate(() => document.getElementById('settings').hidden), true);
+  });
+});
+
+describe('tabs of one project, folded', () => {
+  // Asked for on 2026-10-29: a setting that folds a project's tabs into one, and
+  // that tab opens the list of them — up from a strip at the bottom, down from one
+  // at the top. The project is the folder, not the name: the owner's `xnt-lr-845`
+  // stands in ~/work/exante beside `exante`, so the sessions here are named so
+  // that no prefix could find them.
+  let stand;
+  before(async () => {
+    stand = await startStand({ sessions: ['demo'] });
+    mkdirSync(join(stand.root, 'alpha', 'sub'), { recursive: true });
+    for (const [name, dir] of [['alpha', 'alpha'], ['xnt-1', 'alpha'], ['xnt-2', 'alpha/sub'], ['beta', 'beta']]) {
+      stand.tmux(['new-session', '-d', '-s', name, '-c', join(stand.root, dir), 'cat']);
+    }
+  });
+  after(async () => { await stand.stop(); });
+
+  const strip = () => stand.page.evaluate(() => [...document.querySelectorAll('#tabs button[data-session]')]
+    .map((b) => b.dataset.group ? `${b.dataset.group}(${b.querySelector('.gcount').textContent})` : b.dataset.session));
+  const rects = () => stand.page.evaluate(() => {
+    const r = (sel) => document.querySelector(sel).getBoundingClientRect().toJSON();
+    return { header: r('#screen-term header.bar'), term: r('#term'), menu: r('#group-menu') };
+  });
+  const menuRows = () => stand.page.evaluate(() =>
+    [...document.querySelectorAll('#group-menu button[data-session]')].map((b) => b.dataset.session));
+
+  test('one tab per project, a list off it towards the pane, and a row in it switches', async () => {
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+    try {
+      await page.waitForFunction(() => document.querySelectorAll('#tabs button[data-session]').length === 5,
+        null, { timeout: 8000 });
+      await stand.openSettings();
+      assert.equal(await page.evaluate(() => document.getElementById('tab-groups').classList.contains('on')),
+        false, 'folding is not off by default');
+      await page.click('#tab-groups');
+      await stand.shutDrawer();
+      await page.waitForFunction(() => document.querySelector('#tabs button[data-group]'), null, { timeout: 5000 });
+      const row = await strip();
+      assert.ok(row.includes('alpha(3)') && row.includes('beta') && row.includes('demo') && row.length === 3,
+        `the strip is ${JSON.stringify(row)}`);
+
+      // Over the pane, never in the column: the pane keeps its rows.
+      const before = await rects();
+      await page.click('#tabs button[data-group="alpha"]');
+      await page.waitForSelector('#group-menu:not([hidden])');
+      assert.deepEqual(await menuRows(), ['alpha', 'xnt-1', 'xnt-2']);
+      let g = await rects();
+      assert.ok(g.menu.bottom <= g.header.top + 0.5, `the list does not hang up off the strip: ${JSON.stringify(g)}`);
+      assert.equal(g.term.height, before.term.height, 'opening the list moved the pane');
+      const height = stand.tmux(['display', '-p', '-t', 'demo', '#{pane_height}']);
+
+      await page.click('#group-menu button[data-session="xnt-2"]');
+      await page.waitForFunction(() => {
+        const b = document.querySelector('#tabs button.active');
+        return b && b.dataset.group === 'alpha' && b.dataset.session === 'xnt-2';
+      }, null, { timeout: 5000 });
+      assert.equal(await page.evaluate(() => document.getElementById('group-menu').hidden), true,
+        'the list outlived the choice');
+      assert.equal(stand.tmux(['display', '-p', '-t', 'demo', '#{pane_height}']), height);
+
+      // A tap outside closes it without switching.
+      await page.click('#tabs button[data-group="alpha"]');
+      await page.waitForSelector('#group-menu:not([hidden])');
+      assert.equal(await page.evaluate(() => document.querySelector('#group-menu button.active')?.dataset.session),
+        'xnt-2', 'the list does not say which tab is on screen');
+      await page.mouse.click(200, 200);
+      await page.waitForSelector('#group-menu', { state: 'hidden' });
+
+      // From a strip at the top, down.
+      await stand.openSettings();
+      await page.click('#strip-pos');
+      await stand.shutDrawer();
+      await page.click('#tabs button[data-group="alpha"]');
+      await page.waitForSelector('#group-menu:not([hidden])');
+      g = await rects();
+      assert.ok(g.menu.top >= g.header.bottom - 0.5, `the list does not hang down off the strip: ${JSON.stringify(g)}`);
+      await page.mouse.click(200, 400);
+      await page.waitForSelector('#group-menu', { state: 'hidden' });
+
+      // And off again, every tab its own.
+      await stand.openSettings();
+      await page.click('#tab-groups');
+      await stand.shutDrawer();
+      await page.waitForFunction(() => !document.querySelector('#tabs button[data-group]'), null, { timeout: 5000 });
+      assert.equal((await strip()).length, 5);
+    } finally {
+      await page.evaluate(() => {
+        try { localStorage.removeItem('pt-groups'); localStorage.removeItem('pt-strip'); } catch (_) {}
+      });
+    }
   });
 });
 

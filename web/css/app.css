@@ -252,7 +252,7 @@ html.drawer-right #screen-term header.bar #grid-toggle { order: -1; }
   border: 1px solid transparent;
   border-radius: 6px;
 }
-#tabs button.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+#tabs button.active, #group-menu button.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 /* Carried: the tab under the finger while the row is being rearranged. Lifted
    rather than moved by hand — the row itself rearranges under it, so what this
    has to say is only which tab the finger owns.
@@ -266,8 +266,8 @@ html.drawer-right #screen-term header.bar #grid-toggle { order: -1; }
 }
 /* Gone quiet after doing something — the watcher's "done", the same state the
    finished notification is raised from. */
-#tabs button.done { background: #1d3a2b; color: #7fdca4; }
-#tabs button.done.active { border-color: #7fdca4; color: #a8ecc4; }
+#tabs button.done, #group-menu button.done { background: #1d3a2b; color: #7fdca4; }
+#tabs button.done.active, #group-menu button.done.active { border-color: #7fdca4; color: #a8ecc4; }
 /* Output is arriving. The movement is the point: a still purple says "this one
    is different", a moving one says "it is going right now", and that is the
    question you hold a phone up to answer.
@@ -277,13 +277,13 @@ html.drawer-right #screen-term header.bar #grid-toggle { order: -1; }
    sweep with the whole row in step was a strip of decoration flickering at the
    corner of the eye; the point is to be noticed when looked at, not to demand
    it. */
-#tabs button.working {
+#tabs button.working, #group-menu button.working {
   color: #e6dcff;
   background: linear-gradient(100deg, #2f2350 0%, #2f2350 35%, #7d5cff 50%, #2f2350 65%, #2f2350 100%);
   background-size: 300% 100%;
   animation: tab-working 4.2s linear infinite alternate;
 }
-#tabs button.working.active { border-color: #b9a4ff; }
+#tabs button.working.active, #group-menu button.working.active { border-color: #b9a4ff; }
 @keyframes tab-working {
   from { background-position: 150% 0; }
   to { background-position: -150% 0; }
@@ -296,13 +296,13 @@ html.drawer-right #screen-term header.bar #grid-toggle { order: -1; }
    The mark sits centred on the tab's top edge with half of it above the tab: a
    question is about the person holding the phone rather than about the machine, so
    it is allowed to break the row's outline to say so. */
-#tabs button.asking {
+#tabs button.asking, #group-menu button.asking {
   color: #dbe7ff;
   background: linear-gradient(100deg, #16233f 0%, #16233f 35%, #3b7dff 50%, #16233f 65%, #16233f 100%);
   background-size: 300% 100%;
   animation: tab-working 4.2s linear infinite alternate;
 }
-#tabs button.asking.active { border-color: #9dc0ff; }
+#tabs button.asking.active, #group-menu button.asking.active { border-color: #9dc0ff; }
 #tabs button.asking::before {
   content: '!';
   position: absolute;
@@ -522,6 +522,26 @@ button.session .agents .count { font-size: 10px; line-height: 13px; }
    on the empty span would indent every untyped name by a space standing for
    nothing. */
 #tabs button .kind:not(:empty) { margin-right: 4px; }
+/* A folded tab: the project's name and, after it, how many tabs it holds — in a
+   circle (a pill from ten on), silver like the subagents' count, so it reads as a
+   number about the tab rather than a fourth kind of plate. In the line, not hung
+   off an edge: the edges already carry the heads and the plates, summed. */
+#tabs button .gcount {
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #c9cfdc;
+  color: #0f1b14;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  vertical-align: 1px;
+}
 /* Nothing here is a selection target: a long press asks what the mark means, and
    a WebView answering it with "select text" instead would take the gesture. */
 #tabs button { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
@@ -552,8 +572,8 @@ button.session .agents .count { font-size: 10px; line-height: 13px; }
 /* Someone who has asked not to be moved gets the colour and not the movement —
    the state is information, the animation is only how it is told. */
 @media (prefers-reduced-motion: reduce) {
-  #tabs button.working { animation: none; background: #4a3a7d; }
-  #tabs button.asking { animation: none; background: #24427e; }
+  #tabs button.working, #group-menu button.working { animation: none; background: #4a3a7d; }
+  #tabs button.asking, #group-menu button.asking { animation: none; background: #24427e; }
 }
 .bar button {
   color: var(--fg);
@@ -1027,6 +1047,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   border-top: none;
   border-bottom: 1px solid #2a3345;
 }
+#screen-term.strip-top #group-menu { top: 100%; bottom: auto; margin: 4px 0 0; }
 #screen-term.strip-top #modebar { padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
 /* On a touch screen the strip keeps ☰ alone (2026-10-17, the owner: "только меню
    оставь, плюс убери, сетку перенеси в меню"). The tabs scroll, but three buttons
@@ -1081,6 +1102,58 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   border: none;
   border-radius: 8px;
 }
+
+/* The tabs of one project, opened from its folded tab. Hangs off the strip
+   towards the pane like the presets, over the pane and never in the column, and
+   scrolls on its own when a project has more tabs than the screen has room for.
+   `left` is written by paintGroupMenu, under the tab it came from. */
+#group-menu {
+  position: absolute;
+  left: 8px;
+  bottom: 100%;
+  margin-bottom: 4px;
+  z-index: 13;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+  max-width: calc(100% - 16px);
+  max-height: 60vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 6px;
+  background: var(--bar);
+  border: 1px solid #2a3345;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px #000a;
+}
+#group-menu .head { padding: 2px 6px; font-size: 11px; color: #8b93a7; }
+/* A row says what a tab says, in the same colours (the rules above name both),
+   with the plates and the heads in a line at its end rather than hung off its
+   edges: the list scrolls, and a scroll box clips what hangs out of it. */
+#group-menu button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 14px;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--fg);
+  background: #232a38;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+#group-menu button .kind { font-size: 13px; }
+#group-menu button .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#group-menu .agents { position: static; font-size: 12px; }
+#group-menu .bg { position: static; gap: 3px; }
+#group-menu .bg::before, #group-menu .bg::after { min-width: 14px; font-size: 9px; line-height: 10px; }
+#group-menu .bg::before { min-width: 15px; padding: 2px 7px 2px 2px; }
+#group-menu .bg::after { padding: 1px 2px 4px; }
 
 /* Overlay, not a flex child: toggling it must not resize #term (otherwise
    the terminal jumps every time the reconnect banner appears). */

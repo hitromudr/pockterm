@@ -14,6 +14,7 @@ import { endingKeys, commitComposition, endEditByBlur } from './ender.js';
 import { pushHistory, previewOf } from './compose.js';
 import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, MARKS, CUSTOM_MARK } from './kinds.js';
 import { dropIndex } from './carry.js';
+import { groupSessions, groupState, groupBackground, stripSignature } from './groups.js';
 import { thumb as thumbAt, backAt } from './bar.js';
 import { installDecision, installText, isIOS } from './install.js';
 import { linksOnRows, openable } from './urls.js';
@@ -147,6 +148,13 @@ const TABS_GAP = 8;
 let stripTop = false;
 try { stripTop = localStorage.getItem('pt-strip') === 'top'; } catch (_) {}
 screenTerm.classList.toggle('strip-top', stripTop);
+
+// Whether the tabs of one project fold into one tab, which opens the list of
+// them (asked for on 2026-10-29: anabasis alone was six tabs of the strip). Off
+// by default and per device, like the strip's side. What a project is lives in
+// js/groups.js.
+let tabGroups = false;
+try { tabGroups = localStorage.getItem('pt-groups') === 'on'; } catch (_) {}
 
 // Which side the drawer comes out of, and with it which end of the strip ☰
 // stands at: the right (the default since 2026-10-15, "меняем местами кнопки
@@ -743,10 +751,14 @@ foldersBtn.addEventListener('click', () => showFolders(!foldersShown));
 const menuScrim = document.getElementById('menu-scrim');
 const attachMenu = document.getElementById('attach-menu');
 const pickBtn = document.getElementById('pick');
-let termPopup = null; // 'presets' | 'attach' | null
+const groupMenu = document.getElementById('group-menu');
+let menuGroup = null;
+let termPopup = null; // 'presets' | 'attach' | 'group' | null
 function showTermPopup(which) {
   termPopup = which;
   menuScrim.hidden = !which;
+  if (groupMenu) groupMenu.hidden = which !== 'group';
+  if (which !== 'group') menuGroup = null;
   if (newMenuTerm) newMenuTerm.hidden = which !== 'presets';
   if (newTermBtn) newTermBtn.classList.toggle('on', which === 'presets');
   if (attachMenu) attachMenu.hidden = which !== 'attach';
@@ -1517,6 +1529,7 @@ function showSessions() {
   // one back on screen the moment the terminal is shown again.
   tabsEl.innerHTML = '';
   tabsSignature = null;
+  if (termPopup === 'group') showTermPopup(null);
   pollTabs(false);
   openDrawer();
 }
@@ -1542,7 +1555,7 @@ function rememberVisit(name) {
 // Which tab stands next to this one in the strip, for when nothing was visited
 // before it: to the left if there is one, otherwise to the right.
 function tabBeside(name) {
-  const names = [...tabsEl.querySelectorAll('button')].map((b) => b.dataset.session);
+  const names = rowNames();
   const i = names.indexOf(name);
   if (i < 0) return null;
   return i > 0 ? names[i - 1] : names[i + 1] || null;
@@ -1669,48 +1682,38 @@ async function renderTabs() {
   // rebuilding it would take the button out from under the finger.
   if (dragName) return;
   const { sessions, error } = await fetchSessions();
-  const names = sessions.map((s) => s.name).join('\u0000');
+  const sig = stripSignature(sessions, tabGroups);
   // A session closed from anywhere takes its cell with it. Only off an answer:
   // a failed fetch says nothing about what is running.
   if (gridOn && !error) gridPrune(new Set(sessions.map((s) => s.name)));
+  lastSessions = sessions;
+  const items = tabGroups
+    ? groupSessions(sessions)
+    : sessions.map((s) => ({ key: '', group: false, sessions: [s] }));
+  groupMembers.clear();
+  for (const it of items) {
+    if (it.group) groupMembers.set(it.key, it.sessions.map((s) => s.name));
+  }
 
   // Rebuilding the row would remove the button that was just tapped, and a
   // WebView answers the removal of the focused element by handing focus back
   // to the previous one — the terminal's textarea — which raises the keyboard.
   // So the row is rebuilt only when the set of sessions actually changed;
   // switching only moves the highlight.
-  if (names !== tabsSignature) {
-    tabsSignature = names;
+  if (sig !== tabsSignature) {
+    tabsSignature = sig;
     tabsEl.innerHTML = '';
-    for (const s of sessions) {
-      const b = document.createElement('button');
-      // The mark lives in a span of its own so it can be rewritten without
-      // touching the button: the kind arrives on a later poll than the name (the
-      // list is fetched before the buttons are), and rebuilding the row under a
-      // finger is what raises the keyboard.
-      const mark = document.createElement('span');
-      mark.className = 'kind';
-      b.appendChild(mark);
-      b.appendChild(document.createTextNode(s.name));
-      // The corner where the plates go. An empty span draws nothing and takes no
-      // room, and it is here from the start for the same reason the mark is: it
-      // is painted on a later poll, and a tab must not be rebuilt to carry it.
-      const bgBox = document.createElement('span');
-      bgBox.className = 'bg';
-      b.appendChild(bgBox);
-      // The other corner: the heads of the subagents. Empty until there are any,
-      // and painted rather than rebuilt for the same reason as everything else
-      // on a tab — the button must not be taken out from under a finger.
-      const heads = document.createElement('span');
-      heads.className = 'agents';
-      b.appendChild(heads);
-      b.dataset.session = s.name;
-      b.style.animationDelay = workingPhase(s.name);
-      keepsTerminalFocus(b);
+    for (const it of items) {
+      if (it.group) {
+        tabsEl.appendChild(groupTab(it.key));
+        continue;
+      }
+      const name = it.sessions[0].name;
+      const b = stripTab(name, name);
       b.addEventListener('click', () => {
         // A long press asks what the mark means; it must not also switch session.
         if (helpHeld) { helpHeld = false; return; }
-        if (s.name !== current) attach(s.name);
+        if (name !== current) attach(name);
       });
       tabsEl.appendChild(b);
     }
@@ -1729,23 +1732,42 @@ async function renderTabs() {
   kinds.clear();
   for (const s of sessions) kinds.set(s.name, s.kind || '');
   for (const b of tabsEl.querySelectorAll('button')) {
-    const st = state.get(b.dataset.session) || '';
-    const k = kindOf(b.dataset.session);
-    const mark = b.querySelector('.kind');
-    if (mark) mark.textContent = kindMark(k, customButtons);
-    // For a pointer, which has a hover; the long press is what a phone has.
-    const what = kindName(k, customButtons);
-    if (what) b.title = `${b.dataset.session} · ${what}`;
-    else b.removeAttribute('title');
-    b.classList.toggle('active', b.dataset.session === current);
+    const g = b.dataset.group;
+    const members = tabMembers(b);
+    let st;
+    if (g) {
+      // A group's tab stands for whichever of its tabs is on screen, so that
+      // everything that looks a tab up by session — the frame, the scroll to the
+      // current tab, the carry — finds this one. An attribute, not a rebuild.
+      b.dataset.session = members.includes(current) ? current : members[0];
+      const of = members.map((n) => bg.get(n)).filter(Boolean);
+      st = groupState(of);
+      const mark = b.querySelector('.kind');
+      if (mark) mark.textContent = kindMark(groupKind(members), customButtons);
+      const count = b.querySelector('.gcount');
+      if (count) count.textContent = String(members.length);
+      b.title = `${g} · ${tabsWord(members.length)}`;
+      paintBackground(b, groupBackground(of));
+    } else {
+      st = state.get(b.dataset.session) || '';
+      const k = kindOf(b.dataset.session);
+      const mark = b.querySelector('.kind');
+      if (mark) mark.textContent = kindMark(k, customButtons);
+      // For a pointer, which has a hover; the long press is what a phone has.
+      const what = kindName(k, customButtons);
+      if (what) b.title = `${b.dataset.session} · ${what}`;
+      else b.removeAttribute('title');
+      paintBackground(b, bg.get(b.dataset.session) || {});
+    }
+    b.classList.toggle('active', members.includes(current));
     b.classList.toggle('working', st === 'working');
     b.classList.toggle('done', st === 'done');
     // A question outranks the rest, and it cannot collide with them: the state is
     // one value, so the classes are exclusive by construction.
     b.classList.toggle('asking', st === 'asking');
-    b.classList.toggle('in-grid', gridOn && gridNames.includes(b.dataset.session));
-    paintBackground(b, bg.get(b.dataset.session) || {});
+    b.classList.toggle('in-grid', gridOn && members.some((n) => gridNames.includes(n)));
   }
+  paintGroupMenu();
   // A cell's head says what its tab says, in the same three colours.
   for (const [n, c] of gridCells) {
     const st = state.get(n) || '';
@@ -1756,6 +1778,165 @@ async function renderTabs() {
   paintRows(sessions);
   paintWayBack(state.get(current) === 'asking');
   showCurrentTab(false);
+}
+
+// The last list the strip was drawn from, and which sessions each folded tab
+// stands for. Kept rather than refetched: a carry saves the row the finger left,
+// and a fetch would answer after it.
+let lastSessions = [];
+const groupMembers = new Map();
+
+// The sessions a tab of the strip stands for: itself, or its project's.
+function tabMembers(b) {
+  if (b.dataset.group) return groupMembers.get(b.dataset.group) || [];
+  return b.dataset.session ? [b.dataset.session] : [];
+}
+
+// The row as names, folded tabs unfolded in place — which is what the host
+// keeps the order of, and what "the tab beside this one" means.
+function rowNames() {
+  return [...tabsEl.querySelectorAll('button[data-session]')].flatMap(tabMembers);
+}
+
+// stripTab makes one button of the strip with its empty corners.
+//
+// The mark lives in a span of its own so it can be rewritten without touching
+// the button: the kind arrives on a later poll than the name (the list is
+// fetched before the buttons are), and rebuilding the row under a finger is what
+// raises the keyboard. The corner where the plates go is there from the start
+// for the same reason: an empty span draws nothing and takes no room. And the
+// other corner, the heads of the subagents, likewise.
+function stripTab(name, label) {
+  const b = document.createElement('button');
+  const mark = document.createElement('span');
+  mark.className = 'kind';
+  b.appendChild(mark);
+  b.appendChild(document.createTextNode(label));
+  const bgBox = document.createElement('span');
+  bgBox.className = 'bg';
+  b.appendChild(bgBox);
+  const heads = document.createElement('span');
+  heads.className = 'agents';
+  b.appendChild(heads);
+  b.dataset.session = name;
+  b.style.animationDelay = workingPhase(label);
+  keepsTerminalFocus(b);
+  return b;
+}
+
+// groupTab is a project's tabs folded into one: the project's name, a circle
+// with how many, and on its edges everything its tabs have running, summed. A
+// tap opens the list of them rather than switching — which one is the question.
+function groupTab(key) {
+  const members = groupMembers.get(key) || [];
+  const b = stripTab(members.includes(current) ? current : members[0], key);
+  b.classList.add('group');
+  b.dataset.group = key;
+  // A span beside the name rather than text in it, like the mark: the label is
+  // read back by nothing here, but it is the project's name and nothing else.
+  const count = document.createElement('span');
+  count.className = 'gcount';
+  count.textContent = String(members.length);
+  b.insertBefore(count, b.querySelector('.bg'));
+  b.addEventListener('click', () => {
+    if (helpHeld) { helpHeld = false; return; }
+    if (termPopup === 'group' && menuGroup === key) { showTermPopup(null); return; }
+    openGroupMenu(key);
+  });
+  return b;
+}
+
+// A folded tab's mark is its tabs' mark when they all share one. Several kinds
+// in one project have no single glyph, and picking one would be a claim about
+// the others.
+function groupKind(members) {
+  const ks = new Set(members.map(kindOf));
+  return ks.size === 1 ? [...ks][0] : '';
+}
+
+function tabsWord(n) {
+  const d = n % 10;
+  const dd = n % 100;
+  if (d === 1 && dd !== 11) return `${n} вкладка`;
+  if (d >= 2 && d <= 4 && (dd < 12 || dd > 14)) return `${n} вкладки`;
+  return `${n} вкладок`;
+}
+
+// --- the list a folded tab opens ---
+//
+// It hangs off the strip towards the pane — up from a strip at the bottom, down
+// from one at the top — over the pane rather than in the column, so opening it
+// moves no rows (see CLAUDE.md, "Nothing that reacts to the pane may sit in the
+// flow"). One of the terminal screen's popups: the scrim behind it is theirs, so
+// a tap anywhere else closes it, and opening another closes this one.
+//
+// Painted on every poll, never rebuilt while the same tabs are in it: the rows
+// carry the same colours and plates as the tabs, and they are under a finger.
+// The element and which project it is open for are declared with the other
+// popups (showTermPopup).
+
+function groupButton(key) {
+  for (const b of tabsEl.querySelectorAll('button[data-group]')) {
+    if (b.dataset.group === key) return b;
+  }
+  return null;
+}
+
+function openGroupMenu(key) {
+  if (!groupMenu) return;
+  showTermPopup('group');
+  menuGroup = key;
+  report('group-menu', { group: key, tabs: (groupMembers.get(key) || []).length });
+  paintGroupMenu();
+}
+
+function fillGroupMenu(key, members) {
+  groupMenu.replaceChildren();
+  groupMenu.dataset.members = members.join('\u0000');
+  const head = document.createElement('div');
+  head.className = 'head';
+  head.textContent = key;
+  groupMenu.appendChild(head);
+  for (const name of members) {
+    const b = document.createElement('button');
+    b.dataset.session = name;
+    b.style.animationDelay = workingPhase(name);
+    b.innerHTML = '<span class="kind"></span>' +
+      `<span class="name">${escapeHtml(name)}</span>` +
+      '<span class="agents"></span><span class="bg"></span>';
+    keepsTerminalFocus(b);
+    b.addEventListener('click', () => {
+      showTermPopup(null);
+      if (name !== current) attach(name);
+    });
+    groupMenu.appendChild(b);
+  }
+}
+
+function paintGroupMenu() {
+  if (!groupMenu || termPopup !== 'group') return;
+  const btn = groupButton(menuGroup);
+  // The project folded away: its last but one tab closed, or the setting went off.
+  if (!btn) { showTermPopup(null); return; }
+  const members = groupMembers.get(menuGroup) || [];
+  if (groupMenu.dataset.members !== members.join('\u0000')) fillGroupMenu(menuGroup, members);
+  const by = new Map(lastSessions.map((s) => [s.name, s]));
+  for (const b of groupMenu.querySelectorAll('button[data-session]')) {
+    const s = by.get(b.dataset.session) || {};
+    const st = s.state || '';
+    b.classList.toggle('active', b.dataset.session === current);
+    b.classList.toggle('working', st === 'working');
+    b.classList.toggle('done', st === 'done');
+    b.classList.toggle('asking', st === 'asking');
+    b.querySelector('.kind').textContent = kindMark(kindOf(b.dataset.session), customButtons);
+    paintBackground(b, s);
+  }
+  // Under the tab it came from, as far as the screen allows: the strip scrolls
+  // sideways, so the tab can stand at either edge.
+  const box = tabsEl.parentElement.getBoundingClientRect();
+  const r = btn.getBoundingClientRect();
+  const w = groupMenu.offsetWidth;
+  groupMenu.style.left = `${Math.max(8, Math.min(r.left - box.left, box.width - w - 8))}px`;
 }
 
 // A question at the live end, while what is on screen is the past.
@@ -1857,8 +2038,11 @@ function placePlate(r, drop, centred) {
 function showKindHelp(btn) {
   if (!kindHelpEl) return;
   const name = btn.dataset.session;
-  const what = kindName(kindOf(name), customButtons);
-  const mark = kindMark(kindOf(name), customButtons);
+  // A folded tab is a project, and what it is is how many tabs it holds.
+  const group = btn.dataset.group;
+  const k = group ? groupKind(tabMembers(btn)) : kindOf(name);
+  const what = group ? `${group} · ${tabsWord(tabMembers(btn).length)}` : kindName(k, customButtons);
+  const mark = kindMark(k, customButtons);
   // Nothing to explain: a session nobody stamped, or a button since removed.
   // A plate saying only the name would be a lever that answers nothing.
   if (!what) return;
@@ -1885,8 +2069,9 @@ function paintCarryPlate(btn) {
   // The question's plate goes away by itself after a few seconds; this one stands
   // for as long as the tab is in hand, however long that is.
   if (helpHide) { clearTimeout(helpHide); helpHide = null; }
-  const name = btn.dataset.session;
-  const mark = kindMark(kindOf(name), customButtons);
+  const group = btn.dataset.group;
+  const name = group || btn.dataset.session;
+  const mark = kindMark(group ? groupKind(tabMembers(btn)) : kindOf(name), customButtons);
   kindHelpEl.textContent = mark ? `${mark} ${name}` : name;
   kindHelpEl.hidden = false;
   kindHelpEl.classList.add('carrying');
@@ -1930,7 +2115,7 @@ function tabButton(name) {
 // The order the row is in now, which is what the host is told. Names and not
 // indices: a session closed between the drag and the save is then simply absent.
 async function saveTabOrder() {
-  const names = [...tabsEl.querySelectorAll('button[data-session]')].map((b) => b.dataset.session);
+  const names = rowNames();
   if (!names.length) return;
   try {
     const res = await fetch(`/api/sessions/order?${tokenQS}`, {
@@ -1959,7 +2144,8 @@ async function saveTabOrder() {
     }
     // The row already looks like this, so the next poll must not rebuild it and
     // take the keyboard with it.
-    tabsSignature = names.join('\u0000');
+    const by = new Map(lastSessions.map((s) => [s.name, s]));
+    tabsSignature = stripSignature(names.map((n) => by.get(n)).filter(Boolean), tabGroups);
     report('tab-order', { ok: true, count: names.length });
   } catch (_) { /* offline: the row snaps back on the next poll */ }
 }
@@ -3652,6 +3838,22 @@ stripPosBtn.addEventListener('click', () => {
   renderStripPos();
   refit();
   report('strip', { top: stripTop });
+});
+
+const tabGroupsBtn = document.getElementById('tab-groups');
+function renderTabGroups() {
+  tabGroupsBtn.classList.toggle('on', tabGroups);
+}
+renderTabGroups();
+tabGroupsBtn.addEventListener('click', () => {
+  tabGroups = !tabGroups;
+  try { localStorage.setItem('pt-groups', tabGroups ? 'on' : 'off'); } catch (_) {}
+  renderTabGroups();
+  if (termPopup === 'group') showTermPopup(null);
+  // The row is a different row now; with the terminal hidden the next attach
+  // draws it anyway.
+  if (!screenTerm.hidden) renderTabs();
+  report('tab-groups', { on: tabGroups });
 });
 
 const drawerSideBtn = document.getElementById('drawer-side');
@@ -6456,8 +6658,9 @@ function paintGrid() {
     c.box.classList.toggle('active', name === current);
   });
   for (const b of tabsEl.querySelectorAll('button[data-session]')) {
-    b.classList.toggle('active', b.dataset.session === current);
-    b.classList.toggle('in-grid', gridNames.includes(b.dataset.session));
+    const members = tabMembers(b);
+    b.classList.toggle('active', members.includes(current));
+    b.classList.toggle('in-grid', members.some((m) => gridNames.includes(m)));
   }
   liftGrid();
 }

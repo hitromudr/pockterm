@@ -157,6 +157,10 @@
              fullscreen too (see js/rotation.js); a refusal is said in the line
              under it rather than in the toast, which the drawer covers. -->
         <button id="rotation" title="Не поворачивать экран вслед за телефоном">&#10227; Поворот</button>
+        <!-- Tabs of one project folded into one tab, which opens the list of them
+             (2026-10-29). Per device, off by default; lit while on, like smooth.
+             The project is the folder the pane is in (js/groups.js). -->
+        <button id="tab-groups" title="Вкладки одного проекта — одной вкладкой со списком">&#10697; Группы</button>
       </div>
       <p id="rotation-note" hidden></p>
       <!-- The session buttons: the four the page starts with and whatever the
@@ -532,6 +536,9 @@
            four buttons on a phone. Inside the header so it hangs off its top edge
            (`bottom: 100%`) instead of off a guess about how tall the header is. -->
       <div id="new-menu-term" hidden></div>
+      <!-- The tabs of one project, opened from its folded tab (#tab-groups):
+           hangs off the strip towards the pane, like the presets above. -->
+      <div id="group-menu" hidden></div>
     </header>
   </div>
 

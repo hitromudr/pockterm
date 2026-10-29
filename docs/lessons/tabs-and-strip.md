@@ -630,3 +630,38 @@ plate appears under the tab with the mark and the button's name — under it, th
 the click it ends in. The UI test drives it through the browser's own touch input
 (CDP `Input.dispatchTouchEvent`), only a real press producing the click that has to be
 swallowed.
+
+## A project's tabs fold into one, by setting
+
+Asked for on 2026-10-29, with six `anabasis-*` tabs and three of exante's on the
+owner's strip: `⧉ Группы` in the drawer's settings (`#tab-groups`, per device in
+`localStorage` as `pt-groups`, off by default) folds the tabs of one project into one
+tab, and a tap on that tab opens the list of them (`#group-menu`) — up from a strip at
+the bottom, down from one at the top — where a row switches.
+
+- **The project is the folder, never the name.** The owner said so before the code
+  did: exante's own session is `exante` and the ones it starts are `xnt-lr-845`,
+  `xnt-lr-tdebt-527`. All three stand in `~/work/exante`, which is what the server
+  already reports as `dir` (`session.ShortDir`), so the project is its first segment
+  (`projectOf`, js/groups.js). A session the server gives no `dir` for stands alone.
+  A session that `cd`s into another project moves to that group on the next poll —
+  `dir` is where the pane is now, which is the fact the drawer's rows already show.
+- **A project with one session is a plain tab.** A group of one would be a tap that
+  opens a list holding the tab already in view.
+- **The folded tab says what its tabs say, all at once**: the most urgent state
+  (`asking` over `working` over `done`), the plates and heads summed
+  (`groupBackground`), the frame when any of them is on screen, the in-grid mark when
+  any is in the grid, and a silver circle with how many tabs it holds (`.gcount`, in
+  the line — the edges already carry the heads and the plates). Its kind mark is
+  drawn only when all its tabs share one.
+- **It stands where its first tab stood, and is carried as a run.** It carries a
+  `data-session` like any tab — whichever of its members is on screen, else the
+  first — so the frame, the scroll to the current tab and the carry find it without
+  learning about groups. Saving the row unfolds it (`rowNames`), so the host keeps a
+  flat order in which a project's tabs are contiguous.
+- **The list is one of the terminal screen's popups**: same scrim, same
+  `showTermPopup`, so a tap outside closes it and opening + or 📎 closes it. It is
+  over the pane, never in the column (the pane keeps its rows — the test reads
+  `#{pane_height}`), and painted on every poll rather than rebuilt while the same
+  tabs are in it. Test: `one tab per project, a list off it towards the pane, and a
+  row in it switches`, checked against the list hanging the wrong way at the top.
