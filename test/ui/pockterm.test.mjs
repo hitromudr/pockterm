@@ -1111,6 +1111,10 @@ describe('tabs of one project, folded', () => {
       assert.ok(row.includes('alpha(3)') && row.includes('beta') && row.includes('demo') && row.length === 3,
         `the strip is ${JSON.stringify(row)}`);
 
+      // Nothing in it chosen yet: the tab says the project.
+      const label = () => page.evaluate(() => document.querySelector('#tabs button[data-group="alpha"] .gname').textContent);
+      assert.equal(await label(), 'alpha');
+
       // Over the pane, never in the column: the pane keeps its rows.
       const before = await rects();
       await page.click('#tabs button[data-group="alpha"]');
@@ -1129,12 +1133,20 @@ describe('tabs of one project, folded', () => {
       assert.equal(await page.evaluate(() => document.getElementById('group-menu').hidden), true,
         'the list outlived the choice');
       assert.equal(stand.tmux(['display', '-p', '-t', 'demo', '#{pane_height}']), height);
+      // The tab says which of its tabs was chosen, and keeps saying it after leaving.
+      assert.equal(await label(), 'xnt-2');
+      await page.click('#tabs button[data-session="beta"]');
+      await page.waitForFunction(() => document.querySelector('#tabs button.active')?.dataset.session === 'beta',
+        null, { timeout: 5000 });
+      assert.equal(await label(), 'xnt-2', 'leaving the group forgot which tab was chosen in it');
+      assert.equal(await page.evaluate(() => document.querySelector('#tabs button[data-group="alpha"]').classList.contains('active')),
+        false);
 
       // A tap outside closes it without switching.
       await page.click('#tabs button[data-group="alpha"]');
       await page.waitForSelector('#group-menu:not([hidden])');
-      assert.equal(await page.evaluate(() => document.querySelector('#group-menu button.active')?.dataset.session),
-        'xnt-2', 'the list does not say which tab is on screen');
+      assert.equal(await page.evaluate(() => document.querySelector('#group-menu button.active')),
+        null, 'the list marks a tab that is not on screen');
       await page.mouse.click(200, 200);
       await page.waitForSelector('#group-menu', { state: 'hidden' });
 

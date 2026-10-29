@@ -1739,7 +1739,10 @@ async function renderTabs() {
       // A group's tab stands for whichever of its tabs is on screen, so that
       // everything that looks a tab up by session — the frame, the scroll to the
       // current tab, the carry — finds this one. An attribute, not a rebuild.
-      b.dataset.session = members.includes(current) ? current : members[0];
+      const pick = groupPick(members);
+      b.dataset.session = pick || members[0];
+      const label = b.querySelector('.gname');
+      if (label) label.textContent = pick || g;
       const of = members.map((n) => bg.get(n)).filter(Boolean);
       st = groupState(of);
       const mark = b.querySelector('.kind');
@@ -1829,11 +1832,15 @@ function stripTab(name, label) {
 // tap opens the list of them rather than switching — which one is the question.
 function groupTab(key) {
   const members = groupMembers.get(key) || [];
-  const b = stripTab(members.includes(current) ? current : members[0], key);
+  const b = stripTab(groupPick(members) || members[0], key);
   b.classList.add('group');
   b.dataset.group = key;
-  // A span beside the name rather than text in it, like the mark: the label is
-  // read back by nothing here, but it is the project's name and nothing else.
+  // The label is the chosen tab's name, rewritten as the choice moves — so it is
+  // a span of its own, like the mark, rather than the button's own text.
+  const label = document.createElement('span');
+  label.className = 'gname';
+  b.replaceChild(label, b.childNodes[1]);
+  // A span beside the name rather than text in it, like the mark.
   const count = document.createElement('span');
   count.className = 'gcount';
   count.textContent = String(members.length);
@@ -1844,6 +1851,18 @@ function groupTab(key) {
     openGroupMenu(key);
   });
   return b;
+}
+
+// Which of a folded tab's tabs it stands for (asked for the same day: "отображать
+// название выбранной вкладки в группе"): the one on screen, else the one of them
+// last visited, else none — and then the tab says the project's name, since
+// nothing in it has been chosen.
+function groupPick(members) {
+  if (members.includes(current)) return current;
+  for (let i = visited.length - 1; i >= 0; i--) {
+    if (members.includes(visited[i])) return visited[i];
+  }
+  return '';
 }
 
 // A folded tab's mark is its tabs' mark when they all share one. Several kinds

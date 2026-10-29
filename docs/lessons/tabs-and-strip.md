@@ -654,6 +654,11 @@ the bottom, down from one at the top — where a row switches.
   any is in the grid, and a silver circle with how many tabs it holds (`.gcount`, in
   the line — the edges already carry the heads and the plates). Its kind mark is
   drawn only when all its tabs share one.
+- **It is labelled with the tab chosen in it** (asked for the same day): the one on
+  screen, else the one of its tabs last visited (`visited`), else the project's name —
+  nothing in it has been chosen yet. `groupPick` answers it, the label is a span of
+  its own (`.gname`) and is repainted, never rebuilt. The project's name stays in the
+  title, the long-press plate and the list's head.
 - **It stands where its first tab stood, and is carried as a run.** It carries a
   `data-session` like any tab — whichever of its members is on screen, else the
   first — so the frame, the scroll to the current tab and the carry find it without
