@@ -2003,6 +2003,31 @@ describe("the owner's own session buttons", () => {
     assert.equal(await page.locator('#new-menu button[data-preset^="custom:"]:has-text("Квен")').count(), 0);
     assert.equal(await page.locator('#new-menu button[data-preset="claude"]').count(), 1);
   });
+
+  test('↻ reads the buttons again, so one added elsewhere shows without a reload', async () => {
+    // The page read the list once, when it opened: two buttons added through the
+    // API from a session on the host stayed out of the drawer until a reload.
+    await stand.open();
+    const { page } = stand;
+    await stand.openSettings();
+    await page.click('#settings-toggle');
+    const posted = await page.evaluate(async () => {
+      const url = `/api/presets${location.search}`;
+      const { buttons } = await (await fetch(url)).json();
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ buttons: [...buttons, { label: 'Джемини', cmd: 'gemini --yolo' }] }),
+      });
+      return res.status;
+    });
+    assert.equal(posted, 200);
+    const shown = 'button[data-preset^="custom:"]:has-text("Джемини")';
+    assert.equal(await page.locator(`#new-menu ${shown}`).count(), 0, 'the page saw the change by itself');
+    await page.click('#refresh');
+    await page.waitForSelector(`#new-menu ${shown}`, { state: 'attached', timeout: 5000 });
+    await page.waitForSelector('#custom-list li:has-text("Джемини")', { state: 'attached', timeout: 5000 });
+  });
 });
 
 // Its own stand with one session, because that is the whole case: the modal

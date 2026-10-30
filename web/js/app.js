@@ -3271,7 +3271,14 @@ document.querySelectorAll('#keybar button[data-key], #modebar button[data-key]')
 });
 
 document.getElementById('back').addEventListener('click', toggleDrawer);
-document.getElementById('refresh').addEventListener('click', loadSessions);
+// The buttons as well as the sessions: the page reads the buttons once, when it
+// opens, so one added from another phone or through the API stayed out of the
+// drawer until a reload. loadCustom redraws the sessions too when the drawer is
+// open; calling loadSessions first keeps ↻ answering when the buttons cannot be read.
+document.getElementById('refresh').addEventListener('click', () => {
+  loadSessions();
+  loadCustom();
+});
 
 // Terminal text size (A-/A+), persisted; refit so the grid follows.
 function setFont(sz) {
