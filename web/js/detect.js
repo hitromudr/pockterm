@@ -22,12 +22,19 @@
 // run need not start at 1, so nine lines of a file became nine answer buttons and
 // a `!` on the tab while the agent was thinking. Reported from the screen
 // 2026-10-30; the pane is in the shared fixtures.
-const OPTION = /^([\s│>❯›*-]*)(\d{1,2})[.)](?:\s+|(?=\D))(\S.*?)\s*$/;
+//
+// `●` is where Gemini CLI puts its pointer (`selectedIndicator` in
+// `BaseSelectionList`, 0.66.0): `│ ● 1. Allow once`. Without it among the chrome
+// the selected option was not an option, the run came down to one line, and a
+// tool confirmation drew no buttons at all. It is a pointer and not chrome —
+// see POINTER and CHROME — because Claude Code begins every message with the same
+// glyph, and a message that opens with a numbered list is prose.
+const OPTION = /^([\s│>❯›●*-]*)(\d{1,2})[.)](?:\s+|(?=\D))(\S.*?)\s*$/;
 
 // Whether that line's number has the label glued to it. On a two-column menu it
 // says more than how the line is spaced: the widget has moved the number one
 // line down, so the label's first words are on the line above — see `widen`.
-const GLUED = /^[\s│>❯›*-]*\d{1,2}[.)]\S/;
+const GLUED = /^[\s│>❯›●*-]*\d{1,2}[.)]\S/;
 
 // TUI chrome: the pointer at the highlighted option, or the box the prompt
 // is drawn in. A numbered list in prose (Claude writes one in almost every
@@ -209,7 +216,7 @@ function indentOf(line) {
   let col = 0;
   for (const ch of line) {
     if (ch === ' ' || ch === '\t' || ch === '\u00a0' || ch === '\u202f'
-        || ch === '│' || ch === '>' || ch === '❯' || ch === '›') col++;
+        || ch === '│' || ch === '>' || ch === '❯' || ch === '›' || ch === '●') col++;
     else return col;
   }
   return col;
@@ -261,7 +268,16 @@ function continues(between, indent, flush) {
 // The pointer at the highlighted option, as opposed to the box drawn around the
 // menu. Which option it sits on is where the cursor is, and that is the only
 // honest starting point for driving the menu with arrows.
-const POINTER = /[>❯›]/;
+const POINTER = /[>❯›●]/;
+
+// Gemini's pointer, which also says how its menu is answered: a bare digit.
+// Its list takes the number as the choice the moment no longer number could
+// begin with it — measured on a Gemini CLI 0.66.0 pane 2026-10-30, where `3` on a
+// three-option question chose the third option and moved on to the next screen
+// with no Enter. The Enter a Claude Code menu wants after its digit lands there,
+// on whatever comes next, and the next thing after a tool confirmation can be
+// another one.
+const BULLET = /●/;
 
 // A menu that says how it is answered. Claude Code's AskUserQuestion draws this
 // under its options, and it is a list of the keys it accepts — digits are not
@@ -415,7 +431,7 @@ export function detectQuestion(lines) {
   const pcol = previewColumn(plain);
   const rows = pcol < 0 ? plain : plain.map((l) => cutAt(l, pcol));
   let best = null;
-  let run = null; // { start, last, indent, opts, pointers, at, glued, chrome }
+  let run = null; // { start, last, indent, opts, pointers, bullet, at, glued, chrome }
 
   const close = () => {
     // The pointer standing on the submit row is chrome for the list above it, and
@@ -449,6 +465,7 @@ export function detectQuestion(lines) {
       const o = option(m);
       run.opts.push(o);
       run.pointers.push(POINTER.test(m[1]));
+      run.bullet = run.bullet || BULLET.test(m[1]);
       run.at.push(i);
       run.glued.push(GLUED.test(rows[i]));
       run.chrome = run.chrome || chrome;
@@ -480,6 +497,7 @@ export function detectQuestion(lines) {
       flush: first.checked !== undefined,
       opts: [first],
       pointers: [POINTER.test(m[1])],
+      bullet: BULLET.test(m[1]),
       at: [i],
       glued: [GLUED.test(rows[i])],
     };
@@ -500,7 +518,8 @@ export function detectQuestion(lines) {
 
   // How it is answered: what the menu says under itself, or digits when it says
   // nothing. A prompt that lists its keys is a prompt whose keys those are.
-  let navigate = 'digits';
+  // A list pointed at with Gemini's bullet takes the digit alone — see BULLET.
+  let navigate = best.bullet ? 'digit' : 'digits';
   for (let i = tail + 1, seen = 0; i < rows.length && seen < FOOTER_REACH; i++) {
     if (!rows[i].trim()) continue;
     seen++;
@@ -735,7 +754,9 @@ export function answerKeys(menu, want) {
     return move === null ? null : { move, commit: '' };
   }
   // A digit-driven menu has nothing to walk: the digit names the option, so the
-  // pair goes out together and always has.
+  // pair goes out together and always has. Gemini's takes the digit alone, and an
+  // Enter after it answers the next screen — see BULLET.
+  if (menu.navigate === 'digit') return { move: '', commit: menu.options[want].key };
   if (menu.navigate !== 'arrows') return { move: '', commit: menu.options[want].key + '\r' };
   const move = walkTo(menu, want);
   return move === null ? null : { move, commit: '\r' };

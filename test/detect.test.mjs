@@ -76,6 +76,15 @@ test('a menu with digits bound is answered by its digit, in one write', () => {
   assert.deepEqual(answerKeys(q, 2), { move: '', commit: '3\r' });
 });
 
+test("Gemini's menu is answered by the digit alone", () => {
+  // Its list takes the digit as the choice and moves on (measured on Gemini CLI
+  // 0.66.0); an Enter behind it would answer whatever is drawn next, another
+  // tool confirmation included.
+  const q = { navigate: 'digit', cursor: 0, options: [{ key: '1' }, { key: '2' }] };
+  assert.deepEqual(answerKeys(q, 0), { move: '', commit: '1' });
+  assert.deepEqual(answerKeys(q, 1), { move: '', commit: '2' });
+});
+
 test('an arrow-driven menu is walked from where its pointer is', () => {
   const q = { navigate: 'arrows', cursor: 0, options: [{ key: '1' }, { key: '2' }, { key: '3' }] };
   // The option already under the pointer needs no movement, only the Enter.

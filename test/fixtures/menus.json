@@ -279,6 +279,95 @@
       "expect": null
     },
     {
+      "name": "Gemini CLI tool confirmation: ● at the selected option, a bare digit answers (192 columns, 0.66.0)",
+      "lines": [
+        "╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮",
+        "│ ? Shell  Check bottom lines of Gemini CLI and compare pane_title and console-idle across all sessions                                                                                        │",
+        "│ ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ │",
+        "│ │ tmux capture-pane -p -t \"$TMUX_PANE\" | tail -n 10; echo \"---\"; for s in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -v '^pockterm-client-'); do printf \"%s:             │ │",
+        "│ │ title=[%s] idle=[%s]\\n\" \"$s\" \"$(tmux display-message -p -t \"$s\" '#{pane_title}' 2>/dev/null)\" \"$(~/work/dotfiles/bin/console-idle \"$s\" 2>/dev/null)\"; done                               │ │",
+        "│ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ │",
+        "│                                                                                                                                                                                              │",
+        "│ ⚠  ⚠️ CRITICAL SECURITY WARNING: Untrusted Command Flags Detected                                                                                                                            │",
+        "│    The following flags/arguments were sourced from external untrusted input (e.g., Buganizer ticket, external document):                                                                     │",
+        "│      • /dev/null                                                                                                                                                                             │",
+        "│    Executing commands with flags sourced from untrusted input can execute arbitrary code on your machine.                                                                                    │",
+        "│    Carefully verify these flags before approving.                                                                                                                                            │",
+        "│                                                                                                                                                                                              │",
+        "│ Allow execution of [Shell]?                                                                                                                                                                  │",
+        "│                                                                                                                                                                                              │",
+        "│ ● 1. Allow once                                                                                                                                                                              │",
+        "│   2. No, suggest changes (esc)                                                                                                                                                               │",
+        "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯"
+      ],
+      "expect": {
+        "prompt": "Allow execution of [Shell]?",
+        "options": [
+          {
+            "key": "1",
+            "label": "Allow once"
+          },
+          {
+            "key": "2",
+            "label": "No, suggest changes (esc)"
+          }
+        ],
+        "cursor": 0,
+        "navigate": "digit"
+      }
+    },
+    {
+      "name": "Gemini CLI folder-trust question at 51 columns",
+      "lines": [
+        " ╭───────────────────────────────────────────────╮",
+        " │                                               │",
+        " │ Do you trust the files in this folder?        │",
+        " │                                               │",
+        " │ Trusting a folder allows Gemini CLI to load   │",
+        " │ its local configurations, including custom    │",
+        " │ commands, hooks, MCP servers, agent skills,   │",
+        " │ and settings. These configurations could      │",
+        " │ execute code on your behalf or change the     │",
+        " │ behavior of the CLI.                          │",
+        " │                                               │",
+        " │                                               │",
+        " │ ● 1. Trust folder (gstand)                    │",
+        " │   2. Trust parent folder (scratchpad)         │",
+        " │   3. Don't trust                              │",
+        " │                                               │",
+        " ╰───────────────────────────────────────────────╯"
+      ],
+      "expect": {
+        "prompt": "behavior of the CLI.",
+        "options": [
+          {
+            "key": "1",
+            "label": "Trust folder (gstand)"
+          },
+          {
+            "key": "2",
+            "label": "Trust parent folder (scratchpad)"
+          },
+          {
+            "key": "3",
+            "label": "Don't trust"
+          }
+        ],
+        "cursor": 0,
+        "navigate": "digit"
+      }
+    },
+    {
+      "name": "Claude Code message opening with a numbered list: its ● is a pointer glyph, not chrome",
+      "lines": [
+        "● 1. Убрал двоеточие из разделителя номера.",
+        "  2. Добавил фикстуру с живой панели.",
+        "",
+        "✻ Worked for 1m 12s"
+      ],
+      "expect": null
+    },
+    {
       "name": "a paragraph at the margin is not a description, even under a pointer",
       "lines": [
         "❯ 1. первый пункт плана",
