@@ -288,6 +288,34 @@ const NAVIGATION = /(enter to select|to navigate)/i;
 // menu, with at most a rule and a blank between.
 const FOOTER_REACH = 4;
 
+// Whether the menu says under itself how it is answered: the footer line, within
+// reach of the line the list ends on.
+function saysHow(rows, last) {
+  for (let i = last + 1, seen = 0; i < rows.length && seen < FOOTER_REACH; i++) {
+    if (!rows[i].trim()) continue;
+    seen++;
+    if (NAVIGATION.test(rows[i])) return true;
+  }
+  return false;
+}
+
+// Whether a run that carries chrome is a widget rather than a list someone wrote.
+//
+// A box alone does not say so. Gemini draws a tool's output in one, `│` down both
+// edges, and what a tool prints can be prose with a numbered list in it — the
+// agent's own reply read back through `run_command`, points 4 and 5 with their
+// descriptions set deeper than the numbers. Every other rule held, so the page
+// drew two answer buttons and a `!` on the tab while Gemini was still thinking.
+// Reported from the phone 2026-10-30; the pane is in the shared fixtures.
+//
+// A menu in a box points at one of its options — `❯` in Claude Code, `●` in
+// Gemini CLI — or says under itself how it is answered, and a two-column menu
+// has its preview drawn beside it, which no tool output does. A boxed run with
+// none of the three is output, and silence is the cheap failure.
+function widget(rows, r) {
+  return r.chrome && (r.pointed || r.beside || saysHow(rows, r.last));
+}
+
 // The widget's own button under a list of checkboxes, and the only thing on that
 // screen which ends the question: Enter on an option toggles its box, so a menu
 // that takes several answers is never finished by pressing an answer. It carried
@@ -431,7 +459,7 @@ export function detectQuestion(lines) {
   const pcol = previewColumn(plain);
   const rows = pcol < 0 ? plain : plain.map((l) => cutAt(l, pcol));
   let best = null;
-  let run = null; // { start, last, indent, opts, pointers, bullet, at, glued, chrome }
+  let run = null; // { start, last, indent, opts, pointers, bullet, at, glued, chrome, pointed, beside }
 
   const close = () => {
     // The pointer standing on the submit row is chrome for the list above it, and
@@ -443,7 +471,7 @@ export function detectQuestion(lines) {
     // with a `❯` on a `Submit` of its own is a widget, and prose does not draw one.
     if (run && run.opts.length >= 2) {
       const s = run.chrome ? null : submitRow(rows, run);
-      if (run.chrome || (s && s.focused)) best = run;
+      if (widget(rows, run) || (s && s.focused)) best = run;
     }
     run = null;
   };
@@ -454,8 +482,10 @@ export function detectQuestion(lines) {
     if (!m) continue;
     // A line of the input box brings no chrome with it: what is under that ❯ is
     // being typed, not offered.
-    const chrome = (CHROME.test(m[1]) || RIGHT_BORDER.test(rows[i])
-      || besideBox(plain[i], pcol)) && !COMPOSER.test(rows[i]);
+    const composer = COMPOSER.test(rows[i]);
+    const beside = besideBox(plain[i], pcol) && !composer;
+    const pointed = POINTER.test(m[1]) && !composer;
+    const chrome = (CHROME.test(m[1]) || RIGHT_BORDER.test(rows[i]) || beside) && !composer;
     // Continues the run if this line carries the next number and everything
     // between it and the previous option belongs to that option. The next
     // number is counted from the option before it rather than from the length
@@ -469,6 +499,8 @@ export function detectQuestion(lines) {
       run.at.push(i);
       run.glued.push(GLUED.test(rows[i]));
       run.chrome = run.chrome || chrome;
+      run.pointed = run.pointed || pointed;
+      run.beside = run.beside || beside;
       // Asked of the option the gap opens under, not of the run: what is allowed
       // between two options is a fact about the one above them.
       run.flush = o.checked !== undefined;
@@ -493,7 +525,7 @@ export function detectQuestion(lines) {
     close();
     const first = option(m);
     run = {
-      start: i, last: i, indent: indentOf(rows[i]), chrome,
+      start: i, last: i, indent: indentOf(rows[i]), chrome, pointed, beside,
       flush: first.checked !== undefined,
       opts: [first],
       pointers: [POINTER.test(m[1])],
@@ -520,11 +552,7 @@ export function detectQuestion(lines) {
   // nothing. A prompt that lists its keys is a prompt whose keys those are.
   // A list pointed at with Gemini's bullet takes the digit alone — see BULLET.
   let navigate = best.bullet ? 'digit' : 'digits';
-  for (let i = tail + 1, seen = 0; i < rows.length && seen < FOOTER_REACH; i++) {
-    if (!rows[i].trim()) continue;
-    seen++;
-    if (NAVIGATION.test(rows[i])) { navigate = 'arrows'; break; }
-  }
+  if (saysHow(rows, tail)) navigate = 'arrows';
   return {
     prompt,
     options: best.opts,

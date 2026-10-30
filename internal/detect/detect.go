@@ -49,7 +49,10 @@ var row = regexp.MustCompile(`^([\s│>❯›]*)(\S.*?)\s*$`)
 // is drawn in. A numbered list in prose has neither, and that list is the
 // false positive worth killing.
 var (
-	chrome      = regexp.MustCompile(`[>❯›│]`)
+	chrome = regexp.MustCompile(`[>❯›│]`)
+	// The pointer at the highlighted option alone, Gemini's "●" among it — see
+	// widget for why a box without one is not enough.
+	pointer     = regexp.MustCompile(`[>❯›●]`)
 	rightBorder = regexp.MustCompile(`│\s*$`)
 	ansi        = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]")
 	boxGlyphs   = regexp.MustCompile(`[│╭╮╰╯─]`)
@@ -78,6 +81,11 @@ var (
 // answers themselves are drawn at the left margin.
 const previewMinCol = 8
 
+// footerReach is how far under the last option the line saying how the menu is
+// answered is looked for: directly under it, with at most a rule and a blank
+// between.
+const footerReach = 4
+
 // Option is one answer: the digit to send and what it says.
 type Option struct {
 	Key   string `json:"key"`
@@ -98,8 +106,12 @@ type run struct {
 	flush  bool // ...unless the option carries a checkbox; see continues
 	opts   []Option
 	chrome bool
-	at     []int  // the line each option was found on
-	glued  []bool // ...and whether its number had the label glued to it
+	// What of that chrome says widget rather than output: a pointer at an
+	// option, or a preview drawn beside the list. See widget.
+	pointed bool
+	beside  bool
+	at      []int  // the line each option was found on
+	glued   []bool // ...and whether its number had the label glued to it
 }
 
 // previewColumn is the column a box drawn *beside* the options starts at, or -1.
@@ -299,7 +311,7 @@ func Question(lines []string) *Menu {
 
 	var best, cur *run
 	closeRun := func() {
-		if cur != nil && len(cur.opts) >= 2 && cur.chrome {
+		if cur != nil && len(cur.opts) >= 2 && widget(rows, cur) {
 			best = cur
 		}
 		cur = nil
@@ -316,8 +328,10 @@ func Question(lines []string) *Menu {
 		// what is under it is whatever is being typed — see composer.go for how
 		// the two are told apart. A line from there brings no chrome, so a
 		// numbered list in a half-written message is prose like any other.
-		hasChrome := (chrome.MatchString(m[1]) || rightBorder.MatchString(line) ||
-			besideBox(plain[i], pcol)) && !composerPrompt.MatchString(line)
+		composer := composerPrompt.MatchString(line)
+		beside := besideBox(plain[i], pcol) && !composer
+		pointed := pointer.MatchString(m[1]) && !composer
+		hasChrome := (chrome.MatchString(m[1]) || rightBorder.MatchString(line) || beside) && !composer
 		// The label, and whether anything separated it from its number.
 		text, glued := m[3], false
 		if m[4] != "" {
@@ -333,6 +347,8 @@ func Question(lines []string) *Menu {
 			cur.at = append(cur.at, i)
 			cur.glued = append(cur.glued, glued)
 			cur.chrome = cur.chrome || hasChrome
+			cur.pointed = cur.pointed || pointed
+			cur.beside = cur.beside || beside
 			// Asked of the option the gap opens under, not of the run: what may
 			// stand between two options is a fact about the one above them.
 			cur.flush = boxed
@@ -353,6 +369,7 @@ func Question(lines []string) *Menu {
 		shown, boxed := unbox(label(text))
 		cur = &run{start: i, last: i, indent: indentOf(line), flush: boxed,
 			opts: []Option{{Key: m[2], Label: shown}}, chrome: hasChrome,
+			pointed: pointed, beside: beside,
 			at: []int{i}, glued: []bool{glued}}
 	}
 	closeRun()
@@ -374,6 +391,36 @@ func Question(lines []string) *Menu {
 		}
 	}
 	return &Menu{Prompt: prompt, Options: best.opts}
+}
+
+// widget reports whether a run carrying chrome was drawn by a widget rather than
+// written by someone.
+//
+// A box alone does not say so. Gemini draws a tool's output in one, "│" down
+// both edges, and the agent's own reply read back through run_command had points
+// 4 and 5 in it with their descriptions set deeper than the numbers: two answer
+// buttons and a "!" on the tab while Gemini was still thinking (2026-10-30, the
+// pane is in the shared fixtures). A menu in a box points at one of its options
+// or says under itself how it is answered, and a two-column menu has its preview
+// beside it; a boxed run with none of the three is output.
+func widget(rows []string, r *run) bool {
+	return r.chrome && (r.pointed || r.beside || saysHow(rows, r.last))
+}
+
+// saysHow reports whether the line saying how the menu is answered is within
+// reach under the line the list ends on.
+func saysHow(rows []string, last int) bool {
+	seen := 0
+	for i := last + 1; i < len(rows) && seen < footerReach; i++ {
+		if strings.TrimSpace(rows[i]) == "" {
+			continue
+		}
+		seen++
+		if navigation.MatchString(rows[i]) {
+			return true
+		}
+	}
+	return false
 }
 
 // label drops the box's right border and its padding.
