@@ -51,27 +51,19 @@ export function directBase(direct, loc) {
 // The socket has no handlers of its own when it is handed over: whoever takes
 // it installs them, and nothing from the attempt is left to fire into it.
 //
-// opts.warm asks the door over plain HTTP first and opens the socket once that
-// has an answer, of whatever kind, all within the same wait. The door wants a
-// client certificate, and Chrome picks one for a host only for an ordinary
-// request: a socket that is the first thing sent to the door is cancelled
-// before any HTTP, in ~16 ms, with nothing in the door's log (2026-10-29,
-// headless Chrome 155 on a laptop, the same with Local Network Access checks
-// switched off). One request before it and the socket after it opens. The
-// browser keeps that choice until it restarts or its certificate cache is
-// cleared, so the caller asks for a warm only until the door has opened, and
-// again after it has missed.
+// The door asks for no client certificate. It did, and Chrome on Android keeps
+// the choice of one only while its process lives, so every start of the
+// installed app put the system's certificate picker over the terminal
+// (2026-10-30). What lets the socket in is a ticket instead — the caller puts
+// it in url (doorURL), and the server hands one out on every socket.
 export function tryDirect(url, opts, done) {
   const {
     wait = DIRECT_WAIT, WS = globalThis.WebSocket, timers = globalThis, now = Date.now,
-    warm = false, fetch: get = globalThis.fetch,
   } = opts || {};
   const started = now();
   let settled = false;
   let sock = null;
-  let abort = null;
   const quiet = () => {
-    if (abort) { try { abort.abort(); } catch (_) { /* nothing to stop */ } abort = null; }
     if (sock) { sock.onopen = null; sock.onclose = null; sock.onerror = null; }
   };
   const settle = (ok, why) => {
@@ -82,37 +74,17 @@ export function tryDirect(url, opts, done) {
     if (!ok && sock) { try { sock.close(); } catch (_) { /* already gone */ } }
     done(ok ? sock : null, why, now() - started);
   };
-  const open = () => {
-    if (settled) return;
-    try { sock = new WS(url); } catch (_) {
-      // A malformed address throws here rather than failing the socket. Answered
-      // on the next tick all the same, so the caller sees one shape of miss.
-      timers.setTimeout(() => settle(false, 'closed'), 0);
-      return;
-    }
-    sock.binaryType = 'arraybuffer';
-    sock.onopen = () => settle(true, 'open');
-    // An error is always followed by a close, and a close can come without one.
-    sock.onclose = () => settle(false, 'closed');
-  };
   const timer = timers.setTimeout(() => settle(false, 'timeout'), wait);
-  const asked = warm && get ? warmAddress(url) : '';
-  if (asked) {
-    if (globalThis.AbortController) abort = new AbortController();
-    // The answer is opaque and nothing is read from it: what matters is that
-    // the TLS handshake happened. A failure is no verdict either — the socket
-    // after it is what decides, as it does without a warm.
-    let p;
-    try {
-      p = Promise.resolve(get(asked, {
-        method: 'HEAD', mode: 'no-cors', credentials: 'include', cache: 'no-store',
-        signal: abort ? abort.signal : undefined,
-      }));
-    } catch (e) { p = Promise.reject(e); }
-    p.then(open, open);
-  } else {
-    open();
+  try { sock = new WS(url); } catch (_) {
+    // A malformed address throws here rather than failing the socket. Answered
+    // on the next tick all the same, so the caller sees one shape of miss.
+    timers.setTimeout(() => settle(false, 'closed'), 0);
+    return () => { settled = true; timers.clearTimeout(timer); };
   }
+  sock.binaryType = 'arraybuffer';
+  sock.onopen = () => settle(true, 'open');
+  // An error is always followed by a close, and a close can come without one.
+  sock.onclose = () => settle(false, 'closed');
   return () => {
     if (settled) return;
     settled = true;
@@ -122,14 +94,12 @@ export function tryDirect(url, opts, done) {
   };
 }
 
-// warmAddress(url) → the door's own root over HTTP for a socket address
-// ('wss://host:port/ws?…' → 'https://host:port/'), or '' when there is none.
-export function warmAddress(url) {
-  let u;
-  try { u = new URL(url); } catch (_) { return ''; }
-  if (u.protocol === 'wss:') return `https://${u.host}/`;
-  if (u.protocol === 'ws:') return `http://${u.host}/`;
-  return '';
+// doorURL(base, qs, ticket) → the door's socket address for this page, or ''
+// when there is no ticket to show: the door refuses a socket without one, and a
+// refusal would hold the door off for MISS_HOLD.
+export function doorURL(base, qs, ticket) {
+  if (!base || !ticket) return '';
+  return `${base}/ws?${qs ? `${qs}&` : ''}ticket=${encodeURIComponent(ticket)}`;
 }
 
 // worthTrying(lastMiss, now) says whether the door is asked again.

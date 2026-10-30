@@ -251,6 +251,7 @@ URL.
 | `POCKTERM_PUBLIC_IP_URLS` | empty | Services that echo the public address back (`https://api.ipify.org`), comma-separated, tried in order. Set, the address is shown under the way out; asked past `HTTPS_PROXY`, every 5 minutes and at once when the way out changes. Empty asks nobody. |
 | `POCKTERM_DIRECT_URL` | empty | A second, nearer door to this same server (`https://lan.example:8135`), scheme and host only. Set, the page tries the terminal socket through it first (1.5 s to answer) and goes the usual way otherwise; the page itself stays at its address. A miss is tried again after 30 s, in the background; a hit moves the socket over. |
 | `POCKTERM_TRUSTED_ORIGINS` | empty | Pages opened through another door (`https://cc.example`) whose sockets this server takes besides its own; comma-separated, scheme, host and port matched exactly. Needed on the server behind the nearer door. |
+| `POCKTERM_DOOR_LISTEN` | empty | A separate address for the nearer door's proxy (`127.0.0.1:8131`), loopback only. It serves the terminal socket and nothing else, and only to a page showing a one-time ticket, which the server hands out on every socket already let in through the main door or through this one. The door's proxy asks for no client certificate. Unset, the page never tries the nearer door. |
 
 ## Starting sessions from the phone (the + button)
 

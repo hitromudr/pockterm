@@ -294,3 +294,28 @@ decides. The page asks for a warm until the door has opened from it and again af
 (`doorWarm`), not on every connect, since every tab switch is one. `socket-via` carries
 `"warm"`. The browser test asserts that the door's first sight of the page is a request, not a
 socket; it ran `["ws"]` with the warm switched off.
+
+**2026-10-30: the door stopped asking for a certificate.** On the phone the warm worked and
+the price came with it: Chrome on Android keeps the choice of a client certificate only while
+its process lives, and asks through the system's own picker, so every start of the installed
+app — five in thirteen hours, one of them a Chrome update — put «Выбор сертификата» for the
+door over the terminal. The socket did not wait for it (a `timeout` at 1501 ms and the long
+way), but the picker stayed on screen until somebody answered it. Nothing on the page keeps
+that choice, and `AutoSelectCertificateForUrls` is a managed-device policy.
+
+So the door's proxy asks for no certificate (`ssl_verify_client off`; `optional` still sends
+the request, and Chrome answers a request with the picker), and what lets a socket in is a
+ticket: the config frame of every socket carries a new one (`Tickets` in
+`internal/server/tickets.go`), the page shows it in the door's query string, and the door
+spends it on that one socket. The chain still starts at a certificate — the first socket of a
+page goes through the public door — and a ticket in the proxy's log is already spent. The door
+is a listener of its own (`POCKTERM_DOOR_LISTEN`, `DoorHandler`) that serves `/ws` and nothing
+else, so the absence of a certificate exposes no other part of the server. Tickets live in the
+process: after a restart the page's ticket is refused, which is a miss like any other — the
+long way, a new ticket, the aside.
+
+What it changed on the page: a fresh page has no ticket, so its first socket goes the long way
+at once instead of waiting `DIRECT_WAIT` on the door, and the config frame that brings the
+ticket asks for the aside straight away. The warm is gone — with no certificate to pick there
+is nothing for it to do. The browser test now asserts that the door sees a socket and nothing
+else, and that it refuses a socket without a live ticket.

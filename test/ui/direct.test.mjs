@@ -4,10 +4,11 @@
 // the public address and back down the host's tunnel — and every blink of the
 // home line was a stalled socket. The server now names a door on the same
 // network (POCKTERM_DIRECT_URL) and the page tries its socket there; the page
-// itself stays where it was opened. Here the door is the same binary under
-// another host name, which is another origin as the browser counts it, so what
-// is tested is the real cross-origin socket and the server's list of trusted
-// pages, not a shortcut around them.
+// itself stays where it was opened. Here the door is the same binary's door
+// listener under another host name, which is another origin as the browser
+// counts it, so what is tested is the real cross-origin socket, the server's
+// list of trusted pages and the ticket the door takes instead of a client
+// certificate (2026-10-30), not a shortcut around them.
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { startStand } from './stand.mjs';
@@ -81,21 +82,21 @@ describe('a door on the same network', () => {
   test('the socket moves to the door once the page learns it, and the page stays put', async () => {
     const { page, base } = stand;
     const hostName = new URL(base).host;
-    const door = `localhost:${new URL(base).port}`;
+    const door = stand.door;
     const toDoor = watchHost(page, door);
     await stand.open();
     await stand.attach('alpha');
-    // A fresh page has never heard of the door: the first socket goes the way
-    // it always went, the config frame names the door, and the door is tried
-    // beside it and takes over.
+    // A fresh page has no ticket for the door: the first socket goes the way
+    // it always went, its config frame names the door and hands one over, and
+    // the door is tried beside it and takes over.
     await waitFor(() => sockets.some((s) => s.host === door && s.open), 'a socket through the door');
     await waitFor(() => !sockets.some((s) => s.host === hostName && s.open), 'the long-way socket to close');
     assert.equal(sockets[0].host, hostName, 'the first socket was not the page\'s own host');
     assert.equal(new URL(page.url()).host, hostName, 'the page itself moved');
-    // The door is asked over HTTP before its socket: Chrome picks a client
-    // certificate for nothing else, and a socket sent first is cancelled.
-    assert.equal(toDoor[0], 'http', `the door's first sight of the page: ${JSON.stringify(toDoor)}`);
-    assert.match(stand.serverLog(), /socket-via.*"via":"direct".*"warm":true/);
+    // A socket and nothing else: no request that would make a browser pick a
+    // client certificate.
+    assert.deepEqual(toDoor, ['ws'], `what the door saw of the page: ${JSON.stringify(toDoor)}`);
+    assert.match(stand.serverLog(), /socket-via.*"via":"direct".*"why":"aside"/);
     assert.equal(await clients(page), 1, 'the swap left a second client attached');
     await typed(page, 'via the door');
     const m = await mark(stand);
@@ -106,7 +107,7 @@ describe('a door on the same network', () => {
 
   test('the next connect goes to the door first, with nothing the long way', async () => {
     const { page } = stand;
-    const door = `localhost:${new URL(stand.base).port}`;
+    const door = stand.door;
     const before = sockets.length;
     await stand.attach('beta');
     await waitFor(() => sockets.slice(before).some((s) => s.open), 'a socket for beta');
@@ -115,9 +116,23 @@ describe('a door on the same network', () => {
     assert.deepEqual(sockets.slice(before).map((s) => s.host), [door]);
     assert.equal(await clients(page), 1);
     await typed(page, 'beta at home');
-    assert.match(stand.serverLog(), /socket-via.*"via":"direct"/);
+    assert.match(stand.serverLog(), /socket-via.*"via":"direct".*"why":"open"/);
+  });
+
+  test('the door refuses a socket that shows no ticket, or a made-up one', async () => {
+    const { page } = stand;
+    const door = stand.door;
+    const outcome = (qs) => page.evaluate((url) => new Promise((resolve) => {
+      const ws = new WebSocket(url);
+      ws.onopen = () => { ws.close(); resolve('open'); };
+      ws.onclose = () => resolve('closed');
+    }), `ws://${door}/ws?session=alpha${qs}`);
+    assert.equal(await outcome(''), 'closed');
+    assert.equal(await outcome('&ticket=made-up'), 'closed');
+    assert.match(stand.serverLog(), /door: socket refused, no live ticket/);
   });
 });
+
 
 describe('a door that is not there', () => {
   let stand;

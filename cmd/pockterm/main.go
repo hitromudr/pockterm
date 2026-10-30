@@ -236,10 +236,15 @@ func serve() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	h := server.Handler(server.Options{
+	var tickets *server.Tickets
+	if cfg.DoorListen != "" {
+		tickets = server.NewTickets()
+	}
+	opts := server.Options{
 		Token:          cfg.Token,
 		DirectURL:      cfg.DirectURL,
 		TrustedOrigins: cfg.TrustedOrigins,
+		Tickets:        tickets,
 		ListSessions:   sessionLister(cfg),
 		Attach: func(id int64, target string) []string {
 			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
@@ -365,7 +370,15 @@ func serve() {
 			log.Printf("session buttons back to the defaults: %d", len(restored))
 			return restored, nil
 		},
-	})
+	}
+	h := server.Handler(opts)
+	if cfg.DoorListen != "" {
+		door := server.DoorHandler(opts)
+		go func() {
+			log.Printf("door listening on %s", cfg.DoorListen)
+			log.Fatal(http.ListenAndServe(cfg.DoorListen, door))
+		}()
+	}
 	log.Printf("pockterm %s listening on %s", pockterm.Version(), cfg.Listen)
 	log.Fatal(http.ListenAndServe(cfg.Listen, h))
 }

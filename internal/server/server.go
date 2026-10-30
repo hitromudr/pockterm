@@ -99,9 +99,13 @@ type Options struct {
 	// through another door, whose sockets this one takes besides its own.
 	DirectURL      string
 	TrustedOrigins []string
-	WheelLines     func() int   // lines tmux scrolls per wheel notch; nil leaves the page on its default
-	StatusRows     func() int   // rows tmux's status line takes at the bottom; nil says nothing
-	Static         http.Handler // the embedded PWA
+	// Tickets let a socket through the nearer door (see DoorHandler); every
+	// socket's config frame carries a new one. nil hands out none, and the page
+	// then never tries the door.
+	Tickets    *Tickets
+	WheelLines func() int   // lines tmux scrolls per wheel notch; nil leaves the page on its default
+	StatusRows func() int   // rows tmux's status line takes at the bottom; nil says nothing
+	Static     http.Handler // the embedded PWA
 	// SaveUpload stores what the browser sent under the name it gave (which
 	// may be empty) and returns the path it landed in; nil disables
 	// /api/upload.
@@ -237,6 +241,27 @@ func Handler(o Options) http.Handler {
 	mux.HandleFunc("/api/sessions/order", func(w http.ResponseWriter, r *http.Request) { serveOrder(o, w, r) })
 	mux.HandleFunc("/api/uplink", func(w http.ResponseWriter, r *http.Request) { serveUplink(o, w, r) })
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) { serveWS(o, w, r) })
+	return mux
+}
+
+// DoorHandler is the nearer door's own listener: the terminal socket and
+// nothing else, and only for a page showing a ticket it was handed on a socket
+// already let in (see Tickets). The proxy in front of it asks for no client
+// certificate — that is what this is for — so nothing else of the server may be
+// reachable through it.
+func DoorHandler(o Options) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		if o.Tickets == nil || !o.Tickets.Take(r.URL.Query().Get("ticket")) {
+			// The ticket is not repeated here: spent or not, it is the one thing
+			// on the line that must not be a way in.
+			log.Printf("door: socket refused, no live ticket (origin %q)", r.Header.Get("Origin"))
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		serveWS(o, w, r)
+	})
+	mux.HandleFunc("/", http.NotFound)
 	return mux
 }
 
@@ -1016,7 +1041,12 @@ func serveWS(o Options, w http.ResponseWriter, r *http.Request) {
 			// page's sources because it is the host's fact, and it reaches
 			// a page opened through either door.
 			Direct string `json:"direct,omitempty"`
+			// What the page's next socket shows at that door (see Tickets).
+			Ticket string `json:"ticket,omitempty"`
 		}{Type: "config", Version: o.PageVersion, Direct: o.DirectURL}
+		if o.DirectURL != "" && o.Tickets != nil {
+			cfg.Ticket = o.Tickets.Mint()
+		}
 		if o.WheelLines != nil {
 			if n := o.WheelLines(); n > 0 {
 				cfg.WheelLines = n

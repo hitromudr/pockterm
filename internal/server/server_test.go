@@ -1466,6 +1466,125 @@ func TestConfigFrameNamesTheDirectDoor(t *testing.T) {
 	}
 }
 
+// configTicket dials srv and returns the ticket its config frame carries.
+func configTicket(t *testing.T, srv *httptest.Server, query string) string {
+	t.Helper()
+	c, _, err := websocket.DefaultDialer.Dial(wsURL(srv, query), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		mt, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("waiting for the config frame: %v", err)
+		}
+		if mt != websocket.TextMessage {
+			continue
+		}
+		var f struct {
+			Type   string `json:"type"`
+			Ticket string `json:"ticket"`
+		}
+		if err := json.Unmarshal(data, &f); err != nil || f.Type != "config" {
+			continue
+		}
+		return f.Ticket
+	}
+}
+
+// The nearer door asks for no client certificate — Chrome on Android put its
+// picker over the terminal on every start of the app (2026-10-30) — so what
+// lets a socket through it is a ticket handed out on a socket already let in.
+// One socket per ticket, and nothing but the socket behind that door.
+func TestTheDoorTakesOneSocketPerTicket(t *testing.T) {
+	opts := testOptions("")
+	opts.DirectURL = "https://lan.example:8135"
+	opts.Tickets = NewTickets()
+	public := httptest.NewServer(Handler(opts))
+	defer public.Close()
+	door := httptest.NewServer(DoorHandler(opts))
+	defer door.Close()
+
+	ticket := configTicket(t, public, "?session=demo")
+	if len(ticket) < 40 {
+		t.Fatalf("ticket %q", ticket)
+	}
+
+	// No ticket, a made-up one: refused before any upgrade.
+	for _, q := range []string{"?session=demo", "?session=demo&ticket=nope"} {
+		_, resp, err := websocket.DefaultDialer.Dial(wsURL(door, q), nil)
+		if err == nil || resp == nil || resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s: err %v, resp %v — want 403", q, err, resp)
+		}
+	}
+
+	// The ticket opens a socket, and that socket hands out the next one.
+	next := configTicket(t, door, "?session=demo&ticket="+ticket)
+	if next == "" || next == ticket {
+		t.Fatalf("next ticket %q after %q", next, ticket)
+	}
+	// Spent: the line the proxy logged is no way in.
+	_, resp, err := websocket.DefaultDialer.Dial(wsURL(door, "?session=demo&ticket="+ticket), nil)
+	if err == nil || resp == nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("a spent ticket: err %v, resp %v — want 403", err, resp)
+	}
+	if configTicket(t, door, "?session=demo&ticket="+next) == "" {
+		t.Fatal("the door's own socket handed out no ticket")
+	}
+
+	// Nothing else of the server is behind the door.
+	for _, path := range []string{"/", "/api/sessions", "/api/upload", "/app.js"} {
+		resp, err := http.Get(door.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s through the door: %d", path, resp.StatusCode)
+		}
+	}
+}
+
+// Without a door there is nothing to hand out.
+func TestNoTicketWithoutADoor(t *testing.T) {
+	opts := testOptions("")
+	opts.Tickets = NewTickets()
+	opts.PageVersion = "1.0.0" // a frame that carries something else
+	srv := httptest.NewServer(Handler(opts))
+	defer srv.Close()
+	if got := configTicket(t, srv, "?session=demo"); got != "" {
+		t.Fatalf("ticket %q with no door named", got)
+	}
+}
+
+func TestTicketsExpireAndStayBounded(t *testing.T) {
+	now := time.Unix(1000, 0)
+	tk := NewTickets()
+	tk.now = func() time.Time { return now }
+	tk.max = 3
+	a := tk.Mint()
+	now = now.Add(TicketTTL)
+	if tk.Take(a) {
+		t.Fatal("a ticket past its TTL opened")
+	}
+	first := tk.Mint()
+	for i := 0; i < 3; i++ {
+		now = now.Add(time.Second)
+		tk.Mint()
+	}
+	if len(tk.live) != 3 {
+		t.Fatalf("%d tickets held, max 3", len(tk.live))
+	}
+	if tk.Take(first) {
+		t.Fatal("the oldest ticket survived past the bound")
+	}
+	if tk.Take("") {
+		t.Fatal("an empty ticket opened")
+	}
+}
+
 func TestConfigFrameSaysHowMuchOfTheBottomIsTmux(t *testing.T) {
 	// The page shifts the rows to follow a finger between whole lines, and
 	// tmux's status line is the bottom row of the same grid — so it rode along,

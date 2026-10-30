@@ -68,6 +68,11 @@ type Config struct {
 	// on top of its own, which is always trusted.
 	DirectURL      string   // POCKTERM_DIRECT_URL
 	TrustedOrigins []string // POCKTERM_TRUSTED_ORIGINS
+	// Where the nearer door's proxy hands its sockets to this server: a second
+	// listener that serves the terminal socket alone, to a page with a ticket
+	// from this same process. Empty opens no such listener, and the page then
+	// never tries the door.
+	DoorListen string // POCKTERM_DOOR_LISTEN
 }
 
 func FromEnv(getenv func(string) string) (Config, error) {
@@ -93,6 +98,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		PushSubject:    getenv("POCKTERM_PUSH_SUBJECT"),
 		Uplinks:        getenv("POCKTERM_UPLINKS"),
 		PublicIPURLs:   getenv("POCKTERM_PUBLIC_IP_URLS"),
+		DoorListen:     getenv("POCKTERM_DOOR_LISTEN"),
 	}
 	if c.DirectURL, err = origin("POCKTERM_DIRECT_URL", getenv("POCKTERM_DIRECT_URL")); err != nil {
 		return Config{}, err
@@ -185,6 +191,17 @@ func (c Config) validate() error {
 	// A terminal without auth must never face a network: fail closed.
 	if !loopback && c.Token == "" {
 		return fmt.Errorf("refusing to listen on non-loopback %q without POCKTERM_TOKEN", c.Listen)
+	}
+	if c.DoorListen != "" {
+		host, _, err := net.SplitHostPort(c.DoorListen)
+		if err != nil {
+			return fmt.Errorf("invalid POCKTERM_DOOR_LISTEN %q: %w", c.DoorListen, err)
+		}
+		// A ticket is a way in only for a page that was let in before; the
+		// listener itself is for a proxy on this machine.
+		if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			return fmt.Errorf("refusing POCKTERM_DOOR_LISTEN on non-loopback %q", c.DoorListen)
+		}
 	}
 	// Half-configured notifications would fail silently at the first event.
 	if (c.TGToken == "") != (c.TGChat == "") {

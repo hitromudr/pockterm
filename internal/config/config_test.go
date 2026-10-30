@@ -190,3 +190,15 @@ func TestDirectDoorOrigins(t *testing.T) {
 		}
 	}
 }
+
+func TestDoorListenIsLoopbackOnly(t *testing.T) {
+	c, err := FromEnv(env(map[string]string{"POCKTERM_DOOR_LISTEN": "127.0.0.1:8131"}))
+	if err != nil || c.DoorListen != "127.0.0.1:8131" {
+		t.Fatalf("%+v, %v", c.DoorListen, err)
+	}
+	for _, bad := range []string{"0.0.0.0:8131", "192.168.1.222:8131", ":8131", "8131"} {
+		if _, err := FromEnv(env(map[string]string{"POCKTERM_DOOR_LISTEN": bad})); err == nil {
+			t.Errorf("door listener %q accepted", bad)
+		}
+	}
+}

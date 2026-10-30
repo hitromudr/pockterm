@@ -2,7 +2,7 @@ import { keyBytes, applyCtrl } from './keys.js';
 import { detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNotice } from './notify.js';
 import { linkAction } from './link.js';
-import { directBase, tryDirect, worthTrying, viaMark } from './direct.js';
+import { directBase, tryDirect, doorURL, worthTrying, viaMark } from './direct.js';
 import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
 import { snapshotText, chunks, pickedText, markdownFrom } from './select.js';
 import { initDiag, environment, report } from './diag.js';
@@ -427,7 +427,10 @@ let direct = '';
 if (!CELL) { try { direct = localStorage.getItem('pt-direct') || ''; } catch (_) {} }
 let via = '';
 let directMiss = 0;      // when the door last failed to open
-let doorWarm = false;    // the door has opened from this page, and not missed since
+// What the next socket shows at the door: handed out on every socket's config
+// frame, good for one socket, and held only here — a page that has not had a
+// socket yet has none, and goes the long way first (see js/direct.js).
+let doorTicket = '';
 let directAttempt = null; // cancel() of an attempt in flight
 const enc = new TextEncoder();
 
@@ -2539,27 +2542,26 @@ function socketQS() {
   ].filter(Boolean).join('&');
 }
 
-// connect tries the nearer door first when there is one and it has not just
-// failed, and goes the way it always went otherwise — or once the door has had
-// its DIRECT_WAIT. Until the door has opened from this page, and after every
-// miss, the attempt asks it over HTTP first (opts.warm in js/direct.js): Chrome
-// picks the door's client certificate for nothing else. The address is asked for again at the fallback, because the
-// size in it may have changed while the door was being waited for.
+// connect tries the nearer door first when there is one, the page holds a
+// ticket for it and it has not just failed, and goes the way it always went
+// otherwise — or once the door has had its DIRECT_WAIT. A ticket is spent on the
+// attempt whatever comes of it; the socket that follows brings the next. The
+// address is asked for again at the fallback, because the size in it may have
+// changed while the door was being waited for.
 function connect() {
   if (!current) return;
   // One page, one socket, by construction rather than by every caller
   // remembering: whatever is in hand goes before another is opened.
   dropSocket();
-  const base = directBase(direct, location);
-  if (!base || !worthTrying(directMiss, Date.now())) {
+  const url = doorURL(directBase(direct, location), socketQS(), doorTicket);
+  if (!url || !worthTrying(directMiss, Date.now())) {
     connectHost();
     return;
   }
-  const warm = !doorWarm;
-  directAttempt = tryDirect(`${base}/ws?${socketQS()}`, { warm }, (sock, why, ms) => {
+  doorTicket = '';
+  directAttempt = tryDirect(url, {}, (sock, why, ms) => {
     directAttempt = null;
-    report('socket-via', { via: sock ? 'direct' : 'host', why, ms, warm });
-    doorWarm = !!sock;
+    report('socket-via', { via: sock ? 'direct' : 'host', why, ms });
     if (sock) { adopt(sock, 'direct'); opened(); return; }
     directMiss = Date.now();
     connectHost();
@@ -2579,18 +2581,19 @@ function connectHost() {
 // and how a page that fell back while the host restarted (every deploy) finds
 // its way back to the door. A door that opens takes over; one that does not
 // leaves the socket in hand alone and says nothing, since away from home that
-// is every half a minute.
+// is every half a minute. It is also how a fresh page gets to the door at all:
+// its first socket goes the long way for want of a ticket, and the config frame
+// that brings one asks for this at once.
 function tryDirectAside() {
   if (via !== 'host' || directAttempt || !current) return;
   if (!ws || ws.readyState !== WebSocket.OPEN || document.visibilityState !== 'visible') return;
-  const base = directBase(direct, location);
-  if (!base || !worthTrying(directMiss, Date.now())) return;
-  const warm = !doorWarm;
-  directAttempt = tryDirect(`${base}/ws?${socketQS()}`, { warm }, (sock, why, ms) => {
+  const url = doorURL(directBase(direct, location), socketQS(), doorTicket);
+  if (!url || !worthTrying(directMiss, Date.now())) return;
+  doorTicket = '';
+  directAttempt = tryDirect(url, {}, (sock, why, ms) => {
     directAttempt = null;
-    doorWarm = !!sock;
     if (!sock) { directMiss = Date.now(); return; }
-    report('socket-via', { via: 'direct', why: 'aside', ms, warm });
+    report('socket-via', { via: 'direct', why: 'aside', ms });
     dropSocket();
     adopt(sock, 'direct');
     opened();
@@ -2603,7 +2606,6 @@ function learnDirect(url) {
   if (url === direct) return;
   direct = url;
   directMiss = 0;
-  doorWarm = false;
   paintVia();
   if (!CELL) { try { if (url) localStorage.setItem('pt-direct', url); else localStorage.removeItem('pt-direct'); } catch (_) {} }
 }
@@ -2750,6 +2752,12 @@ function onControl(raw) {
   if (c && c.type === 'config') offerUpdate(c.version);
   // And the nearer door, if this host has one.
   if (c && c.type === 'config') learnDirect(typeof c.direct === 'string' ? c.direct : '');
+  // And what the next socket shows there. A socket the long way that brings
+  // one tries the door beside it straight away.
+  if (c && c.type === 'config' && typeof c.ticket === 'string' && c.ticket) {
+    doorTicket = c.ticket;
+    tryDirectAside();
+  }
 }
 
 // send(data) → whether the socket took it.
