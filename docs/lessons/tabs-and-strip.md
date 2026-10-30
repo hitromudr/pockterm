@@ -164,8 +164,11 @@ the tmux status line over a green tab. Gemini puts its state in the terminal
 title instead, led by a glyph: `✦` working, `⏲` a tool running silently, `✋`
 waiting for a confirmation, `◇` ready (Gemini CLI 0.66.0,
 `packages/cli/src/utils/windowTitle.ts`, and `#{pane_title}` of a live pane).
-Only the first two count as a turn, and only the glyph is read — the words after
-`✦` are a thought's subject. Claude Code's own title (`✳ <topic>`) is not in the
+Only `◇` ends a turn, and only the glyph is read — the words after `✦` are a
+thought's subject. `✋` ended it for one deploy and sent "закончил" twice in forty
+seconds over a running build: Gemini also raises it when a command has printed and
+then gone quiet (`useShellInactivityStatus`), flipping back to `✦` after, and the
+title cannot tell that from a real confirmation. Claude Code's own title (`✳ <topic>`) is not in the
 set. The title survives the program in tmux; Gemini clears it on exit, so only a
 process killed outright leaves a tab purple.
 

@@ -452,6 +452,13 @@ func TestTitleHoldsATurnWithAStillScreen(t *testing.T) {
 	if got := h.w.Activity("claude"); got != ActivityWorking {
 		t.Fatalf("a still screen under a working title: %q, want %q", got, ActivityWorking)
 	}
+	// A command gone quiet raises "Action Required" mid-turn, and that is not the
+	// end of it: read as one, a build sent "закончил" twice in forty seconds.
+	h.title = "✋  Action Required (Vita)"
+	h.settle()
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want none while the title asks for attention", h.events)
+	}
 	// Ready ends it the way the counter going away does, and as soon.
 	h.title = "◇  Ready (Vita)"
 	h.settle()

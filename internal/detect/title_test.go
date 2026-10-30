@@ -14,7 +14,9 @@ func TestTitleLive(t *testing.T) {
 		{"✦  Reading the build script (Vita)", true},
 		{"⏲  Working… (Vita)", true},
 		{"◇  Ready (Vita)", false},
-		{"✋  Action Required (Vita)", false},
+		// Raised by a quiet running command as well as by a confirmation: the
+		// turn is open in both (see TitleLive).
+		{"✋  Action Required (Vita)", true},
 		{"✳ Запуск Gemini 3.1 Pro через Pocketterm", false},
 		{"ai", false},
 		{"", false},
