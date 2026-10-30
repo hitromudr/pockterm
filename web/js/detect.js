@@ -14,12 +14,20 @@
 // the ordinary way and no menu was found at all. The lookahead is what keeps
 // `1.2.3` out: a digit after the separator is a version number, and silence is
 // the cheap failure there.
-const OPTION = /^([\s│>❯›*-]*)(\d{1,2})[.):](?:\s+|(?=\D))(\S.*?)\s*$/;
+//
+// A colon is not a separator. No agent's menu draws one — Claude Code and Gemini
+// CLI 0.66.0 (`BaseSelectionList`) both write `1.` — while
+// line-numbered output does exactly that: `grep -n`, or Gemini reading a document
+// back as `37: …`. Inside Gemini's tool box the `│` down the edge is chrome and a
+// run need not start at 1, so nine lines of a file became nine answer buttons and
+// a `!` on the tab while the agent was thinking. Reported from the screen
+// 2026-10-30; the pane is in the shared fixtures.
+const OPTION = /^([\s│>❯›*-]*)(\d{1,2})[.)](?:\s+|(?=\D))(\S.*?)\s*$/;
 
 // Whether that line's number has the label glued to it. On a two-column menu it
 // says more than how the line is spaced: the widget has moved the number one
 // line down, so the label's first words are on the line above — see `widen`.
-const GLUED = /^[\s│>❯›*-]*\d{1,2}[.):]\S/;
+const GLUED = /^[\s│>❯›*-]*\d{1,2}[.)]\S/;
 
 // TUI chrome: the pointer at the highlighted option, or the box the prompt
 // is drawn in. A numbered list in prose (Claude writes one in almost every

@@ -27,7 +27,13 @@ import (
 // The label comes back in one of two groups: the third when a space separates
 // it, the fourth when nothing does. The fourth is also what says the widget has
 // moved the number a line down — see widen.
-var option = regexp.MustCompile(`^([\s│>❯›*-]*)(\d{1,2})[.):](?:\s+(\S.*?)|([^\s\d].*?))\s*$`)
+//
+// A colon is not a separator: no agent's menu draws one, and line-numbered
+// output does — Gemini reading a document back as "37: …" inside its tool box,
+// whose "│" is chrome, made nine lines of a file a menu that "asks for an
+// answer" (2026-10-30, the pane is in the shared fixtures). web/js/detect.js
+// carries the measurement.
+var option = regexp.MustCompile(`^([\s│>❯›*-]*)(\d{1,2})[.)](?:\s+(\S.*?)|([^\s\d].*?))\s*$`)
 
 // row is a line split into the chrome drawn down its left edge and its own
 // words, which is how a wrapped label's continuation is read off a two-column
