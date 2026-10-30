@@ -4051,9 +4051,32 @@ describe('a new version on the server', () => {
     // the server agrees with. The marker proves the document is a new one:
     // hiding the bar without reloading would be the same defect, quieter.
     await page.context().unroute('**/js/app.js');
+    // The new page is slow to come, the way it is over the tunnel, and the
+    // button is pressed again while it is on its way. On the phone each such
+    // press started the load over (2026-10-30): the second press must neither
+    // reload again nor leave the button looking untouched.
+    let loads = 0;
+    const isPage = (url) => url.pathname === '/';
+    await page.context().route(isPage, async (route) => {
+      loads++;
+      await new Promise((r) => setTimeout(r, 1500));
+      await route.continue();
+    });
     await page.evaluate(() => { window.__beforeReload = true; });
-    await page.click('#update-now');
-    await page.waitForFunction(() => window.__beforeReload === undefined, null, { timeout: 5000 });
+    // Pressed from inside the page: Playwright's click waits out the
+    // navigation it starts, and the old page is what is being looked at here.
+    // The second press is the page's own timer: by the time a second evaluate
+    // came back from the test, the new page could have replaced this one.
+    const pressed = await page.evaluate(() => {
+      const b = document.getElementById('update-now');
+      b.click();
+      setTimeout(() => b.click(), 300);
+      return b.textContent;
+    });
+    assert.equal(pressed, 'Обновляется…', 'the button does not show that it was pressed');
+    await page.waitForFunction(() => window.__beforeReload === undefined, null, { timeout: 8000 });
+    await page.context().unroute(isPage);
+    assert.equal(loads, 1, `the page was asked for ${loads} times`);
     await page.waitForSelector('#screen-term:not([hidden])');
     await page.waitForSelector('#update-bar', { state: 'hidden' });
 

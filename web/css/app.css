@@ -1238,6 +1238,11 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
   color: #0b0e14;
   font-size: 13px;
 }
+/* Pressed, and the new page on its way: no longer an offer, so no longer filled. */
+#update-bar button[data-taking] {
+  background: transparent;
+  color: var(--fg);
+}
 
 /* The install offer, under the drawer's header. In the flow and not over it:
    the screen it sits on is a list, and a bar floating above a list covers the

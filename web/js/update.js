@@ -31,3 +31,19 @@ export function staleNotice(served, running) {
     text: `${served} на сервере · сейчас ${running}`,
   };
 }
+
+// How long one press is believed to be on its way. A reload of the whole page
+// over the tunnel took fourteen seconds on the phone (2026-10-30), with the new
+// worker fetching its own copy of every file at the same time — and a button
+// that sat there unchanged for that long was pressed again, and each press
+// started the load over: twelve presses in forty seconds, and the page came
+// only once they stopped. Past this a press is let through again, for the load
+// the browser dropped without a word.
+export const TAKE_HOLD = 30000;
+
+// startsReload(since, now) → whether a press of the button should load the page,
+// given when the last one did (0 for never). A press inside the hold is the same
+// request again, and repeating it would only cancel the load already under way.
+export function startsReload(since, now) {
+  return !since || now - since >= TAKE_HOLD;
+}

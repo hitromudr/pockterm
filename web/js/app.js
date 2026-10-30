@@ -9,7 +9,7 @@ import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
 import { Scroller, movedWholeScreen } from './scroll.js';
-import { staleNotice } from './update.js';
+import { staleNotice, startsReload, TAKE_HOLD } from './update.js';
 import { endingKeys, commitComposition, endEditByBlur } from './ender.js';
 import { pushHistory, previewOf } from './compose.js';
 import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, MARKS, CUSTOM_MARK } from './kinds.js';
@@ -5729,7 +5729,26 @@ function offerUpdate(served) {
   show(notice);
 }
 
-document.getElementById('update-now').addEventListener('click', () => {
+const updateNowBtn = document.getElementById('update-now');
+let updateTakenAt = 0;
+updateNowBtn.addEventListener('click', () => {
+  const now = Date.now();
+  // The press is answered on the button itself: the old page stays on screen
+  // until the new one is loaded, and a button that looked untouched for that
+  // long was pressed again — which started the load over (see TAKE_HOLD).
+  if (!startsReload(updateTakenAt, now)) {
+    report('update-waiting', { ms: now - updateTakenAt });
+    return;
+  }
+  updateTakenAt = now;
+  updateNowBtn.dataset.taking = '';
+  updateNowBtn.textContent = 'Обновляется…';
+  // Still here once the hold is over: the load was dropped, and the button is
+  // an offer again.
+  setTimeout(() => {
+    delete updateNowBtn.dataset.taking;
+    updateNowBtn.textContent = 'Обновить';
+  }, TAKE_HOLD);
   report('update-taken', { served: updateOffered, running: APP_VERSION });
   // A plain reload is enough: the service worker is network-first, so the new
   // assets come from the server and the cache is only the offline fallback.
