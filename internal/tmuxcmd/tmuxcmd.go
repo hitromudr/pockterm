@@ -312,6 +312,12 @@ func CapturePane(session string) []string {
 	return []string{"tmux", "capture-pane", "-p", "-t", session}
 }
 
+// PaneTitle returns the argv printing the title of the pane CapturePane reads —
+// where Gemini CLI says whether it is working (detect.TitleLive).
+func PaneTitle(session string) []string {
+	return []string{"tmux", "display-message", "-p", "-t", session, "#{pane_title}"}
+}
+
 // CaptureHistory returns the argv printing the pane's last lines of history
 // together with the screen itself — what the page freezes when text is being
 // selected on a phone.

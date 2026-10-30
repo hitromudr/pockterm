@@ -14,6 +14,7 @@ import (
 type harness struct {
 	w      *Watcher
 	screen string
+	title  string
 	err    error
 	now    time.Time
 	events []Event
@@ -24,6 +25,7 @@ func newHarness(idle time.Duration) *harness {
 	h := &harness{now: time.Unix(1_700_000_000, 0)}
 	h.w = New(Options{
 		Capture:   func(string) (string, error) { return h.screen, h.err },
+		Title:     func(string) string { return h.title },
 		Notify:    func(e Event) { h.events = append(h.events, e) },
 		Viewing:   func(string) bool { return h.seen },
 		IdleAfter: idle,
@@ -431,6 +433,30 @@ func TestCounterOutlastsTheThreshold(t *testing.T) {
 	}
 	if got := h.w.Activity("claude"); got != ActivityWorking {
 		t.Fatalf("still counting: %q, want %q", got, ActivityWorking)
+	}
+}
+
+func TestTitleHoldsATurnWithAStillScreen(t *testing.T) {
+	// Gemini running a tool: the screen is a box with the command in it and
+	// nothing moves, so silence called the turn over while the build went on.
+	// The title is where it says it is still working.
+	h := newHarness(30 * time.Second)
+	h.title = "✦  Working… (Vita)"
+	h.screen = "⊶ Shell python3 tools/public_build.py\n"
+	h.w.Tick()
+	h.advance(5 * time.Minute)
+	h.w.Tick()
+	if len(h.events) != 0 {
+		t.Fatalf("events = %+v, want none while the title says working", h.events)
+	}
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("a still screen under a working title: %q, want %q", got, ActivityWorking)
+	}
+	// Ready ends it the way the counter going away does, and as soon.
+	h.title = "◇  Ready (Vita)"
+	h.settle()
+	if got := h.kinds(); len(got) != 1 || got[0] != Done {
+		t.Fatalf("events = %+v, want one done once the title says ready", h.events)
 	}
 }
 

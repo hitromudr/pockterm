@@ -190,8 +190,12 @@ type Event struct {
 
 type Options struct {
 	Capture func(session string) (string, error) // visible pane text
-	Notify  func(Event)                          // called for every event worth sending
-	Viewing func(session string) bool            // someone has it open right now
+	// Title is the pane's title, the other place an agent says it is working:
+	// Gemini CLI keeps its state there rather than in a counter on screen (see
+	// detect.TitleLive). nil reads the screen alone.
+	Title   func(session string) string
+	Notify  func(Event)               // called for every event worth sending
+	Viewing func(session string) bool // someone has it open right now
 	// Sessions lists what exists, so a tab can be coloured for a session no page
 	// has opened. nil watches only what has been attached to, which is what this
 	// did before — and what left every tab neutral after a restart: the state is
@@ -398,6 +402,8 @@ func (w *Watcher) poll(session string) {
 		w.mu.Unlock()
 		return
 	}
+	// Asked outside the lock, like the capture: it is a tmux call.
+	titleLive := w.o.Title != nil && detect.TitleLive(w.o.Title(session))
 
 	w.mu.Lock()
 	st, ok := w.s[session]
@@ -432,7 +438,7 @@ func (w *Watcher) poll(session string) {
 	// describe two different moments.
 	st.bg = detect.ReadBackground(lines)
 	st.bg.Agents, st.bg.Workflows = detect.ReadAgents(lines)
-	st.live = detect.Live(lines)
+	st.live = detect.Live(lines) || titleLive
 	st.agent = detect.InputBox(lines)
 	if retry := detect.Retrying(lines); retry != st.retrying {
 		st.retrying = retry

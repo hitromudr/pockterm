@@ -66,6 +66,14 @@ func TestCapturePaneArgv(t *testing.T) {
 	}
 }
 
+func TestPaneTitleArgv(t *testing.T) {
+	got := PaneTitle("claude")
+	want := []string{"tmux", "display-message", "-p", "-t", "claude", "#{pane_title}"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v", got)
+	}
+}
+
 func TestCaptureHistoryArgv(t *testing.T) {
 	// What the frozen copy on a phone is filled from: the history behind the
 	// screen as well as the screen. `-S` counts back from the top of the visible

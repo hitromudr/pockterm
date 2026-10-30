@@ -156,6 +156,19 @@ sent a "finished" notice mid-thought:
   minute" and "worked for a minute" are the same line, and telling them apart is
   where an evening went.
 
+**A fifth reading is off the pane's title, not its screen** (`detect.TitleLive`,
+2026-10-30). Gemini CLI keeps no counter: while a tool runs its screen is a box
+with the command in it and nothing that moves, so the silence rule turned the tab
+green thirty seconds into a build — the owner's screenshot showed `Working…` in
+the tmux status line over a green tab. Gemini puts its state in the terminal
+title instead, led by a glyph: `✦` working, `⏲` a tool running silently, `✋`
+waiting for a confirmation, `◇` ready (Gemini CLI 0.66.0,
+`packages/cli/src/utils/windowTitle.ts`, and `#{pane_title}` of a live pane).
+Only the first two count as a turn, and only the glyph is read — the words after
+`✦` are a thought's subject. Claude Code's own title (`✳ <topic>`) is not in the
+set. The title survives the program in tmux; Gemini clears it on exit, so only a
+process killed outright leaves a tab purple.
+
 What is never matched is the verb — Pondering, Crunching, Cooked, Sautéed turn
 over between releases, and the line left behind is the same words in the past
 tense (`✻ Crunched for 4m 3s · 1 monitor still running`). The counter outranks

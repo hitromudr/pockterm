@@ -614,6 +614,7 @@ func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref, wait
 	viewers := watch.NewViewers()
 	w := watch.New(watch.Options{
 		Capture: capturePane,
+		Title:   paneTitle,
 		// What it decided and why, in the journal: `journalctl -u pockterm | grep
 		// watch:`. The watcher's state is per process and nothing else records it,
 		// so a tab that went green for no visible reason is otherwise unanswerable
@@ -959,6 +960,16 @@ func capturePane(session string) (string, error) {
 		return "", err
 	}
 	return string(out), nil
+}
+
+// paneTitle is "" when tmux cannot answer: no title says nothing about a turn.
+func paneTitle(session string) string {
+	argv := tmuxcmd.PaneTitle(session)
+	out, err := exec.Command(argv[0], argv[1:]...).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(string(out), "\n")
 }
 
 // paneState asks tmux what the client's own grouped session is showing: whether
