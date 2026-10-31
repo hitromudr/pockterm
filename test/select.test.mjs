@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { snapshotText, chunks, pickedText, picksInOrder, samePara, markdownFrom, tablesFrom, rulesFrom, headingsFrom, unwrapFrom } from '../web/js/select.js';
+import { snapshotText, chunks, pickedText, picksInOrder, samePara, dropScrollbar, markdownFrom, tablesFrom, rulesFrom, headingsFrom, unwrapFrom } from '../web/js/select.js';
 
 test('rows become lines', () => {
   assert.equal(snapshotText(['one', 'two']), 'one\ntwo');
@@ -137,6 +137,40 @@ test('a short line in common is not the same paragraph', () => {
   assert.equal(samePara('if (x) {\n  run()\n}', '}\nelse branch follows'), null);
   assert.equal(samePara('ok', 'ok\nand more text after it'), null);
   assert.equal(samePara('alpha paragraph here', 'beta paragraph there'), null);
+});
+
+// Measured 2026-10-31 off a resumed Gemini CLI session at 57 columns: its own
+// scrollbar is a grey block in the last column, on whatever row the thumb is at.
+test("a program's own scrollbar is not text", () => {
+  const row = `  Wield 4 + 3 с шансом) в 0333 §6 как отложенные до${' '.repeat(5)}\x1b[38;5;244m█`;
+  assert.equal(dropScrollbar(row, 57), `  Wield 4 + 3 с шансом) в 0333 §6 как отложенные до${' '.repeat(5)}\x1b[38;5;244m`);
+  const boxed = `       \x1b[38;5;244m│\x1b[39m    \x1b[38;5;248m█`;
+  const full = `${' '.repeat(44)}${boxed}`;
+  assert.ok(!dropScrollbar(full, 57).includes('█'), 'the thumb beside a box border stayed');
+});
+
+test('a block that is text stays', () => {
+  // Not in the last column, or glued to the text before it.
+  assert.equal(dropScrollbar('progress ███   ', 57), 'progress ███   ');
+  const glued = `${'x'.repeat(56)}█`;
+  assert.equal(dropScrollbar(glued, 57), glued);
+});
+
+test('bold closed at the screen edge is still the paragraph', () => {
+  // The cut row's bold is closed where the screen ends and opened again at the
+  // top of the next one: neither is in the whole.
+  const whole = '  **2. Каскад атак с шансом прока (4 атаки правой + 3\n  атаки левой на 130 %!)**';
+  assert.equal(samePara('  **2. Каскад атак с шансом прока (4 атаки правой + 3**', whole), whole);
+  assert.equal(samePara('       **атак левой рукой)!**\n   * На слабой прокачке у тебя',
+    '  проверка (3 **атак левой рукой)!**\n   * На слабой прокачке у тебя'),
+  '  проверка (3 **атак левой рукой)!**\n   * На слабой прокачке у тебя');
+});
+
+test('a pick inside another is copied once', () => {
+  assert.deepEqual(picksInOrder([
+    { text: 'the whole of a paragraph that was cut', depth: 0, index: 0 },
+    { text: 'the whole of a paragraph', depth: 3, index: 5 },
+  ]), ['the whole of a paragraph that was cut']);
 });
 
 // --- the Markdown the pane drew --------------------------------------------

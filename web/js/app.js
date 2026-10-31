@@ -4,7 +4,7 @@ import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNoti
 import { linkAction } from './link.js';
 import { directBase, tryDirect, doorURL, worthTrying, viaMark } from './direct.js';
 import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
-import { snapshotText, chunks, pickedText, picksInOrder, samePara, markdownFrom } from './select.js';
+import { snapshotText, chunks, pickedText, picksInOrder, samePara, dropScrollbar, markdownFrom } from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
@@ -4626,8 +4626,24 @@ function togglePara(el) {
     picked.delete(el);
     el.classList.remove('picked');
   } else {
-    const p = { text: el.textContent, depth: shownDepth, index: paraEls.indexOf(el) };
-    picks.push(p);
+    // A paragraph that is picked already and was not found on this screen is that
+    // pick, not a second one: reported as a press on a block shown unpicked putting
+    // it in the clipboard twice.
+    const bound = new Set(pickOf.values());
+    let p = null;
+    for (const q of picks) {
+      const whole = bound.has(q) ? null : samePara(q.text, el.textContent);
+      if (whole === null) continue;
+      p = q;
+      q.text = whole;
+      break;
+    }
+    if (!p) {
+      p = { text: el.textContent, depth: shownDepth, index: 0 };
+      picks.push(p);
+    }
+    p.depth = shownDepth;
+    p.index = paraEls.indexOf(el);
     pickOf.set(el, p);
     picked.add(el);
     el.classList.add('picked');
@@ -4772,7 +4788,8 @@ function freezeScreen() {
 }
 
 function drawScreen() {
-  drawSnapshot(markdownFrom(snapshotText(visibleLines()), term.cols), 'screen');
+  const shown = snapshotText(visibleLines());
+  drawSnapshot(markdownFrom(programCopy() ? dropScrollbar(shown, term.cols) : shown, term.cols), 'screen');
   snapshotEl.scrollTop = snapshotEl.scrollHeight;
 }
 
@@ -4824,7 +4841,9 @@ function tookCapture(text) {
   // `term.cols` is what tells a thematic break from the input box's own frame: the
   // frame spans the pane, a break does not, and this capture is of this client's
   // own pane — so the width the page is drawn at is the width it was drawn with.
-  const lines = markdownFrom(text, term.cols).split('\n');
+  // A program's own scrollbar is not text (dropScrollbar).
+  const raw = programCopy() ? dropScrollbar(text, term.cols) : text;
+  const lines = markdownFrom(raw, term.cols).split('\n');
   // The screen is already at the end of what came back, so this replaces rather
   // than appends — and the view stays where it was put, at the bottom.
   //

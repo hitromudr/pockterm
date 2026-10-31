@@ -782,10 +782,11 @@ export function pickedText(texts) {
 // index is its place on that screen. A paragraph picked again on a second screen
 // that still shows it is the same paragraph, and is copied once.
 export function picksInOrder(picks) {
-  const seen = new Set();
-  return [...(picks || [])]
+  const all = [...(picks || [])];
+  return all
+    .filter((p, i) => !all.some((q, k) => k !== i && inside(p.text, q.text)
+      && (!inside(q.text, p.text) || k < i)))
     .sort((a, b) => b.depth - a.depth || a.index - b.index)
-    .filter((p) => !seen.has(p.text) && seen.add(p.text))
     .map((p) => p.text);
 }
 
@@ -795,29 +796,80 @@ export function picksInOrder(picks) {
 // only its head and the next only its tail: the two match where one contains the
 // other, or where the end of one is the start of the other.
 //
-// By the characters and not by the rows: the copy window joins what the program
-// wrapped (unwrapFrom), so a paragraph cut at a row is the head or the tail of one
-// long line, and no row of it is a row of the whole.
+// Compared as text, not as the drawing of it (measured 2026-10-31 off a resumed
+// Gemini session, 41 screens five rows apart). By the characters and not by the
+// rows: the copy window joins what the program wrapped (unwrapFrom), so a
+// paragraph cut at a row is the head of one long line, and that row stands alone
+// on the screen that cuts it. And without the Markdown read back off the
+// attributes: the bold a cut row is in is closed at the screen's edge and opened
+// again at the top (`… + 3**`, `**атак …`), which neither half of the whole has.
 //
 // A match on too little is a paragraph nobody picked marked and copied, so what the
 // two have in common has to carry some text: `}` or `ok` closes half the blocks on
 // a screen.
 const SAME_MIN = 12; // non-space characters in common
 
+function plainPara(t) {
+  return String(t).replace(/\*\*|`/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Where in `text` its plain form reaches `n` characters: the place to cut the
+// original at once the overlap has been found in the plain forms.
+function plainCut(text, n) {
+  for (let i = 0; i <= text.length; i++) {
+    if (plainPara(text.slice(0, i)).length >= n) return i;
+  }
+  return text.length;
+}
+
 export function samePara(a, b) {
   const A = String(a).replace(/\n+$/, '');
   const B = String(b).replace(/\n+$/, '');
-  if (A === B) return A;
+  const pa = plainPara(A);
+  const pb = plainPara(B);
+  if (pa === pb) return A.length >= B.length ? A : B;
   const enough = (t) => t.replace(/\s/g, '').length >= SAME_MIN;
-  if (enough(B) && A.includes(B)) return A;
-  if (enough(A) && B.includes(A)) return B;
+  if (enough(pb) && pa.includes(pb)) return A;
+  if (enough(pa) && pb.includes(pa)) return B;
   // The longest overlap either way round; a shorter one is less text in common.
-  const joined = (x, y) => {
-    for (let n = Math.min(x.length, y.length) - 1; n > 0; n--) {
-      const head = y.slice(0, n);
-      if (x.endsWith(head)) return enough(head) ? x + y.slice(n) : null;
+  const joined = (x, px, y, py) => {
+    for (let n = Math.min(px.length, py.length) - 1; n > 0; n--) {
+      const head = py.slice(0, n);
+      if (!px.endsWith(head)) continue;
+      if (!enough(head)) return null;
+      // What follows the overlap in the original, its own newline or space with it.
+      return x + y.slice(plainCut(y, n));
     }
     return null;
   };
-  return joined(A, B) ?? joined(B, A);
+  return joined(A, pa, B, pb) ?? joined(B, pb, A, pa);
+}
+
+// Whether a pick is already inside another: the same paragraph picked again on a
+// screen that showed less of it, which a copy must not take twice.
+export function inside(small, big) {
+  const ps = plainPara(small);
+  return ps === '' || plainPara(big).includes(ps);
+}
+
+// dropScrollbar takes a program's own scrollbar off a capture of its view. A
+// program that scrolls its own view on the alternate screen may draw where that
+// view stands down the pane's last column — Gemini CLI does, a grey `█` that moves
+// a row with every few notches — and the copy window took it for text: it hung on
+// the end of whatever paragraph reached that row, copied with it, and made the
+// paragraph a different text on every screen, so a pick could not be found again
+// (measured 2026-10-31 off a resumed Gemini session at 57 columns). By its shape:
+// a block glyph in the last column, a space before it.
+const SGR_ANY = /\x1b\[[0-9;:]*m/g;
+const BAR_GLYPHS = '█▉▊▋▌▍▎▏▐▀▄▇▆▅▃▂▁';
+
+export function dropScrollbar(text, cols) {
+  return String(text).split('\n').map((line) => {
+    const plain = [...line.replace(SGR_ANY, '')];
+    if (plain.length !== cols) return line;
+    const glyph = plain[cols - 1];
+    if (!BAR_GLYPHS.includes(glyph) || plain[cols - 2] !== ' ') return line;
+    const at = line.lastIndexOf(glyph);
+    return line.slice(0, at) + line.slice(at + glyph.length);
+  }).join('\n');
 }

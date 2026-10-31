@@ -90,6 +90,33 @@ and its tail on another, become one. A finger that comes down while the answer i
 counts as a scroll: the answer is let go, since a redraw takes the node the touch belongs to. And
 a swipe answered by the same screen is a view at its end, so the notches are not counted as depth.
 
+**And still the marks came and went, and a press on a block shown unpicked copied it twice**
+(reported the same morning: twelve picks, 5888 characters). The stand had only ever seen `cat`, so
+this time the screens were taken off Gemini itself: a copy of a real session resumed on a private
+tmux at 57×45, `-r latest`, wheel notches written into the pane as SGR, `capture-pane -e -J` every
+five rows, 41 screens, run through `markdownFrom` and `chunks` as the page runs them. Of the
+paragraphs two neighbouring screens share, `samePara` as it stood found 46 and missed 13; now 195
+and 5. Three things stood between them:
+
+- **Gemini's own scrollbar** — a grey `█` in the last column on the row the thumb is at, which hung
+  on the end of whatever paragraph reached that row and made it a different text on every screen.
+  `dropScrollbar` takes it off a capture of a program's view, by its shape: a block glyph in the last
+  column with a space before it. It was also being copied.
+- **The Markdown read back at the edges.** Bold on a cut row is closed at the screen's edge and
+  opened again at the top of the next (`… + 3**`, `**атак …`). The comparison is on the plain text
+  (`plainPara`: no `**` or backticks, whitespace as one space); the copy keeps the original.
+- **The row the screen cuts stands alone**, while in the whole it is joined to the row before it —
+  the same plain form takes care of that.
+
+The five left are tool-output boxes: Gemini pins a box's title to the top of the view while the box
+scrolls under it (`╭──╮ │ ✓ run_command … │ │──│`), so the paragraph there is the title plus a window
+and neither the head nor the tail of the whole. Not handled; prose is what gets copied.
+
+The double copy was a press on a paragraph whose pick had not been found on the screen: it made a
+second pick. A press now looks for a pick that is the same paragraph first and takes it, and
+`picksInOrder` drops a pick that sits inside another. Walking the 20 screens and pressing everything
+shown unpicked: 17 presses, 14 paragraphs copied, none twice, in the conversation's order.
+
 The stand's test sends `1006` along with `1002`: without it tmux hands the program the wheel in
 the old X10 encoding (`^[[M`!!`), and the test looking for `^[[<64;` read a working swipe as a
 failure.
