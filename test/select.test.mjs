@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { snapshotText, chunks, pickedText, markdownFrom, tablesFrom, rulesFrom, headingsFrom, unwrapFrom } from '../web/js/select.js';
+import { snapshotText, chunks, pickedText, picksInOrder, markdownFrom, tablesFrom, rulesFrom, headingsFrom, unwrapFrom } from '../web/js/select.js';
 
 test('rows become lines', () => {
   assert.equal(snapshotText(['one', 'two']), 'one\ntwo');
@@ -71,6 +71,27 @@ test('nothing picked is empty text, not a blank line', () => {
   assert.equal(pickedText([]), '');
   assert.equal(pickedText(null), '');
   assert.equal(pickedText(['\n', '  \n']), '');
+});
+
+// Picks made on several screens of a program's own view (the copy window over the
+// alternate screen, 2026-10-31): the screen further back is earlier in the
+// conversation, and on one screen the order is the screen's.
+test('picks from screens further back come first', () => {
+  assert.deepEqual(picksInOrder([
+    { text: 'now b', depth: 0, index: 1 },
+    { text: 'back a', depth: 12, index: 0 },
+    { text: 'now a', depth: 0, index: 0 },
+    { text: 'back b', depth: 12, index: 3 },
+  ]), ['back a', 'back b', 'now a', 'now b']);
+});
+
+test('a paragraph picked on two screens is copied once', () => {
+  assert.deepEqual(picksInOrder([
+    { text: 'same', depth: 4, index: 5 },
+    { text: 'same', depth: 0, index: 1 },
+  ]), ['same']);
+  assert.deepEqual(picksInOrder([]), []);
+  assert.deepEqual(picksInOrder(null), []);
 });
 
 // --- the Markdown the pane drew --------------------------------------------

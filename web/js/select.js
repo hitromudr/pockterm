@@ -773,3 +773,18 @@ export function pickedText(texts) {
     .filter((t) => t.trim() !== '')
     .join('\n\n');
 }
+
+// picksInOrder orders paragraphs picked on several screens of a program that
+// scrolls its own view — the copy window over the alternate screen, where every
+// swipe is a new screen and the picks have to outlive it. Each pick is
+// `{text, depth, index}`: depth is how many wheel notches the view stood back
+// when it was picked, so a deeper screen is earlier in the conversation, and
+// index is its place on that screen. A paragraph picked again on a second screen
+// that still shows it is the same paragraph, and is copied once.
+export function picksInOrder(picks) {
+  const seen = new Set();
+  return [...(picks || [])]
+    .sort((a, b) => b.depth - a.depth || a.index - b.index)
+    .filter((p) => !seen.has(p.text) && seen.add(p.text))
+    .map((p) => p.text);
+}

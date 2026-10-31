@@ -4,7 +4,7 @@ import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNoti
 import { linkAction } from './link.js';
 import { directBase, tryDirect, doorURL, worthTrying, viaMark } from './direct.js';
 import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
-import { snapshotText, chunks, pickedText, markdownFrom } from './select.js';
+import { snapshotText, chunks, pickedText, picksInOrder, markdownFrom } from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
@@ -3527,7 +3527,7 @@ const scroller = new Scroller({
   notch: (dir) => {
     // A notch in the copy window can only be the program's own scroll (see
     // copyScrollsProgram), and the frozen copy steps aside for the live pane.
-    if (selectMode) seeThroughCopy();
+    if (selectMode) { seeThroughCopy(); copyDepth += dir; }
     sendWheel(dir > 0 ? 64 : 65); // +1 = towards history
   },
   onTrack: trackScreen,
@@ -3630,7 +3630,12 @@ function refreeze() {
   if (!seeingThrough) return;
   seeingThrough = false;
   snapshotEl.classList.remove('through');
-  if (selectMode) freezeScreen();
+  if (!selectMode) return;
+  // What was picked on the screen going away goes with the copy window rather than
+  // with that screen: a message is read and picked across several of them.
+  carryPicks();
+  shownDepth = copyDepth;
+  freezeScreen();
 }
 
 // And a swipe to the right brings the drawer, which is the mirror of the swipe
@@ -4375,7 +4380,7 @@ function insideSnapshot() {
 // what was highlighted a moment ago (Android clears a selection when the finger
 // lands on Copy).
 function selectedText() {
-  if (selectMode) return pickedFrom(paraEls) || insideSnapshot() || lastSelection;
+  if (selectMode) return pickedAll() || insideSnapshot() || lastSelection;
   return term.getSelection() || docSelection() || lastSelection;
 }
 
@@ -4429,6 +4434,14 @@ const PARA_TRAVEL = 14;
 const TAP_PAIR = 500;
 let paraEls = [];
 const picked = new Set();
+// Picks made on screens the copy window no longer shows — over a program's own
+// view, where a swipe replaces the screen (refreeze) — as `{text, depth, index}`
+// for picksInOrder. Picked again where the new screen still shows them.
+let carried = [];
+// How far that view stands back, in wheel notches sent from the copy window, and
+// how far it stood when the screen on show was frozen.
+let copyDepth = 0;
+let shownDepth = 0;
 let banTimer = null;
 let holdTimer = null;
 let holdFrom = null;
@@ -4510,7 +4523,7 @@ function selectAt(x, y) {
   clearTimeout(banTimer);
   banTimer = null;
   snapshotEl.classList.remove('holding');
-  if (picked.size) clearPicks();
+  if (pickCount()) clearPicks();
   const line = lineBoundsAt(c);
   const again = lastGrab && lastGrab.node === c.node
     && lastGrab.from === line.from && lastGrab.to === line.to;
@@ -4551,10 +4564,39 @@ function drawSnapshot(text, from) {
   }
   snapshotEl.replaceChildren(frag);
   snapshotEl.dataset.from = from;
+  // On the host's text only: the screen drawn first has no Markdown in it, so a
+  // pick marked there would be carried again by the answer as a text that never
+  // matches.
+  if (from === 'host') remarkCarried();
 }
 
-function pickedFrom(els) {
-  return pickedText(els.filter((el) => picked.has(el)).map((el) => el.textContent));
+function carryPicks() {
+  paraEls.forEach((el, index) => {
+    if (picked.has(el)) carried.push({ text: el.textContent, depth: shownDepth, index });
+  });
+}
+
+function remarkCarried() {
+  for (const el of paraEls) {
+    const i = carried.findIndex((p) => p.text === el.textContent);
+    if (i < 0) continue;
+    carried.splice(i, 1);
+    picked.add(el);
+    el.classList.add('picked');
+  }
+}
+
+function pickCount() {
+  return picked.size + carried.length;
+}
+
+// Everything picked, on this screen and on the ones scrolled past.
+function pickedAll() {
+  const here = [];
+  paraEls.forEach((el, index) => {
+    if (picked.has(el)) here.push({ text: el.textContent, depth: shownDepth, index });
+  });
+  return pickedText(picksInOrder([...carried, ...here]));
 }
 
 function togglePara(el) {
@@ -4568,12 +4610,13 @@ function togglePara(el) {
   // A pick is not a selection, and a leftover highlight from the press that made
   // it would be a second answer to what Copy takes.
   dropSelection();
-  report('pick', { paras: picked.size, on: picked.has(el) });
+  report('pick', { paras: pickCount(), on: picked.has(el) });
 }
 
 function clearPicks() {
   for (const el of picked) el.classList.remove('picked');
   picked.clear();
+  carried = [];
 }
 
 function cancelHold() {
@@ -4670,6 +4713,9 @@ function setSelectMode(on) {
   cancelRefreeze();
   seeingThrough = false;
   snapshotEl.classList.remove('through');
+  carried = [];
+  copyDepth = 0;
+  shownDepth = 0;
   markProgramCopy();
   if (on) snapshotEl.style.fontSize = `${fontSize}px`;
   snapshotEl.hidden = !on;
@@ -4931,7 +4977,7 @@ snapshotEl.addEventListener('click', (e) => {
   // lands on the paragraph under it, so a menu nobody asked for took the pick with
   // it when it went. What remains a deliberate target is the space no paragraph
   // owns — and the marks otherwise go the way they came, by a press each.
-  if (picked.size) {
+  if (pickCount()) {
     if (onPara) return;
     clearPicks();
     toast('picks dropped');
@@ -4966,7 +5012,7 @@ document.addEventListener('copy', (e) => {
     e.preventDefault();
     e.clipboardData.setData('text/plain', text);
   }
-  report('copy', { how: 'system', chars: text.length, paras: picked.size });
+  report('copy', { how: 'system', chars: text.length, paras: pickCount() });
   setSelectMode(false);
   if (text) toast(`copied ${text.length} chars: ${preview(text)}`);
 });
@@ -4975,7 +5021,7 @@ document.getElementById('copy').addEventListener('click', async () => {
   const text = selectedText();
   if (!text) { toast('nothing selected'); return; }
   lastCopyError = '';
-  const paras = picked.size;
+  const paras = pickCount();
   // `outside` is what the selection reached past the frozen copy and did not get:
   // the one number that tells a copy of exactly what was highlighted from the
   // copy that used to take the rows behind it and the bars below it as well.

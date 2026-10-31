@@ -1392,10 +1392,14 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 /* Over a program that draws its own view on the alternate screen, the swipe is the
    program's scroll (copyScrollsProgram in js/app.js), so the browser is refused it
    here as on the live pane — a selection is still made by the press and the double
-   tap. While the program scrolls the copy steps aside, transparent rather than
-   hidden: the touch began on a node inside it and has to go on arriving. */
+   tap. While the program scrolls the copy steps aside, its text and ground
+   transparent rather than the element hidden: the touch began on a node inside it
+   and has to go on arriving. The dashed outline stays — the mode is still on, and
+   the first version, which faded the whole element, was reported as the copy
+   window's frame going away under the swipe. */
 #snapshot.program { touch-action: none; }
-#snapshot.through { opacity: 0; }
+#snapshot.through { background: transparent; color: transparent; }
+#snapshot.through .para { visibility: hidden; }
 #snapshot.holding, #snapshot.holding .para {
   user-select: none;
   -webkit-user-select: none;

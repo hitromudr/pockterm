@@ -569,12 +569,41 @@ describe('a swipe follows the finger', () => {
     stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
     await page.waitForSelector('#page-down:not([hidden])', { timeout: 5000 });
 
+    // Two paragraphs to pick; cat echoes each line and prints it, so each is two.
+    for (const line of ['alpha para', '', 'beta para']) {
+      if (line) stand.tmux(['send-keys', '-t', 'demo', '-l', line]);
+      stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    }
+
     await page.click('#select');
     await page.waitForFunction(() => document.getElementById('snapshot').dataset.from === 'host', null, { timeout: 5000 });
     const copy = () => page.evaluate(() => document.getElementById('snapshot').textContent);
     assert.ok(!(await copy()).includes('^[[<64;'), 'the copy window holds a wheel before any swipe');
 
-    let y = 200;
+    // Both picked before the swipe — reported on 2026-10-31 as the picks going
+    // away with it. The wheel's echo lands on the line under `beta`, which changes
+    // that paragraph: `alpha` is picked again on the new screen, and `beta` has to
+    // be carried as the text it was picked as.
+    const press = async (word) => {
+      const at = await page.evaluate((w) => {
+        const el = [...document.querySelectorAll('#snapshot .para')].find((e) => e.textContent.includes(w));
+        if (!el) return null;
+        const r = el.getClientRects()[0];
+        return { x: Math.round(r.x + 4), y: Math.round(r.y + r.height / 2) };
+      }, word);
+      assert.ok(at, `no paragraph holds ${word}`);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+      await page.waitForTimeout(700);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(100);
+    };
+    const marked = () => page.evaluate(
+      () => [...document.querySelectorAll('#snapshot .para.picked')].map((e) => e.textContent.trim().split('\n')[0]));
+    await press('alpha para');
+    await press('beta para');
+    assert.deepEqual(await marked(), ['alpha para', 'beta para'], 'the long presses picked nothing');
+
+    let y = 120;
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y }] });
     y += 24;
     await move(page, cdp, y);
@@ -582,6 +611,16 @@ describe('a swipe follows the finger', () => {
       y += 12;
       await move(page, cdp, y);
     }
+    // Under the finger the live pane shows through, and the frame that says the
+    // mode is on stays where it was.
+    const under = await page.evaluate(() => {
+      const el = document.getElementById('snapshot');
+      const st = getComputedStyle(el);
+      return { through: el.classList.contains('through'), outline: st.outlineStyle, opacity: st.opacity, bg: st.backgroundColor };
+    });
+    assert.ok(under.through, 'the copy window did not step aside for the program');
+    assert.deepEqual([under.outline, under.opacity, under.bg], ['dashed', '1', 'rgba(0, 0, 0, 0)'],
+      `the copy window under the swipe: ${JSON.stringify(under)}`);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 
     let pane = '';
@@ -598,8 +637,12 @@ describe('a swipe follows the finger', () => {
       return !el.hidden && !el.classList.contains('through') && el.dataset.from === 'host'
         && el.textContent.includes('^[[<64;');
     }, null, { timeout: 5000 });
+    assert.deepEqual(await marked(), ['alpha para'], 'the pick on the paragraph the swipe left alone was lost');
+    await page.click('#copy');
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    assert.equal(clip, 'alpha para\nalpha para\n\nbeta para\nbeta para', 'the copy after the swipe');
+    await page.waitForSelector('#snapshot', { state: 'hidden' });
 
-    await page.click('#sel-done');
     stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1006l\x1b[?1002l\x1b[?1049l']);
     stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
     await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });

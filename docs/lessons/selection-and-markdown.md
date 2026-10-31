@@ -59,8 +59,21 @@ screen has stood still for `REFREEZE_QUIET`, at the latest `REFREEZE_MAX` after 
 taken again exactly as on opening (`freezeScreen`), picks and selection gone with the old text.
 `#snapshot.program` sets `touch-action: none`, as on the live pane: the window has nothing of its
 own to scroll there, and a browser scroll beside the page's would be two answers to one finger.
-What it does not do is select across more than one screen; the measurement on the stand was a
-window exactly as tall as its box (`scrollHeight` 630 = `clientHeight` 630) with full-width lines.
+On the stand the window measured exactly as tall as its box (`scrollHeight` 630 =
+`clientHeight` 630) with full-width lines, so nothing of the screen is out of reach.
+
+**The first version lost the frame and the picks** (reported 2026-10-31, the journal showing four
+picks and then a fifteen-notch swipe). It faded the whole element, outline included, and the
+mode looked switched off under the finger; now only the text and the ground go transparent
+(`#snapshot.through`). And the refreeze redrew the copy, which drops the picks with the text they
+were made on — while what is being picked over a program's view is a message read across several
+screens. So a refreeze carries them (`carried`, `{text, depth, index}`): depth is the wheel
+notches the view stood back when the screen was frozen, a deeper screen being earlier in the
+conversation, and `picksInOrder` puts them in that order, a paragraph picked twice once. Where the
+new screen still shows a carried paragraph with the same text it is marked again — on the host's
+answer only, the screen drawn first having no Markdown in it to match. A paragraph the scroll
+changed or took off screen stays picked unseen, and Copy says how many `¶` it took. A double tap's
+selection is not carried: it is a range in the old text, and the swipe drops it.
 
 The stand's test sends `1006` along with `1002`: without it tmux hands the program the wheel in
 the old X10 encoding (`^[[M`!!`), and the test looking for `^[[<64;` read a working swipe as a
