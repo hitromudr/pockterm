@@ -3431,6 +3431,7 @@ function noteFrameArrived() {
 function noteScreenMoved(start, end) {
   if (!movedWholeScreen(start, end, term.rows)) return;
   scroller.drew(performance.now());
+  if (refreezeTimer !== null) armRefreeze();
 }
 
 // Following the finger between two whole lines.
@@ -3510,8 +3511,25 @@ function rowHeight() {
 // server replaces this with what the running tmux actually says.
 let wheelLines = 5;
 
+// The copy window over a program's own view, stepped aside while the program
+// scrolls (see copyScrollsProgram). Declared here, above the render handler that
+// reaches it.
+let seeingThrough = false;
+let refreezeTimer = null;
+let refreezeBy = 0;
+// The copy is taken again once the screen has stood still this long after the
+// gesture, and at the latest this long after it: a program printing as it scrolls
+// moves the screen with every line, and the copy window must come back regardless.
+const REFREEZE_QUIET = 200; // milliseconds
+const REFREEZE_MAX = 1200;
+
 const scroller = new Scroller({
-  notch: (dir) => sendWheel(dir > 0 ? 64 : 65), // +1 = towards history
+  notch: (dir) => {
+    // A notch in the copy window can only be the program's own scroll (see
+    // copyScrollsProgram), and the frozen copy steps aside for the live pane.
+    if (selectMode) seeThroughCopy();
+    sendWheel(dir > 0 ? 64 : 65); // +1 = towards history
+  },
   onTrack: trackScreen,
   // How a swipe felt is not observable from here: the screen it moves lives in
   // tmux, a notch away over the network. These numbers are.
@@ -3530,6 +3548,7 @@ const scroller = new Scroller({
     });
     wheelLag = 0;
     wheelLost = 0;
+    if (seeingThrough) refreezeSoon();
   },
 });
 function setScrollStep() { scroller.setStep(rowHeight() * wheelLines); }
@@ -3561,6 +3580,59 @@ function ownsGesture(target) {
     !target.closest('#composer, #snapshot, header.bar, #answers, #ctrlpad, #history-list, #scrollbar, #grid');
 }
 
+// Except the frozen copy of a program that draws its own view on the alternate
+// screen and has taken the wheel — Gemini CLI since 2026-10-30, Claude Code's full
+// screen, a pager. tmux keeps no history for that screen, so what the copy window
+// gets from the host is the screen and nothing more: a window as tall as its box,
+// with nowhere to scroll. Reported as the swipe doing nothing there. The history is
+// the program's, and the wheel is how it is asked for it — so the swipe goes to the
+// program the way it does on the live pane, and the copy is frozen again on what the
+// program drew (`refreeze`).
+function programCopy() {
+  return selectMode && appWheel && altScreen;
+}
+function copyScrollsProgram(target) {
+  return programCopy() && target instanceof Element && !!target.closest('#snapshot');
+}
+
+// While the program scrolls, the copy window is transparent and the live pane under
+// it is what moves, with the shift following the finger as everywhere else. Only
+// transparent: the touch began on a node inside it, and a node taken out of the
+// document has no ancestors left to deliver the rest of the gesture to — the same
+// trap as xterm's rows (docs/lessons/scroll-and-copy-mode.md). For the same reason
+// the copy is redrawn only after the gesture, never under the finger.
+function seeThroughCopy() {
+  if (seeingThrough) return;
+  seeingThrough = true;
+  cancelHold();
+  dropSelection();
+  snapshotEl.classList.add('through');
+}
+
+function refreezeSoon() {
+  refreezeBy = performance.now() + REFREEZE_MAX;
+  armRefreeze();
+}
+
+function armRefreeze() {
+  clearTimeout(refreezeTimer);
+  const wait = Math.min(REFREEZE_QUIET, Math.max(0, refreezeBy - performance.now()));
+  refreezeTimer = setTimeout(refreeze, wait);
+}
+
+function cancelRefreeze() {
+  clearTimeout(refreezeTimer);
+  refreezeTimer = null;
+}
+
+function refreeze() {
+  refreezeTimer = null;
+  if (!seeingThrough) return;
+  seeingThrough = false;
+  snapshotEl.classList.remove('through');
+  if (selectMode) freezeScreen();
+}
+
 // And a swipe to the right brings the drawer, which is the mirror of the swipe
 // that puts it away: the panel lives off the left edge, so pulling rightwards is
 // pulling it out from there. ☰ was at the top of a phone and the thumb at the
@@ -3580,9 +3652,13 @@ gestureArea.addEventListener('touchstart', (e) => {
   // to select text there, not scroll.
   scroller.stop();
   swipeFrom = null;
-  if (selectMode || !ownsGesture(e.target)) { touchY = null; return; }
+  const viaCopy = copyScrollsProgram(e.target);
+  if (!viaCopy && (selectMode || !ownsGesture(e.target))) { touchY = null; return; }
+  // The copy is not redrawn under a finger: a second swipe waits for its own end.
+  if (viaCopy) cancelRefreeze();
   touchY = e.touches[0].clientY;
-  swipeFrom = { x: e.touches[0].clientX, y: touchY };
+  // Not the drawer from the copy window: a sideways drag there is a selection.
+  if (!viaCopy) swipeFrom = { x: e.touches[0].clientX, y: touchY };
   setScrollStep();
   scroller.start(e.timeStamp);
 }, { passive: true });
@@ -4591,22 +4667,13 @@ function setSelectMode(on) {
   // a panel hidden by a class would come back on leaving the mode, over a screen
   // the owner had moved on from.
   if (on) showCmdPad(false);
-  if (on) {
-    // The screen first, so the mode opens on the frame it was asked for, and the
-    // history behind it when the host answers: a copy window that appeared only
-    // after a round trip would read as a button that does nothing.
-    drawSnapshot(markdownFrom(snapshotText(visibleLines()), term.cols), 'screen');
-    snapshotEl.style.fontSize = `${fontSize}px`;
-  }
+  cancelRefreeze();
+  seeingThrough = false;
+  snapshotEl.classList.remove('through');
+  markProgramCopy();
+  if (on) snapshotEl.style.fontSize = `${fontSize}px`;
   snapshotEl.hidden = !on;
-  // Opened at the end, which is the screen the mode was entered from: what is
-  // wanted is usually in front of you, and everything before it is a drag away
-  // once it arrives. A hidden element has no layout to scroll, so this is after
-  // the line above and not before it — the same trap the scrollbar's track met.
-  if (on) {
-    snapshotEl.scrollTop = snapshotEl.scrollHeight;
-    askCapture();
-  }
+  if (on) freezeScreen();
   if (!on) closePasteTarget();
   renderBars();
   if (on) {
@@ -4618,6 +4685,27 @@ function setSelectMode(on) {
     term.focus();
   }
 }
+// The screen first, so the mode opens on the frame it was asked for, and the
+// history behind it when the host answers: a copy window that appeared only after
+// a round trip would read as a button that does nothing.
+//
+// Opened at the end, which is the screen the mode was entered from: what is wanted
+// is usually in front of you, and everything before it is a drag away once it
+// arrives. A hidden element has no layout to scroll, so this runs after the window
+// is shown and not before — the same trap the scrollbar's track met.
+function freezeScreen() {
+  drawSnapshot(markdownFrom(snapshotText(visibleLines()), term.cols), 'screen');
+  snapshotEl.scrollTop = snapshotEl.scrollHeight;
+  askCapture();
+}
+
+// Whether the copy window is over a program's own view, whose swipe is the
+// program's (copyScrollsProgram) — said to the CSS, which then keeps the browser's
+// own scrolling off it, as on the live pane.
+function markProgramCopy() {
+  snapshotEl.classList.toggle('program', programCopy());
+}
+
 // Ask the host for what is behind the screen, and put it in the copy window when
 // it arrives.
 //
@@ -6133,6 +6221,7 @@ function setCopyMode(inMode, back, hist, app, alt) {
   copyHist = hist | 0;
   appWheel = !!app;
   altScreen = !!alt;
+  markProgramCopy();
   // The bar is drawn from both numbers and moves whenever either does — which
   // includes the history growing under a pane that is printing, and that is a
   // frame every poll. Painting is cheap; the journal line below is not, and it

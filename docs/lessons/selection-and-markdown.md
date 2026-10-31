@@ -41,6 +41,31 @@ identical from a phone, so "there is nothing above the screen in there" is eithe
 that never came back or a pane with no history — and it is what the tests wait on, a
 measurement taken in that round trip being a measurement of a window about to be redrawn.
 
+## Over a program's own view the copy window has one screen, and the swipe is the program's
+
+Reported from the phone on 2026-10-30, the day Gemini CLI went over to the alternate screen
+(`ui.useAlternateBuffer`): in the copy window the swipe did nothing. tmux keeps no history for
+the alternate screen — `history_size 0` on every Gemini tab, read off the live server — so the
+capture above answers with the screen and nothing else, and a window exactly as tall as its box
+is the defect this section opened with, back by another road. The history is the program's, and
+the program has taken the wheel (`mouse_any_flag`), which is how it is asked for it.
+
+So over such a pane (`appWheel && altScreen`, `copyScrollsProgram`) the swipe in the copy window
+goes to the program the way it does on the live pane, with the same scroller, shift and glide.
+The copy steps aside while it moves — **transparent, not hidden or redrawn**: the touch began on a
+node inside it, and a node taken out of the document delivers the rest of the gesture nowhere
+(the same trap as xterm's rows in `scroll-and-copy-mode.md`). Once the gesture is over and the
+screen has stood still for `REFREEZE_QUIET`, at the latest `REFREEZE_MAX` after it, the copy is
+taken again exactly as on opening (`freezeScreen`), picks and selection gone with the old text.
+`#snapshot.program` sets `touch-action: none`, as on the live pane: the window has nothing of its
+own to scroll there, and a browser scroll beside the page's would be two answers to one finger.
+What it does not do is select across more than one screen; the measurement on the stand was a
+window exactly as tall as its box (`scrollHeight` 630 = `clientHeight` 630) with full-width lines.
+
+The stand's test sends `1006` along with `1002`: without it tmux hands the program the wheel in
+the old X10 encoding (`^[[M`!!`), and the test looking for `^[[<64;` read a working swipe as a
+failure.
+
 ## A selection does not stop where the copy window does
 
 Reported as the clipboard taking more than was selected. The window opens at its own bottom

@@ -551,6 +551,61 @@ describe('a swipe follows the finger', () => {
     assert.deepEqual(stand.pageErrors, []);
   });
 
+  test('the copy window over a program that scrolls its own view scrolls the program', async () => {
+    // Reported from the phone on 2026-10-30, the day Gemini CLI went over to the
+    // alternate screen: in the copy window the swipe did nothing. tmux keeps no
+    // history for that screen (`history_size 0` on every Gemini tab), so the
+    // capture the copy window asks for is the screen and nothing more, and a
+    // window exactly as tall as its box has nowhere to scroll. The program has the
+    // history, and the wheel is how it is asked for it — the same two sequences
+    // as above plus 1006, the SGR encoding Gemini asks for, into a pane running
+    // cat, whose echo is what the wheel put on the wire.
+    await stand.open();
+    await stand.attach();
+    const { page } = stand;
+    await recordGesture(page);
+
+    stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1049h\x1b[?1002h\x1b[?1006h']);
+    stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    await page.waitForSelector('#page-down:not([hidden])', { timeout: 5000 });
+
+    await page.click('#select');
+    await page.waitForFunction(() => document.getElementById('snapshot').dataset.from === 'host', null, { timeout: 5000 });
+    const copy = () => page.evaluate(() => document.getElementById('snapshot').textContent);
+    assert.ok(!(await copy()).includes('^[[<64;'), 'the copy window holds a wheel before any swipe');
+
+    let y = 200;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y }] });
+    y += 24;
+    await move(page, cdp, y);
+    for (let i = 0; i < 12; i++) {
+      y += 12;
+      await move(page, cdp, y);
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+    let pane = '';
+    for (let i = 0; i < 20 && !pane.includes('^[[<64;'); i++) {
+      await page.waitForTimeout(100);
+      pane = stand.tmux(['capture-pane', '-p', '-J', '-t', 'demo']);
+    }
+    assert.ok(pane.includes('^[[<64;'), `the swipe in the copy window did not reach the program: ${pane}`);
+    assert.equal(stand.tmux(['display-message', '-p', '-t', 'demo', '#{pane_in_mode}']).trim(), '0',
+      'the swipe put the pane into a mode instead');
+    // And the copy window is frozen again on what the program drew, still open.
+    await page.waitForFunction(() => {
+      const el = document.getElementById('snapshot');
+      return !el.hidden && !el.classList.contains('through') && el.dataset.from === 'host'
+        && el.textContent.includes('^[[<64;');
+    }, null, { timeout: 5000 });
+
+    await page.click('#sel-done');
+    stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1006l\x1b[?1002l\x1b[?1049l']);
+    stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+    await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });
+    assert.deepEqual(stand.pageErrors, []);
+  });
+
   test("the agent's full screen keeps ⇟ and ⇩ only while it is scrolled up", async () => {
     // Reported from the phone on 2026-10-05: on the tab where Claude Code draws its
     // full-screen view, ⇟ and ⇩ stood at the bottom of the output for good — tmux
