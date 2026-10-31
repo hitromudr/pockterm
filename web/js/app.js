@@ -4,7 +4,7 @@ import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNoti
 import { linkAction } from './link.js';
 import { directBase, tryDirect, doorURL, worthTrying, viaMark } from './direct.js';
 import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
-import { snapshotText, chunks, pickedText, picksInOrder, markdownFrom } from './select.js';
+import { snapshotText, chunks, pickedText, picksInOrder, samePara, markdownFrom } from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
@@ -3629,13 +3629,15 @@ function refreeze() {
   refreezeTimer = null;
   if (!seeingThrough) return;
   seeingThrough = false;
+  // The copy stays out of the way until the host's text is in (tookCapture). The
+  // screen drawn first and the host's text a round trip later were two drawings,
+  // and the picks could be marked only on the second — reported as the marks
+  // coming and going with the scroll.
+  if (selectMode && askCapture()) return;
   snapshotEl.classList.remove('through');
   if (!selectMode) return;
-  // What was picked on the screen going away goes with the copy window rather than
-  // with that screen: a message is read and picked across several of them.
-  carryPicks();
   shownDepth = copyDepth;
-  freezeScreen();
+  drawScreen();
 }
 
 // And a swipe to the right brings the drawer, which is the mirror of the swipe
@@ -3660,7 +3662,7 @@ gestureArea.addEventListener('touchstart', (e) => {
   const viaCopy = copyScrollsProgram(e.target);
   if (!viaCopy && (selectMode || !ownsGesture(e.target))) { touchY = null; return; }
   // The copy is not redrawn under a finger: a second swipe waits for its own end.
-  if (viaCopy) cancelRefreeze();
+  if (viaCopy) { cancelRefreeze(); copyTouching = true; }
   touchY = e.touches[0].clientY;
   // Not the drawer from the copy window: a sideways drag there is a selection.
   if (!viaCopy) swipeFrom = { x: e.touches[0].clientX, y: touchY };
@@ -3692,12 +3694,14 @@ gestureArea.addEventListener('touchmove', (e) => {
 // half — it asks the browser not to take it in the first place.
 gestureArea.addEventListener('touchcancel', (e) => {
   swipeFrom = null;
+  copyTouching = false;
   if (touchY === null) return;
   touchY = null;
   scroller.cancel(e.timeStamp);
 }, { passive: true });
 gestureArea.addEventListener('touchend', (e) => {
   swipeFrom = null;
+  copyTouching = false;
   if (touchY === null) return;
   touchY = null;
   scroller.end(e.timeStamp);
@@ -4434,14 +4438,18 @@ const PARA_TRAVEL = 14;
 const TAP_PAIR = 500;
 let paraEls = [];
 const picked = new Set();
-// Picks made on screens the copy window no longer shows — over a program's own
-// view, where a swipe replaces the screen (refreeze) — as `{text, depth, index}`
-// for picksInOrder. Picked again where the new screen still shows them.
-let carried = [];
+// Every pick, as `{text, depth, index}` for picksInOrder: over a program's own view
+// a swipe replaces the screen (refreeze), and a message is read and picked across
+// several of them, so the picks belong to the copy window rather than to the
+// screen. `pickOf` ties the ones the screen shows to their paragraph.
+let picks = [];
+const pickOf = new Map();
 // How far that view stands back, in wheel notches sent from the copy window, and
 // how far it stood when the screen on show was frozen.
 let copyDepth = 0;
 let shownDepth = 0;
+// A finger on the copy window over a program's view: no redraw may land under it.
+let copyTouching = false;
 let banTimer = null;
 let holdTimer = null;
 let holdFrom = null;
@@ -4551,6 +4559,10 @@ function drawSnapshot(text, from) {
   cancelHold();
   lastGrab = null; // its text node is about to be replaced, and it holds one alive
   picked.clear();
+  pickOf.clear();
+  // Elsewhere a redraw is the same screen a round trip later, and a pick made in
+  // that trip goes, as it always has.
+  if (!programCopy()) picks = [];
   paraEls = [];
   snapshotShown = text;
   const frag = document.createDocumentFragment();
@@ -4564,46 +4576,59 @@ function drawSnapshot(text, from) {
   }
   snapshotEl.replaceChildren(frag);
   snapshotEl.dataset.from = from;
-  // On the host's text only: the screen drawn first has no Markdown in it, so a
-  // pick marked there would be carried again by the answer as a text that never
-  // matches.
-  if (from === 'host') remarkCarried();
+  bindPicks();
 }
 
-function carryPicks() {
+// Mark what the new screen shows of the picks. The screen's edge cuts a paragraph
+// at a row, so a pick is found by its rows (samePara) and not by its whole text: a
+// match on the whole text marked a paragraph only while it was whole on both
+// screens. What one screen shows more of it is kept, and two picks that turn out
+// to be one paragraph — its head on one screen, its tail on another — become one.
+function bindPicks() {
   paraEls.forEach((el, index) => {
-    if (picked.has(el)) carried.push({ text: el.textContent, depth: shownDepth, index });
+    let mine = null;
+    for (const p of [...picks]) {
+      if ([...pickOf.values()].includes(p)) continue;
+      const whole = samePara(mine ? mine.text : p.text, mine ? p.text : el.textContent);
+      if (whole === null) continue;
+      if (mine) {
+        if (samePara(whole, el.textContent) === null) continue;
+        mine.text = whole;
+        picks = picks.filter((q) => q !== p);
+        continue;
+      }
+      mine = p;
+      p.text = whole;
+      p.depth = shownDepth;
+      p.index = index;
+    }
+    if (!mine) return;
+    picked.add(el);
+    pickOf.set(el, mine);
+    el.classList.add('picked');
   });
 }
 
-function remarkCarried() {
-  for (const el of paraEls) {
-    const i = carried.findIndex((p) => p.text === el.textContent);
-    if (i < 0) continue;
-    carried.splice(i, 1);
-    picked.add(el);
-    el.classList.add('picked');
-  }
-}
-
 function pickCount() {
-  return picked.size + carried.length;
+  return picks.length;
 }
 
 // Everything picked, on this screen and on the ones scrolled past.
 function pickedAll() {
-  const here = [];
-  paraEls.forEach((el, index) => {
-    if (picked.has(el)) here.push({ text: el.textContent, depth: shownDepth, index });
-  });
-  return pickedText(picksInOrder([...carried, ...here]));
+  return pickedText(picksInOrder(picks));
 }
 
 function togglePara(el) {
   if (picked.has(el)) {
+    const p = pickOf.get(el);
+    picks = picks.filter((q) => q !== p);
+    pickOf.delete(el);
     picked.delete(el);
     el.classList.remove('picked');
   } else {
+    const p = { text: el.textContent, depth: shownDepth, index: paraEls.indexOf(el) };
+    picks.push(p);
+    pickOf.set(el, p);
     picked.add(el);
     el.classList.add('picked');
   }
@@ -4616,7 +4641,8 @@ function togglePara(el) {
 function clearPicks() {
   for (const el of picked) el.classList.remove('picked');
   picked.clear();
-  carried = [];
+  pickOf.clear();
+  picks = [];
 }
 
 function cancelHold() {
@@ -4713,9 +4739,10 @@ function setSelectMode(on) {
   cancelRefreeze();
   seeingThrough = false;
   snapshotEl.classList.remove('through');
-  carried = [];
+  picks = [];
   copyDepth = 0;
   shownDepth = 0;
+  copyTouching = false;
   markProgramCopy();
   if (on) snapshotEl.style.fontSize = `${fontSize}px`;
   snapshotEl.hidden = !on;
@@ -4740,9 +4767,13 @@ function setSelectMode(on) {
 // arrives. A hidden element has no layout to scroll, so this runs after the window
 // is shown and not before — the same trap the scrollbar's track met.
 function freezeScreen() {
+  drawScreen();
+  askCapture();
+}
+
+function drawScreen() {
   drawSnapshot(markdownFrom(snapshotText(visibleLines()), term.cols), 'screen');
   snapshotEl.scrollTop = snapshotEl.scrollHeight;
-  askCapture();
 }
 
 // Whether the copy window is over a program's own view, whose swipe is the
@@ -4779,6 +4810,13 @@ let captureWanted = false;
 function tookCapture(text) {
   if (!captureWanted || !selectMode) return false;
   captureWanted = false;
+  // A finger came down on the copy window while the answer was on its way, and a
+  // redraw would take the node its touch belongs to. The answer is let go and the
+  // gesture counted as a scroll, so its end asks again.
+  if (seeingThrough || copyTouching) {
+    seeingThrough = true;
+    return true;
+  }
   // The attributes tmux was asked for are turned back into the Markdown they were
   // drawn from before anything else looks at the text: what the copy window shows
   // is what the clipboard gets, so the picks, the paragraphs and a selection
@@ -4796,11 +4834,16 @@ function tookCapture(text) {
   // said in `data-from` either way.
   const fresh = snapshotText(lines);
   if (fresh !== snapshotShown) {
+    shownDepth = copyDepth;
     drawSnapshot(fresh, 'host');
     snapshotEl.scrollTop = snapshotEl.scrollHeight;
   } else {
+    // Over a program's view the same screen after a swipe is a view that did not
+    // move — the wheel ran into its end — and the notches did not take it deeper.
+    copyDepth = shownDepth;
     snapshotEl.dataset.from = 'host';
   }
+  snapshotEl.classList.remove('through');
   return true;
 }
 

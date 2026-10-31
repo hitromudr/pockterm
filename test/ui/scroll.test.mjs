@@ -581,9 +581,10 @@ describe('a swipe follows the finger', () => {
     assert.ok(!(await copy()).includes('^[[<64;'), 'the copy window holds a wheel before any swipe');
 
     // Both picked before the swipe — reported on 2026-10-31 as the picks going
-    // away with it. The wheel's echo lands on the line under `beta`, which changes
-    // that paragraph: `alpha` is picked again on the new screen, and `beta` has to
-    // be carried as the text it was picked as.
+    // away with it, and then as the marks coming and going with the scroll. The
+    // wheel's echo lands on the line under `beta`, so on the new screen that
+    // paragraph has a row more, the way one cut by the screen's edge shows more of
+    // itself: it is still the paragraph that was picked, and it is copied whole.
     const press = async (word) => {
       const at = await page.evaluate((w) => {
         const el = [...document.querySelectorAll('#snapshot .para')].find((e) => e.textContent.includes(w));
@@ -621,6 +622,13 @@ describe('a swipe follows the finger', () => {
     assert.ok(under.through, 'the copy window did not step aside for the program');
     assert.deepEqual([under.outline, under.opacity, under.bg], ['dashed', '1', 'rgba(0, 0, 0, 0)'],
       `the copy window under the swipe: ${JSON.stringify(under)}`);
+    // One drawing after the swipe, the host's: the screen drawn first and the
+    // host's text after it marked the picks only on the second.
+    await page.evaluate(() => {
+      window.__drawn = [];
+      new MutationObserver(() => window.__drawn.push(document.getElementById('snapshot').dataset.from))
+        .observe(document.getElementById('snapshot'), { childList: true });
+    });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 
     let pane = '';
@@ -637,10 +645,12 @@ describe('a swipe follows the finger', () => {
       return !el.hidden && !el.classList.contains('through') && el.dataset.from === 'host'
         && el.textContent.includes('^[[<64;');
     }, null, { timeout: 5000 });
-    assert.deepEqual(await marked(), ['alpha para'], 'the pick on the paragraph the swipe left alone was lost');
+    assert.deepEqual(await marked(), ['alpha para', 'beta para'], 'the picks are not marked on the new screen');
+    assert.deepEqual(await page.evaluate(() => window.__drawn), ['host'], 'the copy was drawn more than once');
     await page.click('#copy');
     const clip = await page.evaluate(() => navigator.clipboard.readText());
-    assert.equal(clip, 'alpha para\nalpha para\n\nbeta para\nbeta para', 'the copy after the swipe');
+    assert.ok(clip.startsWith('alpha para\nalpha para\n\nbeta para\nbeta para ^[[<64;'),
+      `the copy after the swipe: ${JSON.stringify(clip)}`);
     await page.waitForSelector('#snapshot', { state: 'hidden' });
 
     stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1006l\x1b[?1002l\x1b[?1049l']);

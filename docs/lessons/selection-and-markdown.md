@@ -75,6 +75,21 @@ answer only, the screen drawn first having no Markdown in it to match. A paragra
 changed or took off screen stays picked unseen, and Copy says how many `¶` it took. A double tap's
 selection is not carried: it is a range in the old text, and the swipe drops it.
 
+**Then the marks came and went with the scroll** (the same day, the journal counting picks 1 to 6
+while the screen showed some of them). Two causes. The match was on the whole text, and the
+screen's edge cuts a paragraph: whole on one screen and cut on the next is two texts. And the
+copy was drawn twice after each swipe, the screen and then the host's text, with the marks only on
+the second. Now the picks are one list for the window (`picks`, bound to what the screen shows by
+`bindPicks`), a paragraph is found by `samePara` — one contains the other, or the end of one is
+the start of the other, and whatever is in common carries at least `SAME_MIN` characters — and
+the copy is drawn once, on the host's answer, staying see-through until then. The match is by
+characters and not by rows, measured on the stand before it was believed: `unwrapFrom` joins what
+the program wrapped, so a paragraph cut at a row is the head of one long line, and the row-based
+first version matched nothing. Two picks that turn out to be one paragraph, its head on one screen
+and its tail on another, become one. A finger that comes down while the answer is on its way
+counts as a scroll: the answer is let go, since a redraw takes the node the touch belongs to. And
+a swipe answered by the same screen is a view at its end, so the notches are not counted as depth.
+
 The stand's test sends `1006` along with `1002`: without it tmux hands the program the wheel in
 the old X10 encoding (`^[[M`!!`), and the test looking for `^[[<64;` read a working swipe as a
 failure.

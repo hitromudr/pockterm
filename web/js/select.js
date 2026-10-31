@@ -788,3 +788,36 @@ export function picksInOrder(picks) {
     .filter((p) => !seen.has(p.text) && seen.add(p.text))
     .map((p) => p.text);
 }
+
+// samePara answers whether two texts are one paragraph seen on two screens of a
+// program that scrolls its own view, and if so gives it back as whole as the two
+// show it — or null. The screen's edge cuts a paragraph, so one screen may hold
+// only its head and the next only its tail: the two match where one contains the
+// other, or where the end of one is the start of the other.
+//
+// By the characters and not by the rows: the copy window joins what the program
+// wrapped (unwrapFrom), so a paragraph cut at a row is the head or the tail of one
+// long line, and no row of it is a row of the whole.
+//
+// A match on too little is a paragraph nobody picked marked and copied, so what the
+// two have in common has to carry some text: `}` or `ok` closes half the blocks on
+// a screen.
+const SAME_MIN = 12; // non-space characters in common
+
+export function samePara(a, b) {
+  const A = String(a).replace(/\n+$/, '');
+  const B = String(b).replace(/\n+$/, '');
+  if (A === B) return A;
+  const enough = (t) => t.replace(/\s/g, '').length >= SAME_MIN;
+  if (enough(B) && A.includes(B)) return A;
+  if (enough(A) && B.includes(A)) return B;
+  // The longest overlap either way round; a shorter one is less text in common.
+  const joined = (x, y) => {
+    for (let n = Math.min(x.length, y.length) - 1; n > 0; n--) {
+      const head = y.slice(0, n);
+      if (x.endsWith(head)) return enough(head) ? x + y.slice(n) : null;
+    }
+    return null;
+  };
+  return joined(A, B) ?? joined(B, A);
+}

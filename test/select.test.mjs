@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { snapshotText, chunks, pickedText, picksInOrder, markdownFrom, tablesFrom, rulesFrom, headingsFrom, unwrapFrom } from '../web/js/select.js';
+import { snapshotText, chunks, pickedText, picksInOrder, samePara, markdownFrom, tablesFrom, rulesFrom, headingsFrom, unwrapFrom } from '../web/js/select.js';
 
 test('rows become lines', () => {
   assert.equal(snapshotText(['one', 'two']), 'one\ntwo');
@@ -92,6 +92,51 @@ test('a paragraph picked on two screens is copied once', () => {
   ]), ['same']);
   assert.deepEqual(picksInOrder([]), []);
   assert.deepEqual(picksInOrder(null), []);
+});
+
+// One paragraph seen on two screens of a program's own view (2026-10-31): the
+// screen's edge cuts it at a row, so one screen holds its head and the next its
+// tail or the whole of it. Reported as the marks coming and going with the scroll
+// while the paragraph matched only when it was whole on both.
+test('a paragraph cut by the screen edge is the paragraph it is part of', () => {
+  const whole = 'First line of the answer\nsecond line goes on\nthird line ends it';
+  assert.equal(samePara(whole, whole), whole);
+  // cut at the bottom edge: the head
+  assert.equal(samePara('First line of the answer\nsecond line goes on', whole), whole);
+  // cut at the top edge: the tail
+  assert.equal(samePara(whole, 'second line goes on\nthird line ends it'), whole);
+});
+
+test('a head and a tail seen on two screens join into the paragraph', () => {
+  const head = 'First line of the answer\nsecond line goes on';
+  const tail = 'second line goes on\nthird line ends it';
+  const whole = 'First line of the answer\nsecond line goes on\nthird line ends it';
+  assert.equal(samePara(head, tail), whole);
+  assert.equal(samePara(tail, head), whole);
+});
+
+test('a paragraph the copy window joined is cut mid-line, not at a row', () => {
+  // What the program wrapped is joined back into one line, so the head of a
+  // paragraph cut by the screen's edge ends mid-sentence.
+  const whole = 'A long sentence that the program wrapped over three rows of the pane';
+  const head = 'A long sentence that the program wrapped';
+  const tail = 'program wrapped over three rows of the pane';
+  assert.equal(samePara(head, whole), whole);
+  assert.equal(samePara(whole, tail), whole);
+  assert.equal(samePara(head, tail), whole);
+  assert.equal(samePara(tail, head), whole);
+});
+
+test('trailing newlines are not a difference', () => {
+  assert.equal(samePara('one line here, long enough\n', 'one line here, long enough'), 'one line here, long enough');
+});
+
+test('a short line in common is not the same paragraph', () => {
+  // `}` closes half the code blocks on a screen; taking it for a match would mark
+  // a paragraph nobody picked and copy it.
+  assert.equal(samePara('if (x) {\n  run()\n}', '}\nelse branch follows'), null);
+  assert.equal(samePara('ok', 'ok\nand more text after it'), null);
+  assert.equal(samePara('alpha paragraph here', 'beta paragraph there'), null);
 });
 
 // --- the Markdown the pane drew --------------------------------------------
