@@ -1400,6 +1400,17 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #snapshot.program { touch-action: none; }
 #snapshot.through { background: transparent; color: transparent; }
 #snapshot.through .para { visibility: hidden; }
+/* And the live pane is drawn the way the copy is, in one colour and one weight:
+   the copy window is plain text and Gemini's pane is not, so every swipe flashed
+   the text into colour and back (reported 2026-10-31). */
+#term:has(#snapshot.through) .xterm-rows span {
+  color: var(--fg) !important;
+  background: transparent !important;
+  font-weight: normal !important;
+  font-style: normal !important;
+  text-decoration: none !important;
+  opacity: 1 !important;
+}
 /* And the picks are marked on the live pane's rows meanwhile (paintGlow in
    js/app.js), drawn as the pick is in the copy window. */
 #pickglow { position: absolute; inset: 0; pointer-events: none; z-index: 5; }

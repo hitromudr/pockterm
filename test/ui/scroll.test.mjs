@@ -570,7 +570,8 @@ describe('a swipe follows the finger', () => {
     await page.waitForSelector('#page-down:not([hidden])', { timeout: 5000 });
 
     // Two paragraphs to pick; cat echoes each line and prints it, so each is two.
-    for (const line of ['alpha para', '', 'beta para']) {
+    // And one drawn in colour above them, as Gemini draws half its screen.
+    for (const line of ['\x1b[1;31mgamma para\x1b[0m', '', 'alpha para', '', 'beta para']) {
       if (line) stand.tmux(['send-keys', '-t', 'demo', '-l', line]);
       stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
     }
@@ -635,6 +636,20 @@ describe('a swipe follows the finger', () => {
       }));
     assert.deepEqual(glow.map((g) => g.split('|').slice(0, 2).join('|')),
       ['alpha para|alpha para', 'beta para|beta para'], `the picks under the swipe: ${JSON.stringify(glow)}`);
+    // In one colour, as the copy is: the copy window is plain text, and the pane
+    // showing through in colour was reported as the text flashing on every swipe.
+    const drawn = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--fg)';
+      document.body.appendChild(probe);
+      const fg = getComputedStyle(probe).color;
+      probe.remove();
+      const span = [...document.querySelectorAll('.xterm-rows span')]
+        .find((e) => e.textContent.includes('gamma') && !e.textContent.includes('^['));
+      const st = span && getComputedStyle(span);
+      return { fg, color: st && st.color, weight: st && st.fontWeight };
+    });
+    assert.deepEqual([drawn.color, drawn.weight], [drawn.fg, '400'], `the live pane under the swipe: ${JSON.stringify(drawn)}`);
     // One drawing after the swipe, the host's: the screen drawn first and the
     // host's text after it marked the picks only on the second.
     await page.evaluate(() => {

@@ -130,6 +130,11 @@ the finger carries them. Redrawn on every render while the copy is see-through, 
 is not. The stand's case asserts the bands under the swipe and none after it, and fails with the
 painting turned off.
 
+The next answer was "норм", but for the text flashing into colour on every swipe: the copy is plain
+text in `--fg`, and Gemini's pane under it is not. While the copy is see-through the pane's rows are
+drawn in its colour and weight (`#term:has(#snapshot.through) .xterm-rows span`, every attribute
+`!important` — xterm sets truecolour inline). The stand draws one paragraph in bold red for it.
+
 The stand's test sends `1006` along with `1002`: without it tmux hands the program the wheel in
 the old X10 encoding (`^[[M`!!`), and the test looking for `^[[<64;` read a working swipe as a
 failure.
