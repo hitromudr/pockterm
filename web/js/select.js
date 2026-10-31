@@ -873,3 +873,31 @@ export function dropScrollbar(text, cols) {
     return line.slice(0, at) + line.slice(at + glyph.length);
   }).join('\n');
 }
+
+// pickedRows says which rows of the live pane show a pick, as runs `{from, to}`
+// (`to` past the last row). Over a program's own view the copy window steps aside
+// while the program scrolls (seeThroughCopy in js/app.js), and the live pane under
+// it has no marks of its own — reported as the marks going out with every swipe
+// and coming back once it stopped. So the rows are read the way the copy window
+// reads them: a paragraph is a run of non-blank rows, the program's scrollbar is
+// not text, and a pick is found in a run by samePara, which is what marks it again
+// once the copy window comes back.
+export function pickedRows(lines, picks, cols) {
+  const rows = dropScrollbar((lines || []).join('\n'), cols).split('\n');
+  const out = [];
+  let from = -1;
+  const close = (to) => {
+    const text = rows.slice(from, to).join('\n');
+    if ((picks || []).some((p) => samePara(p.text, text) !== null)) out.push({ from, to });
+    from = -1;
+  };
+  rows.forEach((row, i) => {
+    if (row.trim() === '') {
+      if (from >= 0) close(i);
+    } else if (from < 0) {
+      from = i;
+    }
+  });
+  if (from >= 0) close(rows.length);
+  return out;
+}

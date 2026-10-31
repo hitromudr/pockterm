@@ -117,6 +117,19 @@ second pick. A press now looks for a pick that is the same paragraph first and t
 `picksInOrder` drops a pick that sits inside another. Walking the 20 screens and pressing everything
 shown unpicked: 17 presses, 14 paragraphs copied, none twice, in the conversation's order.
 
+**And on 1.15.11 the answer was still "плохо", and the symptom was the design itself.** Asked
+what exactly, the owner picked "the marks go out on the swipe": the journal showed seven picks in a
+row, none undone, no copy — nothing in it was wrong. While the program scrolls the copy window is
+transparent and what shows is the live pane, which has no marks; they came back only once the
+copy was frozen again, a round trip after the finger stopped. From a thumb that is the marks
+coming and going, in the same words as when they really did. So the picks are marked on the live
+pane meanwhile: `pickedRows` reads its rows the way the copy window reads a screen (a paragraph is
+a run of non-blank rows, the scrollbar is not text, a pick is found by `samePara`), and
+`paintGlow` lays bands over those rows inside xterm's `.xterm-screen`, so the shift that follows
+the finger carries them. Redrawn on every render while the copy is see-through, gone as soon as it
+is not. The stand's case asserts the bands under the swipe and none after it, and fails with the
+painting turned off.
+
 The stand's test sends `1006` along with `1002`: without it tmux hands the program the wheel in
 the old X10 encoding (`^[[M`!!`), and the test looking for `^[[<64;` read a working swipe as a
 failure.

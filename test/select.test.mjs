@@ -1,7 +1,7 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { snapshotText, chunks, pickedText, picksInOrder, samePara, dropScrollbar, markdownFrom, tablesFrom, rulesFrom, headingsFrom, unwrapFrom } from '../web/js/select.js';
+import { snapshotText, chunks, pickedText, picksInOrder, samePara, dropScrollbar, pickedRows, markdownFrom, tablesFrom, rulesFrom, headingsFrom, unwrapFrom } from '../web/js/select.js';
 
 test('rows become lines', () => {
   assert.equal(snapshotText(['one', 'two']), 'one\ntwo');
@@ -147,6 +147,32 @@ test("a program's own scrollbar is not text", () => {
   const boxed = `       \x1b[38;5;244m│\x1b[39m    \x1b[38;5;248m█`;
   const full = `${' '.repeat(44)}${boxed}`;
   assert.ok(!dropScrollbar(full, 57).includes('█'), 'the thumb beside a box border stayed');
+});
+
+// While a swipe scrolls the program, the live pane is what shows, and the picks
+// are marked on its rows (2026-10-31, reported as the marks going out on every
+// swipe).
+test('the rows of the live pane that show a pick', () => {
+  const cols = 30;
+  const bar = (s) => `${s.padEnd(cols - 1)}█`;
+  const lines = [
+    'wrapped over two rows of',
+    'the pane, cut at the top',
+    '',
+    'not picked at all, this one',
+    '',
+    bar('First line of the answer'),
+    'second line goes on',
+    '',
+    '}',
+  ];
+  const picks = [
+    { text: 'A paragraph **wrapped** over two rows of the pane, cut at the top' },
+    { text: 'First line of the answer second line goes on third line ends it' },
+    { text: 'return the answer;\n}' }, // `}` alone is too little in common
+  ];
+  assert.deepEqual(pickedRows(lines, picks, cols), [{ from: 0, to: 2 }, { from: 5, to: 7 }]);
+  assert.deepEqual(pickedRows(lines, [], cols), []);
 });
 
 test('a block that is text stays', () => {

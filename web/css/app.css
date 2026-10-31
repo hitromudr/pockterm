@@ -1400,6 +1400,17 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #snapshot.program { touch-action: none; }
 #snapshot.through { background: transparent; color: transparent; }
 #snapshot.through .para { visibility: hidden; }
+/* And the picks are marked on the live pane's rows meanwhile (paintGlow in
+   js/app.js), drawn as the pick is in the copy window. */
+#pickglow { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+#pickglow > div {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: var(--marked);
+  box-shadow: 0 0 0 1px rgba(122, 162, 247, 0.55);
+  border-radius: 2px;
+}
 #snapshot.holding, #snapshot.holding .para {
   user-select: none;
   -webkit-user-select: none;

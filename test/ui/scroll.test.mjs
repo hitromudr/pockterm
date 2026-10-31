@@ -622,6 +622,19 @@ describe('a swipe follows the finger', () => {
     assert.ok(under.through, 'the copy window did not step aside for the program');
     assert.deepEqual([under.outline, under.opacity, under.bg], ['dashed', '1', 'rgba(0, 0, 0, 0)'],
       `the copy window under the swipe: ${JSON.stringify(under)}`);
+    // And the picks stay marked meanwhile, on the live pane's rows — reported on
+    // 2026-10-31 as the marks going out with every swipe.
+    await page.waitForFunction(() => document.querySelectorAll('#pickglow > div').length === 2,
+      null, { timeout: 2000 }).catch(() => {});
+    const glow = await page.evaluate(() => [...document.querySelectorAll('#pickglow > div')]
+      .map((b) => {
+        const r = b.getBoundingClientRect();
+        return [...document.querySelectorAll('.xterm-rows > div')]
+          .filter((row) => { const q = row.getBoundingClientRect(); return q.top >= r.top - 1 && q.bottom <= r.bottom + 1; })
+          .map((row) => row.textContent.trim()).join('|');
+      }));
+    assert.deepEqual(glow.map((g) => g.split('|').slice(0, 2).join('|')),
+      ['alpha para|alpha para', 'beta para|beta para'], `the picks under the swipe: ${JSON.stringify(glow)}`);
     // One drawing after the swipe, the host's: the screen drawn first and the
     // host's text after it marked the picks only on the second.
     await page.evaluate(() => {
@@ -647,6 +660,8 @@ describe('a swipe follows the finger', () => {
     }, null, { timeout: 5000 });
     assert.deepEqual(await marked(), ['alpha para', 'beta para'], 'the picks are not marked on the new screen');
     assert.deepEqual(await page.evaluate(() => window.__drawn), ['host'], 'the copy was drawn more than once');
+    assert.equal(await page.evaluate(() => document.querySelectorAll('#pickglow > div').length), 0,
+      'the marks on the live pane outlived the swipe');
     await page.click('#copy');
     const clip = await page.evaluate(() => navigator.clipboard.readText());
     assert.ok(clip.startsWith('alpha para\nalpha para\n\nbeta para\nbeta para ^[[<64;'),

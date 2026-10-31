@@ -4,7 +4,7 @@ import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNoti
 import { linkAction } from './link.js';
 import { directBase, tryDirect, doorURL, worthTrying, viaMark } from './direct.js';
 import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
-import { snapshotText, chunks, pickedText, picksInOrder, samePara, dropScrollbar, markdownFrom } from './select.js';
+import { snapshotText, chunks, pickedText, picksInOrder, samePara, dropScrollbar, pickedRows, markdownFrom } from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
@@ -3558,7 +3558,11 @@ setScrollStep();
 // renders while it is being opened, and a handler that reaches `scroller`
 // before this line would throw on load — which is how the page once died with
 // a ReferenceError and the phone showed an empty session list.
-term.onRender((e) => { noteScreenMoved(e.start, e.end); if (rowsHeld) liftHeldRows(); });
+term.onRender((e) => {
+  noteScreenMoved(e.start, e.end);
+  if (rowsHeld) liftHeldRows();
+  if (seeingThrough) glowPicks();
+});
 
 let touchY = null;
 // The whole terminal screen scrolls it, not just the box the text is drawn in.
@@ -3607,6 +3611,47 @@ function seeThroughCopy() {
   cancelHold();
   dropSelection();
   snapshotEl.classList.add('through');
+  glowPicks();
+}
+
+// What is picked stays marked under the swipe, on the live pane's own rows: the
+// copy window that carries the marks is transparent until the program has stopped,
+// and a mark that goes out with every swipe and comes back after it was reported as
+// the picks coming and going — the same words as when they really did. The rows
+// are found the way the copy window finds them again (pickedRows), and the bands
+// live in xterm's screen, so the shift that follows the finger moves them too.
+let glowEl = null;
+let glowFrame = 0;
+function glowPicks() {
+  if (!glowFrame) glowFrame = requestAnimationFrame(paintGlow);
+}
+
+function paintGlow() {
+  glowFrame = 0;
+  const on = selectMode && picks.length && snapshotEl.classList.contains('through');
+  if (!on) {
+    if (glowEl) glowEl.replaceChildren();
+    return;
+  }
+  const screen = document.querySelector('.xterm-screen');
+  if (!screen) return;
+  if (!glowEl || glowEl.parentElement !== screen) {
+    glowEl = document.createElement('div');
+    glowEl.id = 'pickglow';
+    screen.appendChild(glowEl);
+  }
+  const rowEls = document.querySelectorAll('.xterm-rows > div');
+  const bands = [];
+  for (const run of pickedRows(visibleLines(), picks, term.cols)) {
+    const first = rowEls[run.from];
+    const last = rowEls[run.to - 1];
+    if (!first || !last) continue;
+    const band = document.createElement('div');
+    band.style.top = `${first.offsetTop}px`;
+    band.style.height = `${last.offsetTop + last.offsetHeight - first.offsetTop}px`;
+    bands.push(band);
+  }
+  glowEl.replaceChildren(...bands);
 }
 
 function refreezeSoon() {
@@ -3635,6 +3680,7 @@ function refreeze() {
   // coming and going with the scroll.
   if (selectMode && askCapture()) return;
   snapshotEl.classList.remove('through');
+  glowPicks();
   if (!selectMode) return;
   shownDepth = copyDepth;
   drawScreen();
@@ -4756,6 +4802,7 @@ function setSelectMode(on) {
   seeingThrough = false;
   snapshotEl.classList.remove('through');
   picks = [];
+  glowPicks();
   copyDepth = 0;
   shownDepth = 0;
   copyTouching = false;
@@ -4863,6 +4910,7 @@ function tookCapture(text) {
     snapshotEl.dataset.from = 'host';
   }
   snapshotEl.classList.remove('through');
+  glowPicks();
   return true;
 }
 
