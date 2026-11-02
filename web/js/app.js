@@ -3376,14 +3376,6 @@ function dropQueuedWheel() {
   scroller.dropped();
 }
 
-// Gemini CLI moves one line per wheel event and its VirtualizedList snaps a
-// 1-line step from the bottom (`maxScroll - 1`) straight back to `maxScroll` on
-// the next 33ms scrollbar-fade frame, so both a single wheel click on a laptop
-// and a normal touch swipe on a host with `wheelLines = 1` stayed pinned to the
-// bottom. Four events in one write cross that threshold on the first notch and
-// move at a normal wheel pace.
-const GEMINI_WHEEL_LINES = 4;
-
 function flushWheel() {
   if (wheelFlush !== null) { cancelAnimationFrame(wheelFlush); wheelFlush = null; }
   const n = Math.abs(wheelPending);
@@ -3391,10 +3383,10 @@ function flushWheel() {
   const btn = wheelPending > 0 ? 64 : 65;
   wheelPending = 0;
   wheelSentAt = performance.now();
-  const lines = !scrolledBack && appWheel && altScreen ? visibleLines() : null;
-  const keys = lines ? settingsScrollKeys(lines, btn === 64 ? 1 : -1, n) : null;
-  const gemini = !!lines && (geminiView || hasGeminiBox(lines));
-  send(keys || `\x1b[<${btn};1;1M`.repeat(gemini ? n * GEMINI_WHEEL_LINES : n));
+  const keys = !scrolledBack && appWheel && altScreen
+    ? settingsScrollKeys(visibleLines(), btn === 64 ? 1 : -1, n)
+    : null;
+  send(keys || `\x1b[<${btn};1;1M`.repeat(n));
   // One message, one batch: what the shift below counts against the redraws
   // coming back.
   scroller.batched(wheelSentAt);
@@ -3441,8 +3433,7 @@ function noteFrameArrived() {
 // [0,34] of 36 rows. While the pane is scrolled back tmux does not move the view
 // for new output at all, which is the whole of the gesture this matters for.
 function noteScreenMoved(start, end) {
-  if (appWheel && altScreen && end - start + 1 >= 4) scroller.drew(performance.now());
-  if (!movedWholeScreen(start, end, term.rows)) return;
+  if (!(appWheel && altScreen ? end - start + 1 >= 4 : movedWholeScreen(start, end, term.rows))) return;
   scroller.drew(performance.now());
   if (refreezeTimer !== null) armRefreeze();
 }
