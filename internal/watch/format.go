@@ -114,12 +114,18 @@ func Notice(e Event) (head, body string) {
 //
 //	● Конфиг валиден. Предупреждение doctor про websocket — следствие песочницы.
 //	● Bash(cd /home/dms/work && for d in bricks devops; do …)
+//	✦ Подняла броню отвала бульдозера спереди до ×3
 //
 // The marker itself is stripped: it is the TUI's, not part of the sentence.
 var (
-	agentSaid = regexp.MustCompile(`^\s*●\s*(.*)$`)
-	toolCall  = regexp.MustCompile(`^\p{Lu}[\p{L}\d_]*\(`)
+	agentSaid      = regexp.MustCompile(`^\s*[●✦]\s*(.*)$`)
+	toolCall       = regexp.MustCompile(`^\p{Lu}[\p{L}\d_]*\(`)
+	scrollbarThumb = regexp.MustCompile(`(?:^|[ \t]+)[█▄▀][ \t]*$`)
 )
+
+func plainLine(s string) string {
+	return scrollbarThumb.ReplaceAllString(ansi.ReplaceAllString(s, ""), "")
+}
 
 // Tail picks the line of a pane worth showing a human.
 //
@@ -143,7 +149,7 @@ var (
 func Tail(lines []string) string {
 	lines = withoutTheOtherVoices(lines)
 	for i := len(lines) - 1; i >= 0; i-- {
-		m := agentSaid.FindStringSubmatch(ansi.ReplaceAllString(lines[i], ""))
+		m := agentSaid.FindStringSubmatch(plainLine(lines[i]))
 		if m == nil {
 			continue
 		}
@@ -155,7 +161,7 @@ func Tail(lines []string) string {
 		return s + wrapped(lines, i)
 	}
 	for i := len(lines) - 1; i >= 0; i-- {
-		l := ansi.ReplaceAllString(lines[i], "")
+		l := plainLine(lines[i])
 		raw := strings.TrimSpace(l)
 		// The frame comes off a line inside a box, and the question about chrome is
 		// asked of both shapes. Of the trimmed one because that is what is read; of
@@ -193,13 +199,13 @@ func Tail(lines []string) string {
 // known to be interface. `clip` caps what comes out, so a long paragraph is cut
 // at its end rather than begun in the middle.
 func paragraphAt(lines []string, i int, s string) string {
-	at := indentOf(ansi.ReplaceAllString(lines[i], ""))
+	at := indentOf(plainLine(lines[i]))
 	if at == 0 {
 		return s
 	}
 	start := i
 	for j := i - 1; j >= 0; j-- {
-		l := ansi.ReplaceAllString(lines[j], "")
+		l := plainLine(lines[j])
 		t := strings.TrimSpace(l)
 		if t == "" || !hasWord(t) || isChrome(t) || indentOf(l) != at || agentSaid.MatchString(l) {
 			break
@@ -209,7 +215,7 @@ func paragraphAt(lines []string, i int, s string) string {
 	var b strings.Builder
 	n := 0
 	for j := start; j <= i && n < maxLineLen; j++ {
-		t := strings.TrimSpace(ansi.ReplaceAllString(lines[j], ""))
+		t := strings.TrimSpace(plainLine(lines[j]))
 		if b.Len() > 0 {
 			b.WriteString(" ")
 			n++
@@ -220,8 +226,9 @@ func paragraphAt(lines []string, i int, s string) string {
 	return b.String()
 }
 
-// The ❯ the TUI puts on the human's side of the conversation. It marks two
-// things and both are the same thing here — what was said *to* the agent:
+// The ❯ the TUI puts on the human's side of the conversation (or `> ` in
+// Gemini CLI). It marks two things and both are the same thing here — what was
+// said *to* the agent:
 //
 //	❯ согласуй мост с mesh          the echo of a message already sent
 //	❯ жду выгрузку 2021             the input box, holding what will be sent
@@ -229,10 +236,10 @@ func paragraphAt(lines []string, i int, s string) string {
 // The space after the glyph tells the two apart — ordinary in the echo,
 // non-breaking in the box, which is the rule detect.InputBox rests on — and
 // nothing here needs to know which: neither is the agent speaking.
-var humanSaid = regexp.MustCompile(`^\s*❯(\x{00a0}|\s|$)`)
+var humanSaid = regexp.MustCompile(`^(?:\s*❯(\x{00a0}|\s|$)| ?>(?:\s|$))`)
 
 // And the third voice on the pane: what a tool answered, which the TUI opens
-// with ⎿ and indents under it.
+// with ⎿ and indents under it (or `✓`/`✗` in Gemini CLI).
 //
 //	● Bash(timeout 200 make mail-rpi5 TO=devops …)
 //	  ⎿  узел rpi5 принял письмо
@@ -244,7 +251,7 @@ var humanSaid = regexp.MustCompile(`^\s*❯(\x{00a0}|\s|$)`)
 // answered with lines out of that block: `59  loglevel = 4` off mesh, and
 // `⎿  Interrupted· What should Claude do` off devops when a turn was stopped by
 // hand. Both measured on the owner's panes 2026-08-18.
-var toolSaid = regexp.MustCompile(`^\s*⎿`)
+var toolSaid = regexp.MustCompile(`^\s*(?:⎿|[✓✗]\s+\w+)`)
 
 // withoutTheOtherVoices takes everything that is not the agent speaking out of
 // the pane before anything is read off it for a notification.
@@ -272,7 +279,7 @@ func withoutTheOtherVoices(lines []string) []string {
 	}
 	var pruned []string
 	for i := 0; i < len(out); i++ {
-		l := ansi.ReplaceAllString(out[i], "")
+		l := plainLine(out[i])
 		if !humanSaid.MatchString(l) && !toolSaid.MatchString(l) {
 			continue
 		}
@@ -284,7 +291,7 @@ func withoutTheOtherVoices(lines []string) []string {
 		// What the pane broke the block onto sits indented under its glyph — the
 		// same shape a marked line's continuation has, one speaker over.
 		for j := i + 1; j < len(pruned); j++ {
-			c := ansi.ReplaceAllString(pruned[j], "")
+			c := plainLine(pruned[j])
 			if strings.TrimSpace(c) == "" || indentOf(c) <= at {
 				break
 			}
@@ -321,16 +328,16 @@ func withoutTheOtherVoices(lines []string) []string {
 func wrapped(lines []string, i int) string {
 	var b strings.Builder
 	n := 0
-	markerAt := indentOf(lines[i])
+	markerAt := indentOf(plainLine(lines[i]))
 	for j := i + 1; j < len(lines) && n < maxLineLen; j++ {
-		l := ansi.ReplaceAllString(lines[j], "")
+		l := plainLine(lines[j])
 		s := strings.TrimSpace(l)
 		if s == "" || indentOf(l) <= markerAt || agentSaid.MatchString(l) {
 			break
 		}
 		// `⎿` opens what a tool answered, which is the agent pointing at output
 		// rather than speaking — the same rule as `● Bash(…)`, one line lower.
-		if strings.HasPrefix(s, "⎿") || isChrome(s) || !hasWord(s) {
+		if strings.HasPrefix(s, "⎿") || toolSaid.MatchString(l) || isChrome(s) || !hasWord(s) {
 			break
 		}
 		b.WriteString(" ")

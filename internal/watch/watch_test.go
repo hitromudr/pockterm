@@ -1226,6 +1226,50 @@ func TestTailIgnoresTheAgentsInputBox(t *testing.T) {
 	if got := Tail(echoed); got != "прогон закончен, 48 проверок" {
 		t.Fatalf("Tail = %q, want anything but the owner's own message", got)
 	}
+
+	// Gemini CLI marks its answers with ✦ and draws a scrollbar thumb in the
+	// rightmost column; below the transcript sit the mode row (YOLO Ctrl+Y), the
+	// composer box and the status footer. Reported 2026-11-02 with a screenshot of
+	// notifications reading "12% · gemini-4-argon · ~/work/anabasis · …".
+	geminiMarked := []string{
+		"  ✓  ReadFile  crates/ana-client/src/bag/tip_lines.rs",
+		"✦ Подняла броню отвала бульдозера спереди до ×3",
+		"  (turret_bucket_t1..t5 front_armour: 2.0 → 3.0),     █",
+		"  обновила тесты в ana-sim и ana-client.              █",
+		"                                                      █",
+		"  Время: 12:37 UTC.                                   █",
+		"─────────────────────────────────────────────────────────",
+		" YOLO Ctrl+Y",
+		"",
+		"─────────────────────────────────────────────────────────",
+		" *   Продолжай работу",
+		"─────────────────────────────────────────────────────────",
+		" 17%   ·   gemini-4-argon   ·    ~/work/anabasis   ·   …",
+	}
+	wantGemini := "Подняла броню отвала бульдозера спереди до ×3 (turret_bucket_t1..t5 front_armour: 2.0 → 3.0), обновила тесты в ana-sim и ana-client."
+	if got := Tail(geminiMarked); got != wantGemini {
+		t.Fatalf("Tail(geminiMarked) = %q, want %q", got, wantGemini)
+	}
+
+	// And when a long Gemini answer has scrolled its ✦ off the top of the screen,
+	// the fallback must stop above the mode row and strip the scrollbar thumb.
+	geminiFallback := []string{
+		"  ETA: дозагрузка #09–#18 — автоматически при открытии  █",
+		"  следующего суточного окна квоты YouTube.              █",
+		"                                                        ▄",
+		"> Жди квоты",
+		"─────────────────────────────────────────────────────────",
+		" YOLO Ctrl+Y",
+		"",
+		"─────────────────────────────────────────────────────────",
+		" *   Жди квоты и доложи",
+		"─────────────────────────────────────────────────────────",
+		" [INSERT]  ·   5%  ·   gemini-4-argon  ·   master  ·   …",
+	}
+	wantFallback := "ETA: дозагрузка #09–#18 — автоматически при открытии следующего суточного окна квоты YouTube."
+	if got := Tail(geminiFallback); got != wantFallback {
+		t.Fatalf("Tail(geminiFallback) = %q, want %q", got, wantFallback)
+	}
 }
 
 func TestTailIsNeitherToolOutputNorAFragment(t *testing.T) {

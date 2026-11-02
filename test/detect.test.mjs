@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  detectQuestion, detectOffer, detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill, settingsScrollKeys,
+  detectQuestion, detectOffer, detectPrompt, answerKeys, submitKeys, hasInputBox, hasGeminiBox, scrolledPill, settingsScrollKeys,
 } from '../web/js/detect.js';
 
 // The cases are shared with the Go detector (internal/detect), which drives
@@ -564,6 +564,8 @@ test('full screen: Gemini CLI scrollbar says whether the view is off its bottom'
   assert.equal(scrolledPill(geminiScreen(1, '█'), cols), true);
   // Short conversation: no thumb at all.
   assert.equal(scrolledPill(geminiScreen(-1), cols), false);
+  assert.equal(hasGeminiBox(geminiScreen(-1).map((r) => r.text)), true);
+  assert.equal(hasGeminiBox(['───────', '❯\u00a0', '───────']), false);
 });
 
 test('Gemini CLI /settings: Apply To commits with Tab and scroll sends arrows', () => {

@@ -1,5 +1,5 @@
 import { keyBytes, applyCtrl } from './keys.js';
-import { detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill, settingsScrollKeys } from './detect.js';
+import { detectPrompt, answerKeys, submitKeys, hasInputBox, hasGeminiBox, scrolledPill, settingsScrollKeys } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNotice } from './notify.js';
 import { linkAction } from './link.js';
 import { directBase, tryDirect, doorURL, worthTrying, viaMark } from './direct.js';
@@ -1769,6 +1769,7 @@ function attach(name) {
   wayBackShown = false;
   toBottomBtn.hidden = true;
   agentView = false;
+  geminiView = false;
   agentScrolled = false;
   renderTabs();
   // The strip is on screen now, so its colours have to keep up with the panes.
@@ -3375,6 +3376,14 @@ function dropQueuedWheel() {
   scroller.dropped();
 }
 
+// Gemini CLI moves one line per wheel event and its VirtualizedList snaps a
+// 1-line step from the bottom (`maxScroll - 1`) straight back to `maxScroll` on
+// the next 33ms scrollbar-fade frame, so both a single wheel click on a laptop
+// and a normal touch swipe on a host with `wheelLines = 1` stayed pinned to the
+// bottom. Four events in one write cross that threshold on the first notch and
+// move at a normal wheel pace.
+const GEMINI_WHEEL_LINES = 4;
+
 function flushWheel() {
   if (wheelFlush !== null) { cancelAnimationFrame(wheelFlush); wheelFlush = null; }
   const n = Math.abs(wheelPending);
@@ -3382,10 +3391,10 @@ function flushWheel() {
   const btn = wheelPending > 0 ? 64 : 65;
   wheelPending = 0;
   wheelSentAt = performance.now();
-  const keys = !scrolledBack && appWheel && altScreen
-    ? settingsScrollKeys(visibleLines(), btn === 64 ? 1 : -1, n)
-    : null;
-  send(keys || `\x1b[<${btn};1;1M`.repeat(n));
+  const lines = !scrolledBack && appWheel && altScreen ? visibleLines() : null;
+  const keys = lines ? settingsScrollKeys(lines, btn === 64 ? 1 : -1, n) : null;
+  const gemini = !!lines && (geminiView || hasGeminiBox(lines));
+  send(keys || `\x1b[<${btn};1;1M`.repeat(gemini ? n * GEMINI_WHEEL_LINES : n));
   // One message, one batch: what the shift below counts against the redraws
   // coming back.
   scroller.batched(wheelSentAt);
@@ -3432,6 +3441,7 @@ function noteFrameArrived() {
 // [0,34] of 36 rows. While the pane is scrolled back tmux does not move the view
 // for new output at all, which is the whole of the gesture this matters for.
 function noteScreenMoved(start, end) {
+  if (appWheel && altScreen && end - start + 1 >= 4) scroller.drew(performance.now());
   if (!movedWholeScreen(start, end, term.rows)) return;
   scroller.drew(performance.now());
   if (refreezeTimer !== null) armRefreeze();
@@ -3465,7 +3475,7 @@ try { smoothScroll = localStorage.getItem('pt-smooth') !== 'off'; } catch (_) {}
 
 let trackEl = null;
 function trackScreen(px) {
-  if (!smoothScroll) px = 0;
+  if (!smoothScroll || (appWheel && altScreen)) px = 0;
   if (!trackEl || !trackEl.isConnected) trackEl = document.querySelector('.xterm-screen');
   if (!trackEl) return;
   if (!px) {
@@ -6030,6 +6040,7 @@ let altScreen = false;
 // has been seen on this screen, because a menu takes the composer's place and the
 // view is still the agent's while it is up.
 let agentView = false;
+let geminiView = false;
 let agentScrolled = false;
 // The position the stack was last woken for. -1 rather than 0, so the first frame
 // of a live pane is not a movement.
@@ -6175,11 +6186,18 @@ termBox.addEventListener('wheel', (e) => {
   wakePager();
   if (!e.deltaY) return;
   if (!scrolledBack && appWheel && altScreen) {
-    const keys = settingsScrollKeys(visibleLines(), e.deltaY < 0 ? 1 : -1, 1);
+    const lines = visibleLines();
+    const keys = settingsScrollKeys(lines, e.deltaY < 0 ? 1 : -1, 1);
     if (keys) {
       e.preventDefault();
       e.stopPropagation();
       sendInput(keys);
+      return;
+    }
+    if (geminiView || hasGeminiBox(lines)) {
+      e.preventDefault();
+      e.stopPropagation();
+      sendWheel(e.deltaY < 0 ? 64 : 65);
       return;
     }
   }
@@ -6230,13 +6248,16 @@ function pageBy(dir) {
   // page instead — the same reasoning as the ⇩'s Ctrl+End, and as harmless where
   // the key means nothing else: an editor or a pager pages on it too.
   //
-  // Twice, because that page is half its view and a screen was asked for from the
-  // phone. The two add up exactly: the second is applied on top of the first's
-  // pending delta (`cQ`, 2.1.294), so an even view moves by itself and an odd one
-  // by one row less. In an editor or a pager it is two of their pages.
+  // Twice on Claude Code, because that page is half its view and a screen was
+  // asked for from the phone. The two add up exactly: the second is applied on
+  // top of the first's pending delta (`cQ`, 2.1.294), so an even view moves by
+  // itself and an odd one by one row less. Once on Gemini CLI, where a single
+  // PageUp/PageDown already moves by the full innerHeight.
   if (!scrolledBack && appWheel && altScreen) {
-    const keys = settingsScrollKeys(visibleLines(), dir, 5);
-    sendInput(keys || keyBytes(dir > 0 ? 'page-up' : 'page-down').repeat(2));
+    const lines = visibleLines();
+    const keys = settingsScrollKeys(lines, dir, 5);
+    const pages = geminiView || hasGeminiBox(lines) ? 1 : 2;
+    sendInput(keys || keyBytes(dir > 0 ? 'page-up' : 'page-down').repeat(pages));
     report('page', { dir, via: 'program', blurred });
     return;
   }
@@ -6443,8 +6464,12 @@ function screenCells() {
 // every mode frame and on every redraw, since in that view tmux sends no frame
 // when the program scrolls: nothing on tmux's side moves.
 function readAgentView() {
-  if (!appWheel || !altScreen) { agentView = false; agentScrolled = false; return; }
-  if (!agentView && hasInputBox(visibleLines())) agentView = true;
+  if (!appWheel || !altScreen) { agentView = false; geminiView = false; agentScrolled = false; return; }
+  if (!agentView || !geminiView) {
+    const lines = visibleLines();
+    if (!agentView && hasInputBox(lines)) agentView = true;
+    if (!geminiView && hasGeminiBox(lines)) geminiView = true;
+  }
   agentScrolled = agentView && scrolledPill(screenCells(), term.cols);
 }
 

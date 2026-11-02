@@ -47,6 +47,16 @@ func geminiBoxAt(plain []string, i int) bool {
 	return false
 }
 
+func geminiChromeAt(plain []string, i int) int {
+	w := utf8.RuneCountInString(strings.TrimSpace(plain[i-1]))
+	for k := max(0, i-5); k < i-1; k++ {
+		if composerTop.MatchString(plain[k]) && utf8.RuneCountInString(strings.TrimSpace(plain[k])) == w {
+			return k
+		}
+	}
+	return i - 1
+}
+
 // InputBox reports whether the agent's own input box is on screen.
 //
 // It is the answer to "does this pane belong to an agent that reports its
@@ -69,8 +79,11 @@ func InputBoxAt(lines []string) int {
 		plain[i] = ansi.ReplaceAllString(l, "")
 	}
 	for i, l := range plain {
-		if composerPrompt.MatchString(l) || geminiBoxAt(plain, i) {
+		if composerPrompt.MatchString(l) {
 			return i
+		}
+		if geminiBoxAt(plain, i) {
+			return geminiChromeAt(plain, i)
 		}
 	}
 	return -1

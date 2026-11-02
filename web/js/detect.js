@@ -889,6 +889,15 @@ export function hasInputBox(lines) {
   return inputBoxAt(lines.map(stripAnsi)) >= 0;
 }
 
+export function hasGeminiBox(lines) {
+  if (!Array.isArray(lines)) return false;
+  const plain = lines.map(stripAnsi);
+  for (let i = 0; i < plain.length; i++) {
+    if (geminiBoxAt(plain, i)) return true;
+  }
+  return false;
+}
+
 // Gemini CLI's scrollbar thumb in the rightmost column (`cols - 1`) above its
 // composer. When the conversation fits on one screen no thumb is drawn; at the
 // bottom of a longer conversation the thumb reaches the last row of MainContent

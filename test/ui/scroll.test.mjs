@@ -762,6 +762,29 @@ describe('a swipe follows the finger', () => {
       stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
       await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });
       await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
+
+      // Gemini CLI's PageUp already moves by its full innerHeight, so ⇞ sends one
+      // rather than two; a wheel notch sends four SGR wheel events at (1,1) so the
+      // step crosses VirtualizedList's 1-line bottom snap (`maxScroll - 1`).
+      await page.click('#term');
+      await page.click('#page-up');
+      let pane = '';
+      for (let i = 0; i < 20 && !pane.includes('^[[5~'); i++) {
+        await page.waitForTimeout(100);
+        pane = stand.tmux(['capture-pane', '-p', '-J', '-t', 'demo']);
+      }
+      assert.ok(pane.includes('^[[5~') && !pane.includes('^[[5~^[[5~'),
+        `⇞ on Gemini sent the wrong page count: ${pane}`);
+
+      await page.mouse.move(300, 300);
+      await page.mouse.wheel(0, -120);
+      const fourNotches = '^[[M`!!'.repeat(4);
+      for (let i = 0; i < 20 && !pane.includes(fourNotches); i++) {
+        await page.waitForTimeout(100);
+        pane = stand.tmux(['capture-pane', '-p', '-J', '-t', 'demo']);
+      }
+      assert.ok(pane.includes(fourNotches),
+        `a wheel notch on Gemini did not send 4 steps at (1,1): ${pane}`);
     } finally {
       stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1002l\x1b[?1049l']);
       stand.tmux(['send-keys', '-t', 'demo', 'Enter']);

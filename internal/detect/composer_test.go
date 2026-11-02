@@ -36,6 +36,7 @@ func TestInputBoxIsTheAgentsOwnPrompt(t *testing.T) {
 		t.Errorf("InputBoxAt = %d on a pane with no box", got)
 	}
 	gemini := []string{
+		"✦ Готово.",
 		"─────────────────────────────────────────────────────────",
 		" YOLO Ctrl+Y",
 		"",
@@ -44,7 +45,10 @@ func TestInputBoxIsTheAgentsOwnPrompt(t *testing.T) {
 		"─────────────────────────────────────────────────────────",
 		" 12%   ·   gemini-4-argon   ·    ~/work/anabasis   ·   …",
 	}
-	if got := InputBoxAt(gemini); got != 4 {
-		t.Errorf("InputBoxAt(gemini) = %d, want 4", got)
+	if !InputBox(gemini) {
+		t.Error("the Gemini input box was not seen on a pane showing one")
+	}
+	if got := InputBoxAt(gemini); got != 1 {
+		t.Errorf("InputBoxAt(gemini) = %d, want 1", got)
 	}
 }
