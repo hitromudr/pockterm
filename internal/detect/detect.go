@@ -328,7 +328,7 @@ func Question(lines []string) *Menu {
 		// what is under it is whatever is being typed — see composer.go for how
 		// the two are told apart. A line from there brings no chrome, so a
 		// numbered list in a half-written message is prose like any other.
-		composer := composerPrompt.MatchString(line)
+		composer := composerPrompt.MatchString(line) || geminiBoxAt(rows, i)
 		beside := besideBox(plain[i], pcol) && !composer
 		pointed := pointer.MatchString(m[1]) && !composer
 		hasChrome := (chrome.MatchString(m[1]) || rightBorder.MatchString(line) || beside) && !composer

@@ -35,4 +35,16 @@ func TestInputBoxIsTheAgentsOwnPrompt(t *testing.T) {
 	if got := InputBoxAt(menu); got != -1 {
 		t.Errorf("InputBoxAt = %d on a pane with no box", got)
 	}
+	gemini := []string{
+		"─────────────────────────────────────────────────────────",
+		" YOLO Ctrl+Y",
+		"",
+		"─────────────────────────────────────────────────────────",
+		" *   Жду результата",
+		"─────────────────────────────────────────────────────────",
+		" 12%   ·   gemini-4-argon   ·    ~/work/anabasis   ·   …",
+	}
+	if got := InputBoxAt(gemini); got != 4 {
+		t.Errorf("InputBoxAt(gemini) = %d, want 4", got)
+	}
 }

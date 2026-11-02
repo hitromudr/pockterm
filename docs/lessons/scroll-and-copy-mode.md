@@ -191,6 +191,20 @@ So the page hands the detector the cell's colour (`mode:value`), and a run ends 
 colour changes. Unit tests rebuilt from the two screenshots in `test/detect.test.mjs`; the
 browser test draws the pill over a `48;5;22` row too.
 
+Gemini CLI on the alternate screen (`ui.useAlternateBuffer: true`) has no pill; it draws a
+scrollbar thumb (`█`, `▀`, `▄` in `cols - 1`, preceded by a space from `paddingRight: 1`)
+along its `MainContent` list above the composer. Reported from the phone 2026-11-02 on
+`anabasis-gemini` as ⇩ and ⇟ never going away at the bottom: `hasInputBox` only knew
+Claude Code's `❯\u00a0`, so `agentView` was false and `programAway` was always true.
+Measured on the live `anabasis-gemini` and `contellect-gemini` panes and a private stand
+(Gemini CLI 0.66.0, 57×45 and 120×40): the composer is ` > `, ` * ` or ` ! ` indented by
+one space between two full-width rules (`─` or `▄`/`▀`), and `MainContent` ends four rows
+above the `StatusRow` rule (`rule - 4`, above `CopyModeWarning`, `ToastDisplay` and
+`StatusRow.row1`). When a conversation fits on one screen no thumb is drawn; at the bottom
+of a longer one the thumb ends on `rule - 4` as `█`; scrolled up by even one line
+(`Shift+Up`), that cell turns to `▀` or the thumb ends higher up (`scrolledBar` in
+`web/js/detect.js`).
+
 ### Nothing woke the buttons on a laptop's wheel
 
 Reported from the laptop on 2026-10-04 as "no up, down or to-the-end buttons" on one tab,

@@ -51,7 +51,29 @@ const RIGHT_BORDER = /│\s*$/;
 // The space after the glyph is what tells the two apart: the composer draws a
 // non-breaking one, a menu pointer an ordinary one. Measured on Claude Code
 // v2.1.222 off both panes — see internal/detect/composer.go, which has to agree.
+// Gemini CLI draws its prompt indented by one space (` > `, ` * `, ` ! `)
+// between two horizontal rules of equal width (`─` or `▄`/`▀`).
 const COMPOSER = /^[ \t]*\u276f\u00a0/;
+const GEMINI_PROMPT = /^[ \t][>*!] /;
+const BOX_TOP = /^[ \t]*(?:[─━═]{3,}|▄{3,})[ \t]*$/;
+const BOX_BOTTOM = /^[ \t]*(?:[─━═]{3,}|▀{3,})[ \t]*$/;
+
+function geminiBoxAt(plain, i) {
+  if (i <= 0 || !GEMINI_PROMPT.test(plain[i]) || !BOX_TOP.test(plain[i - 1])) return false;
+  const w = plain[i - 1].trim().length;
+  const stop = Math.min(plain.length - 1, i + 10);
+  for (let j = i + 1; j <= stop; j++) {
+    if (BOX_BOTTOM.test(plain[j]) && plain[j].trim().length === w) return true;
+  }
+  return false;
+}
+
+function inputBoxAt(plain) {
+  for (let i = 0; i < plain.length; i++) {
+    if (COMPOSER.test(plain[i]) || geminiBoxAt(plain, i)) return i;
+  }
+  return -1;
+}
 
 // The menu's own text field, offered as one of the options — and not an answer
 // at all. AskUserQuestion puts a text input in the list, and what the pane shows
@@ -482,7 +504,7 @@ export function detectQuestion(lines) {
     if (!m) continue;
     // A line of the input box brings no chrome with it: what is under that ❯ is
     // being typed, not offered.
-    const composer = COMPOSER.test(rows[i]);
+    const composer = COMPOSER.test(rows[i]) || geminiBoxAt(rows, i);
     const beside = besideBox(plain[i], pcol) && !composer;
     const pointed = POINTER.test(m[1]) && !composer;
     const chrome = (CHROME.test(m[1]) || RIGHT_BORDER.test(rows[i]) || beside) && !composer;
@@ -822,7 +844,37 @@ export function submitKeys(menu) {
 // pane where `clear` is a message to Claude rather than a command to a shell.
 // Both callers read one screen, so both read it the same way.
 export function hasInputBox(lines) {
-  return lines.some((l) => COMPOSER.test(stripAnsi(l)));
+  return inputBoxAt(lines.map(stripAnsi)) >= 0;
+}
+
+// Gemini CLI's scrollbar thumb in the rightmost column (`cols - 1`) above its
+// composer. When the conversation fits on one screen no thumb is drawn; at the
+// bottom of a longer conversation the thumb reaches the last row of MainContent
+// (`rule - 4`, above CopyModeWarning, ToastDisplay and StatusRow.row1) as a full
+// block `█`; scrolled up by even one line (`Shift+Up`, measured on Gemini CLI
+// 0.66.0 at 57x45) that cell turns to `▀` or the thumb ends higher up.
+const THUMB = '█▀▄';
+
+function scrolledBar(rows, cols) {
+  if (cols < 2) return false;
+  const plain = rows.map((r) => stripAnsi(typeof r.text === 'string' ? r.text : r.text.join('')));
+  const box = inputBoxAt(plain);
+  if (box < 1 || !geminiBoxAt(plain, box)) return false;
+  const w = plain[box - 1].trim().length;
+  let rule = box - 1;
+  for (let i = Math.max(0, box - 5); i < box - 1; i++) {
+    if (RULE.test(plain[i]) && plain[i].trim().length === w) { rule = i; break; }
+  }
+  const bottom = rule - 4;
+  if (bottom < 0) return false;
+  let last = -1;
+  for (let y = 0; y <= bottom; y++) {
+    const ch = rows[y].text[cols - 1];
+    const before = rows[y].text[cols - 2] || ' ';
+    if (THUMB.includes(ch) && before === ' ') last = y;
+  }
+  if (last < 0) return false;
+  return last < bottom || rows[last].text[cols - 1] === '▀';
 }
 
 // Is the agent's full-screen view scrolled up from its bottom?
@@ -872,5 +924,5 @@ export function scrolledPill(rows, cols) {
       if (text.length > 1 && text.endsWith('↓') && Math.abs(left - right) <= PILL_SLACK && left > 0) return true;
     }
   }
-  return false;
+  return scrolledBar(rows, cols);
 }

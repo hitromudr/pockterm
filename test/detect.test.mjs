@@ -447,6 +447,18 @@ test('the agent\'s input box is recognised on its own', () => {
   // Something typed into the box does not make it stop being one: the pad has to
   // ask about a half-written message just as much as about an empty box.
   assert.equal(hasInputBox(['❯\u00a0а можно и так']), true);
+  // Gemini CLI's input box: indented by one space between two horizontal rules of
+  // equal width (`*` in YOLO, `>` in default, `!` in shell mode).
+  assert.equal(hasInputBox([
+    '─────────────────────────────────────────────────────────',
+    ' *   Жду результата',
+    '─────────────────────────────────────────────────────────',
+  ]), true, 'Gemini input box was not seen');
+  assert.equal(hasInputBox([
+    '▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
+    ' >   Type your message or @path/to/file',
+    '▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀',
+  ]), true, 'Gemini half-line input box was not seen');
 });
 
 // Claude Code's full-screen view, off a private stand at 52 columns: scrolled up
@@ -510,4 +522,46 @@ test('full screen: a pill with the arrow cut off says no', () => {
   const text = '   Jump to bottom   ';
   const paint = '   ' + '#'.repeat(14) + '   ';
   assert.equal(scrolledPill([{ text, paint }], cols), false);
+});
+
+test('full screen: Gemini CLI scrollbar says whether the view is off its bottom', () => {
+  // Measured on Gemini CLI 0.66.0 at 57x45 (anabasis-gemini on the phone,
+  // 2026-11-02): MainContent ends four rows above the StatusRow rule (above
+  // CopyModeWarning, ToastDisplay and StatusRow.row1). At the bottom the thumb
+  // ends on that row as `█`; scrolled up by one line (`Shift+Up`) that cell is
+  // `▀`; scrolled up by a page the thumb ends higher up; a short conversation
+  // draws no thumb at all.
+  const cols = 57;
+  const rule = '─'.repeat(cols);
+  const geminiScreen = (thumbAt, glyph = '█') => {
+    const lines = [
+      '  ✓ ReadFile docs/_tmp_hunter_1.png',
+      '  ✓ ReadFile docs/_tmp_hunter_2.png',
+      '  ✓ ReadFile docs/_tmp_hunter_3.png',
+      '  ✓ ReadFile docs/_tmp_hunter_4.png',
+      '',
+      '',
+      ' ⠏ Thinking... (esc to cancel, 45s)',
+      rule,
+      ' YOLO Ctrl+Y',
+      '',
+      rule,
+      ' *   Жду результата',
+      rule,
+      ' 12%   ·   gemini-4-argon   ·    ~/work/anabasis   ·   …',
+    ];
+    return lines.map((l, i) => {
+      const padded = l.padEnd(cols);
+      const text = i === thumbAt ? padded.slice(0, cols - 1) + glyph : padded;
+      return { text, paint: ' '.repeat(cols) };
+    });
+  };
+  // At the bottom: thumb `█` on row 3 (`rule` is row 7, `7 - 4 = 3`).
+  assert.equal(scrolledPill(geminiScreen(3, '█'), cols), false);
+  // Scrolled up one line: the bottom cell of MainContent is `▀`.
+  assert.equal(scrolledPill(geminiScreen(3, '▀'), cols), true);
+  // Scrolled up further: thumb ends above row 3.
+  assert.equal(scrolledPill(geminiScreen(1, '█'), cols), true);
+  // Short conversation: no thumb at all.
+  assert.equal(scrolledPill(geminiScreen(-1), cols), false);
 });

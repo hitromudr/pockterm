@@ -1,6 +1,10 @@
 package detect
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+	"unicode/utf8"
+)
 
 // The composer is the agent's own input box: the line you type into, drawn at
 // the bottom of the pane between two rules. Claude Code marks it with the same
@@ -15,7 +19,33 @@ import "regexp"
 //
 // Written as an escape and not as the character: a non-breaking space is
 // invisible in the source, and being that one is the entire rule.
-var composerPrompt = regexp.MustCompile("^\\s*❯\\x{00a0}")
+//
+// Gemini CLI draws its prompt indented by one space (` > `, ` * `, ` ! `)
+// directly under a full-width top border (`─` or `▄`) and closes the box with a
+// matching bottom border (`─` or `▀`) of the same width.
+var (
+	composerPrompt = regexp.MustCompile("^\\s*❯\\x{00a0}")
+	geminiPrompt   = regexp.MustCompile("^[ \t][>*!] ")
+	composerTop    = regexp.MustCompile("^[ \t]*(?:[─━═]{3,}|▄{3,})[ \t]*$")
+	composerBottom = regexp.MustCompile("^[ \t]*(?:[─━═]{3,}|▀{3,})[ \t]*$")
+)
+
+func geminiBoxAt(plain []string, i int) bool {
+	if i <= 0 || !geminiPrompt.MatchString(plain[i]) || !composerTop.MatchString(plain[i-1]) {
+		return false
+	}
+	w := utf8.RuneCountInString(strings.TrimSpace(plain[i-1]))
+	stop := i + 10
+	if stop >= len(plain) {
+		stop = len(plain) - 1
+	}
+	for j := i + 1; j <= stop; j++ {
+		if composerBottom.MatchString(plain[j]) && utf8.RuneCountInString(strings.TrimSpace(plain[j])) == w {
+			return true
+		}
+	}
+	return false
+}
 
 // InputBox reports whether the agent's own input box is on screen.
 //
@@ -34,8 +64,12 @@ func InputBox(lines []string) bool { return InputBoxAt(lines) >= 0 }
 // something the agent *said* has to stop there — see watch.Tail, which did not
 // and sent the reply Claude had suggested to the phone instead.
 func InputBoxAt(lines []string) int {
+	plain := make([]string, len(lines))
 	for i, l := range lines {
-		if composerPrompt.MatchString(ansi.ReplaceAllString(l, "")) {
+		plain[i] = ansi.ReplaceAllString(l, "")
+	}
+	for i, l := range plain {
+		if composerPrompt.MatchString(l) || geminiBoxAt(plain, i) {
 			return i
 		}
 	}

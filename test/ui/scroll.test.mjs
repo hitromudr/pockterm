@@ -744,6 +744,24 @@ describe('a swipe follows the finger', () => {
       await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
       draw(false, true);
       await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });
+      // And Gemini CLI's full screen (reported from the phone 2026-11-02 as ⇩
+      // staying up on anabasis-gemini at the bottom): its thumb in the rightmost
+      // column reaches `rule - 4` as `█` at the bottom and rises off it when
+      // scrolled up.
+      const rule = '─'.repeat(cols);
+      const gemini = (thumbRow, glyph = '█') => '\x1b[2J' +
+        [0, 1, 2, 3].map((i) => `\x1b[${i + 1};1Hline ${i}\x1b[${i + 1};${cols}H${i === thumbRow ? glyph : ' '}`).join('') +
+        '\x1b[7;1H ⠏ Thinking...' +
+        `\x1b[8;1H${rule}\x1b[9;1H YOLO Ctrl+Y` +
+        `\x1b[11;1H${rule}\x1b[12;1H *   Жду результата\x1b[13;1H${rule}`;
+      stand.tmux(['send-keys', '-t', 'demo', '-l', gemini(1, '█')]);
+      stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+      await page.waitForSelector('#page-down:not([hidden])', { timeout: 5000 });
+      await page.waitForSelector('#to-bottom:not([hidden])', { timeout: 5000 });
+      stand.tmux(['send-keys', '-t', 'demo', '-l', gemini(3, '█')]);
+      stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
+      await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });
+      await page.waitForSelector('#to-bottom', { state: 'hidden', timeout: 5000 });
     } finally {
       stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1002l\x1b[?1049l']);
       stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
