@@ -683,6 +683,23 @@ describe('a swipe follows the finger', () => {
       `the copy after the swipe: ${JSON.stringify(clip)}`);
     await page.waitForSelector('#snapshot', { state: 'hidden' });
 
+    // And the mouse wheel in the copy window (reported from the PC on 2026-11-02
+    // as "селект в джемини не скролит"): #snapshot sits beside #terminal rather
+    // than inside it and has no scrollback of its own, so a wheel over it has to
+    // step the copy aside, send the notch to the program and refreeze on the new
+    // screen just as the touch swipe does.
+    await page.click('#select');
+    await page.waitForFunction(() => document.getElementById('snapshot').dataset.from === 'host', null, { timeout: 5000 });
+    await page.mouse.move(200, 200);
+    await page.mouse.wheel(0, 120);
+    await page.waitForFunction(() => {
+      const el = document.getElementById('snapshot');
+      return !el.hidden && !el.classList.contains('through') && el.dataset.from === 'host'
+        && el.textContent.includes('^[[<65;');
+    }, null, { timeout: 5000 });
+    await page.click('#sel-done');
+    await page.waitForSelector('#snapshot', { state: 'hidden' });
+
     stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1006l\x1b[?1002l\x1b[?1049l']);
     stand.tmux(['send-keys', '-t', 'demo', 'Enter']);
     await page.waitForSelector('#page-down', { state: 'hidden', timeout: 5000 });

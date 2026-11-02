@@ -6181,8 +6181,18 @@ termBox.addEventListener('wheel', (e) => {
   wakePager();
   if (!e.deltaY) return;
   if (!scrolledBack && appWheel && altScreen) {
+    const dir = e.deltaY < 0 ? 1 : -1;
+    if (selectMode) {
+      e.preventDefault();
+      e.stopPropagation();
+      seeThroughCopy();
+      copyDepth += dir;
+      refreezeSoon();
+      sendWheel(dir > 0 ? 64 : 65);
+      return;
+    }
     const lines = visibleLines();
-    const keys = settingsScrollKeys(lines, e.deltaY < 0 ? 1 : -1, 1);
+    const keys = settingsScrollKeys(lines, dir, 1);
     if (keys) {
       e.preventDefault();
       e.stopPropagation();
@@ -6192,7 +6202,7 @@ termBox.addEventListener('wheel', (e) => {
     if (geminiView || hasGeminiBox(lines)) {
       e.preventDefault();
       e.stopPropagation();
-      sendWheel(e.deltaY < 0 ? 64 : 65);
+      sendWheel(dir > 0 ? 64 : 65);
       return;
     }
   }

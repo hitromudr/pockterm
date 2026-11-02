@@ -139,6 +139,15 @@ The stand's test sends `1006` along with `1002`: without it tmux hands the progr
 the old X10 encoding (`^[[M`!!`), and the test looking for `^[[<64;` read a working swipe as a
 failure.
 
+**And on a computer the wheel is a mouse's, not a finger's** (reported 2026-11-02 as «селект в
+джемини не скролит» right after copying from `e2j7o6`). A mouse wheel never passes through
+`Scroller`, and `#snapshot` sits beside `#terminal` rather than inside it, with one screen of text
+and nowhere to scroll on its own — so the capture-phase `wheel` listener on `#term` sent the notch
+to the hidden live pane behind `#snapshot` without stepping the copy aside (`seeThroughCopy`),
+counting `copyDepth` or arming `refreezeSoon`. That listener now runs all three when `selectMode`
+is up over `appWheel && altScreen`, and the stand's test drives `page.mouse.wheel` over `#snapshot`
+after the touch swipe.
+
 ## A selection does not stop where the copy window does
 
 Reported as the clipboard taking more than was selected. The window opens at its own bottom
