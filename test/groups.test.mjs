@@ -5,6 +5,9 @@ import { projectOf, groupSessions, groupState, groupBackground, stripSignature, 
 test('the project is the first segment of where the pane is', () => {
   assert.equal(projectOf({ dir: 'pockterm' }), 'pockterm');
   assert.equal(projectOf({ dir: 'pockterm/web/js' }), 'pockterm');
+  // Sibling worktree directories (<project>-wt/<branch>) belong to <project>.
+  assert.equal(projectOf({ dir: 'contellect-wt/layers' }), 'contellect');
+  assert.equal(projectOf({ dir: '~/contellect-wt/repo-layers' }), '~/contellect');
   assert.equal(projectOf({ dir: '~/notes/x' }), '~/notes');
   assert.equal(projectOf({ dir: '~' }), '~');
   // Absolute is kept whole: a first segment would make one group of all of /tmp.

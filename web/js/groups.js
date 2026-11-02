@@ -20,8 +20,8 @@ export function projectOf(s) {
   if (!dir) return '';
   if (dir.startsWith('/')) return dir;
   if (dir === '~') return dir;
-  if (dir.startsWith('~/')) return '~/' + dir.slice(2).split('/')[0];
-  return dir.split('/')[0];
+  if (dir.startsWith('~/')) return '~/' + dir.slice(2).split('/')[0].replace(/-wt$/, '');
+  return dir.split('/')[0].replace(/-wt$/, '');
 }
 
 // groupSessions lays the strip out: one item per tab, in the order the sessions
