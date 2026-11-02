@@ -381,3 +381,25 @@ says is what the screen says, and a long answer reads `1 · Монолитная
 архитектура с внутр…`. The alternative on the table was numbers alone, and the
 reason it lost is that the labels differ in their first words and agree in the
 rest.
+
+## Gemini CLI `/settings` and its `Apply To` section (2026-11-02)
+
+`BaseSettingsDialog` (`/settings` in Gemini CLI 0.66.0) has two sections toggled by `Tab`:
+the settings list at the top (`> Settings`) and the scope radio list at the bottom
+(`> Apply To`: `1. User Settings`, `2. Workspace Settings`, followed by
+`(Use Enter to select, Ctrl+L to reset, Tab to change focus, Esc to close)`). Reported from
+the laptop 2026-11-02 (`paste-20261102-120216-4268646116.png`, three `answer` events in the
+journal followed by `kill-session`): pressing `Tab` after typing a search filter moved focus
+to `> Apply To`, which numbered the two scope options and raised the `#answers` buttons over
+them; tapping either button sent `\r`, which in `BaseSettingsDialog` does not return focus
+to `> Settings` (`onHighlight` already switches the scope), so the buttons stayed up and
+nothing visible changed, while the settings list stopped scrolling because focus remained in
+`> Apply To`, `BaseSettingsDialog` ignores SGR mouse wheel events (`\x1b[<64…`/`65…`) in
+favour of `↑`/`↓` arrows, and `#answers` swallowed wheel and touch gestures even when the
+row itself did not overflow.
+
+Recognised by the footer (`to reset, Tab to change focus`, `navigate: 'scope'` in
+`web/js/detect.js`): `answerKeys` walks the pointer and commits with `\t`, which returns
+focus to `> Settings` and dismisses the numbered scope buttons; `settingsScrollKeys` sends
+`\t` when focus is in `> Apply To` and `\x1b[A`/`\x1b[B` otherwise; and `#answers` only
+claims touch/wheel scrolling for itself when `scrollHeight > clientHeight`.

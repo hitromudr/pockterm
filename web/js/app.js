@@ -1,5 +1,5 @@
 import { keyBytes, applyCtrl } from './keys.js';
-import { detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill } from './detect.js';
+import { detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill, settingsScrollKeys } from './detect.js';
 import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNotice } from './notify.js';
 import { linkAction } from './link.js';
 import { directBase, tryDirect, doorURL, worthTrying, viaMark } from './direct.js';
@@ -3382,7 +3382,10 @@ function flushWheel() {
   const btn = wheelPending > 0 ? 64 : 65;
   wheelPending = 0;
   wheelSentAt = performance.now();
-  send(`\x1b[<${btn};1;1M`.repeat(n));
+  const keys = !scrolledBack && appWheel && altScreen
+    ? settingsScrollKeys(visibleLines(), btn === 64 ? 1 : -1, n)
+    : null;
+  send(keys || `\x1b[<${btn};1;1M`.repeat(n));
   // One message, one batch: what the shift below counts against the redraws
   // coming back.
   scroller.batched(wheelSentAt);
@@ -3579,9 +3582,13 @@ const gestureArea = document.getElementById('screen-term');
 // scroll under their own — six options with their labels are taller than the
 // room the row is allowed, and a swipe there has to reach the last one rather
 // than scroll the terminal underneath.
+function answersScrolls() {
+  return !!answersEl && answersEl.scrollHeight > answersEl.clientHeight;
+}
 function ownsGesture(target) {
-  return !(target instanceof Element) ||
-    !target.closest('#composer, #snapshot, header.bar, #answers, #ctrlpad, #history-list, #scrollbar, #grid');
+  if (!(target instanceof Element)) return true;
+  if (target.closest('#answers')) return !answersScrolls();
+  return !target.closest('#composer, #snapshot, header.bar, #ctrlpad, #history-list, #scrollbar, #grid');
 }
 
 // Except the frozen copy of a program that draws its own view on the alternate
@@ -6164,7 +6171,23 @@ termBox.addEventListener('pointerdown', wakePager, { passive: true });
 // On the way down rather than on the way up: xterm cancels the wheel it encodes
 // for a program, propagation included, so a listener here in the bubbling phase
 // hears nothing in exactly the case it is for.
-termBox.addEventListener('wheel', wakePager, { passive: true, capture: true });
+termBox.addEventListener('wheel', (e) => {
+  wakePager();
+  if (!e.deltaY) return;
+  if (!scrolledBack && appWheel && altScreen) {
+    const keys = settingsScrollKeys(visibleLines(), e.deltaY < 0 ? 1 : -1, 1);
+    if (keys) {
+      e.preventDefault();
+      e.stopPropagation();
+      sendInput(keys);
+      return;
+    }
+  }
+  if (e.target instanceof Element && e.target.closest('#answers') && !answersScrolls()) {
+    e.preventDefault();
+    sendWheel(e.deltaY < 0 ? 64 : 65);
+  }
+}, { capture: true });
 wakePager();
 
 // Two rows of overlap, so a page reads on from what the last one ended with
@@ -6212,7 +6235,8 @@ function pageBy(dir) {
   // pending delta (`cQ`, 2.1.294), so an even view moves by itself and an odd one
   // by one row less. In an editor or a pager it is two of their pages.
   if (!scrolledBack && appWheel && altScreen) {
-    sendInput(keyBytes(dir > 0 ? 'page-up' : 'page-down').repeat(2));
+    const keys = settingsScrollKeys(visibleLines(), dir, 5);
+    sendInput(keys || keyBytes(dir > 0 ? 'page-up' : 'page-down').repeat(2));
     report('page', { dir, via: 'program', blurred });
     return;
   }

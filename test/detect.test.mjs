@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  detectQuestion, detectOffer, detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill,
+  detectQuestion, detectOffer, detectPrompt, answerKeys, submitKeys, hasInputBox, scrolledPill, settingsScrollKeys,
 } from '../web/js/detect.js';
 
 // The cases are shared with the Go detector (internal/detect), which drives
@@ -564,4 +564,29 @@ test('full screen: Gemini CLI scrollbar says whether the view is off its bottom'
   assert.equal(scrolledPill(geminiScreen(1, '█'), cols), true);
   // Short conversation: no thumb at all.
   assert.equal(scrolledPill(geminiScreen(-1), cols), false);
+});
+
+test('Gemini CLI /settings: Apply To commits with Tab and scroll sends arrows', () => {
+  const scopeFocused = [
+    '╭──────────────────────────────────────────────────────────────────────────╮',
+    '│    Settings                                                              │',
+    '│    Model Steering                                                  true* │',
+    '│  > Apply To                                                              │',
+    '│  ● 1. User Settings                                                      │',
+    '│    2. Workspace Settings                                                 │',
+    '│                                                                          │',
+    '│  (Use Enter to select, Ctrl+L to reset, Tab to change focus, Esc to close)│',
+    '╰──────────────────────────────────────────────────────────────────────────╯',
+  ];
+  const q = detectQuestion(scopeFocused);
+  assert.equal(q?.navigate, 'scope');
+  assert.deepEqual(answerKeys(q, 0), { move: '', commit: '\t' });
+  assert.deepEqual(answerKeys(q, 1), { move: '\x1b[B', commit: '\t' });
+  // Scrolling while focus is in `> Apply To` sends Tab first to return focus to
+  // the settings list and dismiss the answer row.
+  assert.equal(settingsScrollKeys(scopeFocused, -1, 1), '\t');
+  // Once focus is on `> Settings`, scrolling sends Up/Down arrows.
+  const settingsFocused = scopeFocused.map((l) => l.replace('> Apply To', '  Apply To'));
+  assert.equal(settingsScrollKeys(settingsFocused, -1, 2), '\x1b[B\x1b[B');
+  assert.equal(settingsScrollKeys(settingsFocused, 1, 1), '\x1b[A');
 });

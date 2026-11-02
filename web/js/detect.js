@@ -321,6 +321,27 @@ function saysHow(rows, last) {
   return false;
 }
 
+// Gemini CLI's /settings dialog (`BaseSettingsDialog`) has a second section at
+// the bottom, `> Apply To` (`1. User Settings`, `2. Workspace Settings`),
+// followed by `(Use Enter to select, Ctrl+L to reset, Tab to change focus, Esc
+// to close)`. In that widget `onHighlight` already switches the scope as the
+// pointer moves, while `Enter` leaves focus stuck in `Apply To` — so tapping an
+// answer button changed nothing visible, kept the buttons up and left the
+// settings list above unscrollable (reported 2026-11-02). `Tab` is what returns
+// focus to the settings list and dismisses the numbers.
+const SETTINGS_SCOPE = /to reset,\s*tab to change focus/i;
+const SETTINGS_FOOTER = /\bto reset,.*esc to close\)/i;
+const SCOPE_FOCUSED = /^[\s│]*>\s+Apply To\b/;
+
+function saysScope(rows, last) {
+  for (let i = last + 1, seen = 0; i < rows.length && seen < FOOTER_REACH; i++) {
+    if (!rows[i].trim()) continue;
+    seen++;
+    if (SETTINGS_SCOPE.test(rows[i])) return true;
+  }
+  return false;
+}
+
 // Whether a run that carries chrome is a widget rather than a list someone wrote.
 //
 // A box alone does not say so. Gemini draws a tool's output in one, `│` down both
@@ -574,7 +595,8 @@ export function detectQuestion(lines) {
   // nothing. A prompt that lists its keys is a prompt whose keys those are.
   // A list pointed at with Gemini's bullet takes the digit alone — see BULLET.
   let navigate = best.bullet ? 'digit' : 'digits';
-  if (saysHow(rows, tail)) navigate = 'arrows';
+  if (saysScope(rows, tail)) navigate = 'scope';
+  else if (saysHow(rows, tail)) navigate = 'arrows';
   return {
     prompt,
     options: best.opts,
@@ -807,9 +829,29 @@ export function answerKeys(menu, want) {
   // pair goes out together and always has. Gemini's takes the digit alone, and an
   // Enter after it answers the next screen — see BULLET.
   if (menu.navigate === 'digit') return { move: '', commit: menu.options[want].key };
+  if (menu.navigate === 'scope') {
+    const move = walkTo(menu, want);
+    return move === null ? null : { move, commit: '\t' };
+  }
   if (menu.navigate !== 'arrows') return { move: '', commit: menu.options[want].key + '\r' };
   const move = walkTo(menu, want);
   return move === null ? null : { move, commit: '\r' };
+}
+
+// Gemini CLI's /settings dialog (`BaseSettingsDialog`) runs on the alternate
+// screen with mouse reporting on (`appWheel && altScreen`), yet its list of
+// settings ignores mouse-wheel and PageUp/PageDown events and only moves on
+// Up/Down arrows (`\x1b[A`/`\x1b[B`) — and while focus is in `> Apply To`
+// (`Tab`), even arrows walk the scope radio buttons instead of the settings.
+// When that dialog is on screen, a scroll step sends `\t` first if focus is in
+// `> Apply To` (closing the answer row and returning focus to `> Settings`) and
+// arrow keys otherwise.
+export function settingsScrollKeys(lines, dir, count = 1) {
+  const plain = lines.map(stripAnsi);
+  if (!plain.some((l) => SETTINGS_FOOTER.test(l))) return null;
+  if (plain.some((l) => SCOPE_FOCUSED.test(l))) return '\t';
+  const key = dir > 0 ? '\x1b[A' : '\x1b[B';
+  return key.repeat(Math.max(1, count | 0));
 }
 
 // submitKeys(menu) → { move, commit } | null: what to send next to reach and press
