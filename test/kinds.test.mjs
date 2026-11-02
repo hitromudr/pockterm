@@ -42,6 +42,7 @@ test('a button since removed keeps the shared mark and gets no name', () => {
   // The session is still running; which button started it is no longer known.
   assert.equal(kindMark('custom:b9', buttons), CUSTOM_MARK);
   assert.equal(kindName('custom:b9', buttons), '');
+  assert.equal(kindMark('custom', buttons), CUSTOM_MARK);
   // And with no list at all — the drawer draws tabs before /api/presets answers.
   assert.equal(kindMark('custom:b1', []), CUSTOM_MARK);
   assert.equal(kindMark('custom:b1', undefined), CUSTOM_MARK);

@@ -104,7 +104,7 @@ export function kindMark(kind, buttons) {
   // A button since removed: which one it was is no longer known. The shared mark
   // says that much for one of the owner's own; a default still has its own glyph.
   if (BUILTIN[id]) return BUILTIN[id].mark;
-  return customId(kind) ? CUSTOM_MARK : '';
+  return customId(kind) || kind === 'custom' ? CUSTOM_MARK : '';
 }
 
 // How long a session has been up, for the drawer's row.

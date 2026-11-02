@@ -138,4 +138,22 @@ alive "$pid" || bad "a bare 'make kill' closed something"
 has work || bad "a bare 'make kill' closed the session"
 ok "usage, and nothing touched"
 
+tm kill-server 2>/dev/null || true
+echo "the first session does not leak make's variables into the tmux server"
+mk custom PREFIX=work KIND=custom:b7 CMD="sleep 9999" >/dev/null
+env_dump="$(tm show-environment -g)"
+for v in PREFIX DIR KIND CMD MAKEFLAGS MAKELEVEL; do
+	if printf '%s\n' "$env_dump" | grep -q "^$v="; then
+		bad "$v leaked into tmux global environment: $env_dump"
+	fi
+done
+mk custom PREFIX=anabasis CMD="claude-safe --model opus --dangerously-skip-permissions" >/dev/null
+[ "$(tm show-options -v -t anabasis @pockterm-kind)" = "yolo" ] ||
+	bad "anabasis kind: $(tm show-options -v -t anabasis @pockterm-kind)"
+mk custom PREFIX=qwen CMD="sleep 9999" >/dev/null
+[ "$(tm show-options -v -t qwen @pockterm-kind)" = "custom" ] ||
+	bad "qwen kind: $(tm show-options -v -t qwen @pockterm-kind)"
+tm kill-server 2>/dev/null || true
+ok "tmux server environment is clean, and claude custom commands stamp yolo"
+
 printf '\033[1;32mall good\033[0m\n'

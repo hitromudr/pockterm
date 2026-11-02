@@ -1155,8 +1155,14 @@ describe('tabs of one project, folded', () => {
       assert.ok(row.includes('alpha(3)') && row.includes('beta') && row.includes('demo') && row.length === 3,
         `the strip is ${JSON.stringify(row)}`);
 
-      // Nothing in it chosen yet: the tab says the project.
+      // Nothing in it chosen yet: the tab says the project, and wears the mark of
+      // the session named after it even when the other tabs in the group differ.
+      stand.tmux(['set-option', '-t', 'alpha', '@pockterm-kind', 'claude']);
+      stand.tmux(['set-option', '-t', 'xnt-2', '@pockterm-kind', 'yolo']);
       const label = () => page.evaluate(() => document.querySelector('#tabs button[data-group="alpha"] .gname').textContent);
+      const mark = () => page.evaluate(() => document.querySelector('#tabs button[data-group="alpha"] .kind').textContent);
+      await page.waitForFunction(() => document.querySelector('#tabs button[data-group="alpha"] .kind')?.textContent === '❄️',
+        null, { timeout: 5000 });
       assert.equal(await label(), 'alpha');
 
       // Over the pane, never in the column: the pane keeps its rows.
@@ -1179,10 +1185,12 @@ describe('tabs of one project, folded', () => {
       assert.equal(stand.tmux(['display', '-p', '-t', 'demo', '#{pane_height}']), height);
       // The tab says which of its tabs was chosen, and keeps saying it after leaving.
       assert.equal(await label(), 'xnt-2');
+      assert.equal(await mark(), '⚡');
       await page.click('#tabs button[data-session="beta"]');
       await page.waitForFunction(() => document.querySelector('#tabs button.active')?.dataset.session === 'beta',
         null, { timeout: 5000 });
       assert.equal(await label(), 'xnt-2', 'leaving the group forgot which tab was chosen in it');
+      assert.equal(await mark(), '⚡', 'leaving the group lost the chosen tab mark');
       assert.equal(await page.evaluate(() => document.querySelector('#tabs button[data-group="alpha"]').classList.contains('active')),
         false);
 

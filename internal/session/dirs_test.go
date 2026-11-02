@@ -176,10 +176,13 @@ func TestExampleMakefileKeepsMakesVariablesOutOfTheSession(t *testing.T) {
 	if !strings.Contains(spawnBody(src), "env -u PREFIX") {
 		t.Error("the example Makefile hands make's own variables to the session")
 	}
-	// On the pane's command, not in front of tmux: the pane is started by the tmux
-	// server, which carries the environment it was started with and does not care
-	// what the client's was. The first version of this fix put it in front of tmux
-	// and cleared nothing at all.
+	// Both in front of tmux (so the first session does not hand make's variables to
+	// the tmux server's global environment, where a later `tmux new-window` would
+	// inherit them) and on the pane's command (for every session after the first,
+	// started by the already-running server).
+	if !strings.Contains(spawnBody(src), "$$clean $$launch tmux new-session") {
+		t.Error("the cleaning does not wrap tmux itself, so the first session leaks make's variables into the tmux server")
+	}
 	if !strings.Contains(spawnBody(src), `-c "$(DIR)" "$$mark; $$clean $$cmd; $$hold"`) {
 		t.Error("the cleaning is not part of the command the pane runs")
 	}

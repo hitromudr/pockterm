@@ -166,6 +166,9 @@ export async function startStand({
     POCKTERM_UPLINKS: uplinks,
     // Never a real lookup from a test run.
     POCKTERM_PUBLIC_IP_URLS: '',
+    POCKTERM_DOOR_LISTEN: '',
+    POCKTERM_DIRECT_URL: '',
+    POCKTERM_TRUSTED_ORIGINS: '',
   };
   if (door === 'live') {
     // The door's own listener, as the host runs it behind its proxy: the socket

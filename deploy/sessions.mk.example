@@ -87,12 +87,12 @@ KIND ?=
 # run from and stamped with the button that had started *that* one. MAKELEVEL goes
 # too, or make reports itself as recursive.
 #
-# It wraps the pane's own command, and that placement is the whole point. `env -u`
-# in front of `tmux` does nothing at all: the pane is started by the tmux *server*,
-# which has been running since the first session and carries whatever environment
-# it was started with — measured, after the obvious version of this fix changed
-# nothing. tmux runs the command string through sh, so the words are split there
-# and a quoted command survives unchanged.
+# It wraps both `tmux` itself and the pane's own command, and both places matter:
+# the first session starts the tmux *server*, which keeps the environment it was
+# started with as its global environment (handed to any `tmux new-window` later),
+# while every session after the first is started by that already-running server.
+# tmux runs the command string through sh, so the words are split there and a
+# quoted command survives unchanged.
 #
 # `$$hold` is why a button that cannot start says so. A command that fails on
 # startup — a binary that is not installed, a typo in a custom button, `claude -c`
@@ -125,7 +125,7 @@ clean="env -u PREFIX -u DIR -u KIND -u CMD -u MAKEFLAGS -u MAKELEVEL"; \
 mark='t0=$$(date +%s)'; \
 hold='st=$$?; [ "$$st" = 0 ] && exit 0; [ $$(( $$(date +%s) - $$t0 )) -ge 10 ] && exit "$$st"; printf "\n\033[1;31m[exited %s — the session is held so this can be read]\033[0m\n" "$$st"; exec $${SHELL:-/bin/sh}'; \
 cmd=$(1); \
-$$launch tmux new-session -d -s "$$s" -c "$(DIR)" "$$mark; $$clean $$cmd; $$hold"; \
+$$clean $$launch tmux new-session -d -s "$$s" -c "$(DIR)" "$$mark; $$clean $$cmd; $$hold"; \
 k="$(or $(KIND),$(3))"; \
 if [ -n "$$k" ]; then tmux set-option -t "$$s" @pockterm-kind "$$k"; fi; \
 echo "started $$s in $(DIR)$${launch:+ (own slice)}"
@@ -168,7 +168,12 @@ AGENT ?=
 
 custom: ## New session running CMD (the drawer's custom buttons)
 	@if [ -z "$(CMD)" ]; then echo "usage: make custom CMD='qwen'"; exit 2; fi
-	@$(call spawn,'$(AGENT) $(CMD)',custom,custom)
+	@set -- $(CMD); c="$$1"; shift; \
+	 def=custom; \
+	 case "$$c" in claude|claude-safe|*/claude|*/claude-safe) \
+		case " $$* " in *" --dangerously-skip-permissions "*) def=yolo ;; *) def=claude ;; esac ;; \
+	 esac; \
+	 $(call spawn,'$(AGENT) $(CMD)',custom,$$def)
 
 ls: ## List sessions, hiding the clients pockterm attaches with
 	@tmux ls 2>/dev/null | grep -v '^pockterm-client-' || echo "no sessions"

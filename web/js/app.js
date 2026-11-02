@@ -1863,7 +1863,7 @@ async function renderTabs() {
       const of = members.map((n) => bg.get(n)).filter(Boolean);
       st = groupState(of);
       const mark = b.querySelector('.kind');
-      if (mark) mark.textContent = kindMark(groupKind(members), customButtons);
+      if (mark) mark.textContent = kindMark(groupKind(members, g), customButtons);
       const count = b.querySelector('.gcount');
       if (count) count.textContent = String(members.length);
       b.title = `${g} · ${tabsWord(members.length)}`;
@@ -1982,12 +1982,16 @@ function groupPick(members) {
   return '';
 }
 
-// A folded tab's mark is its tabs' mark when they all share one. Several kinds
-// in one project have no single glyph, and picking one would be a claim about
-// the others.
-function groupKind(members) {
-  const ks = new Set(members.map(kindOf));
-  return ks.size === 1 ? [...ks][0] : '';
+// A folded tab on the strip is named after the tab chosen in it (`groupPick`),
+// or after the project when none has been chosen yet — and where a session in
+// the group carries the project's name, that session is the row (as in the
+// drawer). So the tab's mark is that session's; only when neither exists does
+// it ask whether all its tabs share one mark.
+function groupKind(members, key) {
+  const pick = key && (groupPick(members) || members.find((n) => n === key.split('/').pop()));
+  if (pick) return kindOf(pick);
+  const ms = new Set(members.map((n) => kindMark(kindOf(n), customButtons)));
+  return ms.size === 1 ? kindOf(members[0]) : '';
 }
 
 function tabsWord(n) {
@@ -2181,7 +2185,7 @@ function showKindHelp(btn) {
   const name = btn.dataset.session;
   // A folded tab is a project, and what it is is how many tabs it holds.
   const group = btn.dataset.group;
-  const k = group ? groupKind(tabMembers(btn)) : kindOf(name);
+  const k = group ? groupKind(tabMembers(btn), group) : kindOf(name);
   const what = group ? `${group} · ${tabsWord(tabMembers(btn).length)}` : kindName(k, customButtons);
   const mark = kindMark(k, customButtons);
   // Nothing to explain: a session nobody stamped, or a button since removed.
@@ -2212,7 +2216,7 @@ function paintCarryPlate(btn) {
   if (helpHide) { clearTimeout(helpHide); helpHide = null; }
   const group = btn.dataset.group;
   const name = group || btn.dataset.session;
-  const mark = kindMark(group ? groupKind(tabMembers(btn)) : kindOf(name), customButtons);
+  const mark = kindMark(group ? groupKind(tabMembers(btn), group) : kindOf(name), customButtons);
   kindHelpEl.textContent = mark ? `${mark} ${name}` : name;
   kindHelpEl.hidden = false;
   kindHelpEl.classList.add('carrying');
