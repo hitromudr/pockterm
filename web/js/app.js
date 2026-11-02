@@ -3296,6 +3296,7 @@ function setFont(sz) {
   // A-/A+ stays useful while reading a frozen screen.
   snapshotEl.style.fontSize = `${fontSize}px`;
   refit();
+  snapshotEl.style.lineHeight = `${rowHeight()}px`;
 }
 document.getElementById('font-dec').addEventListener('click', () => setFont(fontSize - 1));
 document.getElementById('font-inc').addEventListener('click', () => setFont(fontSize + 1));
@@ -3525,11 +3526,28 @@ let wheelLines = 5;
 let seeingThrough = false;
 let refreezeTimer = null;
 let refreezeBy = 0;
+let wheelCopyTimer = null;
+let wheelCopyPending = false;
 // The copy is taken again once the screen has stood still this long after the
 // gesture, and at the latest this long after it: a program printing as it scrolls
 // moves the screen with every line, and the copy window must come back regardless.
 const REFREEZE_QUIET = 200; // milliseconds
 const REFREEZE_MAX = 1200;
+
+function cancelWheelCopy() {
+  clearTimeout(wheelCopyTimer);
+  wheelCopyTimer = null;
+  wheelCopyPending = false;
+}
+
+function armWheelCopy(ms) {
+  clearTimeout(wheelCopyTimer);
+  wheelCopyTimer = setTimeout(() => {
+    wheelCopyTimer = null;
+    wheelCopyPending = false;
+    if (selectMode && !seeingThrough) askCapture();
+  }, ms);
+}
 
 const scroller = new Scroller({
   notch: (dir) => {
@@ -3570,6 +3588,7 @@ term.onRender((e) => {
   noteScreenMoved(e.start, e.end);
   if (rowsHeld) liftHeldRows();
   if (seeingThrough) glowPicks();
+  if (wheelCopyPending && selectMode && !seeingThrough) armWheelCopy(16);
 });
 
 let touchY = null;
@@ -4811,6 +4830,7 @@ function setSelectMode(on) {
   // the owner had moved on from.
   if (on) showCmdPad(false);
   cancelRefreeze();
+  cancelWheelCopy();
   seeingThrough = false;
   snapshotEl.classList.remove('through');
   picks = [];
@@ -4819,7 +4839,10 @@ function setSelectMode(on) {
   shownDepth = 0;
   copyTouching = false;
   markProgramCopy();
-  if (on) snapshotEl.style.fontSize = `${fontSize}px`;
+  if (on) {
+    snapshotEl.style.fontSize = `${fontSize}px`;
+    snapshotEl.style.lineHeight = `${rowHeight()}px`;
+  }
   snapshotEl.hidden = !on;
   if (on) freezeScreen();
   if (!on) closePasteTarget();
@@ -4849,7 +4872,7 @@ function freezeScreen() {
 function drawScreen() {
   const shown = snapshotText(visibleLines());
   drawSnapshot(markdownFrom(programCopy() ? dropScrollbar(shown, term.cols) : shown, term.cols), 'screen');
-  snapshotEl.scrollTop = snapshotEl.scrollHeight;
+  snapshotEl.scrollTop = programCopy() ? 0 : snapshotEl.scrollHeight;
 }
 
 // Whether the copy window is over a program's own view, whose swipe is the
@@ -4914,7 +4937,7 @@ function tookCapture(text) {
   if (fresh !== snapshotShown) {
     shownDepth = copyDepth;
     drawSnapshot(fresh, 'host');
-    snapshotEl.scrollTop = snapshotEl.scrollHeight;
+    snapshotEl.scrollTop = programCopy() ? 0 : snapshotEl.scrollHeight;
   } else {
     // Over a program's view the same screen after a swipe is a view that did not
     // move — the wheel ran into its end — and the notches did not take it deeper.
@@ -6183,12 +6206,13 @@ termBox.addEventListener('wheel', (e) => {
   if (!scrolledBack && appWheel && altScreen) {
     const dir = e.deltaY < 0 ? 1 : -1;
     if (selectMode) {
+      const steps = Math.max(1, Math.min(4, Math.round(Math.abs(e.deltaY) / 30)));
       e.preventDefault();
       e.stopPropagation();
-      seeThroughCopy();
-      copyDepth += dir;
-      refreezeSoon();
-      sendWheel(dir > 0 ? 64 : 65);
+      copyDepth += dir * steps;
+      wheelCopyPending = true;
+      armWheelCopy(120);
+      for (let i = 0; i < steps; i++) sendWheel(dir > 0 ? 64 : 65);
       return;
     }
     const lines = visibleLines();

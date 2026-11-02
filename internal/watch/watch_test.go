@@ -1270,6 +1270,32 @@ func TestTailIgnoresTheAgentsInputBox(t *testing.T) {
 	if got := Tail(geminiFallback); got != wantFallback {
 		t.Fatalf("Tail(geminiFallback) = %q, want %q", got, wantFallback)
 	}
+
+	// Reported 2026-11-02 from contellect on the phone: a long Gemini answer whose
+	// ✦ had scrolled off the top ended with a bullet item and the agent's trailing
+	// "23:03 UTC" sign-off on its own line, so the notification arrived with only
+	// "23:03 UTC" as its body.
+	geminiSignoff := []string{
+		"    - Б: остановить две рабочие сессии Gemini",
+		"      (contellect и contellect-meta), чтобы освободить",
+		"      ~1,3 ГБ ОЗУ на малине на ночь, и продолжить",
+		"      завтра с текущей точки (main 3acac66) — 1",
+		"      минута.",
+		"",
+		"  23:03 UTC                                             █",
+		"",
+		"─────────────────────────────────────────────────────────",
+		" YOLO Ctrl+Y",
+		"",
+		"─────────────────────────────────────────────────────────",
+		" *   Запускай в работу",
+		"─────────────────────────────────────────────────────────",
+		" [INSERT]   ·   22%   ·   gemini-4-argon   ·   main   ·  …",
+	}
+	wantSignoff := "- Б: остановить две рабочие сессии Gemini (contellect и contellect-meta), чтобы освободить ~1,3 ГБ ОЗУ на малине на ночь, и продолжить завтра с текущей точки (main 3acac66) — 1 минута."
+	if got := Tail(geminiSignoff); got != wantSignoff {
+		t.Fatalf("Tail(geminiSignoff) = %q, want %q", got, wantSignoff)
+	}
 }
 
 func TestTailIsNeitherToolOutputNorAFragment(t *testing.T) {

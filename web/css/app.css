@@ -1397,7 +1397,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
    and has to go on arriving. The dashed outline stays — the mode is still on, and
    the first version, which faded the whole element, was reported as the copy
    window's frame going away under the swipe. */
-#snapshot.program { touch-action: none; }
+#snapshot.program { touch-action: none; overflow: hidden; }
 #snapshot.through { background: transparent; color: transparent; }
 #snapshot.through .para { visibility: hidden; }
 /* And the live pane is drawn the way the copy is, in one colour and one weight:

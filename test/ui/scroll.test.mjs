@@ -684,12 +684,18 @@ describe('a swipe follows the finger', () => {
     await page.waitForSelector('#snapshot', { state: 'hidden' });
 
     // And the mouse wheel in the copy window (reported from the PC on 2026-11-02
-    // as "селект в джемини не скролит"): #snapshot sits beside #terminal rather
-    // than inside it and has no scrollback of its own, so a wheel over it has to
-    // step the copy aside, send the notch to the program and refreeze on the new
-    // screen just as the touch swipe does.
+    // as "селект в джемини не скролит", and then "три раза дергается один раз
+    // двигается, там размеры шрифта плывут"): a wheel has no touch target inside
+    // #snapshot that a redraw could orphan, so the copy stays on screen without
+    // stepping aside to .xterm-rows (.through stays off) and refreshes in place.
     await page.click('#select');
     await page.waitForFunction(() => document.getElementById('snapshot').dataset.from === 'host', null, { timeout: 5000 });
+    await page.evaluate(() => {
+      window.__throughOnWheel = false;
+      new MutationObserver(() => {
+        if (document.getElementById('snapshot').classList.contains('through')) window.__throughOnWheel = true;
+      }).observe(document.getElementById('snapshot'), { attributes: true, attributeFilter: ['class'] });
+    });
     await page.mouse.move(200, 200);
     await page.mouse.wheel(0, 120);
     await page.waitForFunction(() => {
@@ -697,6 +703,8 @@ describe('a swipe follows the finger', () => {
       return !el.hidden && !el.classList.contains('through') && el.dataset.from === 'host'
         && el.textContent.includes('^[[<65;');
     }, null, { timeout: 5000 });
+    assert.equal(await page.evaluate(() => window.__throughOnWheel), false,
+      'the mouse wheel stepped the copy window aside into .through');
     await page.click('#sel-done');
     await page.waitForSelector('#snapshot', { state: 'hidden' });
 

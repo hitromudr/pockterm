@@ -266,3 +266,12 @@ apart:
 
 Subagents and workflows do not count as left running: the list they are read from keeps
 a subagent that has finished and not been collected (`ReadAgents`).
+
+**And a turn's trailing timestamp (`23:03 UTC`) is not the answer either** (reported
+2026-11-02 from `contellect` on the phone: the `✦` had scrolled off the top, the last
+paragraph was a bulleted option `- Б: остановить две рабочие сессии Gemini …` with its
+continuation indented two columns deeper than the `- `, and under a blank line sat
+`23:03 UTC`). `isChrome` skips a standalone `HH:MM UTC` sign-off line (`timeSignoff`), and
+`paragraphAt` includes the bullet or numbered line above a wrapped continuation when its
+text starts at the continuation's column (`listItem`).
+

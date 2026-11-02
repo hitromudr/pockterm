@@ -198,6 +198,8 @@ func Tail(lines []string) string {
 // over: a blank line, a different indent, a marked line, or anything already
 // known to be interface. `clip` caps what comes out, so a long paragraph is cut
 // at its end rather than begun in the middle.
+var listItem = regexp.MustCompile(`^(\s*(?:[-•*]|\d+[.)])\s+)\S`)
+
 func paragraphAt(lines []string, i int, s string) string {
 	at := indentOf(plainLine(lines[i]))
 	if at == 0 {
@@ -207,10 +209,17 @@ func paragraphAt(lines []string, i int, s string) string {
 	for j := i - 1; j >= 0; j-- {
 		l := plainLine(lines[j])
 		t := strings.TrimSpace(l)
-		if t == "" || !hasWord(t) || isChrome(t) || indentOf(l) != at || agentSaid.MatchString(l) {
+		if t == "" || !hasWord(t) || isChrome(t) || agentSaid.MatchString(l) {
 			break
 		}
-		start = j
+		if indentOf(l) == at {
+			start = j
+			continue
+		}
+		if m := listItem.FindStringSubmatch(l); m != nil && utf8.RuneCountInString(m[1]) == at {
+			start = j
+		}
+		break
 	}
 	var b strings.Builder
 	n := 0
@@ -415,6 +424,7 @@ var statusLine = regexp.MustCompile(`^ctx\s+\d+%\s*\|`)
 // this line sits between the two. The verbs turn over between releases, so what is
 // matched is "<one word> for <a duration>".
 var turnSummary = regexp.MustCompile(`^\P{L}*\p{L}+\s+for\s+\d+[hms]`)
+var timeSignoff = regexp.MustCompile(`^(?:(?:текущее\s+)?время:?\s*)?\d{1,2}:\d{2}\s+utc\b`)
 
 func isChrome(s string) bool {
 	l := strings.ToLower(s)
@@ -422,7 +432,7 @@ func isChrome(s string) bool {
 	if l == ">" || l == "> " || strings.TrimLeft(l, "> ") == "" {
 		return true
 	}
-	if statusLine.MatchString(l) || turnSummary.MatchString(s) {
+	if statusLine.MatchString(l) || turnSummary.MatchString(s) || timeSignoff.MatchString(l) {
 		return true
 	}
 	// The live counter. It should never be the body of a notice at all — a session

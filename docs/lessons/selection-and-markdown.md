@@ -140,13 +140,15 @@ the old X10 encoding (`^[[M`!!`), and the test looking for `^[[<64;` read a work
 failure.
 
 **And on a computer the wheel is a mouse's, not a finger's** (reported 2026-11-02 as «селект в
-джемини не скролит» right after copying from `e2j7o6`). A mouse wheel never passes through
-`Scroller`, and `#snapshot` sits beside `#terminal` rather than inside it, with one screen of text
-and nowhere to scroll on its own — so the capture-phase `wheel` listener on `#term` sent the notch
-to the hidden live pane behind `#snapshot` without stepping the copy aside (`seeThroughCopy`),
-counting `copyDepth` or arming `refreezeSoon`. That listener now runs all three when `selectMode`
-is up over `appWheel && altScreen`, and the stand's test drives `page.mouse.wheel` over `#snapshot`
-after the touch swipe.
+джемини не скролит», and when wired through `seeThroughCopy` as «три раза дергается один раз
+двигается, там размеры шрифта плывут, а скролинга нет нормального»). A mouse wheel has no touch
+target inside `#snapshot` that a redraw could orphan, and toggling `.through` on every wheel notch
+swapped the screen from unwrapped Markdown (`**`, `` ` ``, `line-height: 1.2`, snapped to
+`scrollTop = scrollHeight`) to `.xterm-rows` (cell `letter-spacing`, `rowHeight()`, `top: 0`) and
+back 200ms later, while moving only a single row. So in `selectMode` over `appWheel && altScreen`
+a wheel notch sends up to four steps (`steps`), leaves `.through` off, and refreshes `#snapshot` in
+place via `armWheelCopy` as soon as `term.onRender` draws the scrolled pane; `#snapshot.program`
+has `overflow: hidden` with `scrollTop = 0`, and `#snapshot`'s `lineHeight` matches `rowHeight()`.
 
 ## A selection does not stop where the copy window does
 
