@@ -4055,6 +4055,19 @@ describe('a new version on the server', () => {
     assert.match(said, /v0/, `the bar does not say what the page is running: ${said}`);
     assert.doesNotMatch(said, /^\s*$/, 'the bar is empty');
 
+    // Closing it puts the bar away for this served version and keeps it away
+    // when the socket reconnects.
+    await page.click('#update-close');
+    await page.waitForSelector('#update-bar', { state: 'hidden' });
+    await stand.attach();
+    assert.equal(await page.locator('#update-bar').isVisible(), false,
+      'the dismissed update bar came back on reconnect');
+
+    // A fresh load brings the offer back so #update-now can be exercised.
+    await stand.open();
+    await stand.attach();
+    await page.waitForSelector('#update-bar:not([hidden])');
+
     // Taking it is a reload, and a reload of the real assets lands on a page
     // the server agrees with. The marker proves the document is a new one:
     // hiding the bar without reloading would be the same defect, quieter.

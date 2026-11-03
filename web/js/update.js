@@ -16,10 +16,11 @@
 // staleNotice returns what to say about a served version, or null when there is
 // nothing to say.
 //
-// served is what the server reports, running is this page's own APP_VERSION.
-export function staleNotice(served, running) {
+// served is what the server reports, running is this page's own APP_VERSION,
+// and dismissed is the served version the owner closed the bar on.
+export function staleNotice(served, running, dismissed = '') {
   if (!served || !running) return null; // a server too old to say, or no page version
-  if (served === running) return null;
+  if (served === running || served === dismissed) return null;
   return {
     // The version being offered, not the one being run: "обновить до v75"
     // answers the question the button raises, which is what am I getting.

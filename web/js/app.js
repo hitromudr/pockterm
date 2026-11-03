@@ -3021,6 +3021,14 @@ let copyBack = 0;
 // than about the mode — tmux answers it out of copy-mode too — which is what
 // lets the scrollbar be on screen before anything has been scrolled.
 let copyHist = 0;
+// Declared here, above `setScrollStep()` and `term.onRender`, which reach them
+// while the module is still evaluating on load (see the comment on `onRender`).
+let scrolledBack = false;
+let appWheel = false;
+let altScreen = false;
+let agentView = false;
+let geminiView = false;
+let agentScrolled = false;
 
 function leaveCopyMode(why, note) {
   // The glide first, and this is the trap the ⇩ button found before typing did:
@@ -6197,8 +6205,9 @@ notifyTestBtn.addEventListener('click', async () => {
 const updateBarEl = document.getElementById('update-bar');
 const updateTextEl = document.getElementById('update-text');
 let updateOffered = '';
+let updateDismissed = '';
 function offerUpdate(served) {
-  const notice = staleNotice(served, APP_VERSION);
+  const notice = staleNotice(served, APP_VERSION, updateDismissed);
   if (!notice) {
     updateBarEl.hidden = true;
     return;
@@ -6214,6 +6223,9 @@ function offerUpdate(served) {
 }
 
 const updateNowBtn = document.getElementById('update-now');
+const updateCloseBtn = document.getElementById('update-close');
+keepsTerminalFocus(updateNowBtn);
+keepsTerminalFocus(updateCloseBtn);
 let updateTakenAt = 0;
 updateNowBtn.addEventListener('click', () => {
   const now = Date.now();
@@ -6238,6 +6250,13 @@ updateNowBtn.addEventListener('click', () => {
   // assets come from the server and the cache is only the offline fallback.
   location.reload();
 });
+updateCloseBtn.addEventListener('click', () => {
+  updateDismissed = updateOffered;
+  updateBarEl.hidden = true;
+  releaseTerminalFocus();
+  releaseFocus(updateCloseBtn);
+  report('update-dismissed', { served: updateOffered, running: APP_VERSION });
+});
 
 // Scrolled back into tmux history: the numbered lines on screen belong to the
 // past, so answering them would send digits to whatever is running now.
@@ -6249,22 +6268,10 @@ updateNowBtn.addEventListener('click', () => {
 // scroll is what got it there, and the page's own glide, a second client on the
 // same pane or a mode entered by hand all end up in copy-mode showing the
 // present. What matters here is whether there is history above, which is the
-// second number in the mode frame.
-let scrolledBack = false;
-// Whether the program in the pane has taken the wheel from tmux, and whether it
-// is drawing on the alternate screen. Both are tmux's own answers about the
-// pane (`mouse_any_flag`, `alternate_on`), and they decide whether the rest of
-// this is reachable at all — see the pager below and `paintScrollbar`.
-let appWheel = false;
-let altScreen = false;
-// Whether that program is the agent's full-screen view, and whether the view is
-// scrolled up from its bottom — the one question tmux cannot answer there, so the
-// screen is asked instead (`scrolledPill`). `agentView` holds once the composer
-// has been seen on this screen, because a menu takes the composer's place and the
-// view is still the agent's while it is up.
-let agentView = false;
-let geminiView = false;
-let agentScrolled = false;
+// second number in the mode frame. `scrolledBack`, `appWheel`, `altScreen`,
+// `agentView`, `geminiView` and `agentScrolled` are declared beside `copyHist`
+// so `setScrollStep()` can read them while the module evaluates.
+//
 // The position the stack was last woken for. -1 rather than 0, so the first frame
 // of a live pane is not a movement.
 let copyBackShown = -1;
