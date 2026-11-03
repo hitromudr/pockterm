@@ -8,7 +8,7 @@ import { snapshotText, chunks, pickedText, picksInOrder, samePara, dropScrollbar
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
-import { Scroller, movedWholeScreen } from './scroll.js';
+import { Scroller, movedWholeScreen, scrollStepLines, geminiWheelNotches } from './scroll.js';
 import { staleNotice, startsReload, TAKE_HOLD } from './update.js';
 import { endingKeys, commitComposition, endEditByBlur } from './ender.js';
 import { pushHistory, previewOf } from './compose.js';
@@ -3575,6 +3575,7 @@ function dropQueuedWheel() {
   scroller.dropped();
 }
 
+const geminiWheelState = { at: 0, dir: 0, mult: 1 };
 function flushWheel() {
   if (wheelFlush !== null) { cancelAnimationFrame(wheelFlush); wheelFlush = null; }
   const n = Math.abs(wheelPending);
@@ -3582,10 +3583,13 @@ function flushWheel() {
   const btn = wheelPending > 0 ? 64 : 65;
   wheelPending = 0;
   wheelSentAt = performance.now();
-  const keys = !scrolledBack && appWheel && altScreen
-    ? settingsScrollKeys(visibleLines(), btn === 64 ? 1 : -1, n)
-    : null;
-  send(keys || `\x1b[<${btn};1;1M`.repeat(n));
+  const lines = !scrolledBack && appWheel && altScreen ? visibleLines() : null;
+  const keys = lines ? settingsScrollKeys(lines, btn === 64 ? 1 : -1, n) : null;
+  const onGemini = !keys && lines !== null && (geminiView || hasGeminiBox(lines));
+  const count = onGemini
+    ? geminiWheelNotches(n, btn === 64 ? 1 : -1, wheelSentAt, geminiWheelState)
+    : n;
+  send(keys || `\x1b[<${btn};1;1M`.repeat(count));
   // One message, one batch: what the shift below counts against the redraws
   // coming back.
   scroller.batched(wheelSentAt);
@@ -3761,7 +3765,7 @@ const scroller = new Scroller({
     // the problem and no amount of tuning here will help.
     report('scroll', {
       ...g,
-      lines: wheelLines,
+      lines: effectiveWheelLines(),
       lag: wheelLag,
       lost: wheelLost,
       predicted: Math.round(wheelLagAvg),
@@ -3771,7 +3775,10 @@ const scroller = new Scroller({
     if (seeingThrough) refreezeSoon();
   },
 });
-function setScrollStep() { scroller.setStep(rowHeight() * wheelLines); }
+function effectiveWheelLines() {
+  return scrollStepLines(wheelLines, { scrolledBack, appWheel, altScreen });
+}
+function setScrollStep() { scroller.setStep(rowHeight() * effectiveWheelLines()); }
 setScrollStep();
 
 // Registered here rather than next to the terminal's other handlers: xterm
@@ -6650,6 +6657,7 @@ function setCopyMode(inMode, back, hist, app, alt) {
   appWheel = !!app;
   altScreen = !!alt;
   markProgramCopy();
+  setScrollStep();
   // The bar is drawn from both numbers and moves whenever either does — which
   // includes the history growing under a pane that is printing, and that is a
   // frame every poll. Painting is cheap; the journal line below is not, and it

@@ -810,6 +810,21 @@ describe('a swipe follows the finger', () => {
       }
       assert.ok(pane.includes('^[[M`!!') && !pane.includes('^[[M`!!^[[M`!!'),
         `a wheel notch on Gemini did not send 1 step at (1,1): ${pane}`);
+
+      // And a swipe of 2.5 rows on the alternate screen emits 2 wheel steps even
+      // on a host whose tmux copy-mode step is 5 (ser8 before tmux.conf, and this
+      // stand): the program owns the wheel, not copy-mode.
+      const row = await page.evaluate(() => document.querySelector('.xterm-rows').getBoundingClientRect().height / 45);
+      await recordGesture(page);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: X, y: 200 }] });
+      await move(page, cdp, Math.round(200 + row * 2.5));
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      for (let i = 0; i < 20 && !pane.includes('^[[M`!!^[[M`!!^[[M`!!'); i++) {
+        await page.waitForTimeout(100);
+        pane = stand.tmux(['capture-pane', '-p', '-J', '-t', 'demo']);
+      }
+      assert.ok(pane.includes('^[[M`!!^[[M`!!^[[M`!!'),
+        `a 2.5-row swipe on Gemini was swallowed by copy-mode wheelLines=5: ${pane}`);
     } finally {
       stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1002l\x1b[?1049l']);
       stand.tmux(['send-keys', '-t', 'demo', 'Enter']);

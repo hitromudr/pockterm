@@ -1,7 +1,9 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Scroller, movedWholeScreen } from '../web/js/scroll.js';
+import {
+  Scroller, movedWholeScreen, scrollStepLines, geminiWheelNotches,
+} from '../web/js/scroll.js';
 
 // A stand-in for the clock and the frame callback, so a flick can be played
 // out without waiting for one.
@@ -591,4 +593,32 @@ test('the newest message survives a repaint that cannot show it', () => {
   assert.equal(h.last, 20, `the newest message was written off: ${h.last}`);
   h.drew(100); // a repaint that can have shown it
   assert.equal(h.last, 4, `the message was never accounted for: ${h.last}`);
+});
+
+test('the alternate screen takes one row per notch even when copy-mode takes five', () => {
+  assert.equal(scrollStepLines(5, { scrolledBack: false, appWheel: true, altScreen: true }), 1);
+  assert.equal(scrollStepLines(5, { scrolledBack: true, appWheel: true, altScreen: true }), 5);
+  assert.equal(scrollStepLines(5, { scrolledBack: false, appWheel: false, altScreen: true }), 5);
+  assert.equal(scrollStepLines(5, { scrolledBack: false, appWheel: true, altScreen: false }), 5);
+  assert.equal(scrollStepLines(1, { scrolledBack: false, appWheel: false, altScreen: false }), 1);
+});
+
+test('Gemini wheel notches stay 1:1 on a slow drag and accelerate on a burst like Claude Code', () => {
+  const state = { at: 0, dir: 0, mult: 1 };
+  // Slow drag (> 40ms between steps): strictly 1 line per notch.
+  assert.equal(geminiWheelNotches(1, 1, 100, state), 1);
+  assert.equal(geminiWheelNotches(1, 1, 160, state), 1);
+  assert.equal(geminiWheelNotches(1, 1, 220, state), 1);
+
+  // Fast burst (16ms apart): first three stay 1, then ramp up to 6.
+  const burst = [];
+  for (let i = 1; i <= 20; i++) {
+    burst.push(geminiWheelNotches(1, 1, 220 + i * 16, state));
+  }
+  assert.deepEqual(burst.slice(0, 3), [1, 1, 1], 'short burst must not jump');
+  assert.equal(burst[3], 2, 'fourth fast notch begins accelerating');
+  assert.equal(burst[19], 6, 'capped at 6 lines per notch');
+
+  // Reversing direction resets the multiplier immediately.
+  assert.equal(geminiWheelNotches(1, -1, 220 + 21 * 16, state), 1);
 });

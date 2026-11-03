@@ -84,6 +84,44 @@ export function movedWholeScreen(start, end, rows) {
   return end - start + 1 >= Math.max(4, rows - 2);
 }
 
+// What one notch of the finger means on screen. When tmux copy-mode owns the
+// wheel, one notch moves wheelLines rows (1 on a host with our tmux.conf, 5 on
+// a stock server) and the finger step has to match. When a program on the
+// alternate screen owns the wheel, tmux copy-mode is not in the loop at all:
+// the program takes one wheel event per row of travel, and multiplying the step
+// by a stock host's 5 makes the finger travel five rows for a single line.
+export function scrollStepLines(wheelLines, { scrolledBack = false, appWheel = false, altScreen = false } = {}) {
+  if (!scrolledBack && appWheel && altScreen) return 1;
+  return Math.max(1, wheelLines | 0 || 5);
+}
+
+// Claude Code's full-screen view accelerates a burst of wheel notches (lNt in
+// 2.1.317: gap <= 40ms adds 0.3 per notch up to 6, gap > 40ms or a direction
+// change resets to 1), while Gemini CLI's ScrollProvider moves one line per
+// notch. Matching that curve on Gemini keeps a slow drag 1:1 with the finger
+// (1 line per row for the first three fast notches and for every step > 40ms
+// apart) while a flick covers the same ground it covers in Claude Code.
+const GEMINI_BURST_MS = 40;
+const GEMINI_ACCEL_STEP = 0.3;
+const GEMINI_ACCEL_MAX = 6;
+export function geminiWheelNotches(n, dir, at, state) {
+  const count = Math.abs(n | 0);
+  if (count === 0) return 0;
+  let total = 0;
+  for (let i = 0; i < count; i++) {
+    const gap = state.at > 0 ? at - state.at : Infinity;
+    if (i === 0 && (dir !== state.dir || gap > GEMINI_BURST_MS)) {
+      state.mult = 1;
+    } else {
+      state.mult = Math.min(GEMINI_ACCEL_MAX, (state.mult || 1) + GEMINI_ACCEL_STEP);
+    }
+    state.dir = dir;
+    state.at = at;
+    total += Math.max(1, Math.floor(state.mult));
+  }
+  return total;
+}
+
 // Scroller converts finger movement into whole wheel notches, carrying the
 // remainder so nothing is lost between events and the direction can reverse
 // mid-swipe without a jump.
