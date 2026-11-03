@@ -99,6 +99,12 @@ type Options struct {
 	// through another door, whose sockets this one takes besides its own.
 	DirectURL      string
 	TrustedOrigins []string
+	// HostName is what this host is called beside its sessions, and Peers the
+	// hosts — possibly this one among them — whose sessions the page lists
+	// beside its own (/api/peers). No peers is one host, as before. The page
+	// asks each of them itself; this server never forwards a request to one.
+	HostName string
+	Peers    []Peer
 	// Tickets let a socket through the nearer door (see DoorHandler); every
 	// socket's config frame carries a new one. nil hands out none, and the page
 	// then never tries the door.
@@ -222,8 +228,17 @@ func keepAlive(conn *websocket.Conn, done <-chan struct{}) {
 	}
 }
 
+// Peer is one host of the list /api/peers answers with: where the page reaches
+// its API and socket, and its nearer door if it has one.
+type Peer struct {
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	Direct string `json:"direct,omitempty"`
+}
+
 func Handler(o Options) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/peers", func(w http.ResponseWriter, r *http.Request) { servePeers(o, w, r) })
 	mux.Handle("/", o.Static)
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) { serveSessions(o, w, r) })
 	mux.HandleFunc("/api/upload", func(w http.ResponseWriter, r *http.Request) { serveUpload(o, w, r) })
@@ -241,7 +256,102 @@ func Handler(o Options) http.Handler {
 	mux.HandleFunc("/api/sessions/order", func(w http.ResponseWriter, r *http.Request) { serveOrder(o, w, r) })
 	mux.HandleFunc("/api/uplink", func(w http.ResponseWriter, r *http.Request) { serveUplink(o, w, r) })
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) { serveWS(o, w, r) })
-	return mux
+	return crossOrigin(o.TrustedOrigins, mux)
+}
+
+// crossOrigin lets the pages this server trusts call its API from another
+// origin, and refuses every other foreign page anything that changes state.
+//
+// A page lists the sessions of every host it is told about (/api/peers) and
+// asks each host itself, so a page served by one pockterm calls another one's
+// /api/sessions — a request from a foreign origin, which the browser lets the
+// page read only if the answer names that origin. The pages named are exactly
+// the ones whose sockets this server already takes (POCKTERM_TRUSTED_ORIGINS):
+// one list for both, because a page trusted with the terminal and not with the
+// list of sessions — or the other way round — is a door half open.
+//
+// With credentials, because what lets the request in is the client certificate
+// the proxy asks for, and a browser presents one to a foreign origin only for a
+// credentialed request. Which is also why the page keeps its cross-origin calls
+// to simple requests (GET, or POST of text/plain): a preflight goes without
+// credentials, and the proxy in front refuses a request without a certificate
+// before this code could answer it. The OPTIONS answer below is for a proxy
+// that does let it through.
+//
+// The other half is new and it is a tightening. A client certificate is
+// presented by the browser on its own, like a cookie, so a foreign page could
+// always have posted a plain-text body here — to close a session, say — and the
+// handlers, which decode JSON whatever the content type, would have taken it.
+// A POST whose Origin is neither this host nor a trusted page is refused now. A
+// GET is served as before: the browser keeps its answer from a foreign page.
+func crossOrigin(trusted []string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin == "" || !strings.HasPrefix(r.URL.Path, "/api/") || sameHost(origin, r.Host) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if isTrusted(origin, trusted) {
+			h := w.Header()
+			h.Set("Access-Control-Allow-Origin", origin)
+			h.Set("Access-Control-Allow-Credentials", "true")
+			h.Add("Vary", "Origin")
+			if r.Method == http.MethodOptions {
+				h.Set("Access-Control-Allow-Methods", "GET, POST")
+				h.Set("Access-Control-Allow-Headers", "Content-Type")
+				h.Set("Access-Control-Max-Age", "600")
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			next.ServeHTTP(w, r)
+			return
+		}
+		log.Printf("api refused: %s %s from origin %q, which is neither this host (%q) nor a trusted one",
+			r.Method, r.URL.Path, origin, r.Host)
+		http.Error(w, "Forbidden", http.StatusForbidden)
+	})
+}
+
+// servePeers answers which hosts the page lists sessions from, and which of
+// them is this one. This host is always among them: with no POCKTERM_PEERS it
+// is the only one, which the page reads as the one-host page it always was;
+// with a list that does not name it, it is put first.
+//
+// This host's own entry carries its nearer door when the list gave none — it
+// is the same door the config frame names, and the page then has one answer
+// for it whichever it read first.
+func servePeers(o Options, w http.ResponseWriter, r *http.Request) {
+	if !authOK(o, r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "get only", http.StatusMethodNotAllowed)
+		return
+	}
+	hosts := make([]Peer, 0, len(o.Peers)+1)
+	listed := false
+	for _, p := range o.Peers {
+		if p.Name == o.HostName {
+			listed = true
+			if p.Direct == "" {
+				p.Direct = o.DirectURL
+			}
+		}
+		hosts = append(hosts, p)
+	}
+	if !listed {
+		hosts = append([]Peer{{Name: o.HostName, Direct: o.DirectURL}}, hosts...)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Self  string `json:"self"`
+		Hosts []Peer `json:"hosts"`
+	}{o.HostName, hosts})
 }
 
 // DoorHandler is the nearer door's own listener: the terminal socket and
@@ -288,13 +398,18 @@ func originOK(r *http.Request, trusted []string) bool {
 	if origin == "" {
 		return true
 	}
+	return sameHost(origin, r.Host) || isTrusted(origin, trusted)
+}
+
+// sameHost reports whether a page's origin is the host it asked on, port
+// included (see originOK).
+func sameHost(origin, host string) bool {
 	u, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-	if u.Host == r.Host {
-		return true
-	}
+	return err == nil && u.Host == host
+}
+
+// isTrusted reports whether origin is one of the pages named one by one.
+func isTrusted(origin string, trusted []string) bool {
 	for _, t := range trusted {
 		if origin == t {
 			return true

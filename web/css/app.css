@@ -2216,3 +2216,36 @@ html.cell #kind-help,
 html.cell #cmds,
 html.cell #cmdpad,
 html.cell #show-bars { display: none !important; }
+
+/* Several hosts (POCKTERM_PEERS): which one a new session starts on, as a row
+   above the presets and the folders, and the hosts that did not answer, grey in
+   the list. Not drawn at all with one host. */
+.host-pick {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+#new-menu .host-pick button, #new-menu-term .host-pick button, #folder-hosts .host-pick button {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #8b93a7;
+  background: #1b2230;
+  border: 1px solid #2a3345;
+  border-radius: 6px;
+}
+#new-menu .host-pick button.on, #new-menu-term .host-pick button.on, #folder-hosts .host-pick button.on {
+  color: #0b0e14;
+  background: var(--accent);
+}
+.host-pick button.down { opacity: 0.45; }
+#folder-hosts { padding: 6px 8px; background: var(--bar); border-bottom: 1px solid #2a3345; }
+#session-list li.host-down {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px;
+  color: #5d6577;
+  opacity: 0.7;
+}
+#session-list li.host-down .meta { font-size: 13px; }

@@ -245,6 +245,8 @@ func serve() {
 		DirectURL:      cfg.DirectURL,
 		TrustedOrigins: cfg.TrustedOrigins,
 		Tickets:        tickets,
+		HostName:       cfg.HostName,
+		Peers:          peersOf(cfg),
 		ListSessions:   sessionLister(cfg),
 		Attach: func(id int64, target string) []string {
 			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
@@ -1093,4 +1095,14 @@ func sessionLister(cfg config.Config) func() ([]tmuxcmd.Session, error) {
 		}
 		return list, nil
 	}
+}
+
+// peersOf hands the configured hosts to the server in its own type: the server
+// package does not read the configuration, it is handed what it serves.
+func peersOf(cfg config.Config) []server.Peer {
+	var out []server.Peer
+	for _, p := range cfg.Peers {
+		out = append(out, server.Peer{Name: p.Name, URL: p.URL, Direct: p.Direct})
+	}
+	return out
 }

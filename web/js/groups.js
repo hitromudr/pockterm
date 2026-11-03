@@ -15,8 +15,17 @@
 // (`pockterm/web` → `pockterm`; the root itself arrives as its own base name),
 // under home (`~/notes/x` → `~/notes`), or absolute, which is kept whole — a
 // first segment of `/` would put every such session in one group called `tmp`.
+//
+// A session of another host (`host`, see js/hosts.js) is in that host's copy of
+// the project, so its group carries the host the way its name does: `pockterm`
+// here and `pockterm@ser8` there are two working copies, and one tab standing
+// for both would switch machines under a tap that meant to switch sessions.
 export function projectOf(s) {
-  const dir = (s && s.dir) || '';
+  const key = dirProject((s && s.dir) || '');
+  return key && s.host ? `${key}@${s.host}` : key;
+}
+
+function dirProject(dir) {
   if (!dir) return '';
   if (dir.startsWith('/')) return dir;
   if (dir === '~') return dir;

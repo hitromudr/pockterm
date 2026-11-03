@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -73,6 +74,29 @@ type Config struct {
 	// from this same process. Empty opens no such listener, and the page then
 	// never tries the door.
 	DoorListen string // POCKTERM_DOOR_LISTEN
+
+	// Other hosts running a pockterm of their own, whose sessions the page lists
+	// beside this one's and starts new ones on. The page talks to each of them
+	// itself — nothing here is proxied — so this is only the list it is handed
+	// (/api/peers). Empty is one host, exactly as before.
+	//
+	// Format: entries separated by commas, each `name=URL` or `name=URL|DOOR`.
+	// URL is where the page reaches that host's API and socket: an origin, or an
+	// origin with a path when a proxy puts the host under a prefix of another
+	// door. DOOR is that host's nearer door (see DirectURL), an origin. The list
+	// may name this host as well, so one value serves every host; HostName says
+	// which entry that is.
+	Peers []Peer // POCKTERM_PEERS
+	// What this host is called in that list, and on the page beside each of its
+	// sessions. Empty means the machine's hostname, up to the first dot.
+	HostName string // POCKTERM_HOST_NAME
+}
+
+// Peer is one host of POCKTERM_PEERS.
+type Peer struct {
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	Direct string `json:"direct,omitempty"`
 }
 
 func FromEnv(getenv func(string) string) (Config, error) {
@@ -112,10 +136,102 @@ func FromEnv(getenv func(string) string) (Config, error) {
 			c.TrustedOrigins = append(c.TrustedOrigins, o)
 		}
 	}
+	if c.HostName, err = hostName(getenv("POCKTERM_HOST_NAME")); err != nil {
+		return Config{}, err
+	}
+	if c.Peers, err = peers(getenv("POCKTERM_PEERS")); err != nil {
+		return Config{}, err
+	}
 	if err := c.validate(); err != nil {
 		return Config{}, err
 	}
 	return c, nil
+}
+
+// hostname is os.Hostname, replaceable by the tests.
+var hostname = os.Hostname
+
+// hostNameOK is what a host may be called: it is shown beside a session's name
+// and joined to it with "@" on the page, so it keeps to the alphabet a session
+// name keeps to (session.ValidName) and can never contain the separator.
+var (
+	hostNameOK  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$`)
+	hostNameBad = regexp.MustCompile(`[^a-z0-9_-]+`)
+)
+
+func hostName(v string) (string, error) {
+	v = strings.TrimSpace(v)
+	if v != "" {
+		if !hostNameOK.MatchString(v) {
+			return "", fmt.Errorf("invalid POCKTERM_HOST_NAME %q: want letters, digits, - and _, up to 24", v)
+		}
+		return v, nil
+	}
+	// The default has nobody to complain to, so it is made to fit rather than
+	// refused: a host whose name does not fit is still one host.
+	h, err := hostname()
+	if err != nil {
+		return "host", nil
+	}
+	h, _, _ = strings.Cut(strings.ToLower(h), ".")
+	h = hostNameBad.ReplaceAllString(h, "-")
+	h = strings.TrimLeft(h, "-_")
+	if len(h) > 24 {
+		h = h[:24]
+	}
+	if !hostNameOK.MatchString(h) {
+		return "host", nil
+	}
+	return h, nil
+}
+
+// peers reads POCKTERM_PEERS. Every fault is refused rather than skipped: a
+// host left out of the list without a word is a host whose sessions simply are
+// not there, and nothing on the phone would say why.
+func peers(v string) ([]Peer, error) {
+	var out []Peer
+	seen := map[string]bool{}
+	for _, entry := range strings.Split(v, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		name, rest, ok := strings.Cut(entry, "=")
+		name = strings.TrimSpace(name)
+		if !ok || !hostNameOK.MatchString(name) {
+			return nil, fmt.Errorf("invalid POCKTERM_PEERS entry %q: want name=https://host[:port][/path][|https://door:port]", entry)
+		}
+		if seen[name] {
+			return nil, fmt.Errorf("POCKTERM_PEERS names %q twice", name)
+		}
+		seen[name] = true
+		base, door, _ := strings.Cut(rest, "|")
+		p := Peer{Name: name}
+		var err error
+		if p.URL, err = baseURL(base); err != nil {
+			return nil, fmt.Errorf("POCKTERM_PEERS %s: %w", name, err)
+		}
+		if p.Direct, err = origin("POCKTERM_PEERS "+name+" door", door); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// baseURL reads where a host's API lives: an origin, optionally followed by a
+// path a proxy has put it under. The page joins "/api/…" and "/ws" to it, so a
+// trailing slash is refused — the result would be "//api", which a proxy may
+// or may not fold — and so is anything after the path.
+func baseURL(v string) (string, error) {
+	v = strings.TrimSpace(v)
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" ||
+		u.RawQuery != "" || u.Fragment != "" || u.User != nil || strings.HasSuffix(u.Path, "/") ||
+		strings.Contains(v, "?") || strings.Contains(v, "#") {
+		return "", fmt.Errorf("invalid URL %q: want https://host[:port] or https://host[:port]/prefix, no trailing slash", v)
+	}
+	return strings.ToLower(u.Scheme+"://"+u.Host) + u.EscapedPath(), nil
 }
 
 // Notify reports whether Telegram notifications are configured.

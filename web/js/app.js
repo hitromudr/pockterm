@@ -22,6 +22,10 @@ import { lockFamily, storedLock, rotationLabel, refusalText } from './rotation.j
 import { osc52Text } from './osc52.js';
 import { bringBack } from './vendor.js';
 import { gridShape, gridPick, gridKeep, storedGrid, GRID_MAX } from './grid.js';
+import {
+  readPeers, multi, others, qualify, splitName, hostLabel, baseOf, apiURL, socketURL,
+  isCross, requestInit, mergeLists, byHost, PEER_WAIT,
+} from './hosts.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
 
@@ -42,6 +46,41 @@ let gridOn = false;
 let gridNames = [];
 const gridCells = new Map();
 const tokenQS = token ? `token=${encodeURIComponent(token)}` : '';
+
+// The hosts this page lists sessions from (see js/hosts.js). One host — this
+// one — until /api/peers says otherwise, and for good on a server that has no
+// such list. Remembered per device, because the moment it matters most is a
+// start with this host off: the page then comes out of the worker's cache, the
+// list cannot be asked for, and without it the other host's sessions would be
+// gone from the phone along with this one's.
+const PEERS_KEY = 'pt-peers';
+let peers = readPeers(null);
+async function loadPeers() {
+  let answer = null;
+  try {
+    const res = await fetch(apiURL('', '/api/peers', tokenQS));
+    if (res.ok && (res.headers.get('Content-Type') || '').includes('json')) answer = await res.json();
+  } catch (_) { /* no answer: what was remembered, if anything */ }
+  if (answer) {
+    peers = readPeers(answer);
+    if (!CELL) { try { localStorage.setItem(PEERS_KEY, JSON.stringify(answer)); } catch (_) {} }
+  } else {
+    try { peers = readPeers(JSON.parse(localStorage.getItem(PEERS_KEY) || 'null')); } catch (_) {}
+  }
+  if (multi(peers) && !CELL) report('peers', { self: peers.self, others: others(peers), asked: !!answer });
+  paintHostPicks();
+}
+
+// hostFetch asks one host's API: this host ('') by relative path as always,
+// another by its own address — credentialed and simple when that is another
+// origin (see requestInit). A host the page does not know is refused here: it
+// must never fall through to this host, where a session of the same name may
+// well exist.
+function hostFetch(host, path, init) {
+  const base = baseOf(host, peers);
+  if (base === null) return Promise.reject(new Error(`unknown host ${host}`));
+  return fetch(apiURL(base, path, tokenQS), requestInit(init, isCross(base, location)));
+}
 
 // Version of the code actually running. Nobody writes it: the binary stamps its
 // own over the mark as it serves this file (version.go), and the service
@@ -183,15 +222,42 @@ if (tabsEl && typeof ResizeObserver === 'function') {
 // "you are not allowed to ask" look identical to a user staring at an empty
 // list, and the second one sends them looking for a tmux problem that does
 // not exist.
-async function fetchSessions() {
+//
+// With other hosts (js/hosts.js) every one of them is asked at once and the
+// answers are one list, another host's sessions named `name@host`. A host that
+// does not answer within PEER_WAIT is in `down` — drawn grey — and the rest is
+// shown without it; `error` is left for when nobody answered at all.
+let downHosts = [];
+async function fetchHostSessions(host) {
+  let stop = null;
+  let signal;
+  if (host && typeof AbortController === 'function') {
+    const ctl = new AbortController();
+    stop = setTimeout(() => ctl.abort(), PEER_WAIT);
+    signal = ctl.signal;
+  }
   try {
-    const res = await fetch(`/api/sessions?${tokenQS}`);
-    if (res.status === 401) return { error: 'unauthorized', sessions: [] };
-    if (!res.ok) return { error: `server said ${res.status}`, sessions: [] };
+    const res = await hostFetch(host, '/api/sessions', signal ? { signal } : undefined);
+    if (res.status === 401) return { error: 'unauthorized' };
+    if (!res.ok) return { error: `server said ${res.status}` };
     return { sessions: (await res.json()) || [] };
   } catch (_) {
-    return { error: 'no connection to the server', sessions: [] };
+    return { error: 'no connection to the server' };
+  } finally {
+    if (stop) clearTimeout(stop);
   }
+}
+async function fetchSessions() {
+  const hosts = ['', ...others(peers)];
+  const got = await Promise.all(hosts.map((h) => fetchHostSessions(h)));
+  const { sessions, down, error } = mergeLists(peers, new Map(hosts.map((h, i) => [h, got[i]])));
+  const was = downHosts.map((d) => d.host).join(',');
+  downHosts = multi(peers) ? down : [];
+  if (downHosts.map((d) => d.host).join(',') !== was) {
+    report('hosts-down', { down: downHosts.map((d) => ({ host: hostLabel(d.host, peers), why: d.why })) });
+    paintHostPicks();
+  }
+  return error ? { error, sessions: [] } : { sessions };
 }
 
 // --- terminal (created once, reused across sessions) ---
@@ -420,17 +486,35 @@ term.attachCustomKeyEventHandler((e) => {
 let ws = null;
 let current = null; // attached session name, or null on the list screen
 let retry = 1000;
-// The nearer door to this host, as the server last named it (see js/direct.js),
+// The nearer door of each host, as its server last named it (see js/direct.js),
 // and which way the socket in hand went: 'direct', 'host', or '' for none. A
 // cell owns no storage, so it learns the door from its own first config frame.
-let direct = '';
-if (!CELL) { try { direct = localStorage.getItem('pt-direct') || ''; } catch (_) {} }
+//
+// Per host ('' is this one): a ticket opens one host's door and no other, and a
+// door learnt from one host's frame is that host's. Each holds the door's
+// address, when it last failed to open, and what the next socket shows there —
+// handed out on every socket's config frame, good for one socket, and held only
+// here: a page that has not had a socket to that host yet has none, and goes
+// the long way first.
+const doors = new Map();
+function doorOf(host) {
+  let d = doors.get(host);
+  if (!d) {
+    d = { direct: '', miss: 0, ticket: '' };
+    if (!host) {
+      if (!CELL) { try { d.direct = localStorage.getItem('pt-direct') || ''; } catch (_) {} }
+    } else {
+      // Until that host's own frame names it, the door the list gave for it.
+      const h = peers.hosts.find((x) => x.name === host);
+      d.direct = (h && h.direct) || '';
+    }
+    doors.set(host, d);
+  }
+  return d;
+}
+// Which host the session in hand lives on: '' for this one.
+function hostOfCurrent() { return splitName(current, peers).host; }
 let via = '';
-let directMiss = 0;      // when the door last failed to open
-// What the next socket shows at the door: handed out on every socket's config
-// frame, good for one socket, and held only here — a page that has not had a
-// socket yet has none, and goes the long way first (see js/direct.js).
-let doorTicket = '';
 let directAttempt = null; // cancel() of an attempt in flight
 const enc = new TextEncoder();
 
@@ -465,6 +549,17 @@ async function loadSessions() {
         'а сервер его требует — открой её из закладки с <code>?token=…</code>.</p>'
       : `<p>${escapeHtml(error)}</p><p>Сессии узнать не удалось.</p>`;
     return;
+  }
+  // A host that did not answer stays in the list, grey and first: gone without
+  // a word, its sessions would read as closed. Not a button — there is nothing
+  // to attach to — and repainted with the list, which is polled.
+  for (const d of downHosts) {
+    const li = document.createElement('li');
+    li.className = 'host-down';
+    li.dataset.host = hostLabel(d.host, peers);
+    li.innerHTML = `<span class="name">${escapeHtml(hostLabel(d.host, peers))}</span>` +
+      `<span class="meta">нет связи · ${escapeHtml(d.why)}</span>`;
+    sessionList.appendChild(li);
   }
   if (sessions.length === 0) {
     emptyMsg.hidden = foldersShown;
@@ -501,6 +596,8 @@ async function loadSessions() {
     // What used to be here was "1 window", and it was always 1: the Makefile
     // creates one, and the page can neither make nor reach a second.
     const meta = [
+      // Where it runs, once there is more than one place it could.
+      multi(peers) ? hostLabel(s.host || '', peers) : '',
       kindName(s.kind, customButtons),
       s.dir || '',
       shortAge(s.created, Date.now()),
@@ -513,6 +610,8 @@ async function loadSessions() {
     // for both surfaces, because a row and a tab disagreeing about a session is
     // worse than either of them saying nothing.
     b.dataset.session = s.name;
+    // Which host it lives on, for the stylesheet: another host's row says so.
+    if (s.host) b.dataset.host = s.host;
     // Where in the sweep this one starts, from the name — so a drawer of working
     // sessions is not one decoration pulsing in step, and a row keeps its phase
     // when the list is rebuilt.
@@ -755,16 +854,68 @@ const newWhereEl = document.getElementById('new-where');
 let pendingDir = null;
 let foldersShown = false;
 let projectsRoot = '';
+// Which host the next session starts on ('' is this one). Asked afresh each time
+// a menu opens — the host of the session in hand, or this one from the list —
+// because a choice that outlived its menu would start a session on a machine
+// the owner was not looking at. The folders are that host's folders.
+let newHost = '';
+function pickNewHost() {
+  setNewHost(current ? hostOfCurrent() : '');
+}
+function setNewHost(host) {
+  const changed = host !== newHost;
+  newHost = host;
+  paintHostPicks();
+  if (changed && foldersShown) loadFolders();
+}
+
+// The hosts, as a row of buttons above the presets and the folders. Built once
+// the list is known and repainted by class after that, never rebuilt under the
+// finger. Looked up by id rather than through the constants below: the list can
+// land while this module is still waiting on the vendor scripts.
+function paintHostPicks() {
+  const boxes = ['new-menu', 'new-menu-term', 'folder-hosts']
+    .map((id) => document.getElementById(id)).filter(Boolean);
+  const names = multi(peers) ? ['', ...others(peers)] : [];
+  const down = new Set(downHosts.map((d) => d.host));
+  for (const box of boxes) {
+    let row = box.querySelector(':scope > .host-pick');
+    if (!names.length) { if (row) row.remove(); continue; }
+    if (!row || row.dataset.hosts !== names.join(',')) {
+      if (row) row.remove();
+      row = document.createElement('div');
+      row.className = 'host-pick';
+      row.dataset.hosts = names.join(',');
+      for (const h of names) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.dataset.host = h;
+        b.textContent = hostLabel(h, peers);
+        keepsTerminalFocus(b);
+        b.addEventListener('click', () => setNewHost(h));
+        row.appendChild(b);
+      }
+      box.prepend(row);
+    }
+    for (const b of row.querySelectorAll('button')) {
+      b.classList.toggle('on', b.dataset.host === newHost);
+      b.classList.toggle('down', down.has(b.dataset.host));
+      b.title = down.has(b.dataset.host) ? `${b.textContent}: нет связи` : `новая сессия на ${b.textContent}`;
+    }
+  }
+}
 
 // showFolders swaps the drawer between its two lists. One at a time, because
 // two scrolling lists on a phone leave neither of them room for a thumb.
 function showFolders(on) {
   foldersShown = on && !!folderList;
   folderList.hidden = !foldersShown;
+  const folderHosts = document.getElementById('folder-hosts');
+  if (folderHosts) folderHosts.hidden = !foldersShown;
   sessionList.hidden = foldersShown;
   if (foldersShown) emptyMsg.hidden = true;
   foldersBtn.classList.toggle('on', foldersShown);
-  if (foldersShown) loadFolders();
+  if (foldersShown) { pickNewHost(); loadFolders(); }
   else setPendingDir(null);
 }
 
@@ -778,8 +929,11 @@ function setPendingDir(dir) {
 }
 
 async function loadFolders() {
+  const host = newHost;
   try {
-    const res = await fetch(`/api/dirs?${tokenQS}`);
+    const res = await hostFetch(host, '/api/dirs');
+    // Another host was picked while this one answered: its own load is on the way.
+    if (host !== newHost) return;
     if (!res.ok) {
       // 404 is a host that does not list folders (no session Makefile), which
       // is not a fault — the button just has nothing to show.
@@ -789,6 +943,7 @@ async function loadFolders() {
       return;
     }
     const { root, dirs } = await res.json();
+    if (host !== newHost) return;
     projectsRoot = root || '';
     folderList.innerHTML = '';
     // The root first and by its own name: a session in ~/work is ordinary, and
@@ -848,6 +1003,7 @@ newBtn.addEventListener('click', async () => {
   renameBox.hidden = true;
   // The plain + is the root, whatever folder was tapped before it.
   setPendingDir(null);
+  if (opening) pickNewHost();
   // The buttons in it come from the host. Opening the menu before that answer
   // arrives shows an empty popup, which reads as "nothing can be started".
   if (opening) await customReady;
@@ -896,6 +1052,7 @@ if (newTermBtn) {
   newTermBtn.addEventListener('click', async () => {
     const opening = termPopup !== 'presets';
     showTermPopup(opening ? 'presets' : null);
+    if (opening) pickNewHost();
     if (opening) await customReady;
   });
 }
@@ -911,12 +1068,14 @@ function wirePreset(b) {
     // session in the root while the caption said otherwise would be worse than
     // an error.
     const dir = pendingDir;
+    const host = newHost;
     newMenu.hidden = true;
     setTermMenu(false);
     setPendingDir(null);
-    toast(dir && dir !== '.' ? `starting ${shown} in ${dir}…` : `starting ${shown}…`);
+    const on = multi(peers) ? ` on ${hostLabel(host, peers)}` : '';
+    toast(dir && dir !== '.' ? `starting ${shown} in ${dir}${on}…` : `starting ${shown}${on}…`);
     try {
-      const res = await fetch(`/api/sessions/new?${tokenQS}`, {
+      const res = await hostFetch(host, '/api/sessions/new', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // No dir at all when none was asked for: an older server ignores the
@@ -926,10 +1085,10 @@ function wirePreset(b) {
       if (!res.ok) {
         const why = (await res.text().catch(() => '')).trim();
         toast(why || `could not start: ${res.status}`);
-        report('start-session', { preset, dir: dir || '', ok: false, status: res.status });
+        report('start-session', { preset, dir: dir || '', host, ok: false, status: res.status });
         return;
       }
-      report('start-session', { preset, dir: dir || '', ok: true });
+      report('start-session', { preset, dir: dir || '', host, ok: true });
       // Back to the sessions: what was asked for is a session, and the folder
       // list has nothing to show about it.
       if (foldersShown) showFolders(false);
@@ -944,10 +1103,12 @@ for (const b of document.querySelectorAll('button[data-preset]')) wirePreset(b);
 
 async function killSession(name) {
   try {
-    const res = await fetch(`/api/sessions/kill?${tokenQS}`, {
+    // Asked of the session's own host, by the name it has there.
+    const at = splitName(name, peers);
+    const res = await hostFetch(at.host, '/api/sessions/kill', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name: at.name }),
     });
     report('kill-session', { ok: res.ok, status: res.status });
     if (!res.ok) {
@@ -969,7 +1130,8 @@ async function killSession(name) {
 
 function openRename(name) {
   renameTarget = name;
-  renameInput.value = name;
+  // The name it has on its host: the host is not part of it, and is not renamed.
+  renameInput.value = splitName(name, peers).name;
   renameBox.hidden = false;
   newMenu.hidden = true;
   renameInput.focus();
@@ -981,12 +1143,13 @@ document.getElementById('rename-cancel').addEventListener('click', () => {
 });
 document.getElementById('rename-save').addEventListener('click', async () => {
   const to = renameInput.value.trim();
-  if (!renameTarget || !to || to === renameTarget) { renameBox.hidden = true; return; }
+  const at = splitName(renameTarget, peers);
+  if (!renameTarget || !to || to === at.name) { renameBox.hidden = true; return; }
   try {
-    const res = await fetch(`/api/sessions/rename?${tokenQS}`, {
+    const res = await hostFetch(at.host, '/api/sessions/rename', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: renameTarget, to }),
+      body: JSON.stringify({ from: at.name, to }),
     });
     if (!res.ok) {
       // The server explains why in plain text — a name it will not accept is
@@ -1504,7 +1667,7 @@ const VIA = {
   long: ['↗', 'сокет: через интернет'],
 };
 function paintVia() {
-  const [glyph, words] = VIA[viaMark(direct, location, via)] || ['', ''];
+  const [glyph, words] = VIA[viaMark(doorOf(hostOfCurrent()).direct, location, via)] || ['', ''];
   const v = uplinkEl.querySelector('.via');
   if (v.textContent !== glyph) v.textContent = glyph;
   const sub = uplinkEl.querySelector('.sub');
@@ -2263,29 +2426,34 @@ async function saveTabOrder() {
   const names = rowNames();
   if (!names.length) return;
   try {
-    const res = await fetch(`/api/sessions/order?${tokenQS}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ names }),
-    });
-    if (!res.ok) {
-      // A host that cannot reorder, or a name it did not like. The next poll
-      // redraws the row from tmux, so the drag simply does not stick.
-      report('tab-order', { ok: false, status: res.status });
-      return;
-    }
-    // Which tabs kept their old place. Normally none — and when there is one, the
-    // row under the finger is not the row the next poll will draw, so it must not
-    // be adopted as the signature and the tab must not snap back without a word:
-    // that is the 2026-09-09 report, a drag made over and over against a save
-    // that answered success. An older host answers no body at all, which is the
-    // same as nothing skipped.
-    const answer = await res.json().catch(() => null);
-    const skipped = Array.isArray(answer?.skipped) ? answer.skipped : [];
-    if (skipped.length) {
-      report('tab-order', { ok: false, skipped });
-      toast(`${skipped.join(', ')} kept its place — the row was not saved`);
-      return;
+    // Each host keeps the order of its own sessions, so a row with several
+    // hosts in it is saved as one row per host, each in the order its tabs
+    // stand. The hosts themselves stand in the order they are listed.
+    for (const [host, mine] of byHost(names, peers)) {
+      const res = await hostFetch(host, '/api/sessions/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ names: mine }),
+      });
+      if (!res.ok) {
+        // A host that cannot reorder, or a name it did not like. The next poll
+        // redraws the row from tmux, so the drag simply does not stick.
+        report('tab-order', { ok: false, status: res.status, host });
+        return;
+      }
+      // Which tabs kept their old place. Normally none — and when there is one, the
+      // row under the finger is not the row the next poll will draw, so it must not
+      // be adopted as the signature and the tab must not snap back without a word:
+      // that is the 2026-09-09 report, a drag made over and over against a save
+      // that answered success. An older host answers no body at all, which is the
+      // same as nothing skipped.
+      const answer = await res.json().catch(() => null);
+      const skipped = Array.isArray(answer?.skipped) ? answer.skipped.map((n) => qualify(n, host)) : [];
+      if (skipped.length) {
+        report('tab-order', { ok: false, skipped });
+        toast(`${skipped.join(', ')} kept its place — the row was not saved`);
+        return;
+      }
     }
     // The row already looks like this, so the next poll must not rebuild it and
     // take the keyboard with it.
@@ -2541,7 +2709,8 @@ function socketQS() {
   // moment later. Every tab switch made a new one.
   return [
     tokenQS,
-    `session=${encodeURIComponent(current)}`,
+    // By the name it has on its own host.
+    `session=${encodeURIComponent(splitName(current, peers).name)}`,
     `cols=${term.cols}`,
     `rows=${term.rows}`,
   ].filter(Boolean).join('&');
@@ -2558,24 +2727,34 @@ function connect() {
   // One page, one socket, by construction rather than by every caller
   // remembering: whatever is in hand goes before another is opened.
   dropSocket();
-  const url = doorURL(directBase(direct, location), socketQS(), doorTicket);
-  if (!url || !worthTrying(directMiss, Date.now())) {
+  const door = doorOf(hostOfCurrent());
+  const url = doorURL(directBase(door.direct, location), socketQS(), door.ticket);
+  if (!url || !worthTrying(door.miss, Date.now())) {
     connectHost();
     return;
   }
-  doorTicket = '';
+  door.ticket = '';
   directAttempt = tryDirect(url, {}, (sock, why, ms) => {
     directAttempt = null;
     report('socket-via', { via: sock ? 'direct' : 'host', why, ms });
     if (sock) { adopt(sock, 'direct'); opened(); return; }
-    directMiss = Date.now();
+    door.miss = Date.now();
     connectHost();
   });
 }
 
+// The long way to the session's own host: this page's origin for this host, the
+// address /api/peers gave for another. A host the page no longer knows gets no
+// socket at all — never this host's, where the same name may be another session.
 function connectHost() {
-  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-  const sock = new WebSocket(`${scheme}://${location.host}/ws?${socketQS()}`);
+  const base = baseOf(hostOfCurrent(), peers);
+  if (base === null) {
+    statusEl.textContent = `${current}: host unknown`;
+    statusEl.hidden = false;
+    report('socket-via', { via: 'none', why: 'unknown host' });
+    return;
+  }
+  const sock = new WebSocket(socketURL(base, location, socketQS()));
   adopt(sock, 'host');
   sock.onopen = opened;
 }
@@ -2592,12 +2771,13 @@ function connectHost() {
 function tryDirectAside() {
   if (via !== 'host' || directAttempt || !current) return;
   if (!ws || ws.readyState !== WebSocket.OPEN || document.visibilityState !== 'visible') return;
-  const url = doorURL(directBase(direct, location), socketQS(), doorTicket);
-  if (!url || !worthTrying(directMiss, Date.now())) return;
-  doorTicket = '';
+  const door = doorOf(hostOfCurrent());
+  const url = doorURL(directBase(door.direct, location), socketQS(), door.ticket);
+  if (!url || !worthTrying(door.miss, Date.now())) return;
+  door.ticket = '';
   directAttempt = tryDirect(url, {}, (sock, why, ms) => {
     directAttempt = null;
-    if (!sock) { directMiss = Date.now(); return; }
+    if (!sock) { door.miss = Date.now(); return; }
     report('socket-via', { via: 'direct', why: 'aside', ms });
     dropSocket();
     adopt(sock, 'direct');
@@ -2605,13 +2785,16 @@ function tryDirectAside() {
   });
 }
 
-// learnDirect takes the door from a config frame. Every frame names it or names
-// none, so a door taken off the host is forgotten on the next connect.
-function learnDirect(url) {
-  if (url === direct) return;
-  direct = url;
-  directMiss = 0;
+// learnDirect takes a host's door from a config frame of that host. Every frame
+// names it or names none, so a door taken off the host is forgotten on the next
+// connect. Only this host's is remembered across starts.
+function learnDirect(url, host) {
+  const door = doorOf(host);
+  if (url === door.direct) return;
+  door.direct = url;
+  door.miss = 0;
   paintVia();
+  if (host) return;
   if (!CELL) { try { if (url) localStorage.setItem('pt-direct', url); else localStorage.removeItem('pt-direct'); } catch (_) {} }
 }
 
@@ -2622,9 +2805,12 @@ function adopt(sock, how) {
   via = how;
   paintVia();
   ws.binaryType = 'arraybuffer';
+  // Whose socket this is, fixed at adoption: its frames are that host's, and the
+  // session in hand can change before the last of them is read.
+  const host = hostOfCurrent();
   ws.onmessage = (e) => {
     noteLink();
-    if (typeof e.data === 'string') { onControl(e.data); return; }
+    if (typeof e.data === 'string') { onControl(e.data, host); return; }
     // One bad write must not take the socket handler with it: an exception
     // here leaves the terminal frozen with output still arriving.
     noteFrameArrived();
@@ -2718,14 +2904,22 @@ document.addEventListener('visibilitychange', () => {
 
 // Server control frames: pong, error, the pane's copy-mode state, and a
 // notification the watcher decided to raise.
-function onControl(raw) {
+//
+// `host` is whose socket the frame came down ('' for this host). Another host's
+// frame names its sessions as they are called there, so a notice is renamed to
+// the page's name for it — a tap on it must land on that host's session — and
+// what is about the host the page belongs to is taken from this host's frames
+// alone: another host's version is not this page's to update to, and its
+// notification switch is not the one drawn here.
+function onControl(raw, host = '') {
   let c = null;
   try { c = JSON.parse(raw); } catch (_) { return; }
   // A cell passes what is about the whole host up to the page around it, which
   // draws the notice and the update bar once for the screen — six cells hear
   // the same notice six times. The pane's own facts stay here.
-  if (CELL && c && (c.type === 'notify' || c.type === 'config')) toParent({ kind: 'control', raw });
+  if (CELL && c && (c.type === 'notify' || c.type === 'config')) toParent({ kind: 'control', raw, host });
   if (CELL && c && c.type === 'notify') return;
+  if (c && c.type === 'notify' && host && typeof c.session === 'string') c.session = qualify(c.session, host);
   if (c && c.type === 'mode') setCopyMode(!!c.in, c.back | 0, c.hist | 0, !!c.app, !!c.alt);
   if (c && c.type === 'notify') {
     // Drawn here only while nothing else can draw it. With a subscription in
@@ -2749,18 +2943,18 @@ function onControl(raw) {
   // all. It comes down the socket rather than being asked for over HTTP so the
   // button is right the moment it is drawn — and it comes on every connect,
   // because the state is the host's and another page may have changed it.
-  if (c && c.type === 'config' && typeof c.notify === 'string') applyMode(c.notify, !!c.telegram);
-  if (c && c.type === 'config' && typeof c.notifyWait === 'string') applyWait(c.notifyWait);
+  if (!host && c && c.type === 'config' && typeof c.notify === 'string') applyMode(c.notify, !!c.telegram);
+  if (!host && c && c.type === 'config' && typeof c.notifyWait === 'string') applyWait(c.notifyWait);
   // And which page the server serves. CI installs a build as soon as it
   // arrives, so this frame is also how a reconnect after that restart is told
   // apart from any other reconnect.
-  if (c && c.type === 'config') offerUpdate(c.version);
-  // And the nearer door, if this host has one.
-  if (c && c.type === 'config') learnDirect(typeof c.direct === 'string' ? c.direct : '');
+  if (!host && c && c.type === 'config') offerUpdate(c.version);
+  // And the nearer door, if that host has one.
+  if (c && c.type === 'config') learnDirect(typeof c.direct === 'string' ? c.direct : '', host);
   // And what the next socket shows there. A socket the long way that brings
   // one tries the door beside it straight away.
   if (c && c.type === 'config' && typeof c.ticket === 'string' && c.ticket) {
-    doorTicket = c.ticket;
+    doorOf(host).ticket = c.ticket;
     tryDirectAside();
   }
 }
@@ -5214,11 +5408,15 @@ async function uploadFile(file, n, of) {
     // glued: a host with no token leaves `tokenQS` empty.
     const named = file.name ? `name=${encodeURIComponent(file.name)}` : '';
     const qs = [tokenQS, named].filter(Boolean).join('&');
-    res = await fetch(`/api/upload${qs ? `?${qs}` : ''}`, {
+    // To the host of the session it is typed into: the path it answers with is a
+    // path on that machine.
+    const base = baseOf(hostOfCurrent(), peers);
+    if (base === null) throw new Error('unknown host');
+    res = await fetch(apiURL(base, '/api/upload', qs), requestInit({
       method: 'POST',
       headers: { 'Content-Type': file.type || 'application/octet-stream' },
       body: file,
-    });
+    }, isCross(base, location)));
   } catch (_) {
     report('upload', { ok: false, bytes: file.size || 0, n, of, why: 'no connection' });
     return { why: 'no connection' };
@@ -7382,7 +7580,7 @@ window.addEventListener('message', (e) => {
   if (!from) return;
   if (m.kind === 'focus') gridActivate(from);
   else if (m.kind === 'ctrl') { if (from === current && ctrlKey) ctrlKey.classList.toggle('on', !!m.on); }
-  else if (m.kind === 'control' && from === gridNames[0]) onControl(String(m.raw || ''));
+  else if (m.kind === 'control' && from === gridNames[0]) onControl(String(m.raw || ''), typeof m.host === 'string' ? m.host : '');
 });
 
 // The cell's side of the same conversation.
@@ -7446,6 +7644,10 @@ async function takeShared() {
 }
 
 async function init() {
+  // Before anything is attached: which host a session lives on is read off the
+  // list, and a session of another host attached without it would be looked for
+  // here.
+  await loadPeers();
   if (CELL) { attach(CELL); return; }
   const params = new URLSearchParams(location.search);
   const asked = params.get('session');

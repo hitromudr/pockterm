@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -199,6 +200,95 @@ func TestDoorListenIsLoopbackOnly(t *testing.T) {
 	for _, bad := range []string{"0.0.0.0:8131", "192.168.1.222:8131", ":8131", "8131"} {
 		if _, err := FromEnv(env(map[string]string{"POCKTERM_DOOR_LISTEN": bad})); err == nil {
 			t.Errorf("door listener %q accepted", bad)
+		}
+	}
+}
+
+func TestPeersParsed(t *testing.T) {
+	c, err := FromEnv(env(map[string]string{
+		"POCKTERM_HOST_NAME": "rpi5",
+		"POCKTERM_PEERS": " rpi5=https://cc.example|https://lan.example:8135 , " +
+			"ser8=HTTPS://CC.example:8446|https://lan8.example:8135,box=https://cc.example/@box",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Peer{
+		{Name: "rpi5", URL: "https://cc.example", Direct: "https://lan.example:8135"},
+		{Name: "ser8", URL: "https://cc.example:8446", Direct: "https://lan8.example:8135"},
+		{Name: "box", URL: "https://cc.example/@box", Direct: ""},
+	}
+	if len(c.Peers) != len(want) {
+		t.Fatalf("Peers = %+v, want %+v", c.Peers, want)
+	}
+	for i := range want {
+		if c.Peers[i] != want[i] {
+			t.Fatalf("Peers[%d] = %+v, want %+v", i, c.Peers[i], want[i])
+		}
+	}
+	if c.HostName != "rpi5" {
+		t.Fatalf("HostName = %q, want rpi5", c.HostName)
+	}
+}
+
+func TestNoPeersIsOneHost(t *testing.T) {
+	c, err := FromEnv(env(map[string]string{"POCKTERM_HOST_NAME": "rpi5"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Peers != nil {
+		t.Fatalf("Peers = %+v, want none", c.Peers)
+	}
+}
+
+func TestPeersRefused(t *testing.T) {
+	for _, v := range []string{
+		"ser8",                                          // no URL
+		"ser8=",                                         // empty URL
+		"ser8=cc.example:8446",                          // no scheme
+		"ser8=ftp://cc.example",                         // wrong scheme
+		"ser8=https://cc.example/",                      // trailing slash
+		"ser8=https://cc.example/@ser8/",                // trailing slash after a prefix
+		"ser8=https://cc.example?x=1",                   // query
+		"ser8=https://user@cc.example",                  // credentials
+		"ser8=https://cc.example|https://lan/x",         // door with a path
+		"ser8=https://cc.example|lan8.example",          // door without a scheme
+		"ser8=https://a.example,ser8=https://b.example", // twice
+		"ser 8=https://cc.example",                      // space in the name
+		"ser@8=https://cc.example",                      // the page's separator
+		"=https://cc.example",                           // no name
+	} {
+		if _, err := FromEnv(env(map[string]string{"POCKTERM_PEERS": v})); err == nil {
+			t.Errorf("POCKTERM_PEERS=%q accepted, want refused", v)
+		}
+	}
+}
+
+func TestHostNameDefault(t *testing.T) {
+	defer func(f func() (string, error)) { hostname = f }(hostname)
+	for in, want := range map[string]string{
+		"ser8":                       "ser8",
+		"AI.local":                   "ai",
+		"my host.example.org":        "my-host",
+		"_weird":                     "weird",
+		"abcdefghijklmnopqrstuvwxyz": "abcdefghijklmnopqrstuvwx",
+		"…":                          "host",
+	} {
+		hostname = func() (string, error) { return in, nil }
+		c, err := FromEnv(env(nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.HostName != want {
+			t.Errorf("hostname %q → HostName %q, want %q", in, c.HostName, want)
+		}
+	}
+}
+
+func TestHostNameRefused(t *testing.T) {
+	for _, v := range []string{"a@b", "has space", "-lead", strings.Repeat("x", 25)} {
+		if _, err := FromEnv(env(map[string]string{"POCKTERM_HOST_NAME": v})); err == nil {
+			t.Errorf("POCKTERM_HOST_NAME=%q accepted, want refused", v)
 		}
 	}
 }

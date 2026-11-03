@@ -29,6 +29,7 @@ const PRECACHE = [
   '/js/rotation.js',
   '/js/vendor.js',
   '/js/grid.js',
+  '/js/hosts.js',
   '/js/osc52.js',
   // The pane's own font, cut down and carried here so the same screen is the
   // same screen on every machine — see --mono in css/app.css. Precached because
