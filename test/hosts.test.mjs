@@ -147,3 +147,30 @@ test('a project on another host is a group of its own', () => {
   assert.deepEqual(items.map((it) => [it.key, it.sessions.map((s) => s.name)]),
     [['pockterm', ['a', 'c']], ['pockterm@ser8', ['b@ser8']]]);
 });
+
+// A tab opened on ser8 by ser8's button b1 was drawn with the mark of this host's
+// b1 (Codex's ☀️ on a Claude session, 2026-11-04): a custom id means something on
+// its own host only, so another host's custom kind carries that host along, and
+// that host's buttons are listed under the same qualified ids.
+test("another host's custom button is looked up on that host", async () => {
+  const { kindMark, kindName } = await import('../web/js/kinds.js');
+  const { qualifyKind, hostButtons } = await import('../web/js/hosts.js');
+  const answers = new Map([
+    ['', { sessions: [{ name: 'a', kind: 'custom:b1' }] }],
+    ['ser8', { sessions: [{ name: 'c', kind: 'custom:b1' }, { name: 'd', kind: 'yolo' }, { name: 'e' }] }],
+  ]);
+  const { sessions } = mergeLists(two, answers);
+  assert.deepEqual(sessions.map((s) => s.kind), ['custom:b1', `custom:b1${SEP}ser8`, 'yolo', undefined]);
+  assert.equal(qualifyKind('custom:b1', ''), 'custom:b1');
+  assert.equal(qualifyKind('shell', 'ser8'), 'shell');
+  assert.equal(qualifyKind('', 'ser8'), '');
+  const mine = [{ id: 'b1', label: 'Codex (yolo)' }];
+  const theirs = hostButtons('ser8', [{ id: 'b1', label: 'Claude Cont (yolo)' }, { id: 'yolo', label: 'Y' }]);
+  assert.deepEqual(theirs.map((b) => b.id), [`b1${SEP}ser8`]);
+  const all = [...mine, ...theirs];
+  assert.equal(kindMark(sessions[0].kind, all), '☀️');
+  assert.equal(kindMark(sessions[1].kind, all), '❄️');
+  assert.equal(kindName(sessions[1].kind, all), 'Claude Cont (yolo)');
+  // Before ser8's list has come: the shared star, not this host's b1.
+  assert.equal(kindMark(sessions[1].kind, mine), '⭐');
+});

@@ -204,7 +204,15 @@ holding it up). The signing key is the repo Actions secret `DEPLOY_HMAC_KEY` and
 `/etc/pockterm/deploy-hmac.key` on the host, and it exists because the drop directory is
 mounted into a job container while the runner serves other repositories too.
 
-That path installs on the RPi5 only. For everyone else there are releases:
+**The RPi5 and ser8 run the same state of this repo** (owner's word, 2026-11-04). Since
+`/api/peers` one page lists both hosts' sessions and reads each host's API, so a host left on
+an older binary is half of the page drawing by other rules. A push to `main` is not done until
+ser8's checkout (`~/work/pockterm` there) is at `origin/main` with a clean tree and its
+`pockterm version` equals the RPi5's; ser8 has no deploy path, so the binary there is
+`sudo make install` from that checkout — the owner's to run, asked for by name in the report.
+Work done on ser8 is pushed before the RPi5 builds on it, and the other way round.
+
+The push installs on the RPi5 only. For everyone else there are releases:
 `.github/workflows/release.yml` fires on a `v*` tag, runs `make release` (both architectures
 plus `SHA256SUMS`) and publishes them, and `deploy/install.sh` downloads one when no Go
 toolchain is present, refusing a binary whose checksum does not match. What else that

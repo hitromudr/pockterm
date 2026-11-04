@@ -16,6 +16,8 @@
 // name keeps to the session alphabet (POCKTERM_HOST_NAME), so it never holds the
 // separator, and a suffix is read as a host only when it names a known one.
 
+import { builtinId } from './kinds.js';
+
 export const SEP = '@';
 
 // How long another host is waited for. The strip is polled every few seconds
@@ -153,7 +155,10 @@ export function mergeLists(p, answers) {
     }
     answered++;
     for (const s of a.sessions || []) {
-      sessions.push(host ? { ...s, name: qualify(s.name, host), host } : s);
+      if (!host) { sessions.push(s); continue; }
+      const out = { ...s, name: qualify(s.name, host), host };
+      if (s.kind) out.kind = qualifyKind(s.kind, host);
+      sessions.push(out);
     }
   }
   if (!answered) {
@@ -173,4 +178,26 @@ export function byHost(names, p) {
     out.get(host).push(name);
   }
   return out;
+}
+
+// A custom button's id means something on its own host only: ser8's b1 and this
+// host's b1 are two different buttons, and a tab opened on ser8 drew the mark of
+// the one here (2026-11-04, Codex's ☀️ on a Claude session). So another host's
+// custom kind carries its host — `custom:b1@ser8` — and that host's buttons are
+// listed under the same qualified ids (hostButtons). The four built-in kinds are
+// left as they are: their marks are this page's vocabulary on every host.
+const CUSTOM = 'custom:';
+
+export function qualifyKind(kind, host) {
+  if (!host || !kind || !kind.startsWith(CUSTOM)) return kind;
+  return `${kind}${SEP}${host}`;
+}
+
+// hostButtons(host, buttons) → another host's custom buttons, with ids qualified
+// the way qualifyKind qualifies its sessions' kinds. For drawing marks and names
+// only: they are never offered in this host's menu or editor.
+export function hostButtons(host, buttons) {
+  return (buttons || [])
+    .filter((b) => b && b.id && !builtinId(b.id))
+    .map((b) => ({ ...b, id: `${b.id}${SEP}${host}` }));
 }

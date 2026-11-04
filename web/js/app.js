@@ -24,7 +24,7 @@ import { bringBack } from './vendor.js';
 import { gridShape, gridPick, gridKeep, storedGrid, GRID_MAX } from './grid.js';
 import {
   readPeers, multi, others, qualify, splitName, hostLabel, baseOf, apiURL, socketURL,
-  isCross, requestInit, mergeLists, byHost, PEER_WAIT,
+  isCross, requestInit, mergeLists, byHost, PEER_WAIT, hostButtons,
 } from './hosts.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
@@ -247,9 +247,37 @@ async function fetchHostSessions(host) {
     if (stop) clearTimeout(stop);
   }
 }
+// Every other host's custom buttons, under the ids its sessions' kinds carry
+// (qualifyKind in js/hosts.js): a tab opened on ser8 is drawn with ser8's button,
+// never with this host's button of the same id. Read again after a minute, so a
+// button edited over there reaches the tabs here.
+const peerButtons = new Map();
+const PEER_BUTTONS_MS = 60000;
+
+function refreshPeerButtons(host) {
+  const have = peerButtons.get(host);
+  if (have && (have.pending || Date.now() - have.at < PEER_BUTTONS_MS)) return;
+  peerButtons.set(host, { at: Date.now(), list: have ? have.list : [], pending: true });
+  hostFetch(host, '/api/presets')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => {
+      const list = data ? hostButtons(host, data.buttons) : (have ? have.list : []);
+      peerButtons.set(host, { at: Date.now(), list });
+    })
+    .catch(() => peerButtons.set(host, { at: Date.now(), list: have ? have.list : [] }));
+}
+
+// The buttons a kind is looked up in: this host's own, and the others' as read.
+function kindButtons() {
+  const out = customButtons.slice();
+  for (const { list } of peerButtons.values()) out.push(...list);
+  return out;
+}
+
 async function fetchSessions() {
   const hosts = ['', ...others(peers)];
   const got = await Promise.all(hosts.map((h) => fetchHostSessions(h)));
+  hosts.forEach((h, i) => { if (h && !got[i].error) refreshPeerButtons(h); });
   const { sessions, down, error } = mergeLists(peers, new Map(hosts.map((h, i) => [h, got[i]])));
   const was = downHosts.map((d) => d.host).join(',');
   downHosts = multi(peers) ? down : [];
@@ -598,7 +626,7 @@ async function loadSessions() {
     const meta = [
       // Where it runs, once there is more than one place it could.
       multi(peers) ? hostLabel(s.host || '', peers) : '',
-      kindName(s.kind, customButtons),
+      kindName(s.kind, kindButtons()),
       s.dir || '',
       shortAge(s.created, Date.now()),
       s.attached ? 'attached' : '',
@@ -743,7 +771,7 @@ function paintRows(sessions) {
       b.classList.toggle('current', s.name === current);
       paintBackground(b, s);
       const mark = b.querySelector('.line .kind');
-      if (mark) mark.textContent = kindMark(s.kind || '', customButtons);
+      if (mark) mark.textContent = kindMark(s.kind || '', kindButtons());
     }
     // A row a project is folded into says the project's answers over its own
     // while it is collapsed.
@@ -826,7 +854,7 @@ function paintFold(b, by) {
   b.querySelector('.gcount').textContent = String(members.length);
   const head = !b.dataset.session;
   if (head) {
-    b.querySelector('.kind').textContent = kindMark(groupKind(members), customButtons);
+    b.querySelector('.kind').textContent = kindMark(groupKind(members), kindButtons());
     b.querySelector('.meta').textContent = tabsWord(members.length);
   }
   // Open, a session's row has already been painted as itself, and a head has
@@ -2026,7 +2054,7 @@ async function renderTabs() {
       const of = members.map((n) => bg.get(n)).filter(Boolean);
       st = groupState(of);
       const mark = b.querySelector('.kind');
-      if (mark) mark.textContent = kindMark(groupKind(members, g), customButtons);
+      if (mark) mark.textContent = kindMark(groupKind(members, g), kindButtons());
       const count = b.querySelector('.gcount');
       if (count) count.textContent = String(members.length);
       b.title = `${g} · ${tabsWord(members.length)}`;
@@ -2035,9 +2063,9 @@ async function renderTabs() {
       st = state.get(b.dataset.session) || '';
       const k = kindOf(b.dataset.session);
       const mark = b.querySelector('.kind');
-      if (mark) mark.textContent = kindMark(k, customButtons);
+      if (mark) mark.textContent = kindMark(k, kindButtons());
       // For a pointer, which has a hover; the long press is what a phone has.
-      const what = kindName(k, customButtons);
+      const what = kindName(k, kindButtons());
       if (what) b.title = `${b.dataset.session} · ${what}`;
       else b.removeAttribute('title');
       paintBackground(b, bg.get(b.dataset.session) || {});
@@ -2153,7 +2181,7 @@ function groupPick(members) {
 function groupKind(members, key) {
   const pick = key && (groupPick(members) || members.find((n) => n === key.split('/').pop()));
   if (pick) return kindOf(pick);
-  const ms = new Set(members.map((n) => kindMark(kindOf(n), customButtons)));
+  const ms = new Set(members.map((n) => kindMark(kindOf(n), kindButtons())));
   return ms.size === 1 ? kindOf(members[0]) : '';
 }
 
@@ -2236,7 +2264,7 @@ function paintGroupMenu() {
     b.classList.toggle('working', st === 'working');
     b.classList.toggle('done', st === 'done');
     b.classList.toggle('asking', st === 'asking');
-    b.querySelector('.kind').textContent = kindMark(kindOf(b.dataset.session), customButtons);
+    b.querySelector('.kind').textContent = kindMark(kindOf(b.dataset.session), kindButtons());
     paintBackground(b, s);
   }
   // Under the tab it came from, as far as the screen allows: the strip scrolls
@@ -2349,8 +2377,8 @@ function showKindHelp(btn) {
   // A folded tab is a project, and what it is is how many tabs it holds.
   const group = btn.dataset.group;
   const k = group ? groupKind(tabMembers(btn), group) : kindOf(name);
-  const what = group ? `${group} · ${tabsWord(tabMembers(btn).length)}` : kindName(k, customButtons);
-  const mark = kindMark(k, customButtons);
+  const what = group ? `${group} · ${tabsWord(tabMembers(btn).length)}` : kindName(k, kindButtons());
+  const mark = kindMark(k, kindButtons());
   // Nothing to explain: a session nobody stamped, or a button since removed.
   // A plate saying only the name would be a lever that answers nothing.
   if (!what) return;
@@ -2379,7 +2407,7 @@ function paintCarryPlate(btn) {
   if (helpHide) { clearTimeout(helpHide); helpHide = null; }
   const group = btn.dataset.group;
   const name = group || btn.dataset.session;
-  const mark = kindMark(group ? groupKind(tabMembers(btn), group) : kindOf(name), customButtons);
+  const mark = kindMark(group ? groupKind(tabMembers(btn), group) : kindOf(name), kindButtons());
   kindHelpEl.textContent = mark ? `${mark} ${name}` : name;
   kindHelpEl.hidden = false;
   kindHelpEl.classList.add('carrying');
