@@ -213,6 +213,10 @@ ser8's checkout (`~/work/pockterm` there) is at `origin/main` with a clean tree 
 from that checkout and checks the version. Never `sudo make install` there: under sudo the
 installer takes root for the account and rewrites the unit and the env file (2026-11-04).
 Work done on ser8 is pushed before the RPi5 builds on it, and the other way round.
+**The session buttons are one list for every host** (owner's word, 2026-11-04): a kind names
+a button by id and the "+" menu offers this host's list for a session on any host, so the page
+saves the list on every host that is up (`shareButtons`, js/hosts.js) and says which ones it
+missed.
 
 The push installs on the RPi5 only. For everyone else there are releases:
 `.github/workflows/release.yml` fires on a `v*` tag, runs `make release` (both architectures

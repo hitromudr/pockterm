@@ -24,7 +24,7 @@ import { bringBack } from './vendor.js';
 import { gridShape, gridPick, gridKeep, storedGrid, GRID_MAX } from './grid.js';
 import {
   readPeers, multi, others, qualify, splitName, hostLabel, baseOf, apiURL, socketURL,
-  isCross, requestInit, mergeLists, byHost, PEER_WAIT, hostButtons,
+  isCross, requestInit, mergeLists, byHost, PEER_WAIT, hostButtons, shareButtons,
 } from './hosts.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
@@ -1470,6 +1470,16 @@ async function saveCustom(list) {
     customButtons = (JSON.parse(text).buttons) || [];
     renderCustom();
     report('custom-buttons', { ok: true, count: customButtons.length });
+    // The same list to every other host that is up (shareButtons in js/hosts.js):
+    // what this host accepted, not what was typed.
+    const down = new Set(downHosts.map((d) => d.host));
+    const behind = await shareButtons(customButtons, others(peers).filter((h) => !down.has(h)),
+      (h, body) => hostFetch(h, '/api/presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }));
+    peerButtons.clear();
+    if (behind.length) {
+      note(`не сохранилось на: ${behind.join(', ')}`);
+      report('custom-buttons-shared', { ok: false, behind });
+    }
     return true;
   } catch (_) {
     note('нет связи с сервером');

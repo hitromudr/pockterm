@@ -174,3 +174,21 @@ test("another host's custom button is looked up on that host", async () => {
   // Before ser8's list has come: the shared star, not this host's b1.
   assert.equal(kindMark(sessions[1].kind, mine), '⭐');
 });
+
+// One list for every host: what this host saved is sent to each other host up,
+// and the ones that refused or did not answer are named.
+test('the buttons saved here are sent to every other host', async () => {
+  const { shareButtons } = await import('../web/js/hosts.js');
+  const list = [{ id: 'b7', label: 'Gemini', mark: '✴️' }];
+  const sent = [];
+  const failed = await shareButtons(list, ['ser8', 'micro', 'neuro'], async (h, body) => {
+    sent.push([h, JSON.parse(body)]);
+    if (h === 'micro') return { ok: false, status: 400 };
+    if (h === 'neuro') throw new Error('offline');
+    return { ok: true };
+  });
+  assert.deepEqual(sent.map(([h]) => h), ['ser8', 'micro', 'neuro']);
+  assert.deepEqual(sent[0][1], { buttons: list });
+  assert.deepEqual(failed, ['micro', 'neuro']);
+  assert.deepEqual(await shareButtons(list, [], async () => { throw new Error('not called'); }), []);
+});

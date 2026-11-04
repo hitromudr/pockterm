@@ -201,3 +201,26 @@ export function hostButtons(host, buttons) {
     .filter((b) => b && b.id && !builtinId(b.id))
     .map((b) => ({ ...b, id: `${b.id}${SEP}${host}` }));
 }
+
+// The buttons are one list for every host (owner's word, 2026-11-04: «кнопки
+// общие»). The "+" menu draws this host's list whichever host the new session is
+// for, and a session's kind names a button by id — so two lists would mean a
+// button that starts one thing here and another there, and a tab drawn with a
+// mark it was not started by.
+//
+// shareButtons(list, hosts, post) → the hosts that did not take it. Called after
+// this host has saved the list, with the other hosts that are up; `post(host,
+// body)` resolves to a fetch Response. Every host is asked, a refusal from one
+// does not stop the rest, and the page says which ones are behind.
+export async function shareButtons(list, hosts, post) {
+  const body = JSON.stringify({ buttons: list });
+  const answers = await Promise.all(hosts.map(async (h) => {
+    try {
+      const res = await post(h, body);
+      return res && res.ok ? '' : h;
+    } catch (_) {
+      return h;
+    }
+  }));
+  return answers.filter(Boolean);
+}
