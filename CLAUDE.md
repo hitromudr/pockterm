@@ -208,8 +208,10 @@ mounted into a job container while the runner serves other repositories too.
 `/api/peers` one page lists both hosts' sessions and reads each host's API, so a host left on
 an older binary is half of the page drawing by other rules. A push to `main` is not done until
 ser8's checkout (`~/work/pockterm` there) is at `origin/main` with a clean tree and its
-`pockterm version` equals the RPi5's; ser8 has no deploy path, so the binary there is
-`sudo make install` from that checkout — the owner's to run, asked for by name in the report.
+`pockterm version` equals the RPi5's. ser8 has no deploy path: its pockterm is devops's role,
+`make deploy-pockterm-ser8 ARGS='--limit SER8 -c local'` from `~/work/devops`, which builds
+from that checkout and checks the version. Never `sudo make install` there: under sudo the
+installer takes root for the account and rewrites the unit and the env file (2026-11-04).
 Work done on ser8 is pushed before the RPi5 builds on it, and the other way round.
 
 The push installs on the RPi5 only. For everyone else there are releases:
