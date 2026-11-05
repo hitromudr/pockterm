@@ -1,7 +1,11 @@
 // Run with: node --test test/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { snapshotText, chunks, pickedText, picksInOrder, samePara, dropScrollbar, pickedRows, markdownFrom, tablesFrom, rulesFrom, headingsFrom, unwrapFrom } from '../web/js/select.js';
+import {
+  snapshotText, chunks, pickedText, picksInOrder, samePara, dropScrollbar,
+  pickedRows, markdownFrom, tablesFrom, rulesFrom, headingsFrom, unwrapFrom,
+  mapTextOffset, stitchProgramScreen,
+} from '../web/js/select.js';
 
 test('rows become lines', () => {
   assert.equal(snapshotText(['one', 'two']), 'one\ntwo');
@@ -817,3 +821,83 @@ test('the marks this file adds do not count towards the edge', () => {
   const a = '  **жирное** и `код` в конце строки/';
   assert.equal(unwrapFrom(`${a}\n  дальше`, 36), '  **жирное** и `код` в конце строки/ дальше');
 });
+
+// --- stitching a program's scrolled view (2026-11-05) -----------------------
+// Reported on the web as "у джемини половина выделенного копируется, половина -
+// нет": in selection mode over Gemini CLI (`programCopy`), scrolling the mouse
+// wheel down from the top half of a two-screen response to the bottom half
+// replaced `#snapshot` with only the new screen and reset the mouse drag anchor
+// via `replaceChildren`, so only the second half (~2033 chars) was copied.
+test('scrolling down through a Gemini response stitches both screens without the footer in between', () => {
+  const cols = 60;
+  const bar = (s, thumb = ' ') => `${s.padEnd(cols - 1)}${thumb}`;
+  const rule = '─'.repeat(cols);
+  const chrome = [
+    '',
+    '',
+    '',
+    rule,
+    ' YOLO Ctrl+Y',
+    rule,
+    ' *   продолжай',
+    rule,
+    ' ctx 20% | gemini-4-argon',
+  ];
+  const screen1 = [
+    bar(`✦ Ниже — концепт развития ${C('contellect')} от сегодняшней точки.`, '█'),
+    '',
+    bar(`  1. ${B('Где')} ${B('мы')} ${B('сейчас:')}`),
+    bar('  Первая длинная строка ответа, которая начинается на первом'),
+    ...chrome,
+  ].join('\n');
+  const screen2 = [
+    '  1. **Где мы сейчас:**'.replace(/\*\*/g, ''),
+    '  Первая длинная строка ответа, которая начинается на первом',
+    '  экране и продолжается уже после прокрутки вниз.',
+    bar('  16:37 UTC', '█'),
+    ...chrome,
+  ].join('\n');
+
+  let st = stitchProgramScreen(null, screen1, cols, 0);
+  // Intermediate render without ANSI escapes keeps the ANSI marks from screen 1
+  // and appends the newly scrolled rows.
+  st = stitchProgramScreen(st, screen2, cols, -1);
+
+  assert.equal(st.viewStart, 2);
+  assert.ok(st.text.includes('✦ Ниже — концепт развития `contellect` от сегодняшней точки.'));
+  assert.ok(st.text.includes('1. **Где мы сейчас:**'));
+  assert.ok(st.text.includes(
+    'Первая длинная строка ответа, которая начинается на первом экране и продолжается уже после прокрутки вниз.',
+  ));
+  assert.ok(st.text.includes('16:37 UTC'));
+  // The composer chrome appears only once at the very end, never between the two screens.
+  assert.equal(st.text.split('YOLO Ctrl+Y').length - 1, 1);
+  // And viewOffset points at the start of screen 2 inside the stitched text.
+  assert.ok(st.text.slice(st.viewOffset).startsWith('1. **Где мы сейчас:**'));
+});
+
+test('scrolling up prepends earlier rows and mapTextOffset shifts the selection anchor with them', () => {
+  const cols = 50;
+  const rule = '─'.repeat(cols);
+  const chrome = ['', '', '', rule, ' *   prompt', rule];
+  const lower = [
+    '  Второй абзац ответа после заголовка.',
+    '  Третий абзац в самом низу экрана.',
+    ...chrome,
+  ].join('\n');
+  const upper = [
+    '✦ Первый абзац в самом верху ответа.',
+    '  Второй абзац ответа после заголовка.',
+    ...chrome,
+  ].join('\n');
+
+  const st1 = stitchProgramScreen(null, lower, cols, 0);
+  const anchorInLower = st1.text.indexOf('Третий абзац');
+  assert.ok(anchorInLower >= 0);
+
+  const st2 = stitchProgramScreen(st1, upper, cols, 1);
+  assert.equal(st2.viewStart, 0);
+  const mapped = mapTextOffset(st1.text, st2.text, anchorInLower);
+  assert.equal(st2.text.slice(mapped, mapped + 12), 'Третий абзац');
+});
+

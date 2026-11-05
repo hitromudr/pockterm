@@ -150,6 +150,20 @@ a wheel notch sends up to four steps (`steps`), leaves `.through` off, and refre
 place via `armWheelCopy` as soon as `term.onRender` draws the scrolled pane; `#snapshot.program`
 has `overflow: hidden` with `scrollTop = 0`, and `#snapshot`'s `lineHeight` matches `rowHeight()`.
 
+**And a mouse selection dragged across a wheel scroll must keep every screen it crossed** (reported
+2026-11-05 on the web as «у джемини половина выделенного копируется, половина - нет. на вебе»,
+measured in the journal as two consecutive copies of a two-screen Gemini response after scrolling
+from `pill: true` to `pill: false` yielding 2033 and 2039 characters instead of 8477). On a
+computer there are no long-press picks (`pointerType === 'mouse'` returns early), and replacing
+`#snapshot` with only the new screen via `replaceChildren` both discarded the rows that scrolled off
+the top and detached the DOM node where `mousedown` began — plus once `replaceChildren` and
+`setBaseAndExtent` run during a press, Chromium's native `mousemove` drag handler stops extending
+the selection. So `stitchProgramScreen` splits each host capture into its scrollable transcript
+(`programContentEnd`: `rule - 4` in Gemini CLI, `box - 1` in Claude Code) and its fixed bottom
+chrome, merges overlapping screens into one continuous transcript, aligns `#snapshot.scrollTop` to
+`viewOffset`, and `restoreSnapshotSelection` + `pointermove` (`mouseRedrawn`) keep the original
+`mousedown` anchor mapped through `mapTextOffset` while extending the focus to the cursor.
+
 ## A selection does not stop where the copy window does
 
 Reported as the clipboard taking more than was selected. The window opens at its own bottom

@@ -3,6 +3,7 @@
 // Kept apart from the DOM so the shaping is testable — what ends up in the
 // clipboard is the whole point of the mode, and "why is there a wall of
 // blank lines after what I selected" is the complaint it has to avoid.
+import { programContentEnd } from './detect.js';
 
 // snapshotText joins the terminal's visible rows into selectable text.
 // Right-hand padding and the empty rows below the last line are dropped:
@@ -816,8 +817,26 @@ function plainPara(t) {
 // Where in `text` its plain form reaches `n` characters: the place to cut the
 // original at once the overlap has been found in the plain forms.
 function plainCut(text, n) {
-  for (let i = 0; i <= text.length; i++) {
-    if (plainPara(text.slice(0, i)).length >= n) return i;
+  if (n <= 0) return 0;
+  let count = 0;
+  let inSpace = true;
+  let pendingSpace = false;
+  for (let i = 0; i < text.length;) {
+    if (text[i] === '`') { i++; continue; }
+    if (text[i] === '*' && text[i + 1] === '*') { i += 2; continue; }
+    if (/\s/.test(text[i])) {
+      if (!inSpace) pendingSpace = true;
+      i++;
+      continue;
+    }
+    if (pendingSpace) {
+      count++;
+      pendingSpace = false;
+    }
+    inSpace = false;
+    count++;
+    i++;
+    if (count >= n) return i;
   }
   return text.length;
 }
@@ -901,3 +920,180 @@ export function pickedRows(lines, picks, cols) {
   if (from >= 0) close(rows.length);
   return out;
 }
+
+// Where a character offset `off` in `oldText` lands in `newText` after the copy
+// window has been updated (e.g. when a scrolled screen is stitched in, or when
+// the host's Markdown replaces the bare screen).
+export function mapTextOffset(oldText, newText, off) {
+  const A = String(oldText == null ? '' : oldText);
+  const B = String(newText == null ? '' : newText);
+  const clamped = Math.max(0, Math.min(A.length, off | 0));
+  if (A === B) return clamped;
+  if (clamped > 0 && B.slice(0, clamped) === A.slice(0, clamped)) return clamped;
+  const after = A.slice(clamped, clamped + 64);
+  if (after.replace(/\s/g, '').length >= 8) {
+    const at = B.indexOf(after);
+    if (at >= 0) return at;
+  }
+  const before = A.slice(Math.max(0, clamped - 64), clamped);
+  if (before.replace(/\s/g, '').length >= 8) {
+    const at = B.indexOf(before);
+    if (at >= 0) return at + before.length;
+  }
+  const pa = plainPara(A);
+  const pb = plainPara(B);
+  const plainOff = plainPara(A.slice(0, clamped)).length;
+  const paAfter = pa.slice(plainOff, plainOff + 32);
+  if (paAfter.replace(/\s/g, '').length >= 8) {
+    const pAt = pb.indexOf(paAfter);
+    if (pAt >= 0) return plainCut(B, pAt);
+  }
+  const paBefore = pa.slice(Math.max(0, plainOff - 32), plainOff);
+  if (paBefore.replace(/\s/g, '').length >= 8) {
+    const pAt = pb.indexOf(paBefore);
+    if (pAt >= 0) return plainCut(B, pAt + paBefore.length);
+  }
+  return plainCut(B, plainOff);
+}
+
+const ANSI_ANY = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+const BOX_ROW = /[╭╮╰╯│├┤─]/;
+
+function plainRow(line) {
+  return String(line == null ? '' : line).replace(ANSI_ANY, '').replace(/[ \t]+$/, '');
+}
+
+function pickRow(oldRow, newRow) {
+  if (plainRow(oldRow) === plainRow(newRow) && oldRow.includes('\x1b[') && !newRow.includes('\x1b[')) {
+    return oldRow;
+  }
+  return newRow;
+}
+
+function findProgramOverlap(plainPrev, plainNext, prevStart) {
+  const M = plainPrev.length;
+  const N = plainNext.length;
+  const totalPrevChars = plainPrev.join('').replace(/\s/g, '').length;
+  const minChars = Math.min(SAME_MIN, Math.max(1, totalPrevChars));
+  let best = null;
+  for (let pos = -(N - 1); pos < M; pos++) {
+    const jFrom = Math.max(0, -pos);
+    const jTo = Math.min(N, M - pos);
+    if (jTo <= jFrom) continue;
+    let s = 0;
+    while (s < 4 && jFrom + s < jTo
+           && plainNext[jFrom + s] !== plainPrev[pos + jFrom + s]
+           && (BOX_ROW.test(plainNext[jFrom + s]) || BOX_ROW.test(plainPrev[pos + jFrom + s]))) {
+      s++;
+    }
+    let ok = jFrom + s < jTo;
+    let chars = 0;
+    for (let j = jFrom + s; j < jTo; j++) {
+      const a = plainPrev[pos + j];
+      const b = plainNext[j];
+      const same = a === b || (pos + j === M - 1 && a !== '' && b.startsWith(a));
+      if (!same) { ok = false; break; }
+      chars += a.replace(/\s/g, '').length;
+    }
+    if (!ok || chars < minChars) continue;
+    if (!best
+        || chars > best.chars
+        || (chars === best.chars && Math.abs(pos - prevStart) < Math.abs(best.pos - prevStart))) {
+      best = { pos, s, chars };
+    }
+  }
+  return best;
+}
+
+function formatProgramState(state, cols) {
+  const raw = [...state.body, ...state.chrome].join('\n');
+  const text = snapshotText(markdownFrom(raw, cols).split('\n'));
+  if (state.viewStart <= 0) {
+    return { ...state, text, viewOffset: 0, blankLead: 0 };
+  }
+  let blankLead = 0;
+  while (state.viewStart + blankLead < state.body.length
+         && plainRow(state.body[state.viewStart + blankLead]) === '') {
+    blankLead++;
+  }
+  const headPlainLen = plainPara(markdownFrom(state.body.slice(0, state.viewStart).join('\n'), cols)).length;
+  let viewOffset = plainCut(text, headPlainLen);
+  while (viewOffset < text.length && (text[viewOffset] === '\n' || text[viewOffset] === ' ')) viewOffset++;
+  return { ...state, text, viewOffset, blankLead };
+}
+
+// Stitch consecutive captures of an alternate-screen program (`programCopy`) into
+// one continuous transcript so a mouse selection dragged and scrolled across
+// multiple screens keeps every screen it crossed.
+export function stitchProgramScreen(prev, rawText, cols, dir = 0) {
+  const clean = dropScrollbar(rawText, cols);
+  const lines = clean.split('\n');
+  const end = programContentEnd(lines);
+  let nextBody;
+  let chrome;
+  if (end < lines.length) {
+    nextBody = lines.slice(0, end);
+    chrome = lines.slice(end);
+  } else {
+    let last = lines.length;
+    while (last > 0 && plainRow(lines[last - 1]) === '') last--;
+    nextBody = lines.slice(0, last);
+    chrome = [];
+  }
+  if (!prev || !prev.body || !prev.body.length || !nextBody.length) {
+    return formatProgramState({
+      body: nextBody,
+      chrome,
+      viewStart: 0,
+      viewRows: nextBody.length,
+    }, cols);
+  }
+  const plainPrev = prev.body.map(plainRow);
+  const plainNext = nextBody.map(plainRow);
+  const best = findProgramOverlap(plainPrev, plainNext, prev.viewStart || 0);
+  let body;
+  let viewStart;
+  if (best) {
+    if (best.pos >= 0) {
+      const merged = [...prev.body];
+      for (let j = 0; j < nextBody.length; j++) {
+        const at = best.pos + j;
+        if (at < merged.length) {
+          if (j < best.s && BOX_ROW.test(plainNext[j]) && !BOX_ROW.test(plainPrev[at])) continue;
+          merged[at] = pickRow(merged[at], nextBody[j]);
+        } else {
+          merged.push(nextBody[j]);
+        }
+      }
+      body = merged;
+      viewStart = best.pos;
+    } else {
+      const k = -best.pos;
+      const merged = [...nextBody.slice(0, k), ...prev.body];
+      for (let j = k; j < nextBody.length; j++) {
+        if (j < merged.length) merged[j] = pickRow(merged[j], nextBody[j]);
+      }
+      body = merged;
+      viewStart = 0;
+    }
+  } else if (dir < 0) {
+    body = [...prev.body, ...nextBody];
+    viewStart = prev.body.length;
+  } else if (dir > 0) {
+    body = [...nextBody, ...prev.body];
+    viewStart = 0;
+  } else {
+    body = nextBody;
+    viewStart = 0;
+  }
+  const useChrome = chrome.length
+    ? chrome.map((r, i) => (prev.chrome && i < prev.chrome.length ? pickRow(prev.chrome[i], r) : r))
+    : (prev.chrome || []);
+  return formatProgramState({
+    body,
+    chrome: useChrome,
+    viewStart,
+    viewRows: nextBody.length,
+  }, cols);
+}
+

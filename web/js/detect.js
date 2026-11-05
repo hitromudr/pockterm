@@ -906,17 +906,36 @@ export function hasGeminiBox(lines) {
 // 0.66.0 at 57x45) that cell turns to `▀` or the thumb ends higher up.
 const THUMB = '█▀▄';
 
-function scrolledBar(rows, cols) {
-  if (cols < 2) return false;
-  const plain = rows.map((r) => stripAnsi(typeof r.text === 'string' ? r.text : r.text.join('')));
+function geminiContentBottom(plain) {
   const box = inputBoxAt(plain);
-  if (box < 1 || !geminiBoxAt(plain, box)) return false;
+  if (box < 1 || !geminiBoxAt(plain, box)) return -1;
   const w = plain[box - 1].trim().length;
   let rule = box - 1;
   for (let i = Math.max(0, box - 5); i < box - 1; i++) {
     if (RULE.test(plain[i]) && plain[i].trim().length === w) { rule = i; break; }
   }
-  const bottom = rule - 4;
+  return rule - 4;
+}
+
+// Where the scrollable transcript of an alternate-screen program ends (row index
+// past the last transcript row). Gemini CLI's MainContent ends at `rule - 4` (above
+// CopyModeWarning, ToastDisplay and StatusRow); Claude Code's transcript ends above
+// the top rule of its composer (`box - 1`); any other program has no composer box
+// and its whole screen is content.
+export function programContentEnd(lines) {
+  if (!Array.isArray(lines)) return 0;
+  const plain = lines.map(stripAnsi);
+  const gBottom = geminiContentBottom(plain);
+  if (gBottom >= 0) return gBottom + 1;
+  const box = inputBoxAt(plain);
+  if (box >= 1) return box - 1;
+  return lines.length;
+}
+
+function scrolledBar(rows, cols) {
+  if (cols < 2) return false;
+  const plain = rows.map((r) => stripAnsi(typeof r.text === 'string' ? r.text : r.text.join('')));
+  const bottom = geminiContentBottom(plain);
   if (bottom < 0) return false;
   let last = -1;
   for (let y = 0; y <= bottom; y++) {

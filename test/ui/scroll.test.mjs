@@ -696,7 +696,23 @@ describe('a swipe follows the finger', () => {
         if (document.getElementById('snapshot').classList.contains('through')) window.__throughOnWheel = true;
       }).observe(document.getElementById('snapshot'), { attributes: true, attributeFilter: ['class'] });
     });
-    await page.mouse.move(200, 200);
+    // Dragging a mouse selection across a wheel scroll must keep the anchor from
+    // before the wheel (reported 2026-11-05 as "у джемини половина выделенного
+    // копируется, половина - нет. на вебе"): replaceChildren alone dropped the
+    // first half of the drag when the scrolled capture arrived.
+    const dragStart = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('#snapshot .para')].find((e) => e.textContent.includes('alpha para'));
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.left + 2), y: Math.round(r.top + 4) };
+    });
+    const dragMid = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('#snapshot .para')].find((e) => e.textContent.includes('beta para'));
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.left + 20), y: Math.round(r.top + 4) };
+    });
+    await page.mouse.move(dragStart.x, dragStart.y);
+    await page.mouse.down();
+    await page.mouse.move(dragMid.x, dragMid.y, { steps: 4 });
     await page.mouse.wheel(0, 120);
     await page.waitForFunction(() => {
       const el = document.getElementById('snapshot');
@@ -705,7 +721,18 @@ describe('a swipe follows the finger', () => {
     }, null, { timeout: 5000 });
     assert.equal(await page.evaluate(() => window.__throughOnWheel), false,
       'the mouse wheel stepped the copy window aside into .through');
-    await page.click('#sel-done');
+    const dragEnd = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('#snapshot .para')].find((e) => e.textContent.includes('beta para'));
+      const rects = el.getClientRects();
+      const r = rects[rects.length - 1];
+      return { x: Math.round(r.right - 2), y: Math.round(r.bottom - 2) };
+    });
+    await page.mouse.move(dragEnd.x, dragEnd.y, { steps: 4 });
+    await page.mouse.up();
+    await page.click('#copy');
+    const wheelClip = await page.evaluate(() => navigator.clipboard.readText());
+    assert.ok(wheelClip.startsWith('alpha para') && !wheelClip.includes('gamma para') && wheelClip.includes('^[[<65;'),
+      `the mouse drag across the wheel scroll lost its anchor: ${JSON.stringify(wheelClip)}`);
     await page.waitForSelector('#snapshot', { state: 'hidden' });
 
     stand.tmux(['send-keys', '-t', 'demo', '-l', '\x1b[?1006l\x1b[?1002l\x1b[?1049l']);

@@ -4,7 +4,10 @@ import { noticeFrom, deliver, nextMode, modeLabel, shouldAskPermission, testNoti
 import { linkAction } from './link.js';
 import { directBase, tryDirect, doorURL, worthTrying, viaMark } from './direct.js';
 import { pickFiles, chosenFiles, carriesFiles, firstImage } from './paste.js';
-import { snapshotText, chunks, pickedText, picksInOrder, samePara, dropScrollbar, pickedRows, markdownFrom } from './select.js';
+import {
+  snapshotText, chunks, pickedText, picksInOrder, samePara, dropScrollbar,
+  pickedRows, markdownFrom, mapTextOffset, stitchProgramScreen,
+} from './select.js';
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
@@ -4714,6 +4717,7 @@ function selectedText() {
 
 function dropSelection() {
   lastSelection = '';
+  mouseAnchorOff = null;
   term.clearSelection();
   const sel = window.getSelection();
   if (sel) sel.removeAllRanges();
@@ -4879,7 +4883,105 @@ function selectAt(x, y) {
 // look identical on a phone, and "the copy window has nothing above the screen" is
 // either a capture that never came back or a pane with no history.
 let snapshotShown = '';
+let programCapture = null;
+let mouseSelecting = false;
+let mouseRedrawn = false;
+let mousePos = null;
+let mouseAnchorOff = null;
+
+function charOffsetIn(root, node, offset) {
+  if (!node || !root.contains(node)) return null;
+  try {
+    const r = document.createRange();
+    r.setStart(root, 0);
+    r.setEnd(node, offset);
+    return r.toString().length;
+  } catch (_) {
+    return null;
+  }
+}
+
+function pointAtCharOffset(root, charIdx) {
+  const want = Math.max(0, charIdx | 0);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let seen = 0;
+  let last = null;
+  while (walker.nextNode()) {
+    const n = walker.currentNode;
+    last = n;
+    if (seen + n.length >= want) return { node: n, offset: want - seen };
+    seen += n.length;
+  }
+  if (last) return { node: last, offset: last.length };
+  return { node: root, offset: 0 };
+}
+
+function readSnapshotSelection(oldText) {
+  if (!oldText) return null;
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount && sel.anchorNode && snapshotEl.contains(sel.anchorNode)
+      && sel.focusNode && snapshotEl.contains(sel.focusNode)
+      && (!sel.isCollapsed || mouseSelecting)) {
+    const anchorOff = charOffsetIn(snapshotEl, sel.anchorNode, sel.anchorOffset);
+    const focusOff = charOffsetIn(snapshotEl, sel.focusNode, sel.focusOffset);
+    if (anchorOff !== null && focusOff !== null) {
+      return {
+        anchorOff: mouseSelecting && mouseAnchorOff !== null ? mouseAnchorOff : anchorOff,
+        focusOff,
+      };
+    }
+  }
+  if (mouseSelecting && mouseAnchorOff !== null) {
+    return { anchorOff: mouseAnchorOff, focusOff: mouseAnchorOff };
+  }
+  return null;
+}
+
+function scrollProgramSnapshot() {
+  if (!programCapture || programCapture.viewStart <= 0) {
+    snapshotEl.scrollTop = 0;
+    return;
+  }
+  const pt = pointAtCharOffset(snapshotEl, programCapture.viewOffset || 0);
+  const r = document.createRange();
+  r.setStart(pt.node, pt.offset);
+  r.setEnd(pt.node, pt.offset);
+  const rect = r.getBoundingClientRect();
+  const box = snapshotEl.getBoundingClientRect();
+  if (rect.height > 0 || rect.top !== 0) {
+    snapshotEl.scrollTop += (rect.top - box.top) - (programCapture.blankLead || 0) * rowHeight();
+  }
+}
+
+function restoreSnapshotSelection(oldText, newText, savedSel) {
+  if (!savedSel) return;
+  const anchorOff = mapTextOffset(oldText, newText, savedSel.anchorOff);
+  if (mouseSelecting) {
+    mouseAnchorOff = anchorOff;
+    mouseRedrawn = true;
+  }
+  const anchorPt = pointAtCharOffset(snapshotEl, anchorOff);
+  let focusPt = null;
+  if (mouseSelecting && mousePos && document.caretRangeFromPoint) {
+    const pos = document.caretRangeFromPoint(mousePos.x, mousePos.y);
+    if (pos && pos.startContainer && snapshotEl.contains(pos.startContainer)) {
+      focusPt = { node: pos.startContainer, offset: pos.startOffset };
+    }
+  }
+  if (!focusPt) {
+    const focusOff = mapTextOffset(oldText, newText, savedSel.focusOff);
+    focusPt = pointAtCharOffset(snapshotEl, focusOff);
+  }
+  const sel = window.getSelection();
+  if (sel && anchorPt && focusPt && typeof sel.setBaseAndExtent === 'function') {
+    sel.setBaseAndExtent(anchorPt.node, anchorPt.offset, focusPt.node, focusPt.offset);
+    remember(insideSnapshot());
+  }
+}
+
 function drawSnapshot(text, from) {
+  const oldText = snapshotShown;
+  const savedSel = readSnapshotSelection(oldText);
   cancelHold();
   lastGrab = null; // its text node is about to be replaced, and it holds one alive
   picked.clear();
@@ -4901,6 +5003,8 @@ function drawSnapshot(text, from) {
   snapshotEl.replaceChildren(frag);
   snapshotEl.dataset.from = from;
   bindPicks();
+  if (programCopy()) scrollProgramSnapshot();
+  restoreSnapshotSelection(oldText, text, savedSel);
 }
 
 // Mark what the new screen shows of the picks. The screen's edge cuts a paragraph
@@ -5000,7 +5104,18 @@ snapshotEl.addEventListener('pointerdown', (e) => {
   holdFired = false;
   holdTouch = false;
   pressFrom = { x: e.clientX, y: e.clientY };
-  if (e.pointerType === 'mouse') return;
+  if (e.pointerType === 'mouse') {
+    if (e.button === 0) {
+      mouseSelecting = true;
+      mouseRedrawn = false;
+      mousePos = { x: e.clientX, y: e.clientY };
+      if (!e.shiftKey) {
+        const pos = document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null;
+        mouseAnchorOff = pos ? charOffsetIn(snapshotEl, pos.startContainer, pos.startOffset) : null;
+      }
+    }
+    return;
+  }
   const para = e.target && e.target.closest ? e.target.closest('.para') : null;
   if (!para) return;
   holdTouch = true;
@@ -5023,6 +5138,28 @@ snapshotEl.addEventListener('pointerdown', (e) => {
     togglePara(para);
   }, PARA_HOLD);
 });
+window.addEventListener('pointermove', (e) => {
+  if (!selectMode || !mouseSelecting || e.pointerType !== 'mouse') return;
+  mousePos = { x: e.clientX, y: e.clientY };
+  if (mouseRedrawn && mouseAnchorOff !== null && document.caretRangeFromPoint) {
+    const anchorPt = pointAtCharOffset(snapshotEl, mouseAnchorOff);
+    const pos = document.caretRangeFromPoint(e.clientX, e.clientY);
+    const sel = window.getSelection();
+    if (sel && anchorPt && pos && pos.startContainer && snapshotEl.contains(pos.startContainer)
+        && typeof sel.setBaseAndExtent === 'function') {
+      sel.setBaseAndExtent(anchorPt.node, anchorPt.offset, pos.startContainer, pos.startOffset);
+      remember(insideSnapshot());
+    }
+  }
+});
+for (const ev of ['pointerup', 'pointercancel']) {
+  window.addEventListener(ev, (e) => {
+    if (e.pointerType === 'mouse') {
+      mouseSelecting = false;
+      mouseRedrawn = false;
+    }
+  });
+}
 snapshotEl.addEventListener('pointermove', (e) => {
   if (!holdFrom || !holdTimer) return;
   if (Math.abs(e.clientX - holdFrom.x) > PARA_TRAVEL || Math.abs(e.clientY - holdFrom.y) > PARA_TRAVEL) {
@@ -5065,6 +5202,10 @@ function setSelectMode(on) {
   selectMode = on;
   lastTapAt = 0; // a tap from the last time the mode was open is not a double tap
   lastGrab = null;
+  programCapture = null;
+  mouseSelecting = false;
+  mouseRedrawn = false;
+  mousePos = null;
   dropSelection();
   // The floating controls stand down while the copy is frozen. Both are drawn
   // above it (the stack at z-index 12, the rail at 7) and both are about a pane
@@ -5171,8 +5312,14 @@ function tookCapture(text) {
   // frame spans the pane, a break does not, and this capture is of this client's
   // own pane — so the width the page is drawn at is the width it was drawn with.
   // A program's own scrollbar is not text (dropScrollbar).
-  const raw = programCopy() ? dropScrollbar(text, term.cols) : text;
-  const lines = markdownFrom(raw, term.cols).split('\n');
+  let fresh;
+  if (programCopy()) {
+    programCapture = stitchProgramScreen(programCapture, text, term.cols, copyDepth - shownDepth);
+    fresh = programCapture.text;
+  } else {
+    const lines = markdownFrom(text, term.cols).split('\n');
+    fresh = snapshotText(lines);
+  }
   // The screen is already at the end of what came back, so this replaces rather
   // than appends — and the view stays where it was put, at the bottom.
   //
@@ -5180,16 +5327,28 @@ function tookCapture(text) {
   // history behind its screen: a redraw then costs the picks made in the round
   // trip it took to arrive, and gains nothing. Whether the host has answered is
   // said in `data-from` either way.
-  const fresh = snapshotText(lines);
   if (fresh !== snapshotShown) {
     shownDepth = copyDepth;
     drawSnapshot(fresh, 'host');
-    snapshotEl.scrollTop = programCopy() ? 0 : snapshotEl.scrollHeight;
+    if (!programCopy()) snapshotEl.scrollTop = snapshotEl.scrollHeight;
   } else {
     // Over a program's view the same screen after a swipe is a view that did not
     // move — the wheel ran into its end — and the notches did not take it deeper.
     copyDepth = shownDepth;
     snapshotEl.dataset.from = 'host';
+    if (programCopy()) {
+      scrollProgramSnapshot();
+      if (mouseSelecting && mousePos && mouseAnchorOff !== null && document.caretRangeFromPoint) {
+        const anchorPt = pointAtCharOffset(snapshotEl, mouseAnchorOff);
+        const pos = document.caretRangeFromPoint(mousePos.x, mousePos.y);
+        const sel = window.getSelection();
+        if (sel && pos && pos.startContainer && snapshotEl.contains(pos.startContainer)
+            && typeof sel.setBaseAndExtent === 'function') {
+          sel.setBaseAndExtent(anchorPt.node, anchorPt.offset, pos.startContainer, pos.startOffset);
+          remember(insideSnapshot());
+        }
+      }
+    }
   }
   snapshotEl.classList.remove('through');
   glowPicks();
@@ -6459,9 +6618,10 @@ termBox.addEventListener('wheel', (e) => {
       const steps = Math.max(1, Math.min(4, Math.round(Math.abs(e.deltaY) / 30)));
       e.preventDefault();
       e.stopPropagation();
+      if (mouseSelecting) pressFrom = { x: -9999, y: -9999 };
       copyDepth += dir * steps;
       wheelCopyPending = true;
-      armWheelCopy(120);
+      if (!wheelCopyTimer) armWheelCopy(120);
       for (let i = 0; i < steps; i++) sendWheel(dir > 0 ? 64 : 65);
       return;
     }
