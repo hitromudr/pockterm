@@ -659,10 +659,12 @@ the bottom, down from one at the top — where a row switches.
   did: exante's own session is `exante` and the ones it starts are `xnt-lr-845`,
   `xnt-lr-tdebt-527`. All three stand in `~/work/exante`, which is what the server
   already reports as `dir` (`session.ShortDir`), so the project is its first segment
-  (`projectOf`, js/groups.js), with a trailing `-wt` stripped so sibling worktree
-  folders (`contellect-wt/layers`, `contellect-wt/repo-layers`) fold into the same
-  group as the repository itself (`contellect`). A session the server gives no `dir`
-  for stands alone.
+  (`projectOf`, js/groups.js). Where a pane is in a git worktree outside its
+  repository (`yarr-any-order` beside `yarr`, `ana-wt/belt` beside `anabasis`),
+  the server reads the worktree's `.git` file and sends the main repository as
+  `project` (`session.WorktreeProject`) while keeping `dir` as the worktree's own
+  path for the drawer's subtitle; a trailing `-wt` on the first segment is also
+  stripped as a fallback. A session the server gives no `dir` for stands alone.
   A session that `cd`s into another project moves to that group on the next poll —
   `dir` is where the pane is now, which is the fact the drawer's rows already show.
 - **A project with one session is a plain tab.** A group of one would be a tap that

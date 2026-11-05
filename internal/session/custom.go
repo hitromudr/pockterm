@@ -421,3 +421,150 @@ func (b *Buttons) Resolve(preset string) (target, cmd string, err error) {
 	}
 	return t, "", nil
 }
+
+// MatchStartKind returns the kind for a session whose tmux stamp is missing
+// (""), bare ("custom" from a manual `make custom CMD='gemini-safe …'`), or
+// names a button for a different agent (`custom:b1` Codex leaked onto a Gemini
+// session through MAKEFLAGS in the caller's environment on 2026-11-05).
+//
+// When the stamp already names a button that runs the same agent (for instance
+// `custom:b8` "Gemini 4 Cont" vs `custom:b7` "Gemini 4"), or the pane's start
+// command is not a known agent, kind is returned untouched.
+func MatchStartKind(buttons []Custom, kind, start string) string {
+	agent, resume, yolo := startAgent(start)
+	if agent == "" {
+		return kind
+	}
+	if kind != "" && kind != CustomTarget {
+		if id := CustomID(kind); id != "" {
+			for _, b := range buttons {
+				if b.ID == id {
+					if ba := buttonAgent(b); ba == "" || ba == agent {
+						return kind
+					}
+					break
+				}
+			}
+			// A custom id not in the list (or not a conflicting agent above):
+			// leave it unless we matched a conflicting button in the loop.
+			conflict := false
+			for _, b := range buttons {
+				if b.ID == id {
+					if ba := buttonAgent(b); ba != "" && ba != agent {
+						conflict = true
+					}
+					break
+				}
+			}
+			if !conflict {
+				return kind
+			}
+		} else if agent == "claude" {
+			return kind
+		}
+	}
+	if agent == "claude" {
+		if resume && !yolo {
+			return "continue"
+		}
+		if yolo {
+			return "yolo"
+		}
+		return "claude"
+	}
+	fallback := ""
+	for _, b := range buttons {
+		if buttonAgent(b) != agent {
+			continue
+		}
+		_, bResume, _ := startAgent(b.Cmd)
+		id := b.ID
+		if !b.Builtin() {
+			id = customPrefix + b.ID
+		}
+		if bResume == resume {
+			return id
+		}
+		if fallback == "" {
+			fallback = id
+		}
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return kind
+}
+
+func buttonAgent(b Custom) string {
+	if b.Cmd != "" {
+		a, _, _ := startAgent(b.Cmd)
+		return a
+	}
+	switch b.ID {
+	case "claude", "yolo", "continue":
+		return "claude"
+	}
+	if b.Target == "cont-yolo" {
+		return "claude"
+	}
+	return ""
+}
+
+func startAgent(start string) (agent string, resume bool, yolo bool) {
+	start = strings.TrimSpace(strings.Trim(strings.TrimSpace(start), `"`))
+	if start == "" {
+		return "", false, false
+	}
+	for _, clause := range strings.Split(start, ";") {
+		fields := strings.Fields(clause)
+		agent = ""
+		for i := 0; i < len(fields); i++ {
+			tok := fields[i]
+			if tok == "env" {
+				continue
+			}
+			if tok == "-u" {
+				i++
+				continue
+			}
+			if strings.Contains(tok, "=") {
+				if val, ok := strings.CutPrefix(tok, "AGENT_COMMAND="); ok {
+					agent = normAgent(val)
+				}
+				continue
+			}
+			if agent == "" {
+				agent = normAgent(tok)
+				if agent == "" && filepath.Base(strings.Trim(tok, `"'`)) == "agent-run" {
+					agent = "claude"
+				}
+			}
+			if agent == "" {
+				break
+			}
+			for _, arg := range fields[i+1:] {
+				clean := strings.Trim(arg, `"'`)
+				switch clean {
+				case "-r", "--resume", "-c", "--continue", "resume":
+					resume = true
+				case "--dangerously-skip-permissions", "--yolo":
+					yolo = true
+				}
+				if !strings.HasPrefix(clean, "-") && clean != "resume" && clean != "latest" {
+					break
+				}
+			}
+			return agent, resume, yolo
+		}
+	}
+	return "", false, false
+}
+
+func normAgent(word string) string {
+	base := strings.TrimSuffix(filepath.Base(strings.Trim(word, `"'`)), "-safe")
+	switch base {
+	case "claude", "gemini", "codex", "qwen":
+		return base
+	}
+	return ""
+}

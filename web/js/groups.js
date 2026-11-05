@@ -15,13 +15,16 @@
 // (`pockterm/web` → `pockterm`; the root itself arrives as its own base name),
 // under home (`~/notes/x` → `~/notes`), or absolute, which is kept whole — a
 // first segment of `/` would put every such session in one group called `tmp`.
+// When the pane is in a git worktree outside its repository (`yarr-any-order`,
+// `ana-wt/belt`), the server also sends `project` from its `.git` file, since
+// the folder name alone cannot name `yarr` or `anabasis`.
 //
 // A session of another host (`host`, see js/hosts.js) is in that host's copy of
 // the project, so its group carries the host the way its name does: `pockterm`
 // here and `pockterm@ser8` there are two working copies, and one tab standing
 // for both would switch machines under a tap that meant to switch sessions.
 export function projectOf(s) {
-  const key = dirProject((s && s.dir) || '');
+  const key = dirProject((s && (s.project || s.dir)) || '');
   return key && s.host ? `${key}@${s.host}` : key;
 }
 

@@ -65,6 +65,79 @@ func ShortDir(root, home, dir string) string {
 	return dir
 }
 
+// WorktreeProject returns the shortened directory of the main repository when
+// dir is inside a linked git worktree (such as ~/work/yarr-any-order or
+// ~/work/ana-wt/belt, whose .git file points to ~/work/yarr/.git/worktrees/…
+// or ~/work/anabasis/.git/worktrees/…), or "" when dir is not a worktree or
+// already shortens to the same project.
+//
+// Dir itself stays the worktree's own path so the drawer's row still says
+// which checkout the pane is in; this is only what folds it into the
+// repository's group when the folder name cannot say so (`yarr-any-order` has
+// no `-wt`, and `ana-wt` is not `anabasis`).
+func WorktreeProject(root, home, dir string) string {
+	main := worktreeMain(root, home, dir)
+	if main == "" {
+		return ""
+	}
+	proj := ShortDir(root, home, main)
+	if proj == "" || proj == ShortDir(root, home, dir) {
+		return ""
+	}
+	return proj
+}
+
+func worktreeMain(root, home, dir string) string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return ""
+	}
+	cur := strings.TrimRight(filepath.Clean(dir), "/")
+	cleanRoot := strings.TrimRight(filepath.Clean(root), "/")
+	cleanHome := strings.TrimRight(filepath.Clean(home), "/")
+	for depth := 0; depth < 16 && cur != "" && cur != "/" && cur != "."; depth++ {
+		if (root != "" && cur == cleanRoot) || (home != "" && cur == cleanHome) {
+			return ""
+		}
+		dotGit := filepath.Join(cur, ".git")
+		st, err := os.Lstat(dotGit)
+		if err == nil {
+			if !st.Mode().IsRegular() {
+				return ""
+			}
+			raw, err := os.ReadFile(dotGit)
+			if err != nil {
+				return ""
+			}
+			line, _, _ := strings.Cut(string(raw), "\n")
+			rest, ok := strings.CutPrefix(strings.TrimSpace(line), "gitdir:")
+			if !ok {
+				return ""
+			}
+			gd := strings.TrimSpace(rest)
+			if gd == "" {
+				return ""
+			}
+			if !filepath.IsAbs(gd) {
+				gd = filepath.Join(cur, gd)
+			}
+			gd = filepath.Clean(gd)
+			wt := filepath.Dir(gd)
+			common := filepath.Dir(wt)
+			if filepath.Base(wt) == "worktrees" && filepath.Base(common) == ".git" {
+				return filepath.Dir(common)
+			}
+			return ""
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return ""
+		}
+		cur = parent
+	}
+	return ""
+}
+
 // Folders lists the directories a session can be started in: the immediate
 // children of root, by name, sorted.
 //

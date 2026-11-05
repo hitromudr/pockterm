@@ -273,3 +273,53 @@ func TestShortDirIsWhatAPhoneCanRead(t *testing.T) {
 		t.Errorf("a prefix that is not a parent: %q", got)
 	}
 }
+
+func TestWorktreeProjectFindsTheMainRepository(t *testing.T) {
+	// A git worktree is not always under <project>-wt/: `yarr-any-order` sits
+	// beside `yarr`, and `ana-wt/belt` is a worktree of `anabasis`, not `ana`.
+	// The .git file in the worktree's top directory names the main repository.
+	home := t.TempDir()
+	root := filepath.Join(home, "work")
+	for _, d := range []string{
+		filepath.Join(root, "yarr", ".git", "worktrees", "yarr-any-order"),
+		filepath.Join(root, "yarr-any-order", "src"),
+		filepath.Join(root, "anabasis", ".git", "worktrees", "belt"),
+		filepath.Join(root, "ana-wt", "belt", "crates"),
+		filepath.Join(root, "plain"),
+	} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "yarr-any-order", ".git"),
+		[]byte("gitdir: "+filepath.Join(root, "yarr", ".git", "worktrees", "yarr-any-order")+"\n"),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	// A relative gitdir is resolved against the worktree's own directory.
+	if err := os.WriteFile(
+		filepath.Join(root, "ana-wt", "belt", ".git"),
+		[]byte("gitdir: ../../anabasis/.git/worktrees/belt\n"),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct{ dir, want string }{
+		{filepath.Join(root, "yarr-any-order"), "yarr"},
+		{filepath.Join(root, "yarr-any-order", "src"), "yarr"},
+		{filepath.Join(root, "ana-wt", "belt"), "anabasis"},
+		{filepath.Join(root, "ana-wt", "belt", "crates"), "anabasis"},
+		// The main checkout's .git is a directory: Dir already names the project.
+		{filepath.Join(root, "yarr"), ""},
+		{filepath.Join(root, "plain"), ""},
+		{root, ""},
+		{"", ""},
+	} {
+		if got := WorktreeProject(root, home, c.dir); got != c.want {
+			t.Errorf("WorktreeProject(%q) = %q, want %q", c.dir, got, c.want)
+		}
+	}
+}

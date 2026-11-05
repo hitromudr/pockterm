@@ -153,6 +153,9 @@ mk custom PREFIX=anabasis CMD="claude-safe --model opus --dangerously-skip-permi
 mk custom PREFIX=qwen CMD="sleep 9999" >/dev/null
 [ "$(tm show-options -v -t qwen @pockterm-kind)" = "custom" ] ||
 	bad "qwen kind: $(tm show-options -v -t qwen @pockterm-kind)"
+err="$(mk custom PREFIX=yarr-g CMD='sh -c "sleep 9999"' 2>&1 >/dev/null)"
+[ -z "$err" ] || bad "make custom with double quotes printed stderr: $err"
+has yarr-g || bad "make custom with double quotes did not start yarr-g"
 tm kill-server 2>/dev/null || true
 ok "tmux server environment is clean, and claude custom commands stamp yolo"
 

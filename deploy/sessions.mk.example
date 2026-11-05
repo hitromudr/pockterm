@@ -126,7 +126,9 @@ mark='t0=$$(date +%s)'; \
 hold='st=$$?; [ "$$st" = 0 ] && exit 0; [ $$(( $$(date +%s) - $$t0 )) -ge 10 ] && exit "$$st"; printf "\n\033[1;31m[exited %s — the session is held so this can be read]\033[0m\n" "$$st"; exec $${SHELL:-/bin/sh}'; \
 cmd=$(1); \
 $$clean $$launch tmux new-session -d -s "$$s" -c "$(DIR)" "$$mark; $$clean $$cmd; $$hold"; \
+for v in PREFIX DIR KIND CMD MAKEFLAGS MAKELEVEL MFLAGS; do tmux set-environment -g -u "$$v" 2>/dev/null || true; done; \
 k="$(or $(KIND),$(3))"; \
+if [ "$${MAKELEVEL:-0}" != 0 ] && [ -r "/proc/$$PPID/cmdline" ] && ! tr '\0' '\n' < "/proc/$$PPID/cmdline" | grep -q '^KIND='; then k="$(3)"; fi; \
 if [ -n "$$k" ]; then tmux set-option -t "$$s" @pockterm-kind "$$k"; fi; \
 echo "started $$s in $(DIR)$${launch:+ (own slice)}"
 endef
@@ -167,13 +169,13 @@ continue: ## New agent session continuing the last conversation
 AGENT ?=
 
 custom: ## New session running CMD (the drawer's custom buttons)
-	@if [ -z "$(CMD)" ]; then echo "usage: make custom CMD='qwen'"; exit 2; fi
+	@if [ -z '$(subst ','\'',$(CMD))' ]; then echo "usage: make custom CMD='qwen'"; exit 2; fi
 	@set -- $(CMD); c="$$1"; shift; \
 	 def=custom; \
 	 case "$$c" in claude|claude-safe|*/claude|*/claude-safe) \
 		case " $$* " in *" --dangerously-skip-permissions "*) def=yolo ;; *) def=claude ;; esac ;; \
 	 esac; \
-	 $(call spawn,'$(AGENT) $(CMD)',custom,$$def)
+	 $(call spawn,'$(AGENT) $(subst ','\'',$(CMD))',custom,$$def)
 
 ls: ## List sessions, hiding the clients pockterm attaches with
 	@tmux ls 2>/dev/null | grep -v '^pockterm-client-' || echo "no sessions"

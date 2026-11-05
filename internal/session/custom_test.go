@@ -360,3 +360,45 @@ func TestAMarkIsOneGlyph(t *testing.T) {
 		t.Fatalf("the mark was not kept: %+v", got)
 	}
 }
+
+func TestMatchStartKind(t *testing.T) {
+	buttons := []Custom{
+		{ID: "yolo", Label: "Claude (yolo)", Mark: "❄️"},
+		{ID: "b1", Label: "Codex (yolo)", Cmd: "/home/dms/.local/bin/codex -a never", Mark: "❇️"},
+		{ID: "b3", Label: "Codex-cont (yolo)", Cmd: "/home/dms/.local/bin/codex resume --last -a never", Mark: "❇️"},
+		{ID: "b7", Label: "Gemini 4 (yolo)", Cmd: "/home/dms/.local/bin/gemini --yolo -m gemini-4-argon", Mark: "✴️"},
+		{ID: "b8", Label: "Gemini 4 Cont (yolo)", Cmd: "/home/dms/.local/bin/gemini --yolo -r latest -m gemini-4-argon", Mark: "✴️"},
+	}
+
+	// Leaked MAKEFLAGS on ser8 (2026-11-05): Vita-g was started with gemini-safe
+	// but inherited KIND=custom:b1 (Codex) from MAKEFLAGS in the parent shell.
+	vitaStart := `"t0=$(date +%s); env -u PREFIX -u DIR -u KIND -u CMD -u MAKEFLAGS -u MAKELEVEL AGENT_COMMAND=gemini-safe agent-run --yolo; st=$?"`
+	if got := MatchStartKind(buttons, "custom:b1", vitaStart); got != "custom:b7" {
+		t.Errorf("leaked Codex kind on Gemini session: got %q, want custom:b7", got)
+	}
+	// Bare `custom` from a manual `make custom CMD='gemini-safe --yolo -i …'`
+	// (pockterm-g, yarr-g) resolves to the host's Gemini button.
+	if got := MatchStartKind(buttons, "custom", vitaStart); got != "custom:b7" {
+		t.Errorf("bare custom on Gemini session: got %q, want custom:b7", got)
+	}
+	// Unstamped Gemini session (anabasis-g).
+	anaStart := `"env AGENT_COMMAND=/home/dms/.local/bin/gemini /usr/local/bin/agent-run --yolo -m gemini-4-argon"`
+	if got := MatchStartKind(buttons, "", anaStart); got != "custom:b7" {
+		t.Errorf("unstamped Gemini session: got %q, want custom:b7", got)
+	}
+	// A session genuinely started with Gemini Cont (custom:b8) keeps custom:b8.
+	contStart := `"/home/dms/.local/bin/gemini --yolo -r latest -m gemini-4-argon"`
+	if got := MatchStartKind(buttons, "custom:b8", contStart); got != "custom:b8" {
+		t.Errorf("Gemini Cont session lost its button: got %q, want custom:b8", got)
+	}
+	// Mentioning "gemini" or "codex" inside a prompt argument of a Claude relay
+	// never turns a Claude session into Gemini.
+	relayClaude := `"/usr/local/bin/agent-run --dangerously-skip-permissions --session-id abc 'Read gemini and codex notes'"`
+	if got := MatchStartKind(buttons, "yolo", relayClaude); got != "yolo" {
+		t.Errorf("Claude session with prompt mentioning gemini: got %q, want yolo", got)
+	}
+	// A non-agent command keeps whatever kind it had.
+	if got := MatchStartKind(buttons, "custom:b1", "sleep 30"); got != "custom:b1" {
+		t.Errorf("non-agent command changed kind: got %q, want custom:b1", got)
+	}
+}

@@ -247,7 +247,7 @@ func serve() {
 		Tickets:        tickets,
 		HostName:       cfg.HostName,
 		Peers:          peersOf(cfg),
-		ListSessions:   sessionLister(cfg),
+		ListSessions:   sessionLister(cfg, buttons),
 		Attach: func(id int64, target string) []string {
 			return tmuxcmd.Attach(target, tmuxcmd.ClientName(id))
 		},
@@ -1078,7 +1078,7 @@ func listAllSessions() ([]tmuxcmd.Session, error) {
 //
 // The raw listSessions stays for the callers that check a name against what
 // exists; none of them cares where a pane is.
-func sessionLister(cfg config.Config) func() ([]tmuxcmd.Session, error) {
+func sessionLister(cfg config.Config, buttons *session.Buttons) func() ([]tmuxcmd.Session, error) {
 	root, on, err := cfg.SessionDir()
 	if err != nil || !on {
 		// No projects root on this host: a path still shortens against $HOME.
@@ -1090,7 +1090,13 @@ func sessionLister(cfg config.Config) func() ([]tmuxcmd.Session, error) {
 		if err != nil {
 			return nil, err
 		}
+		var btns []session.Custom
+		if buttons != nil {
+			btns = buttons.List()
+		}
 		for i := range list {
+			list[i].Kind = session.MatchStartKind(btns, list[i].Kind, list[i].Start)
+			list[i].Project = session.WorktreeProject(root, home, list[i].Dir)
 			list[i].Dir = session.ShortDir(root, home, list[i].Dir)
 		}
 		return list, nil

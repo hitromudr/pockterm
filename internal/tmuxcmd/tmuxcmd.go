@@ -71,6 +71,14 @@ type Session struct {
 	// *opened*, which is a different fact and drifts: a session named after ~/work
 	// spent an afternoon in ~/work/self, and nothing on the phone said so.
 	Dir string `json:"dir,omitempty"`
+	// Where the repository is when Dir is a git worktree outside it (for
+	// instance yarr-any-order or ana-wt/belt, whose .git file points back to
+	// yarr or anabasis). Empty when Dir already names the project.
+	Project string `json:"project,omitempty"`
+	// The command the pane was created with (#{pane_start_command}), kept on the
+	// server so a session started via `make custom` or with a leaked MAKEFLAGS
+	// can be matched to the host's button for that agent.
+	Start string `json:"-"`
 	// Where the owner dragged this tab to, 1-based; 0 for a session nobody has
 	// placed. Kept in tmux beside the kind (see OrderOption) rather than in a file
 	// of this server's, for the same three reasons: CI restarts this binary several
@@ -140,11 +148,15 @@ func ParseSessions(out string) []Session {
 		if len(f) > 7 {
 			order, _ = strconv.Atoi(f[7])
 		}
+		start := ""
+		if len(f) > 8 {
+			start = f[8]
+		}
 		// Nobody stamped this one — started before the Makefile knew how, or by
 		// hand. The command the pane was created with still answers the coarse
 		// half of the question, and only that half: see KindFromStart.
-		if kind == "" && len(f) > 8 {
-			kind = KindFromStart(f[8])
+		if kind == "" && start != "" {
+			kind = KindFromStart(start)
 		}
 		sessions = append(sessions, Session{
 			Name:     f[0],
@@ -154,6 +166,7 @@ func ParseSessions(out string) []Session {
 			Group:    group,
 			Kind:     kind,
 			Dir:      dir,
+			Start:    start,
 			Order:    order,
 		})
 	}
