@@ -402,3 +402,37 @@ func TestMatchStartKind(t *testing.T) {
 		t.Errorf("non-agent command changed kind: got %q, want custom:b1", got)
 	}
 }
+
+func TestMatchStartKindTellsGeminiModesApart(t *testing.T) {
+	// Gemini in two modes (2026-11-06): gemini-sub-safe (subscription, its own
+	// exit) and gemini-key-safe (API key). Each session belongs to its own
+	// button, not to whichever Gemini button comes first.
+	buttons := []Custom{
+		{ID: "b7", Label: "Gemini Key (yolo)", Cmd: "gemini-key-safe --yolo -m gemini-4-argon"},
+		{ID: "b8", Label: "Gemini Key Cont (yolo)", Cmd: "gemini-key-safe --yolo -r latest -m gemini-4-argon"},
+		{ID: "b9", Label: "Gemini Sub (yolo)", Cmd: "gemini-sub-safe --yolo -m gemini-4-argon"},
+		{ID: "b10", Label: "Gemini Sub Cont (yolo)", Cmd: "gemini-sub-safe --yolo -r latest -m gemini-4-argon"},
+	}
+	cases := []struct{ start, want string }{
+		{`"env -u KIND AGENT_COMMAND=gemini-sub-safe agent-run --yolo -m gemini-4-argon"`, "custom:b9"},
+		{`"env -u KIND AGENT_COMMAND=gemini-sub-safe agent-run --yolo -r latest -m gemini-4-argon"`, "custom:b10"},
+		{`"env -u KIND AGENT_COMMAND=gemini-key-safe agent-run --yolo -m gemini-4-argon"`, "custom:b7"},
+		{`"env -u KIND AGENT_COMMAND=gemini-key-safe agent-run --yolo -r latest -m gemini-4-argon"`, "custom:b8"},
+	}
+	for _, c := range cases {
+		if got := MatchStartKind(buttons, "custom", c.start); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.start, got, c.want)
+		}
+	}
+	// A key-mode session stamped with a subscription button is re-labelled.
+	if got := MatchStartKind(buttons, "custom:b9", cases[2].start); got != "custom:b7" {
+		t.Errorf("key session under a subscription button: got %q, want custom:b7", got)
+	}
+	// Plain gemini-safe is still Gemini, and not one of the modes.
+	if got := normAgent("/usr/local/bin/gemini-safe"); got != "gemini" {
+		t.Errorf("gemini-safe: got %q", got)
+	}
+	if got := normAgent("geminix-safe"); got != "" {
+		t.Errorf("an unknown agent family was accepted: %q", got)
+	}
+}

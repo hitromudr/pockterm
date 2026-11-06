@@ -562,7 +562,11 @@ func startAgent(start string) (agent string, resume bool, yolo bool) {
 
 func normAgent(word string) string {
 	base := strings.TrimSuffix(filepath.Base(strings.Trim(word, `"'`)), "-safe")
-	switch base {
+	// A mode of a known agent keeps its whole name (gemini-sub, gemini-key:
+	// one agent with two exits, 2026-11-06), so its session finds its own
+	// button rather than the first one of the family.
+	family, _, _ := strings.Cut(base, "-")
+	switch family {
 	case "claude", "gemini", "codex", "qwen":
 		return base
 	}
