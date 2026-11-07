@@ -130,3 +130,25 @@ export function groupRows(sessions) {
   }
   return rows;
 }
+
+// groupMember(members, key, picked) → the member whose kind a folded tab or
+// head row wears: the one chosen in it (`picked`), else the session named
+// after the project (`contellect`, or `contellect-2` once the first was
+// closed), else the first member.
+export function groupMember(members, key, picked) {
+  if (!members || !members.length) return '';
+  if (picked && members.includes(picked)) return picked;
+  const base = String(key || '').split('/').pop();
+  if (base) {
+    const exact = members.find((n) => n === base);
+    if (exact) return exact;
+    const at = base.lastIndexOf('@');
+    const proj = at > 0 ? base.slice(0, at) : base;
+    const host = at > 0 ? base.slice(at) : '';
+    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const num = new RegExp(`^${esc(proj)}-\\d+${esc(host)}$`);
+    const numbered = members.find((n) => num.test(n));
+    if (numbered) return numbered;
+  }
+  return members[0];
+}

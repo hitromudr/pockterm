@@ -17,7 +17,7 @@ import { endingKeys, commitComposition, endEditByBlur } from './ender.js';
 import { pushHistory, previewOf } from './compose.js';
 import { kindMark, kindName, labelBody, shortAge, builtinId, presetOf, markOf, MARKS, CUSTOM_MARK } from './kinds.js';
 import { dropIndex } from './carry.js';
-import { groupSessions, groupState, groupBackground, stripSignature, groupRows } from './groups.js';
+import { groupSessions, groupState, groupBackground, stripSignature, groupRows, groupMember } from './groups.js';
 import { thumb as thumbAt, backAt } from './bar.js';
 import { installDecision, installText, isIOS } from './install.js';
 import { linksOnRows, openable } from './urls.js';
@@ -857,7 +857,9 @@ function paintFold(b, by) {
   b.querySelector('.gcount').textContent = String(members.length);
   const head = !b.dataset.session;
   if (head) {
-    b.querySelector('.kind').textContent = kindMark(groupKind(members), kindButtons());
+    const pick = groupMember(members, key, groupPick(members));
+    const k = (pick && by.get(pick)?.kind) || groupKind(members, key);
+    b.querySelector('.kind').textContent = kindMark(k, kindButtons());
     b.querySelector('.meta').textContent = tabsWord(members.length);
   }
   // Open, a session's row has already been painted as itself, and a head has
@@ -2188,14 +2190,12 @@ function groupPick(members) {
 
 // A folded tab on the strip is named after the tab chosen in it (`groupPick`),
 // or after the project when none has been chosen yet — and where a session in
-// the group carries the project's name, that session is the row (as in the
-// drawer). So the tab's mark is that session's; only when neither exists does
-// it ask whether all its tabs share one mark.
+// the group carries the project's name (`contellect`, or `contellect-2` once
+// the first was closed), its mark is that session's; otherwise the first
+// member's.
 function groupKind(members, key) {
-  const pick = key && (groupPick(members) || members.find((n) => n === key.split('/').pop()));
-  if (pick) return kindOf(pick);
-  const ms = new Set(members.map((n) => kindMark(kindOf(n), kindButtons())));
-  return ms.size === 1 ? kindOf(members[0]) : '';
+  const pick = groupMember(members, key, groupPick(members));
+  return pick ? kindOf(pick) : '';
 }
 
 function tabsWord(n) {

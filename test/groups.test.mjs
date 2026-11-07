@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { projectOf, groupSessions, groupState, groupBackground, stripSignature, groupRows } from '../web/js/groups.js';
+import { projectOf, groupSessions, groupState, groupBackground, stripSignature, groupRows, groupMember } from '../web/js/groups.js';
 
 test('the project is the first segment of where the pane is', () => {
   assert.equal(projectOf({ dir: 'pockterm' }), 'pockterm');
@@ -104,4 +104,14 @@ test('a project with no session named after it gets a head that is not a session
   assert.deepEqual(rows[0].members, ['one', 'two']);
   // The session named after it leads its rows even when it is not first.
   assert.deepEqual(shown(groupRows([{ name: 'x-1', dir: 'x' }, { name: 'x', dir: 'x' }])), ['[x]', '  x-1']);
+});
+
+test('a group wears the mark of its chosen tab, its project tab (numbered included), or its first tab', () => {
+  const members = ['con-audit@s8', 'con-bench@s8', 'con-clean@s8', 'con-split@s8', 'contellect-2@s8'];
+  // Nothing visited yet, and contellect was closed leaving contellect-2@s8 beside
+  // the con-* workers: contellect-2@s8 is the project's own session.
+  assert.equal(groupMember(members, 'contellect@s8', ''), 'contellect-2@s8');
+  assert.equal(groupMember(members, 'contellect@s8', 'con-bench@s8'), 'con-bench@s8');
+  assert.equal(groupMember(['alpha-2', 'alpha', 'xnt-1'], 'alpha', ''), 'alpha');
+  assert.equal(groupMember(['xnt-1', 'xnt-2'], 'exante', ''), 'xnt-1');
 });
