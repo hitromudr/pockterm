@@ -439,7 +439,7 @@ func MatchStartKind(buttons []Custom, kind, start string) string {
 		if id := CustomID(kind); id != "" {
 			for _, b := range buttons {
 				if b.ID == id {
-					if ba := buttonAgent(b); ba == "" || ba == agent {
+					if ba := buttonAgent(b); ba == "" || sameOrBareAgent(ba, agent) {
 						return kind
 					}
 					break
@@ -450,7 +450,7 @@ func MatchStartKind(buttons []Custom, kind, start string) string {
 			conflict := false
 			for _, b := range buttons {
 				if b.ID == id {
-					if ba := buttonAgent(b); ba != "" && ba != agent {
+					if ba := buttonAgent(b); ba != "" && !sameOrBareAgent(ba, agent) {
 						conflict = true
 					}
 					break
@@ -472,9 +472,37 @@ func MatchStartKind(buttons []Custom, kind, start string) string {
 		}
 		return "claude"
 	}
+	if got := findAgentButton(buttons, agent, resume, false); got != "" {
+		return got
+	}
+	if !strings.Contains(agent, "-") {
+		if got := findAgentButton(buttons, agent, resume, true); got != "" {
+			return got
+		}
+	}
+	return kind
+}
+
+// sameOrBareAgent reports whether a session running `agent` can belong to a
+// button for `buttonAg`: either the same mode, or a mode-specific button whose
+// session was relayed by the bare agent binary (`claude`, `gemini`) without the
+// mode wrapper's name in pane_start_command.
+func sameOrBareAgent(buttonAg, agent string) bool {
+	if buttonAg == agent {
+		return true
+	}
+	return !strings.Contains(agent, "-") && strings.HasPrefix(buttonAg, agent+"-")
+}
+
+func findAgentButton(buttons []Custom, agent string, resume, prefix bool) string {
 	fallback := ""
 	for _, b := range buttons {
-		if buttonAgent(b) != agent {
+		ba := buttonAgent(b)
+		if prefix {
+			if !strings.HasPrefix(ba, agent+"-") {
+				continue
+			}
+		} else if ba != agent {
 			continue
 		}
 		_, bResume, _ := startAgent(b.Cmd)
@@ -489,10 +517,7 @@ func MatchStartKind(buttons []Custom, kind, start string) string {
 			fallback = id
 		}
 	}
-	if fallback != "" {
-		return fallback
-	}
-	return kind
+	return fallback
 }
 
 func buttonAgent(b Custom) string {

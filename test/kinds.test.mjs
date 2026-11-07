@@ -148,6 +148,25 @@ test('a tab is marked by the button as it stands now', () => {
   assert.equal(kindMark('yolo', buttons), '⚡');
 });
 
+test('a button with an account contour letter (G or W) puts it before the glyph on a tab', () => {
+  const buttons = [
+    { id: 'yolo', label: 'Claude W (yolo)', mark: '❄️' },
+    { id: 'b2', label: 'Claude W Cont (yolo)', mark: '❄️' },
+    { id: 'b9', label: 'Claude G (yolo)', mark: '❄️' },
+    { id: 'b10', label: 'Claude G Cont (yolo)', mark: '❄️' },
+    { id: 'b7', label: 'Gemini 4 W (yolo)', mark: '✴️' },
+  ];
+  // The menu button already prints the label beside the glyph, so markOf is the
+  // glyph alone; the tab prints only the folder name, so kindMark carries G/W.
+  assert.equal(markOf(buttons[0]), '❄️');
+  assert.equal(markOf(buttons[2]), '❄️');
+  assert.equal(kindMark('yolo', buttons), 'W❄️');
+  assert.equal(kindMark('custom:b2', buttons), 'W❄️');
+  assert.equal(kindMark('custom:b9', buttons), 'G❄️');
+  assert.equal(kindMark('custom:b10', buttons), 'G❄️');
+  assert.equal(kindMark('custom:b7', buttons), 'W✴️');
+});
+
 test('the grid is a set of single glyphs', () => {
   // What is read at 13px on a phone. Duplicates would be two taps for one answer.
   assert.equal(new Set(MARKS).size, MARKS.length);

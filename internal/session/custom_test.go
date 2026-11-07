@@ -428,6 +428,30 @@ func TestMatchStartKindTellsGeminiModesApart(t *testing.T) {
 	if got := MatchStartKind(buttons, "custom:b9", cases[2].start); got != "custom:b7" {
 		t.Errorf("key session under a subscription button: got %q, want custom:b7", got)
 	}
+	// A mode-stamped session relayed by the bare agent binary keeps its mode button,
+	// and an unstamped bare-binary session falls back to the host's mode button.
+	bareGemini := `"env AGENT_COMMAND=/home/dms/.local/bin/gemini /usr/local/bin/agent-run --yolo -m gemini-4-argon"`
+	if got := MatchStartKind(buttons, "custom:b9", bareGemini); got != "custom:b9" {
+		t.Errorf("relayed subscription session lost its mode button: got %q, want custom:b9", got)
+	}
+	if got := MatchStartKind(buttons[:2], "", bareGemini); got != "custom:b7" {
+		t.Errorf("unstamped bare gemini session did not fall back to mode button: got %q, want custom:b7", got)
+	}
+	// Claude in two contours (2026-11-07): claude-ge-safe (G) vs default (W).
+	claudeBtns := []Custom{
+		{ID: "yolo", Label: "Claude W (yolo)", Mark: "❄️"},
+		{ID: "b2", Label: "Claude W Cont (yolo)", Target: "cont-yolo", Mark: "❄️"},
+		{ID: "b9", Label: "Claude G (yolo)", Cmd: "claude-ge-safe --dangerously-skip-permissions", Mark: "❄️"},
+		{ID: "b10", Label: "Claude G Cont (yolo)", Cmd: "claude-ge-safe -c --dangerously-skip-permissions", Mark: "❄️"},
+	}
+	geStart := `"env -u KIND AGENT_COMMAND=claude-ge-safe agent-run '--dangerously-skip-permissions'"`
+	geCont := `"env -u KIND AGENT_COMMAND=claude-ge-safe agent-run '-c' '--dangerously-skip-permissions'"`
+	if got := MatchStartKind(claudeBtns, "custom", geStart); got != "custom:b9" {
+		t.Errorf("claude-ge start: got %q, want custom:b9", got)
+	}
+	if got := MatchStartKind(claudeBtns, "yolo", geCont); got != "custom:b10" {
+		t.Errorf("claude-ge cont under yolo stamp: got %q, want custom:b10", got)
+	}
 	// Plain gemini-safe is still Gemini, and not one of the modes.
 	if got := normAgent("/usr/local/bin/gemini-safe"); got != "gemini" {
 		t.Errorf("gemini-safe: got %q", got)

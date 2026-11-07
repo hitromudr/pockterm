@@ -92,6 +92,19 @@ export function customMark(label) {
   return leadingMark(label) || CUSTOM_MARK;
 }
 
+// A button whose label names an account contour (`Claude G (yolo)`,
+// `Claude W (yolo)`, `Gemini 4 W (yolo)`) carries that single capital letter as
+// a word of its own. The menu button already shows the whole label, so `markOf`
+// is the glyph alone; a tab shows only the session's folder name, so `kindMark`
+// puts the letter in front of the glyph (`G❄️`, `W❄️`, `W✴️`) — before the
+// glyph rather than after it so the letter does not run into the folder name.
+const CONTOUR = /\b([GW])\b/;
+
+function contourOf(b) {
+  const m = b && CONTOUR.exec(labelBody(b.label));
+  return m ? m[1] : '';
+}
+
 // kindMark(kind, buttons) → the glyph for a tab, or '' when there is nothing to
 // say. `buttons` is the custom list as the host reports it.
 export function kindMark(kind, buttons) {
@@ -100,7 +113,7 @@ export function kindMark(kind, buttons) {
   const b = (buttons || []).find((x) => x.id === id);
   // The button as it stands, by the same rule the menu draws it with: a tab has to
   // carry the mark of the button that made it, and two rules would drift.
-  if (b) return markOf(b);
+  if (b) return contourOf(b) + markOf(b);
   // A button since removed: which one it was is no longer known. The shared mark
   // says that much for one of the owner's own; a default still has its own glyph.
   if (BUILTIN[id]) return BUILTIN[id].mark;
