@@ -50,7 +50,8 @@ test('sessions with no directory never fold together', () => {
 });
 
 test('a group says the most urgent state of its tabs', () => {
-  assert.equal(groupState([{ state: 'done' }, { state: 'asking' }, { state: 'working' }]), 'asking');
+  assert.equal(groupState([{ state: 'done' }, { state: 'asking' }, { state: 'error' }, { state: 'working' }]), 'asking');
+  assert.equal(groupState([{ state: 'done' }, { state: 'error' }, { state: 'working' }]), 'error');
   assert.equal(groupState([{ state: 'done' }, { state: 'working' }]), 'working');
   assert.equal(groupState([{ state: 'done' }, {}]), 'done');
   assert.equal(groupState([{}, { state: '' }]), '');

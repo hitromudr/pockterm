@@ -58,6 +58,17 @@ func Deliver(m Mode, telegramConfigured bool) (page, telegram bool) {
 	}
 }
 
+// DeliverFor says which channels an event of kind k goes to under mode.
+//
+// An API error stops a session unexpectedly and is raised even when ordinary
+// notifications are turned off (owner's word, 2026-11-08).
+func DeliverFor(k Kind, m Mode, telegramConfigured bool) (page, telegram bool) {
+	if k == Error {
+		return true, telegramConfigured
+	}
+	return Deliver(m, telegramConfigured)
+}
+
 // Wait is when a turn's end is worth a notice: as soon as the agent stops
 // speaking, or only once the shells and monitors it left running have gone too.
 //

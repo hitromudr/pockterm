@@ -1528,3 +1528,64 @@ func TestRunningIsSaidInRussian(t *testing.T) {
 		}
 	}
 }
+
+func TestAPIErrorPaintsRedAndNotifies(t *testing.T) {
+	h := newHarness(30 * time.Second)
+	h.title = "✦  Working… (pockterm)"
+	h.screen = "✓ Bash(python3 -c 'import json')\n\n──────────\n *   Type your message\n──────────\n"
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("while working: %q, want %q", got, ActivityWorking)
+	}
+
+	// Gemini CLI stops on an API error with no retry.
+	h.title = "◇  Ready (pockterm)"
+	h.screen = "✓ Bash(python3 -c 'import json')\n\n" +
+		"✕ [API Error: exception TypeError: fetch failed sending request]\n\n" +
+		"ℹ This request failed. Press F12 for diagnostics, or run /settings and change \"Error Verbosity\" to full for full details.\n\n" +
+		"──────────\n *   Type your message\n──────────\n"
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityError {
+		t.Fatalf("stopped on API error: %q, want %q", got, ActivityError)
+	}
+	if got := h.kinds(); len(got) != 1 || got[0] != Error {
+		t.Fatalf("events = %+v, want one error event", h.events)
+	}
+	head, body := Notice(h.events[0])
+	if head != "❌ claude: ошибка API" {
+		t.Fatalf("title = %q, want ❌ claude: ошибка API", head)
+	}
+	if body != "[API Error: exception TypeError: fetch failed sending request]" {
+		t.Fatalf("body = %q, want the API error line rather than the F12 hint", body)
+	}
+
+	// Waiting past liveGrace and doneFresh neither sends a bogus "done" nor
+	// expires the red tab while the session is still stuck on the error.
+	h.advance(liveGrace)
+	h.w.Tick()
+	h.advance(2 * doneFresh)
+	h.w.Tick()
+	if len(h.events) != 1 {
+		t.Fatalf("events = %+v, want no second notice while stuck on the same error", h.events)
+	}
+	if got := h.w.Activity("claude"); got != ActivityError {
+		t.Fatalf("after doneFresh: %q, want %q until work resumes", got, ActivityError)
+	}
+
+	// Work resumes (`> дальше`) and finishes normally.
+	h.title = "✦  Working… (pockterm)"
+	h.screen += "\n > дальше\n ⠏ Thinking... (esc to cancel, 10s)\n"
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("resumed turn: %q, want %q", got, ActivityWorking)
+	}
+	h.title = "◇  Ready (pockterm)"
+	h.screen = "✕ [API Error: exception TypeError: fetch failed sending request]\n > дальше\n✦ Готово.\n──────────\n *   Type your message\n──────────\n"
+	h.settle()
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("after normal finish: %q, want %q", got, ActivityDone)
+	}
+	if got := h.kinds(); len(got) != 2 || got[1] != Done {
+		t.Fatalf("events = %+v, want error then done", h.events)
+	}
+}

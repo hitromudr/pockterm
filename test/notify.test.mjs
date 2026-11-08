@@ -15,10 +15,11 @@ test('a done frame becomes a notice', () => {
   assert.equal(n.body, 'ok  github.com/x/y');
   assert.equal(n.tag, 'pockterm-done:claude-1');
 });
-
 test('a question frame gets its own tag, so the two do not replace each other', () => {
   const q = noticeFrom({ ...done, kind: 'question', title: '❓ claude-1 просит ответ', body: 'Apply?\n1. Yes' });
   assert.equal(q.tag, 'pockterm-question:claude-1');
+  const err = noticeFrom({ ...done, kind: 'error', title: '❌ claude-1: ошибка API', body: '[API Error: fetch failed]' });
+  assert.equal(err.tag, 'pockterm-error:claude-1');
   assert.match(q.body, /1\. Yes/);
 });
 

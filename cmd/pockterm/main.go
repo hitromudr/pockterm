@@ -649,7 +649,7 @@ func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref, wait
 				log.Printf("notify: %s %s not sent: waiting for %s", e.Kind, e.Session, w)
 				return
 			}
-			page, tg := watch.Deliver(pref.Mode(), bot != nil)
+			page, tg := watch.DeliverFor(e.Kind, pref.Mode(), bot != nil)
 			if page {
 				title, body := watch.Notice(e)
 				// To every page that is open except the ones showing this very

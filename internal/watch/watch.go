@@ -22,6 +22,7 @@ type Kind string
 const (
 	Question Kind = "question"
 	Done     Kind = "done"
+	Error    Kind = "error"
 )
 
 // Activity is what the watcher has seen in a session lately. The page colours a
@@ -46,6 +47,9 @@ const (
 	// because it is the only state that is about the person holding the phone:
 	// output arriving is the machine's business, a question is theirs.
 	ActivityAsking Activity = "asking"
+	// ActivityError is an agent that stopped on an API failure — either without
+	// retrying (Gemini CLI) or after its retry attempts ran out (Claude Code).
+	ActivityError Activity = "error"
 )
 
 // Activity reports what session is doing, as far as the watcher can tell.
@@ -66,6 +70,10 @@ func (w *Watcher) Activity(session string) Activity {
 	// counting is a turn in flight, whatever the screen did before.
 	if st.live {
 		return ActivityWorking
+	}
+	// A turn that stopped on an API failure stays red until work resumes.
+	if st.apiErr {
+		return ActivityError
 	}
 	// And once this session has been seen counting, the counter is the whole
 	// answer: no counter, no turn. What the screen does in between is somebody
@@ -243,6 +251,8 @@ type state struct {
 	// because "hung for a minute" and "worked for a minute" look identical in the
 	// journal otherwise.
 	retrying bool
+	// apiErr is the pane stopped on an API error at the last poll.
+	apiErr bool
 	// agent is the agent's input box on screen at the last poll — a pane whose
 	// turns are counted, whether or not one has been counted here yet. It is read
 	// fresh every time rather than remembered: a session that ran an agent and
@@ -459,6 +469,7 @@ func (w *Watcher) poll(session string) {
 		st.active = true
 		st.sawLive = true
 		st.doneSent = false
+		st.apiErr = false
 		st.quiet = time.Time{}
 		st.liveGone = time.Time{}
 		st.held = false
@@ -480,6 +491,21 @@ func (w *Watcher) poll(session string) {
 			})
 		}
 	}
+	apiErr := !st.live && menu == nil && detect.APIError(lines)
+	if apiErr != st.apiErr {
+		st.apiErr = apiErr
+		if apiErr {
+			st.doneSent = true
+			st.quiet = now
+			st.held = false
+			events = append(events, Event{
+				Kind:       Error,
+				Session:    session,
+				Prompt:     Tail(lines),
+				Background: st.bg,
+			})
+		}
+	}
 	// Whether the turn is over, and there are two ways to know.
 	//
 	// The counter is the direct one: it was on screen and now it is not, so the
@@ -495,8 +521,8 @@ func (w *Watcher) poll(session string) {
 	// already being announced in its own right.
 	why := ""
 	switch {
-	case menu != nil || st.live || st.doneSent:
-		// A question, a turn still counting, or a turn already reported.
+	case menu != nil || st.live || st.apiErr || st.doneSent:
+		// A question, a turn still counting, an API error, or a turn already reported.
 	case st.sawLive && !st.liveGone.IsZero() && now.Sub(st.liveGone) >= liveGrace:
 		why = fmt.Sprintf("counter gone for %s", now.Sub(st.liveGone).Round(time.Second))
 	case st.sawLive:
@@ -515,7 +541,7 @@ func (w *Watcher) poll(session string) {
 		st.quiet = now
 		st.held = st.bg.Total() > 0
 		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines), Background: st.bg})
-	} else if st.held && st.bg.Total() == 0 && menu == nil && !st.live {
+	} else if st.held && st.bg.Total() == 0 && menu == nil && !st.live && !st.apiErr {
 		// What the reported end left running is gone, and the agent did not speak
 		// again in between. Nothing on the tab changes — it went green at the end
 		// of the turn — but this is the end for whoever waits for everything.
@@ -562,6 +588,9 @@ func (w *Watcher) poll(session string) {
 			reason := why
 			if e.Kind == Question {
 				reason = "menu on screen"
+			}
+			if e.Kind == Error {
+				reason = "API error on screen"
 			}
 			line := fmt.Sprintf("watch: %s %s (%s)", e.Kind, session, reason)
 			if bg := e.Background; bg.Total() > 0 {

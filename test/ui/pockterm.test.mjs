@@ -4389,6 +4389,38 @@ describe('a tab says what its session is doing', () => {
     assert.ok(room.pad >= 6 && room.gap >= 6, `no room over the tabs: ${JSON.stringify(room)}`);
   });
 
+  test('an API error paints its tab red and notifies even when notifications are off', async () => {
+    await stand.open();
+    await stand.attach('demo');
+    const { page } = stand;
+
+    await page.evaluate(async () => {
+      await fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'off' }),
+      });
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      Object.defineProperty(document, 'hidden', { get: () => true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    stand.tmux(['send-keys', '-t', 'demo', '✕ [API Error: exception TypeError: fetch failed sending request]', 'Enter']);
+    stand.tmux(['send-keys', '-t', 'demo', 'ℹ This request failed. Press F12 for diagnostics, or run /settings and change "Error Verbosity" to full for full details.', 'Enter']);
+
+    const sent = /notify: error demo to [1-9]\d* page\(s\), 0 showing it/;
+    for (let i = 0; i < 200 && !sent.test(stand.serverLog()); i += 1) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.match(stand.serverLog(), sent, 'API error notice did not bypass off mode');
+
+    await page.waitForFunction(
+      () => !!document.querySelector('#tabs button[data-session="demo"].error'),
+      null, { timeout: 5000 });
+    const bg = await page.evaluate(() => getComputedStyle(document.querySelector('#tabs button[data-session="demo"].error')).backgroundColor);
+    assert.equal(bg, 'rgb(74, 28, 36)');
+  });
+
   test('a badge says what is still running while the session is quiet', async () => {
     // The colour goes green the moment the agent stops speaking, and the shells
     // and monitors it left behind do not stop with it. The watcher reads their

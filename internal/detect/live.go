@@ -157,3 +157,74 @@ func Live(lines []string) bool {
 	}
 	return false
 }
+
+// The line an agent leaves in the transcript when a turn stops on an API
+// failure rather than finishing:
+//
+//	✕ [API Error: exception TypeError: fetch failed sending request]
+//	● API Error: 529 Overloaded. This is a server-side issue…
+//	● Request timed out
+//	● Repeated 529 Overloaded errors
+//
+// Measured off the Gemini CLI bundle (`parseAndFormatApiError` + `ErrorMessage`)
+// and the Claude Code 2.1.319 binary (`isApiErrorMessage`). While Claude Code is
+// still retrying, the line opens with `⎿` and carries `Retrying in …`, which
+// `Live` already answers for; this matches only the terminal line after attempts
+// have run out (or immediately in Gemini CLI, which does not retry).
+var (
+	apiErrLine = regexp.MustCompile(`^\s*(?:✕\s+\[API Error:|●\s+(?:API Error:|.*\s·\s*API Error:|Failed to authenticate\.\s*API Error:|Request timed out\b|Repeated 529 Overloaded errors\b))`)
+	geminiInfo = regexp.MustCompile(`^\s*ℹ\s+(?:This request failed\.|Some internal tool attempts failed\b)`)
+	topMarker  = regexp.MustCompile(`^(?:\s*[●✦✕ℹ⎿]|\s*❯(?:\x{00a0}|\s|$)| ?>(?:\s|$)|\s*[✓✗o⊷]\s+|\s*[$#%]\s+)`)
+	turnDone   = regexp.MustCompile(`^\P{L}*\p{L}+\s+for\s+\d+[hms]`)
+	scrollBar  = regexp.MustCompile(`(?:^|[ \t]+)[█▄▀][ \t]*$`)
+)
+
+const frameRunes = "─│┌┐└┘├┤┬┴┼╭╮╰╯━┃╔╗╚╝║═▁▔▏▕█▌▐ ⠀·•*"
+
+// APIError reports whether the pane is stopped on an API error right now.
+//
+// Only the end of the transcript counts: an error stays on screen above the
+// next prompt (`> дальше`) while the session moves on, and reading the whole
+// pane would keep the tab red after work has resumed.
+func APIError(lines []string) bool {
+	if Live(lines) {
+		return false
+	}
+	if i := InputBoxAt(lines); i >= 0 {
+		lines = lines[:i]
+	}
+	failed := false
+	for i := 0; i < len(lines); i++ {
+		l := scrollBar.ReplaceAllString(ansi.ReplaceAllString(lines[i], ""), "")
+		t := strings.TrimSpace(strings.Trim(strings.TrimSpace(l), frameRunes))
+		if t == "" {
+			continue
+		}
+		if turnDone.MatchString(strings.TrimSpace(l)) {
+			continue
+		}
+		if geminiInfo.MatchString(l) {
+			i = skipParagraph(lines, i)
+			continue
+		}
+		if apiErrLine.MatchString(l) {
+			i = skipParagraph(lines, i)
+			failed = true
+			continue
+		}
+		failed = false
+	}
+	return failed
+}
+
+func skipParagraph(lines []string, i int) int {
+	for j := i + 1; j < len(lines); j++ {
+		c := scrollBar.ReplaceAllString(ansi.ReplaceAllString(lines[j], ""), "")
+		t := strings.TrimSpace(strings.Trim(strings.TrimSpace(c), frameRunes))
+		if t == "" || topMarker.MatchString(c) || turnDone.MatchString(strings.TrimSpace(c)) {
+			break
+		}
+		i = j
+	}
+	return i
+}

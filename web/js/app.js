@@ -771,6 +771,7 @@ function paintRows(sessions) {
       b.classList.toggle('working', st === 'working');
       b.classList.toggle('done', st === 'done');
       b.classList.toggle('asking', st === 'asking');
+      b.classList.toggle('error', st === 'error');
       b.classList.toggle('current', s.name === current);
       paintBackground(b, s);
       const mark = b.querySelector('.line .kind');
@@ -869,6 +870,7 @@ function paintFold(b, by) {
   b.classList.toggle('working', st === 'working');
   b.classList.toggle('done', st === 'done');
   b.classList.toggle('asking', st === 'asking');
+  b.classList.toggle('error', st === 'error');
   b.classList.toggle('current', !open && members.includes(current));
   paintBackground(b, open ? {} : groupBackground(of));
 }
@@ -2088,16 +2090,17 @@ async function renderTabs() {
     b.classList.toggle('active', members.includes(current));
     b.classList.toggle('working', st === 'working');
     b.classList.toggle('done', st === 'done');
+    b.classList.toggle('error', st === 'error');
     // A question outranks the rest, and it cannot collide with them: the state is
     // one value, so the classes are exclusive by construction.
     b.classList.toggle('asking', st === 'asking');
     b.classList.toggle('in-grid', gridOn && members.some((n) => gridNames.includes(n)));
   }
   paintGroupMenu();
-  // A cell's head says what its tab says, in the same three colours.
+  // A cell's head says what its tab says, in the same colours.
   for (const [n, c] of gridCells) {
     const st = state.get(n) || '';
-    for (const k of ['working', 'done', 'asking']) c.box.classList.toggle(k, st === k);
+    for (const k of ['working', 'done', 'asking', 'error']) c.box.classList.toggle(k, st === k);
   }
   // The drawer's rows say the same thing off the same answer: one fetch, so a row
   // and a tab cannot describe one session out of two different moments.
@@ -2276,6 +2279,7 @@ function paintGroupMenu() {
     b.classList.toggle('active', b.dataset.session === current);
     b.classList.toggle('working', st === 'working');
     b.classList.toggle('done', st === 'done');
+    b.classList.toggle('error', st === 'error');
     b.classList.toggle('asking', st === 'asking');
     b.querySelector('.kind').textContent = kindMark(kindOf(b.dataset.session), kindButtons());
     paintBackground(b, s);

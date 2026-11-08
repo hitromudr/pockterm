@@ -189,3 +189,86 @@ func TestLiveSkipsBlanks(t *testing.T) {
 		t.Fatal("blank lines counted against the bound")
 	}
 }
+
+func TestAPIError(t *testing.T) {
+	geminiStopped := []string{
+		"✓ Bash(python3 -c 'import json')",
+		"L sc1_2_r: [('флажк+и', np.float64(-7.8))]",
+		"",
+		"✕ [API Error: exception TypeError: fetch failed sending request]",
+		"",
+		"ℹ This request failed. Press F12 for diagnostics, or run /settings and",
+		"  change \"Error Verbosity\" to full for full details.",
+		"",
+		"──────────────────────────────────────────────",
+		" YOLO Ctrl+Y",
+		"──────────────────────────────────────────────",
+		" *   Type your message or @path/to/file",
+		"──────────────────────────────────────────────",
+		" ctx 13% | dms@ser8:~/work/yarr (master)?1 $ | gemini-4-argon",
+	}
+	if !APIError(geminiStopped) {
+		t.Fatal("Gemini stopped on [API Error: ...] was not recognised")
+	}
+
+	// Once the owner sends the next message (`> дальше`), the old error still
+	// sits in the scrollback above it and must no longer claim the session is
+	// stopped on an error.
+	geminiResumed := []string{
+		"✕ [API Error: exception TypeError: fetch failed sending request]",
+		"",
+		"ℹ This request failed. Press F12 for diagnostics, or run /settings and change \"Error Verbosity\" to full for full details.",
+		"",
+		" > дальше",
+		"",
+		"✦ Продолжаю разбор логов.",
+		"",
+		"──────────────────────────────────────────────",
+		" *   Type your message or @path/to/file",
+		"──────────────────────────────────────────────",
+	}
+	if APIError(geminiResumed) {
+		t.Fatal("an earlier Gemini API error above a new turn still read as stopped")
+	}
+
+	// Claude Code after its retry attempts run out: `● API Error: …` followed by
+	// the ordinary turn duration summary.
+	claudeStopped := []string{
+		"● API Error: 529 Overloaded. This is a",
+		"  server-side issue, usually temporary —",
+		"  try again in a moment. If it persists,",
+		"  check https://status.claude.com.",
+		"",
+		"✻ Cooked for 2m 58s",
+		"──────────────────────────────────────────────",
+		"❯\u00a0",
+		"──────────────────────────────────────────────",
+		"  ctx 62% | ~/work $ | Opus 5",
+	}
+	if !APIError(claudeStopped) {
+		t.Fatal("Claude stopped on ● API Error: … was not recognised")
+	}
+
+	for _, terminalLine := range []string{
+		"● Request timed out",
+		"● Repeated 529 Overloaded errors · Opus is experiencing high load",
+		"● Please run /login · API Error: 401 Invalid API key",
+	} {
+		pane := []string{terminalLine, "✻ Cooked for 19s", "──────────", "❯\u00a0"}
+		if !APIError(pane) {
+			t.Fatalf("Claude terminal failure %q was not recognised", terminalLine)
+		}
+	}
+
+	// While Claude Code is still retrying, the turn is in flight (`Live` is true)
+	// and has not stopped yet.
+	claudeRetrying := []string{
+		"● reading detect.go",
+		"  ⎿  API Error: 500 {\"type\":\"error\"} · Retrying in 1 seconds… (attempt 1/10)",
+		"──────────",
+		"❯\u00a0",
+	}
+	if APIError(claudeRetrying) {
+		t.Fatal("a retry in flight must not read as a stopped API error")
+	}
+}

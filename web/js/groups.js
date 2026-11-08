@@ -65,7 +65,7 @@ export function groupSessions(sessions) {
 // to be told: a question first (it is waiting for somebody), then work going on,
 // then a finish. A group that is green while one of its tabs asks would hide the
 // one thing the strip exists to show.
-const URGENCY = ['asking', 'working', 'done'];
+const URGENCY = ['asking', 'error', 'working', 'done'];
 
 export function groupState(sessions) {
   for (const st of URGENCY) {

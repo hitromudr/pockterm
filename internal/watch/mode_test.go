@@ -45,6 +45,14 @@ func TestDeliverGatesBothChannels(t *testing.T) {
 			t.Fatalf("Deliver(%q, tg=%v) = %v, %v; want %v, %v", c.mode, c.tg, page, bot, c.page, c.bot)
 		}
 	}
+	for _, m := range []Mode{ModeOff, ModePWA, ModeBoth} {
+		if page, bot := DeliverFor(Error, m, true); !page || !bot {
+			t.Fatalf("DeliverFor(Error, %q, tg=true) = %v, %v; want true, true", m, page, bot)
+		}
+		if page, bot := DeliverFor(Error, m, false); !page || bot {
+			t.Fatalf("DeliverFor(Error, %q, tg=false) = %v, %v; want true, false", m, page, bot)
+		}
+	}
 }
 
 func TestPrefRemembersAcrossRestarts(t *testing.T) {

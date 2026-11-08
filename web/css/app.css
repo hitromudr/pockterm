@@ -268,6 +268,9 @@ html.drawer-right #screen-term header.bar #grid-toggle { order: -1; }
    finished notification is raised from. */
 #tabs button.done, #group-menu button.done { background: #1d3a2b; color: #7fdca4; }
 #tabs button.done.active, #group-menu button.done.active { border-color: #7fdca4; color: #a8ecc4; }
+/* Stopped on an API error — red, and stays red until the session moves on. */
+#tabs button.error, #group-menu button.error { background: #4a1c24; border-color: #7a2e3b; color: #ff9da4; }
+#tabs button.error.active, #group-menu button.error.active { border-color: #ff858e; color: #ffc2c7; }
 /* Output is arriving. The movement is the point: a still purple says "this one
    is different", a moving one says "it is going right now", and that is the
    question you hold a phone up to answer.
@@ -917,6 +920,10 @@ button.session.working .meta { color: #b9a4ff; }
 button.session.done { background: #1d3a2b; border-color: #2f5c45; }
 button.session.done .name { color: #a8ecc4; }
 button.session.done .meta { color: #7fdca4; }
+/* Stopped on an API error. */
+button.session.error { background: #4a1c24; border-color: #7a2e3b; }
+button.session.error .name { color: #ffc2c7; }
+button.session.error .meta { color: #ff9da4; }
 /* Waiting for an answer, which is the one state that is about the person holding
    the phone — so it takes the blue and the yellow mark, and the mark straddles
    the row's top edge for the same reason it straddles the tab's. */
@@ -2180,6 +2187,7 @@ button.folder .meta { font-size: 13px; color: #8b93a7; }
 #grid .cell.active .cell-head { color: var(--accent); font-weight: 600; }
 /* What the session is doing, in the strip's colours. */
 #grid .cell.done .cell-head { background: #1d3a2b; color: #7fdca4; }
+#grid .cell.error .cell-head { background: #4a1c24; color: #ff9da4; }
 #grid .cell.working .cell-head { background: #2f2350; color: #e6dcff; }
 #grid .cell.asking .cell-head { background: #16233f; color: #dbe7ff; }
 #grid .cell-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

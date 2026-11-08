@@ -14,7 +14,7 @@
 // Kept pure and tested: what is left is small, but it is the last thing
 // between a notification and the user.
 
-const KINDS = { question: 'pockterm-question', done: 'pockterm-done' };
+const KINDS = { question: 'pockterm-question', done: 'pockterm-done', error: 'pockterm-error' };
 
 // The tag a new notice replaces an old one by.
 //

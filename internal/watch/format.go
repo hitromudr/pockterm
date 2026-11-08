@@ -17,6 +17,7 @@ const (
 	maxLineLen  = 200
 	promptLabel = "❓ %s просит ответ"
 	doneLabel   = "✅ %s закончил"
+	errorLabel  = "❌ %s: ошибка API"
 	// A turn that ended with shells or monitors still running. It is not
 	// "закончил": what they report wakes the agent and it speaks again — the
 	// owner's word, 2026-10-29. The counts follow, as the footer gives them.
@@ -27,6 +28,9 @@ const (
 func title(e Event) string {
 	if e.Kind == Question {
 		return fmt.Sprintf(promptLabel, e.Session)
+	}
+	if e.Kind == Error {
+		return fmt.Sprintf(errorLabel, e.Session)
 	}
 	if e.Background.Total() > 0 {
 		return fmt.Sprintf(waitLabel, e.Session, running(e.Background))
@@ -118,9 +122,10 @@ func Notice(e Event) (head, body string) {
 //
 // The marker itself is stripped: it is the TUI's, not part of the sentence.
 var (
-	agentSaid      = regexp.MustCompile(`^\s*[●✦]\s*(.*)$`)
+	agentSaid      = regexp.MustCompile(`^\s*[●✦✕]\s*(.*)$`)
 	toolCall       = regexp.MustCompile(`^\p{Lu}[\p{L}\d_]*\(`)
 	scrollbarThumb = regexp.MustCompile(`(?:^|[ \t]+)[█▄▀][ \t]*$`)
+	geminiNote     = regexp.MustCompile(`^\s*ℹ\s+(?:This request failed\.|Some internal tool attempts failed\b)`)
 )
 
 func plainLine(s string) string {
@@ -289,7 +294,8 @@ func withoutTheOtherVoices(lines []string) []string {
 	var pruned []string
 	for i := 0; i < len(out); i++ {
 		l := plainLine(out[i])
-		if !humanSaid.MatchString(l) && !toolSaid.MatchString(l) {
+		note := geminiNote.MatchString(l)
+		if !humanSaid.MatchString(l) && !toolSaid.MatchString(l) && !note {
 			continue
 		}
 		if pruned == nil {
@@ -301,7 +307,14 @@ func withoutTheOtherVoices(lines []string) []string {
 		// same shape a marked line's continuation has, one speaker over.
 		for j := i + 1; j < len(pruned); j++ {
 			c := plainLine(pruned[j])
-			if strings.TrimSpace(c) == "" || indentOf(c) <= at {
+			if strings.TrimSpace(c) == "" {
+				break
+			}
+			if note {
+				if agentSaid.MatchString(c) || humanSaid.MatchString(c) || toolSaid.MatchString(c) || geminiNote.MatchString(c) {
+					break
+				}
+			} else if indentOf(c) <= at {
 				break
 			}
 			pruned[j] = ""
