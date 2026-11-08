@@ -1588,4 +1588,23 @@ func TestAPIErrorPaintsRedAndNotifies(t *testing.T) {
 	if got := h.kinds(); len(got) != 2 || got[1] != Done {
 		t.Fatalf("events = %+v, want error then done", h.events)
 	}
+
+	// A worker tab in a folded project group (`anabasis-t-*`) is never opened
+	// directly in the browser (`observe` only), yet when it stops on an API error
+	// the group tab turns red and the push must go out for it too.
+	screens := map[string]string{"worker": "✦  Working…\n──────────\n *   Type your message\n──────────\n"}
+	var got []Event
+	w := New(Options{
+		Capture:  func(s string) (string, error) { return screens[s], nil },
+		Title:    func(string) string { return "◇  Ready" },
+		Notify:   func(e Event) { got = append(got, e) },
+		Sessions: func() []string { return []string{"worker"} },
+		Now:      func() time.Time { return time.Unix(1_700_000_000, 0) },
+	})
+	w.Tick()
+	screens["worker"] = "✕ [API Error: exception TypeError: fetch failed sending request]\n──────────\n *   Type your message\n──────────\n"
+	w.Tick()
+	if len(got) != 1 || got[0].Kind != Error || got[0].Session != "worker" {
+		t.Fatalf("unopened worker error events = %+v, want one Error event", got)
+	}
 }

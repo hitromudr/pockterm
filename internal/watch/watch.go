@@ -422,6 +422,7 @@ func (w *Watcher) poll(session string) {
 		return
 	}
 	now := w.o.Now()
+	firstUnseen := st.hash == "" && !st.notify
 	if h := hash(text); h != st.hash {
 		// The very first reading is not activity — it is just what was
 		// already on screen when watching started. Nor is a redraw we caused
@@ -498,12 +499,14 @@ func (w *Watcher) poll(session string) {
 			st.doneSent = true
 			st.quiet = now
 			st.held = false
-			events = append(events, Event{
-				Kind:       Error,
-				Session:    session,
-				Prompt:     Tail(lines),
-				Background: st.bg,
-			})
+			if !firstUnseen {
+				events = append(events, Event{
+					Kind:       Error,
+					Session:    session,
+					Prompt:     Tail(lines),
+					Background: st.bg,
+				})
+			}
 		}
 	}
 	// Whether the turn is over, and there are two ways to know.
@@ -550,6 +553,11 @@ func (w *Watcher) poll(session string) {
 		events = append(events, Event{Kind: Done, Session: session, Prompt: Tail(lines), Settled: true})
 	}
 	notify := st.notify
+	for _, e := range events {
+		if e.Kind == Error {
+			notify = true
+		}
+	}
 	w.mu.Unlock()
 
 	// A session no page has ever attached to is read but not announced: it is on
