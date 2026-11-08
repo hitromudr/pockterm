@@ -160,19 +160,27 @@ test("another host's custom button is looked up on that host", async () => {
     ['ser8', { sessions: [{ name: 'c', kind: 'custom:b1' }, { name: 'd', kind: 'yolo' }, { name: 'e' }] }],
   ]);
   const { sessions } = mergeLists(two, answers);
-  assert.deepEqual(sessions.map((s) => s.kind), ['custom:b1', `custom:b1${SEP}ser8`, 'yolo', undefined]);
+  assert.deepEqual(sessions.map((s) => s.kind), ['custom:b1', `custom:b1${SEP}ser8`, `yolo${SEP}ser8`, undefined]);
   assert.equal(qualifyKind('custom:b1', ''), 'custom:b1');
-  assert.equal(qualifyKind('shell', 'ser8'), 'shell');
+  assert.equal(qualifyKind('shell', 'ser8'), `shell${SEP}ser8`);
   assert.equal(qualifyKind('', 'ser8'), '');
   const mine = [{ id: 'b1', label: 'Codex (yolo)' }];
-  const theirs = hostButtons('ser8', [{ id: 'b1', label: 'Claude Cont (yolo)' }, { id: 'yolo', label: 'Y' }]);
-  assert.deepEqual(theirs.map((b) => b.id), [`b1${SEP}ser8`]);
+  const theirs = hostButtons('ser8', [
+    { id: 'b1', label: 'Claude Cont (yolo)' },
+    { id: 'yolo', label: 'Claude W (yolo)', mark: '❄️' },
+  ]);
+  assert.deepEqual(theirs.map((b) => b.id), [`b1${SEP}ser8`, `yolo${SEP}ser8`]);
   const all = [...mine, ...theirs];
   assert.equal(kindMark(sessions[0].kind, all), '☀️');
   assert.equal(kindMark(sessions[1].kind, all), '❄️');
   assert.equal(kindName(sessions[1].kind, all), 'Claude Cont (yolo)');
-  // Before ser8's list has come: the shared star, not this host's b1.
+  // Even when this host's `yolo` button is absent from `mine` (e.g. initial
+  // /api/presets failed on wake), ser8's `yolo` session still draws ser8's `W❄️`.
+  assert.equal(kindMark(sessions[2].kind, all), 'W❄️');
+  assert.equal(kindName(sessions[2].kind, all), 'Claude W (yolo)');
+  // Before ser8's list has come: the shared star for custom, stock mark for built-in.
   assert.equal(kindMark(sessions[1].kind, mine), '⭐');
+  assert.equal(kindMark(sessions[2].kind, mine), '⚡');
 });
 
 // One list for every host: what this host saved is sent to each other host up,

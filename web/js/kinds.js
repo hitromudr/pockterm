@@ -105,18 +105,30 @@ function contourOf(b) {
   return m ? m[1] : '';
 }
 
+function bareId(id) {
+  return String(id || '').split('@')[0];
+}
+
+function findButton(list, id) {
+  const exact = list.find((x) => x.id === id);
+  if (exact) return exact;
+  const bare = bareId(id);
+  return BUILTIN[bare] ? list.find((x) => bareId(x.id) === bare) : undefined;
+}
+
 // kindMark(kind, buttons) → the glyph for a tab, or '' when there is nothing to
 // say. `buttons` is the custom list as the host reports it.
 export function kindMark(kind, buttons) {
   if (!kind) return '';
   const id = customId(kind) || kind;
-  const b = (buttons || []).find((x) => x.id === id);
+  const b = findButton(buttons || [], id);
   // The button as it stands, by the same rule the menu draws it with: a tab has to
   // carry the mark of the button that made it, and two rules would drift.
   if (b) return contourOf(b) + markOf(b);
   // A button since removed: which one it was is no longer known. The shared mark
   // says that much for one of the owner's own; a default still has its own glyph.
-  if (BUILTIN[id]) return BUILTIN[id].mark;
+  const bare = bareId(id);
+  if (BUILTIN[bare]) return BUILTIN[bare].mark;
   return customId(kind) || kind === 'custom' ? CUSTOM_MARK : '';
 }
 
@@ -156,9 +168,10 @@ export function kindName(kind, buttons) {
   }
   // The list first: a default can be renamed, and then that is what it is called
   // everywhere. The stock name is the fallback for a tab whose button is gone.
-  const b = (buttons || []).find((x) => x.id === kind);
+  const b = findButton(buttons || [], kind);
   if (b) return labelBody(b.label);
-  return BUILTIN[kind] ? BUILTIN[kind].name : '';
+  const bare = bareId(kind);
+  return BUILTIN[bare] ? BUILTIN[bare].name : '';
 }
 
 // builtinId reports whether an id is one of the four — which is to say whether
@@ -186,7 +199,8 @@ export function markOf(b) {
   if (b.mark) return b.mark;
   const lead = leadingMark(b.label);
   if (lead) return lead;
-  if (builtinId(b.id)) return BUILTIN[b.id].mark;
+  const bare = bareId(b.id);
+  if (builtinId(bare)) return BUILTIN[bare].mark;
   const named = NAMED.find(([re]) => re.test(String(b.label || '')));
   return named ? named[1] : CUSTOM_MARK;
 }

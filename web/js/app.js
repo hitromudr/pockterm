@@ -259,15 +259,19 @@ const PEER_BUTTONS_MS = 60000;
 
 function refreshPeerButtons(host) {
   const have = peerButtons.get(host);
-  if (have && (have.pending || Date.now() - have.at < PEER_BUTTONS_MS)) return;
-  peerButtons.set(host, { at: Date.now(), list: have ? have.list : [], pending: true });
+  if (have && (have.pending || (have.at && Date.now() - have.at < PEER_BUTTONS_MS))) return;
+  peerButtons.set(host, { at: have ? have.at : 0, list: have ? have.list : [], pending: true });
   hostFetch(host, '/api/presets')
     .then((res) => (res.ok ? res.json() : null))
     .then((data) => {
       const list = data ? hostButtons(host, data.buttons) : (have ? have.list : []);
-      peerButtons.set(host, { at: Date.now(), list });
+      peerButtons.set(host, { at: data ? Date.now() : (have ? have.at : 0), list });
+      if (data) {
+        if (!screenTerm.hidden) renderTabs();
+        if (screenSessions.classList.contains('open')) paintRows(lastSessions);
+      }
     })
-    .catch(() => peerButtons.set(host, { at: Date.now(), list: have ? have.list : [] }));
+    .catch(() => peerButtons.set(host, { at: have ? have.at : 0, list: have ? have.list : [] }));
 }
 
 // The buttons a kind is looked up in: this host's own, and the others' as read.
@@ -280,6 +284,7 @@ function kindButtons() {
 async function fetchSessions() {
   const hosts = ['', ...others(peers)];
   const got = await Promise.all(hosts.map((h) => fetchHostSessions(h)));
+  if (!got[0].error && !customLoaded) customReady = loadCustom();
   hosts.forEach((h, i) => { if (h && !got[i].error) refreshPeerButtons(h); });
   const { sessions, down, error } = mergeLists(peers, new Map(hosts.map((h, i) => [h, got[i]])));
   const was = downHosts.map((d) => d.host).join(',');
@@ -618,22 +623,6 @@ async function loadSessions() {
     }
     const b = document.createElement('button');
     b.className = 'session';
-    // Three facts and each of them varies. Which button started it — the name is
-    // the folder now, so it cannot say that, and it is what the list is scanned
-    // for. Where the pane actually is — the name says where it was *opened*, and
-    // a session opened in ~/work spent an afternoon in ~/work/self with nothing
-    // saying so. How long it has been up — which of these is from yesterday.
-    //
-    // What used to be here was "1 window", and it was always 1: the Makefile
-    // creates one, and the page can neither make nor reach a second.
-    const meta = [
-      // Where it runs, once there is more than one place it could.
-      multi(peers) ? hostLabel(s.host || '', peers) : '',
-      kindName(s.kind, kindButtons()),
-      s.dir || '',
-      shortAge(s.created, Date.now()),
-      s.attached ? 'attached' : '',
-    ].filter(Boolean);
     // The same three answers the strip gives, in the list that has room to say
     // them: what it is (the mark, before the name), what it is doing (the state,
     // as a class — one value, so the classes are exclusive by construction), and
@@ -653,7 +642,7 @@ async function loadSessions() {
     // `⭐demo` that tmux has never heard of.
     b.innerHTML = '<span class="line"><span class="kind"></span>' +
       `<span class="name">${escapeHtml(s.name)}</span></span>` +
-      `<span class="meta">${escapeHtml(meta.join(' · '))}</span>` +
+      `<span class="meta">${escapeHtml(sessionMeta(s))}</span>` +
       '<span class="bg"></span><span class="agents"></span>';
     if (row.parent) foldInto(b, row.parent, row.members);
     b.addEventListener('click', (e) => {
@@ -762,6 +751,21 @@ function paintBackground(b, s) {
 // The mark is written into a span of its own for the same reason: the kind arrives
 // on a later poll than the name — the session list is fetched before /api/presets
 // answers — and rewriting a child's text costs nothing.
+// Three facts and each of them varies. Which button started it — the name is
+// the folder now, so it cannot say that, and it is what the list is scanned
+// for. Where the pane actually is — the name says where it was *opened*, and
+// a session opened in ~/work spent an afternoon in ~/work/self with nothing
+// saying so. How long it has been up — which of these is from yesterday.
+function sessionMeta(s) {
+  return [
+    multi(peers) ? hostLabel(s.host || '', peers) : '',
+    kindName(s.kind, kindButtons()),
+    s.dir || '',
+    shortAge(s.created, Date.now()),
+    s.attached ? 'attached' : '',
+  ].filter(Boolean).join(' · ');
+}
+
 function paintRows(sessions) {
   const by = new Map(sessions.map((s) => [s.name, s]));
   for (const b of sessionList.querySelectorAll('button.session')) {
@@ -776,6 +780,8 @@ function paintRows(sessions) {
       paintBackground(b, s);
       const mark = b.querySelector('.line .kind');
       if (mark) mark.textContent = kindMark(s.kind || '', kindButtons());
+      const meta = b.querySelector('.meta');
+      if (meta) meta.textContent = sessionMeta(s);
     }
     // A row a project is folded into says the project's answers over its own
     // while it is collapsed.
@@ -1427,14 +1433,19 @@ function renderCustom() {
 // the host has answered would open an empty menu. It is a promise rather than a
 // flag because the answer is one fetch away, not one frame.
 let customReady = null;
+let customLoaded = false;
+let customLoading = false;
 
 async function loadCustom() {
+  if (customLoading) return customReady;
+  customLoading = true;
   try {
     const res = await fetch(`/api/presets?${tokenQS}`);
     if (!res.ok) {
       // A host that cannot edit them says 404. The four still work — the server
       // resolves them itself — so the menus are drawn from what they were.
       if (res.status === 404) {
+        customLoaded = true;
         buttonsBox.hidden = true;
         customButtons = DEFAULT_BUTTONS.slice();
         renderCustom();
@@ -1442,9 +1453,11 @@ async function loadCustom() {
       return;
     }
     const data = await res.json();
+    customLoaded = true;
     customButtons = data.buttons || [];
     renderCustom();
   } catch (_) { /* offline: the buttons are the least of it */ }
+  finally { customLoading = false; }
 }
 
 // What a host without a button store has. Not a second source of truth: it is

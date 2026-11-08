@@ -2036,6 +2036,31 @@ describe("the owner's own session buttons", () => {
     await page.waitForSelector(`#new-menu ${shown}`, { state: 'attached', timeout: 5000 });
     await page.waitForSelector('#custom-list li:has-text("Джемини")', { state: 'attached', timeout: 5000 });
   });
+
+  test('a failed presets fetch at startup is retried once the host answers', async () => {
+    // Waking a phone after two hours dropped the startup /api/presets while
+    // /api/sessions recovered four seconds later (2026-11-08): without a retry on
+    // the session poll, this host's custom buttons stayed empty for the rest of
+    // the session and its tabs wore the fallback star.
+    const { page } = stand;
+    let dropped = false;
+    await page.route('**/api/presets*', async (route) => {
+      if (!dropped) {
+        dropped = true;
+        await route.fulfill({ status: 502, body: 'Bad Gateway' });
+        return;
+      }
+      await route.continue();
+    });
+    try {
+      await page.goto(stand.base);
+      const shown = 'button[data-preset^="custom:"]:has-text("Джемини")';
+      await page.waitForSelector(`#new-menu ${shown}`, { state: 'attached', timeout: 8000 });
+      assert.equal(dropped, true);
+    } finally {
+      await page.unroute('**/api/presets*');
+    }
+  });
 });
 
 // Its own stand with one session, because that is the whole case: the modal
