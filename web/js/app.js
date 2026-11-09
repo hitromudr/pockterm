@@ -26,8 +26,8 @@ import { osc52Text } from './osc52.js';
 import { bringBack } from './vendor.js';
 import { gridShape, gridPick, gridKeep, storedGrid, GRID_MAX } from './grid.js';
 import {
-  readPeers, multi, others, qualify, splitName, hostLabel, baseOf, apiURL, socketURL,
-  isCross, requestInit, mergeLists, byHost, PEER_WAIT, hostButtons, shareButtons,
+  readPeers, multi, others, qualify, splitName, localName, hostLabel, baseOf, apiURL, socketURL,
+  isCross, requestInit, mergeLists, byHost, PEER_WAIT, hostButtons, shareButtons, sharePush,
 } from './hosts.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
@@ -72,6 +72,7 @@ async function loadPeers() {
   }
   if (multi(peers) && !CELL) report('peers', { self: peers.self, others: others(peers), asked: !!answer });
   paintHostPicks();
+  if (!CELL && lastPush) syncPeerPush();
 }
 
 // hostFetch asks one host's API: this host ('') by relative path as always,
@@ -2981,10 +2982,11 @@ function onControl(raw, host = '') {
   if (c && c.type === 'mode') setCopyMode(!!c.in, c.back | 0, c.hist | 0, !!c.app, !!c.alt);
   if (c && c.type === 'notify') {
     // Drawn here only while nothing else can draw it. With a subscription in
-    // place the same event is arriving as a push, and the worker will show it —
-    // including the times this page never sees the frame at all, which is the
-    // whole reason push exists.
-    if (pushOwns) report('notify', { via: 'push', tag: (noticeFrom(c) || {}).tag || '' });
+    // place on that host the same event is arriving as a push, and the worker
+    // will show it — including the times this page never sees the frame at all,
+    // which is the whole reason push exists.
+    const viaPush = host ? pushHosts.has(host) : pushOwns;
+    if (viaPush) report('notify', { via: 'push', tag: (noticeFrom(c) || {}).tag || '' });
     else show(noticeFrom(c));
     // Update tab colors when session state changes (working→done, etc).
     // The tab stays frozen in its old color if we only send the notification.
@@ -6004,7 +6006,15 @@ async function sendMode(mode) {
   });
   if (!res.ok) throw new Error(`${res.status}`);
   const body = await res.json();
-  return body && body.mode ? body.mode : mode;
+  const next = body && body.mode ? body.mode : mode;
+  for (const h of others(peers)) {
+    hostFetch(h, '/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: next }),
+    }).catch(() => {});
+  }
+  return next;
 }
 
 function applyMode(mode, telegram) {
@@ -6128,6 +6138,13 @@ notifyWaitBtn.addEventListener('click', async () => {
     if (!res.ok) throw new Error(`${res.status}`);
     const body = await res.json();
     applyWait(body && body.wait ? body.wait : want);
+    for (const h of others(peers)) {
+      hostFetch(h, '/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wait: notifyWait }),
+      }).catch(() => {});
+    }
     report('notify-wait', { wait: notifyWait });
   } catch (e) {
     // The label stays on what the host holds; the journal says why the tap did
@@ -6158,6 +6175,18 @@ function nativeNotifier() {
 let pushOwns = false;
 let pushArming = false;
 let pushDevices = 0;
+const pushHosts = new Set();
+let lastPush = null;
+
+async function syncPeerPush() {
+  if (!lastPush || !multi(peers)) return;
+  const { sub, key } = lastPush;
+  const { armed, behind } = await sharePush(sub, device(), key, others(peers),
+    (h, body) => hostFetch(h, '/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }));
+  for (const h of armed) pushHosts.add(h);
+  for (const h of behind) pushHosts.delete(h);
+  if (armed.length || behind.length) report('push-peers', { armed, behind });
+}
 
 // Which channel owns the drawing, on the root element beside `data-kb` and
 // `data-size`. A diagnostic first — the device has no console — and the one
@@ -6217,6 +6246,8 @@ async function armPush() {
       // A host with push off. Not a failure: the page keeps drawing notices from
       // the frame, which is what it did before this existed.
       pushOwns = false;
+      pushHosts.clear();
+      lastPush = null;
       markPush();
       report('push', { ok: false, reason: 'push is off on the host' });
       return;
@@ -6237,19 +6268,24 @@ async function armPush() {
         applicationServerKey: serverKeyBytes(key),
       });
     }
+    const subJSON = sub.toJSON();
     const saved = await fetch(`/api/push?${tokenQS}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscription: sub.toJSON(), device: device() }),
+      body: JSON.stringify({ subscription: subJSON, device: device() }),
     });
     if (!saved.ok) throw new Error(`the host refused the subscription: ${saved.status}`);
     const state = await saved.json();
     pushDevices = state.devices || 0;
     pushOwns = true;
+    lastPush = { sub: subJSON, key };
     markPush();
     report('push', { ok: true, devices: pushDevices, endpoint: String(sub.endpoint || '').slice(-12) });
+    syncPeerPush();
   } catch (e) {
     pushOwns = false;
+    pushHosts.clear();
+    lastPush = null;
     markPush();
     report('push', { ok: false, error: (e && e.message) || 'error' });
   } finally {
@@ -7512,7 +7548,8 @@ if ('serviceWorker' in navigator && !CELL) {
     // session the page is showing — and it used to do nothing at all: the switch is
     // what brings the tab into view, and there was no switch to make. So the strip
     // is asked either way, the tap being how somebody arrived at this tab.
-    if (msg.session && msg.session !== current) attach(msg.session);
+    const target = localName(msg.session || '', peers);
+    if (target && target !== current) attach(target);
     else showCurrentTab(true);
   });
 }
@@ -7880,7 +7917,7 @@ async function init() {
   await loadPeers();
   if (CELL) { attach(CELL); return; }
   const params = new URLSearchParams(location.search);
-  const asked = params.get('session');
+  const asked = localName(params.get('session') || '', peers) || null;
   const shared = params.get('shared');
   if (asked || shared !== null) {
     const url = new URL(location.href);

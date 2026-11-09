@@ -85,7 +85,7 @@ type Session struct {
 	// times a working day, a second phone must see the same strip, and a session
 	// that is closed takes its slot with it instead of leaving a hole in a list
 	// somewhere.
-	Order int `json:"-"`
+	Order int `json:"order,omitempty"`
 }
 
 // KindOption is the tmux session option the Makefile stamps the button on, and

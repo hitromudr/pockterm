@@ -541,9 +541,11 @@ func orderer(names []string) ([]string, error) {
 	}
 	skipped := []string{}
 	placed := 0
-	for _, name := range names {
-		// A session that has gone, or this server's own client session: neither is
-		// a tab in the row, and neither is news.
+	for i, name := range names {
+		// A session that has gone, another host's placeholder, or this server's
+		// own client session: none of them is a tab on this host, and skipping
+		// it while keeping i+1 preserves this host's places in a strip shared
+		// across hosts.
 		if !known[name] || tmuxcmd.IsClientSession(name) {
 			continue
 		}
@@ -553,7 +555,7 @@ func orderer(names []string) ([]string, error) {
 			continue
 		}
 		placed++
-		argv := tmuxcmd.SetOrder(name, placed)
+		argv := tmuxcmd.SetOrder(name, i+1)
 		if out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput(); err != nil {
 			return nil, fmt.Errorf("could not order %s: %s", name, firstLine(string(out)))
 		}
@@ -672,7 +674,7 @@ func notifier(cfg config.Config, notices *server.Notices, pref *watch.Pref, wait
 				// is looking at is noise — and the send is a goroutine because it
 				// is the one part of this path that talks to the internet.
 				if pusher != nil && !e.OnScreen {
-					go pusher.send(e.Kind, e.Session, title, body)
+					go pusher.send(e.Kind, cfg.PushSession(e.Session), title, body)
 				}
 			}
 			// Telegram is one recipient, and for it being on screen is the whole

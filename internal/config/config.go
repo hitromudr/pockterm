@@ -237,6 +237,16 @@ func baseURL(v string) (string, error) {
 // Notify reports whether Telegram notifications are configured.
 func (c Config) Notify() bool { return c.TGToken != "" && c.TGChat != "" }
 
+// PushSession names a session the way the primary page names it: bare on the
+// first peer (or a single host), and `session@host` on any other peer so a push
+// raised there matches the page's tag and opens the right tab when tapped.
+func (c Config) PushSession(session string) string {
+	if len(c.Peers) > 1 && c.HostName != "" && c.HostName != c.Peers[0].Name {
+		return session + "@" + c.HostName
+	}
+	return session
+}
+
 // SessionDir resolves the directory whose Makefile the page runs presets
 // from, and reports whether starting sessions is allowed at all.
 //

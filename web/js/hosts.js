@@ -74,6 +74,19 @@ export function splitName(q, p) {
   return { name: s, host: '' };
 }
 
+// localName(q, p) → how this page names q: `name@self` becomes bare `name`,
+// anything else stays as it came. A push sent by a peer carries `@peer` for
+// the primary page, and a window opened on that peer itself knows its own
+// sessions by their bare names.
+export function localName(q, p) {
+  const s = String(q == null ? '' : q);
+  if (p && p.self && s.endsWith(`${SEP}${p.self}`)) {
+    const bare = s.slice(0, -(SEP.length + p.self.length));
+    if (bare) return bare;
+  }
+  return s;
+}
+
 // hostLabel(host, p) → what to call a host out loud: '' is this one.
 export function hostLabel(host, p) {
   return host || (p && p.self) || '';
@@ -163,17 +176,28 @@ export function mergeLists(p, answers) {
     const mine = answers.get('');
     return { sessions: [], down, error: (mine && mine.error) || 'no connection to the server' };
   }
+  if (multi(p)) {
+    sessions.sort((a, b) => {
+      const ao = a.order > 0 ? a.order : 0;
+      const bo = b.order > 0 ? b.order : 0;
+      if ((ao > 0) !== (bo > 0)) return ao > 0 ? -1 : 1;
+      if (ao > 0 && ao !== bo) return ao - bo;
+      return 0;
+    });
+  }
   return { sessions, down, error: '' };
 }
 
-// byHost(names, p) → Map host → bare names, each host in the order its names
-// came: what a strip dragged across hosts saves, one host at a time.
+// byHost(names, p) → Map host → bare names (with '' at another host's slots
+// when multi(p) is true), so each host stamps its tabs with their 1-based
+// position in the whole strip and a tab dragged across another host's tabs
+// keeps that place on the next poll.
 export function byHost(names, p) {
+  if (!multi(p)) return names.length ? new Map([['', [...names]]]) : new Map();
+  const split = names.map((q) => splitName(q, p));
   const out = new Map();
-  for (const q of names) {
-    const { name, host } = splitName(q, p);
-    if (!out.has(host)) out.set(host, []);
-    out.get(host).push(name);
+  for (const { host } of split) {
+    if (!out.has(host)) out.set(host, split.map((x) => (x.host === host ? x.name : '')));
   }
   return out;
 }
@@ -220,4 +244,28 @@ export async function shareButtons(list, hosts, post) {
     }
   }));
   return answers.filter(Boolean);
+}
+
+// Web Push is subscribed once per browser (to this host's VAPID key), and every
+// other host that holds the same key can push to the same subscription once it
+// has a copy of it in its store. A host with push off (404) or a different key
+// cannot, and the page keeps drawing that host's notices from its socket frame.
+//
+// sharePush(subscription, device, key, hosts, post) → { armed, behind }.
+export async function sharePush(subscription, device, key, hosts, post) {
+  const body = JSON.stringify({ subscription, device });
+  const results = await Promise.all(hosts.map(async (h) => {
+    try {
+      const res = await post(h, body);
+      if (!res || !res.ok) return [h, false];
+      const state = await res.json();
+      return [h, !!(state && state.key === key)];
+    } catch (_) {
+      return [h, false];
+    }
+  }));
+  return {
+    armed: results.filter(([, ok]) => ok).map(([h]) => h),
+    behind: results.filter(([, ok]) => !ok).map(([h]) => h),
+  };
 }

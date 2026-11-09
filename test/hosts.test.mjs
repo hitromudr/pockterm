@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  readPeers, multi, others, qualify, splitName, hostLabel, baseOf, apiURL, socketURL,
+  readPeers, multi, others, qualify, splitName, localName, hostLabel, baseOf, apiURL, socketURL,
   isCross, requestInit, mergeLists, byHost, SEP,
 } from '../web/js/hosts.js';
 import { projectOf, groupSessions } from '../web/js/groups.js';
@@ -129,9 +129,55 @@ test('one list out of every host, in the listed order, the silent ones grey', ()
   assert.deepEqual(mergeLists(readPeers(null), new Map([['', { sessions: [] }], ['ser8', { sessions: [{ name: 'z' }] }]])).sessions, []);
 });
 
-test('a strip dragged across hosts is saved per host, in its own order', () => {
-  assert.deepEqual([...byHost(['a@ser8', 'b', 'c@ser8', 'd'], two)], [['ser8', ['a', 'c']], ['', ['b', 'd']]]);
+test('a strip dragged across hosts keeps global positions across hosts', () => {
+  assert.deepEqual([...byHost(['a@ser8', 'b', 'c@ser8', 'd'], two)], [
+    ['ser8', ['a', '', 'c', '']],
+    ['', ['', 'b', '', 'd']],
+  ]);
   assert.deepEqual([...byHost(['a', 'b'], readPeers(null))], [['', ['a', 'b']]]);
+
+  // When exante on rpi5 is dragged past ser8's tabs to the end of the strip,
+  // rpi5 stamps anabasis=1..2, exante=5..6 and ser8 stamps contellect=3, yarr=4;
+  // mergeLists then interleaves both hosts by their global order.
+  const answers = new Map([
+    ['', { sessions: [
+      { name: 'anabasis', dir: 'anabasis', order: 1 },
+      { name: 'anabasis-t-1', dir: 'anabasis', order: 2 },
+      { name: 'exante', dir: 'exante', order: 5 },
+      { name: 'xnt-lr', dir: 'exante', order: 6 },
+    ] }],
+    ['ser8', { sessions: [
+      { name: 'contellect', dir: 'contellect', order: 3 },
+      { name: 'yarr', dir: 'yarr', order: 4 },
+    ] }],
+  ]);
+  const { sessions } = mergeLists(two, answers);
+  assert.deepEqual(sessions.map((s) => s.name), [
+    'anabasis', 'anabasis-t-1', 'contellect@ser8', 'yarr@ser8', 'exante', 'xnt-lr',
+  ]);
+  assert.deepEqual(groupSessions(sessions).map((it) => it.key || it.sessions[0].name), [
+    'anabasis', 'contellect@ser8', 'yarr@ser8', 'exante',
+  ]);
+});
+
+test('localName strips this host suffix and keeps another host suffix', () => {
+  assert.equal(localName('anabasis@rpi5', two), 'anabasis');
+  assert.equal(localName('con-clean@ser8', two), 'con-clean@ser8');
+  assert.equal(localName('anabasis', two), 'anabasis');
+});
+
+test('sharePush arms only peers that accept the subscription with the same VAPID key', async () => {
+  const { sharePush } = await import('../web/js/hosts.js');
+  const sub = { endpoint: 'https://push.example/1' };
+  const sent = [];
+  const res = await sharePush(sub, 'dev1', 'key-1', ['ser8', 'otherKey', 'off'], async (h, body) => {
+    sent.push([h, JSON.parse(body)]);
+    if (h === 'ser8') return { ok: true, json: async () => ({ key: 'key-1', devices: 2 }) };
+    if (h === 'otherKey') return { ok: true, json: async () => ({ key: 'key-2', devices: 1 }) };
+    return { ok: false, status: 404 };
+  });
+  assert.deepEqual(sent[0][1], { subscription: sub, device: 'dev1' });
+  assert.deepEqual(res, { armed: ['ser8'], behind: ['otherKey', 'off'] });
 });
 
 test('a project on another host is a group of its own', () => {

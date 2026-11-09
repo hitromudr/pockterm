@@ -292,3 +292,19 @@ func TestHostNameRefused(t *testing.T) {
 		}
 	}
 }
+
+func TestPushSession(t *testing.T) {
+	alone := Config{HostName: "rpi5"}
+	if got := alone.PushSession("anabasis"); got != "anabasis" {
+		t.Fatalf("single host PushSession = %q, want anabasis", got)
+	}
+	peers := []Peer{{Name: "rpi5", URL: "https://cc.example"}, {Name: "s8", URL: "https://cc.example/@ser8"}}
+	first := Config{HostName: "rpi5", Peers: peers}
+	if got := first.PushSession("anabasis"); got != "anabasis" {
+		t.Fatalf("primary peer PushSession = %q, want anabasis", got)
+	}
+	second := Config{HostName: "s8", Peers: peers}
+	if got := second.PushSession("con-clean"); got != "con-clean@s8" {
+		t.Fatalf("secondary peer PushSession = %q, want con-clean@s8", got)
+	}
+}
