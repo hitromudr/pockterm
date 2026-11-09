@@ -543,6 +543,10 @@ func startAgent(start string) (agent string, resume bool, yolo bool) {
 	for _, clause := range strings.Split(start, ";") {
 		fields := strings.Fields(clause)
 		agent = ""
+		// AGENT_COMMAND set to something that is not a known agent (a project's
+		// own launcher) leaves the agent unknown: agent-run behind it then says
+		// nothing about which agent runs.
+		named := false
 		for i := 0; i < len(fields); i++ {
 			tok := fields[i]
 			if tok == "env" {
@@ -555,10 +559,14 @@ func startAgent(start string) (agent string, resume bool, yolo bool) {
 			if strings.Contains(tok, "=") {
 				if val, ok := strings.CutPrefix(tok, "AGENT_COMMAND="); ok {
 					agent = normAgent(val)
+					named = true
 				}
 				continue
 			}
 			if agent == "" {
+				if named && filepath.Base(strings.Trim(tok, `"'`)) == "agent-run" {
+					return "", false, false
+				}
 				agent = normAgent(tok)
 				if agent == "" && filepath.Base(strings.Trim(tok, `"'`)) == "agent-run" {
 					agent = "claude"

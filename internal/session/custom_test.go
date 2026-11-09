@@ -397,6 +397,14 @@ func TestMatchStartKind(t *testing.T) {
 	if got := MatchStartKind(buttons, "yolo", relayClaude); got != "yolo" {
 		t.Errorf("Claude session with prompt mentioning gemini: got %q, want yolo", got)
 	}
+	// A launcher of a project's own as AGENT_COMMAND (exante's xnt-seed, which
+	// picks Gemini or Claude from its own flags, 2026-11-09) names no agent this
+	// can read: agent-run behind it is not evidence of Claude, so the stamp
+	// stands rather than turning a Gemini tab into "Claude".
+	seedStart := `"t0=$(date +%s); env -u PREFIX -u DIR -u KIND -u CMD -u MAKEFLAGS -u MAKELEVEL AGENT_COMMAND=/home/dms/work/exante/tools/xnt-seed agent-run 'lr' '--task=LR-902' '--gemini'; st=$?"`
+	if got := MatchStartKind(buttons, "custom:b7", seedStart); got != "custom:b7" {
+		t.Errorf("project launcher under agent-run: got %q, want custom:b7", got)
+	}
 	// A non-agent command keeps whatever kind it had.
 	if got := MatchStartKind(buttons, "custom:b1", "sleep 30"); got != "custom:b1" {
 		t.Errorf("non-agent command changed kind: got %q, want custom:b1", got)
