@@ -659,6 +659,16 @@ const TURN_SUMMARY = /^\s*[✻✽✳✢✶*]\s+\w+\s+for\s+/;
 // That is the cheap failure here — a paragraph between the two says the question
 // is about something the list does not enumerate, and silence costs a thumb one
 // digit typed by hand.
+//
+// **And the paragraph has to be one line.** Reported 2026-11-10 from the devops
+// session: "Итоги по всем трём линиям: 1. … 2. … 3. …" and under it "Открытый
+// вопрос за тобой: править пробу в 70-wired-wifi-toggle … или дать логгеру
+// сутки накопить?" — one paragraph, ending in "?", so every rule above held and
+// three buttons stood over a report of what had been *done*. An offer's question
+// names no subject of its own — the list above is the subject — which is why it
+// is drawn as one line ("Что делаем?", "Что приоритетнее?"). A question that
+// needs a paragraph to ask is about something the list does not enumerate, and
+// the same silence follows: the owner types one digit by hand.
 function askedUnder(block, last) {
   const chromeOnly = (line) => !boxGlyphs(line) || TURN_SUMMARY.test(line);
   const closes = (from) => {
@@ -672,12 +682,12 @@ function askedUnder(block, last) {
   for (; i < block.length && !chromeOnly(block[i]); i++) {
     if (boxGlyphs(block[i]).endsWith('?')) return closes(i + 1);
   }
-  // Then the paragraph under the list, which has to be the question itself.
+  // Then the question under the list, which has to be the question itself — and
+  // one line of it, for the reason above: a question that wraps is a paragraph
+  // with a subject of its own, not the list's own question.
   while (i < block.length && chromeOnly(block[i])) i++;
   if (i >= block.length) return false;
-  let end = i;
-  while (end + 1 < block.length && !chromeOnly(block[end + 1])) end++;
-  return boxGlyphs(block[end]).endsWith('?') && closes(end + 1);
+  return boxGlyphs(block[i]).endsWith('?') && closes(i + 1);
 }
 
 // Whether an option before the last ends in a question mark: its own text runs

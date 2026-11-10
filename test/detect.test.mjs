@@ -361,6 +361,66 @@ test('a numbered list with no agent and no box is not an offer', () => {
   ]), null);
 });
 
+// Captured off the owner's phone on 2026-11-10 (the devops session's summary
+// at 57 columns, reconstructed from the turn the same screen was drawn from):
+// a list of what was *done* and a question about something else under it.
+// Every rule the REPORT_THEN_QUESTION screen holds by was in place — the box
+// empty, the list in the last message, the numbers 1,2,3 — and the paragraph
+// under the list is one, not two, so the 2026-09-09 defence does not reach
+// it: the question lands in the one paragraph askedUnder allows, and three
+// buttons stood over a report. What tells the two apart is the paragraph
+// itself: an offer's question is drawn as one line under the list ("Что
+// делаем?", "Что приоритетнее?"), because it names no subject of its own —
+// the list above is the subject. A question that takes three lines to ask is
+// a paragraph about something the list does not enumerate, and silence is
+// the cheap failure: the owner types one digit by hand.
+const REPORT_ONE_PARAGRAPH = [
+  '● Итоги по всем трём линиям:',
+  '  1. ser8 — оживлён сливом swap в RAM; причинам',
+  '  отправлено письмо со --ring сборочной сессии.',
+  '  2. Обрывы канала — логгер uplink-loss-log',
+  '  пишется (root, раз в 5 с, тег в journald).',
+  '  3. exante-2 — получил полный разбор со --ring,',
+  '  вопрос закрыт с их стороны.',
+  '',
+  '  Открытый вопрос за тобой: править пробу в',
+  '  70-wired-wifi-toggle (ICMP → TCP) сейчас или дать',
+  '  логгеру сутки накопить?',
+  '',
+  '✻ Cooked for 3m 21s · done 12:58 PM',
+  '─────────────────────────────────────────────────────',
+  '\u276f\u00a0',
+  '─────────────────────────────────────────────────────',
+];
+
+test('a report with its question in the one paragraph under it is not an offer', () => {
+  assert.equal(detectOffer(REPORT_ONE_PARAGRAPH), null,
+    'the numbered report was offered as answers');
+  assert.equal(detectPrompt(REPORT_ONE_PARAGRAPH), null);
+});
+
+// The same shape with the question drawn as one line — the form a real offer
+// takes — must keep its buttons: narrowing the reading cannot cost the row
+// on the screen it exists for. The question here is genuinely about the list
+// ("Что делаем?" after two paths), just wrapped in the transcript by hand
+// into one line to hold the rule.
+test('a one-line question under the list is still an offer', () => {
+  const q = detectOffer([
+    '● Дальше есть два пути:',
+    '  1. claude --resume и выбрать сессию d037ae16.',
+    '  2. Продолжить здесь и посчитать стоимость круга.',
+    '',
+    '  Что делаем?',
+    '',
+    '✻ Churned for 1m 6s',
+    '─────────────────────────────────────────────────────',
+    '\u276f\u00a0',
+    '─────────────────────────────────────────────────────',
+  ]);
+  assert.ok(q, 'an offer drawn as the rule reads it lost its buttons');
+  assert.equal(q.options.length, 2);
+});
+
 // The row that ends a question taking several answers. The real screens are in the
 // shared fixtures above; these are the ways of reading one wrongly.
 const CHECKED = (on, focused) => [

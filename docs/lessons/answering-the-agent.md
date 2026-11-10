@@ -138,6 +138,25 @@ last* whose own text ends in `?` (`asksItself`) means no offer. An offer whose
 choices are themselves phrased as questions loses its buttons — the cheap failure
 again. The screen is `QUESTIONS_ASKED` in `test/detect.test.mjs`.
 
+**And the one paragraph allowed under the list had to shrink to one line
+(2026-11-10).** The devops session closed its turn with "Итоги по всем трём
+линиям: 1. … 2. … 3. …" — a report of what had been *done* — and under it one
+paragraph: "Открытый вопрос за тобой: править пробу в 70-wired-wifi-toggle …
+или дать логгеру сутки накопить?" Every rule the 2026-09-09 screen had been
+narrowed by held — the box empty, the list in the last message, the numbers
+1,2,3, and exactly one paragraph ending in `?` — because that screen had *two*
+paragraphs between the list and the question and this one had a single
+paragraph that was both the prose and the question. Three buttons stood over
+the report. What separates the shapes is on the screen rather than in the
+semantics: an offer's question names no subject of its own — the list above is
+the subject — so it is drawn as one line ("Что делаем?", "Что приоритетнее?"),
+while a question that needs three lines to ask carries its own subject and is
+not the list's. `askedUnder` therefore reads only the first line of the
+paragraph under the list; a question that wraps costs the row, the cheap
+failure again. The screen is `REPORT_ONE_PARAGRAPH` in `test/detect.test.mjs`,
+held next to a one-line-question offer so the narrowing cannot cost the row on
+the screen the rule exists for.
+
 **And the agent's own input box is not a menu, though it is drawn like one.** It
 carries the very same `❯`, and under it is whatever is being typed: a message
 beginning "1. …" newline "2. …" drew two answer buttons before it had been sent,
