@@ -442,6 +442,38 @@ what lets the bar's own ⏎ take the same release as the arrows.
 viewport: ↓ gives the focus up and the byte still goes out, a field with a word in
 it is left alone, Ctrl keeps the focus and the pad it opens gives it up.
 
+### Leaving the app is a release too
+
+Reported 2026-11-10 as «при возврате в покткрм открывается клавиатура. не должна
+сама». The back gesture and switching apps both hide the keyboard without taking
+the focus from the field, and coming back moves the layout — the app's own resize,
+the `refit` on becoming visible — which on Android raises a keyboard again for
+whatever holds it. The journal read it as eleven `kb up` lines in three minutes
+with `after:"BUTTON"` and a growing `ms`: no press between them, only returns to
+the app, and `after` was naming a tab pressed minutes earlier.
+
+The first cut released the focus whenever the keyboard was measured *down*
+(`measureKeyboard`), and the full run named what that broke: five tests hold the
+opposite as their premise — a key on the bar is pressed to read, the keyboard goes
+down, and the field is then supposed to *still hold* the focus so the button's
+`releaseForBarKey` is what gives it up. The keyboard going down is not "nobody is
+typing"; it is also "a key was just pressed to read".
+
+So the release lives on the way *out* instead: `visibilitychange` →
+`releaseBackFromApp` when the page goes hidden. By then the system has already
+taken the keyboard down on its own, so `releaseFocus`'s bound — never while the
+keyboard is measured up, its owner is typing — stands down by itself, and a bar
+key pressed a moment before the switch keeps its own answer. The bounds on a word
+in flight are `releaseForBarKey`'s: a composition open, a field holding text,
+both left alone. In the journal the release says `kb down:true gave:true`.
+
+`leaving the app with the keyboard up gives the focus up` plays the back gesture
+by the viewport (the keyboard down, the focus still held — the state the report
+was made from) and the going-out by the `visibilitychange` event itself, the way
+the poll-stop tests play it; headless Chromium has no backgrounded page to offer.
+Checked against the defect: with the `visibilitychange` half reverted the test
+fails on «the field kept the focus on the way out».
+
 ### The list inside #term is the mechanism, not a set of exceptions
 
 `#term`'s own click handler focuses the pane — that is how a tap types into it —

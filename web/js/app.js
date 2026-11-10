@@ -4103,9 +4103,36 @@ showBarsBtn.addEventListener('click', () => setPanelsHidden(false));
 // on becoming visible, so the device you're actually using wins.
 window.addEventListener('focus', refit);
 document.addEventListener('visibilitychange', () => {
+  // Leaving the app hides the keyboard without taking the focus from the
+  // field, and coming back moves the layout (this handler's own refit among
+  // the movers) — which on Android raises a keyboard again for whatever
+  // holds it. Reported 2026-11-10 as «при возврате в покткрм открывается
+  // клавиатура»; the journal read it as eleven `kb up` lines in three minutes
+  // with `after:"BUTTON"` and a growing `ms` — no press between them, only
+  // returns to the app.
+  //
+  // Going out is the moment to give the focus up: whoever put the keyboard
+  // away to read is not typing, and a field left holding the focus is what
+  // the return raises one for. The bounds are `releaseForBarKey`'s — a
+  // composition open, a word the field has not handed over — so nothing in
+  // flight is wiped on the way out.
+  if (document.visibilityState === 'hidden') releaseBackFromApp();
   sendVisible();
   if (document.visibilityState === 'visible') refit();
 });
+
+// The same bounds as `releaseForBarKey`, because the same things are at stake:
+// xterm wipes its field on blur and reads it a task later (see endEditByBlur
+// for what a word costs there), and a composition open is the keyboard's.
+// `releaseForBarKey` itself is not used because it also releases the pressed
+// element — there is none here.
+function releaseBackFromApp() {
+  if (fieldGuard.isComposing()) return false;
+  if (term.textarea && term.textarea.value) return false;
+  const gave = releaseFocus(term.textarea);
+  if (gave) report('kb', { down: true, gave: true });
+  return gave;
+}
 
 // --- prompt mode: composer + detected answer buttons ---
 const answersEl = document.getElementById('answers');

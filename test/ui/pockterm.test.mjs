@@ -3177,6 +3177,90 @@ describe('switching sessions', () => {
     focused = await page.evaluate(() => document.activeElement && document.activeElement.tagName);
     assert.equal(focused, 'TEXTAREA', 'the switch dropped focus and the keyboard would close');
   });
+
+  test('leaving the app with the keyboard up gives the focus up', async () => {
+    // Reported 2026-11-10 as «при возврате в покткрм открывается клавиатура.
+    // не должна сама». Leaving the app hides the keyboard without taking the
+    // focus from the field, and coming back moves the layout — the refit on
+    // becoming visible among the movers — which on Android raises a keyboard
+    // again for whatever holds it. The journal read it as eleven `kb up` lines
+    // in three minutes with `after:"BUTTON"` and a growing `ms`: no press
+    // between them, only returns to the app.
+    //
+    // So the page gives the focus up on its way *out* (`releaseBackFromApp`),
+    // at the moment the app itself is going: by then the system has already
+    // taken the keyboard down, so the release's own bound — never while the
+    // keyboard is measured up, its owner is typing — stands down on its own,
+    // and a key pressed to read keeps the field's focus through the keyboard
+    // going down, which five tests above assert from the other side.
+    // The other bounds are `releaseForBarKey`'s — a composition open, a word
+    // the field has not handed over — so nothing in flight is wiped.
+    //
+    // The keyboard being down is played by the viewport and waited for on
+    // `data-kb`, as for the key bar: a page that never saw a keyboard is
+    // outside this rule. Going out is played the way the poll-stop tests play
+    // it, by the event itself — headless Chromium has no backgrounded page to
+    // offer.
+    await stand.open();
+    await stand.attach('one');
+    const { page } = stand;
+    const holdsFocus = () => page.evaluate(
+      () => document.activeElement === document.querySelector('.xterm-helper-textarea'));
+
+    // The state the report was made from: the keyboard has been up (the field
+    // holds the focus, and the page knows the device has one), and is down
+    // now — the back gesture took it, the focus stayed.
+    await page.click('#term');
+    await page.setViewportSize({ width: 390, height: 420 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '1', null, { timeout: 5000 });
+    await page.setViewportSize({ width: 390, height: 780 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '0', null, { timeout: 5000 });
+    assert.equal(await holdsFocus(), true, 'the field had already lost the focus, so this proves nothing');
+
+    // Leaving the app: the field must let go, or the return raises the
+    // keyboard over a page nobody is typing into.
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    assert.equal(await holdsFocus(), false,
+      'the field kept the focus on the way out, which on Android is the keyboard coming back on the return');
+
+    // Coming back is only the event here, but it is the refit in it that
+    // costs: the focus must still be gone after it.
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await page.waitForTimeout(200);
+    assert.equal(await holdsFocus(), false,
+      'the return gave the focus back, and the keyboard would come up with it');
+
+    // And a word in flight is the keyboard's still: the release stands down
+    // when the field is holding text, so a blur cannot wipe a word xterm has
+    // not read yet (see endEditByBlur for what that costs).
+    await page.click('#term');
+    await page.setViewportSize({ width: 390, height: 420 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '1', null, { timeout: 5000 });
+    await page.evaluate(() => {
+      const field = document.querySelector('.xterm-helper-textarea');
+      field.value = 'word';
+    });
+    await page.setViewportSize({ width: 390, height: 780 });
+    await page.waitForFunction(() => document.documentElement.dataset.kb === '0', null, { timeout: 5000 });
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    assert.equal(await holdsFocus(), true,
+      'the release took the focus from a field still holding a word, and the word would go nowhere');
+    await page.evaluate(() => {
+      const field = document.querySelector('.xterm-helper-textarea');
+      field.value = '';
+      Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  });
 });
 
 describe('the key bar', () => {
