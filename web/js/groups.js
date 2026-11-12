@@ -104,7 +104,9 @@ export function stripSignature(sessions, grouped) {
 // `anabasis-t-*` — that session *is* the row: a head named `anabasis` with a row
 // `anabasis` under it was one thing twice ("лишняя сущность"). Only a project
 // with no such session gets a head of its own, which is not a session. Either
-// stands where the first of the project stood.
+// stands where the first of the project stood. A numbered one (`contellect-2@s8`,
+// left once `contellect` was closed) is the project's session as well: without
+// it the drawer drew a head "7 вкладок" over it where `anabasis` had a row.
 //
 // Each row is one of:
 // - a session that stands alone — `s`, `child: ''`;
@@ -121,7 +123,8 @@ export function groupRows(sessions) {
       continue;
     }
     const members = it.sessions.map((s) => s.name);
-    const own = it.sessions.find((s) => s.name === it.key.split('/').pop());
+    const name = projectMember(members, it.key);
+    const own = name ? it.sessions.find((s) => s.name === name) : undefined;
     if (own) rows.push({ s: own, child: '', parent: it.key, members });
     else rows.push({ head: it.key, members });
     for (const s of it.sessions) {
@@ -138,17 +141,21 @@ export function groupRows(sessions) {
 export function groupMember(members, key, picked) {
   if (!members || !members.length) return '';
   if (picked && members.includes(picked)) return picked;
+  return projectMember(members, key) || members[0];
+}
+
+// projectMember(members, key) → the session named after the project: the exact
+// name first, else a numbered one (`contellect-2@s8`); '' when there is none.
+export function projectMember(members, key) {
+  if (!members || !members.length) return '';
   const base = String(key || '').split('/').pop();
-  if (base) {
-    const exact = members.find((n) => n === base);
-    if (exact) return exact;
-    const at = base.lastIndexOf('@');
-    const proj = at > 0 ? base.slice(0, at) : base;
-    const host = at > 0 ? base.slice(at) : '';
-    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const num = new RegExp(`^${esc(proj)}-\\d+${esc(host)}$`);
-    const numbered = members.find((n) => num.test(n));
-    if (numbered) return numbered;
-  }
-  return members[0];
+  if (!base) return '';
+  const exact = members.find((n) => n === base);
+  if (exact) return exact;
+  const at = base.lastIndexOf('@');
+  const proj = at > 0 ? base.slice(0, at) : base;
+  const host = at > 0 ? base.slice(at) : '';
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const num = new RegExp(`^${esc(proj)}-\\d+${esc(host)}$`);
+  return members.find((n) => num.test(n)) || '';
 }

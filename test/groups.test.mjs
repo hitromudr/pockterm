@@ -107,6 +107,21 @@ test('a project with no session named after it gets a head that is not a session
   assert.deepEqual(shown(groupRows([{ name: 'x-1', dir: 'x' }, { name: 'x', dir: 'x' }])), ['[x]', '  x-1']);
 });
 
+test('a numbered session named after the project is its row, as the exact name is', () => {
+  // contellect was closed, contellect-2@s8 stayed beside the con-* workers: the
+  // drawer drew a head "7 вкладок" over it, while anabasis@s8 was its own row.
+  const rows = groupRows([
+    { name: 'con-glm@s8', dir: 'contellect-wt/glm', host: 's8' },
+    { name: 'contellect-2@s8', dir: 'contellect', host: 's8' },
+    { name: 'con-audit@s8', dir: 'contellect-wt/audit', host: 's8' },
+  ]);
+  assert.deepEqual(shown(rows), ['[contellect-2@s8]', '  con-glm@s8', '  con-audit@s8']);
+  assert.equal(rows[0].parent, 'contellect@s8');
+  assert.deepEqual(rows[0].members, ['con-glm@s8', 'contellect-2@s8', 'con-audit@s8']);
+  // The exact name wins over a numbered one.
+  assert.deepEqual(shown(groupRows([{ name: 'x-2', dir: 'x' }, { name: 'x', dir: 'x' }])), ['[x]', '  x-2']);
+});
+
 test('a group wears the mark of its chosen tab, its project tab (numbered included), or its first tab', () => {
   const members = ['con-audit@s8', 'con-bench@s8', 'con-clean@s8', 'con-split@s8', 'contellect-2@s8'];
   // Nothing visited yet, and contellect was closed leaving contellect-2@s8 beside
