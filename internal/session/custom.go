@@ -485,11 +485,16 @@ func MatchStartKind(buttons []Custom, kind, start string) string {
 
 // sameOrBareAgent reports whether a session running `agent` can belong to a
 // button for `buttonAg`: either the same mode, or a mode-specific button whose
-// session was relayed by the bare agent binary (`claude`, `gemini`) without the
-// mode wrapper's name in pane_start_command.
+// session was relayed by the bare agent binary (`gemini`) without the mode
+// wrapper's name in pane_start_command. Plain `claude` (`claude-safe`,
+// `agent-run`) is its own contour (W), not a bare wrapper for `claude-ge` or
+// `claude-glm`.
 func sameOrBareAgent(buttonAg, agent string) bool {
 	if buttonAg == agent {
 		return true
+	}
+	if agent == "claude" {
+		return false
 	}
 	return !strings.Contains(agent, "-") && strings.HasPrefix(buttonAg, agent+"-")
 }

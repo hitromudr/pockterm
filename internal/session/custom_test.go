@@ -454,11 +454,15 @@ func TestMatchStartKindTellsGeminiModesApart(t *testing.T) {
 	}
 	geStart := `"env -u KIND AGENT_COMMAND=claude-ge-safe agent-run '--dangerously-skip-permissions'"`
 	geCont := `"env -u KIND AGENT_COMMAND=claude-ge-safe agent-run '-c' '--dangerously-skip-permissions'"`
+	wRelay := `"/usr/local/bin/claude-safe --dangerously-skip-permissions --session-id 139e539f-9452-401d-875e-fab3dd6dff8e '[ЭСТАФЕТА]'"`
 	if got := MatchStartKind(claudeBtns, "custom", geStart); got != "custom:b9" {
 		t.Errorf("claude-ge start: got %q, want custom:b9", got)
 	}
 	if got := MatchStartKind(claudeBtns, "yolo", geCont); got != "custom:b10" {
 		t.Errorf("claude-ge cont under yolo stamp: got %q, want custom:b10", got)
+	}
+	if got := MatchStartKind(claudeBtns, "custom:b9", wRelay); got != "yolo" {
+		t.Errorf("claude-ge session relayed to claude-safe (W): got %q, want yolo", got)
 	}
 	// Plain gemini-safe is still Gemini, and not one of the modes.
 	if got := normAgent("/usr/local/bin/gemini-safe"); got != "gemini" {
