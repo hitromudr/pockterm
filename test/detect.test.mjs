@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  detectQuestion, detectOffer, detectPrompt, answerKeys, submitKeys, hasInputBox, hasGeminiBox, scrolledPill, settingsScrollKeys,
+  detectQuestion, detectPrompt, answerKeys, submitKeys, hasInputBox, hasGeminiBox, scrolledPill, settingsScrollKeys,
 } from '../web/js/detect.js';
 
 // The cases are shared with the Go detector (internal/detect), which drives
@@ -206,13 +206,12 @@ test('an option that merely mentions the placeholder is still an answer', () => 
   assert.deepEqual(answerKeys(q, 1), { move: DOWN, commit: '\r' });
 });
 
-// --- an offer: the agent's own numbered list, with the box empty under it ---
+// --- numbered lists in prose above the free-text input box are not menus ---
 //
-// Captured off the phone: the agent finished its turn with "Что делаем?" over
-// two numbered paths, and the row of buttons was not drawn — a list in prose
-// carries no chrome, which is the rule that keeps a digit out of a program with
-// no menu. Here the digit goes into the agent's own input box, which is what the
-// owner would have typed.
+// All five screens below have the agent's empty composer box (`❯\u00a0`) at the
+// bottom and a numbered list inside the last `●` message above it. While the
+// bottom of the screen is the free-text input field rather than a TUI menu,
+// nothing on screen is a digit choice.
 const OFFER = [
   '● История на диске цела — потерян только контекст.',
   '',
@@ -231,53 +230,33 @@ const OFFER = [
   '  ctx 5% | dms@ai:~/work $ | Opus 5',
 ];
 
-test('a numbered offer in the agent\'s answer is answerable', () => {
-  const q = detectOffer(OFFER);
-  assert.ok(q, 'the offer was not seen');
-  assert.equal(q.navigate, 'digits');
-  assert.equal(q.options.length, 2);
-  assert.equal(q.options[1].key, '2');
-  // Typed, not pressed: the digit and the Enter go together, into the box.
-  assert.deepEqual(answerKeys(q, 1), { move: '', commit: '2\r' });
+test('a numbered list in the agent\'s prose above the free-text input box draws no buttons', () => {
+  assert.equal(detectPrompt(OFFER), null);
+  assert.equal(detectPrompt(OFFER.filter((l) => l.trim() !== '')), null);
 });
 
-test('a menu on screen outranks an offer above it', () => {
-  // detectPrompt asks the stricter question first: a real menu can be driven
-  // with arrows and knows where its pointer is, an offer knows neither.
+test('a real menu below an earlier input box in the transcript is still detected', () => {
   const withMenu = OFFER.concat([
     'Apply this change?',
     '❯ 1. Yes',
     '  2. No',
   ]);
   const q = detectPrompt(withMenu);
-  assert.equal(q.offer, undefined, 'the offer won over a real menu');
+  assert.ok(q, 'the menu below the earlier composer box was not seen');
   assert.deepEqual(q.options.map((o) => o.label), ['Yes', 'No']);
 });
 
-test('a list with something already typed is not an offer', () => {
-  // The digit would be appended to a half-written message and sent with it.
+test('a list with something already typed into the box is not a menu', () => {
   const typing = OFFER.slice(0, -3).concat([
     '❯\u00a0а можно и так',
     '───────────────────────────────────',
     '  ctx 5% | dms@ai:~/work $ | Opus 5',
   ]);
-  assert.equal(detectOffer(typing), null);
-});
-
-test('a list that answers nothing is not an offer', () => {
-  // What was done is not what could be done: the question mark is the whole
-  // difference, and a report of two steps must not grow buttons.
-  const report = OFFER.map((l) => (l.trim() === 'Что делаем?' ? '  Готово.' : l));
-  assert.equal(detectOffer(report), null);
+  assert.equal(detectPrompt(typing), null);
 });
 
 // Captured off the owner's screen on 2026-09-09, where the page drew three
-// buttons for it. Everything an offer is read by held: the box empty, the list
-// inside the last message, the numbers 1,2,3 in order — and the message ends in a
-// question mark. The list is a report of decisions already taken, though, and the
-// question at the bottom is about something else, so each button would have typed
-// a bare digit into the agent as an answer to a question nobody asked. The
-// paragraph between the list and the question is what separates the two shapes.
+// buttons over a report of decisions already taken followed by a question.
 const REPORT_THEN_QUESTION = [
   '● По CI в yarr — нет, целиком не убирали. Убрали одну джобу и отказались от одного',
   '  варианта размещения. Решения от 09.09 (владельца, коммит 6c5b05f):',
@@ -301,29 +280,13 @@ const REPORT_THEN_QUESTION = [
   '  ctx 13% | dms@ai:~/work/devops (develop) $ | Opus 4.8',
 ];
 
-test('a report with a question about something else is not an offer', () => {
-  assert.equal(detectOffer(REPORT_THEN_QUESTION), null,
-    'the numbered decisions were offered as answers');
+test('a report with a question about something else draws no buttons', () => {
   assert.equal(detectPrompt(REPORT_THEN_QUESTION), null,
     'nothing on this screen is answerable by a button');
 });
 
-test('the question is still read through the last option\'s own wrap', () => {
-  // The wrap under an option carries no blank line, and a question drawn straight
-  // under it does not either: "2. …\n  Что делаем?" is one paragraph on screen and
-  // an offer all the same.
-  const tight = OFFER.filter((l) => l.trim() !== '');
-  const q = detectOffer(tight);
-  assert.ok(q, 'a question directly under the list was not read');
-  assert.equal(q.options.length, 2);
-});
-
 // Captured off the owner's phone on 2026-10-18: the agent ended its turn with two
-// questions of its own, numbered, and waited for words. The last one ends in a
-// question mark, so the list read as an offer with its question drawn straight
-// under it, and two buttons stood over the box — each would have sent a bare
-// digit for an answer that needed a sentence. The items are the questions here,
-// not the choices: an option before the last that itself ends in "?" says so.
+// questions of its own, numbered, and waited for words.
 const QUESTIONS_ASKED = [
   '● Сделает её та же вкладка, что потом разобьёт гараж',
   '  (техника / малые машины / транспорт): это одно окно, и',
@@ -344,16 +307,12 @@ const QUESTIONS_ASKED = [
   '  ctx 30% | dms@ai:~/work/anabasis $ | Opus 5',
 ];
 
-test('a list of the agent\'s own questions is not an offer', () => {
-  assert.equal(detectOffer(QUESTIONS_ASKED), null,
-    'questions waiting for words were offered as digits');
+test('a list of the agent\'s own questions draws no buttons', () => {
   assert.equal(detectPrompt(QUESTIONS_ASKED), null);
 });
 
-test('a numbered list with no agent and no box is not an offer', () => {
-  // A shell printing a list is the case the chrome rule was written for: there
-  // is nothing here to type a digit into.
-  assert.equal(detectOffer([
+test('a numbered list with no agent and no box is not a menu', () => {
+  assert.equal(detectPrompt([
     'Вот что нужно сделать:',
     '1. Прочитать файл',
     '2. Добавить проверку',
@@ -362,18 +321,8 @@ test('a numbered list with no agent and no box is not an offer', () => {
 });
 
 // Captured off the owner's phone on 2026-11-10 (the devops session's summary
-// at 57 columns, reconstructed from the turn the same screen was drawn from):
-// a list of what was *done* and a question about something else under it.
-// Every rule the REPORT_THEN_QUESTION screen holds by was in place — the box
-// empty, the list in the last message, the numbers 1,2,3 — and the paragraph
-// under the list is one, not two, so the 2026-09-09 defence does not reach
-// it: the question lands in the one paragraph askedUnder allows, and three
-// buttons stood over a report. What tells the two apart is the paragraph
-// itself: an offer's question is drawn as one line under the list ("Что
-// делаем?", "Что приоритетнее?"), because it names no subject of its own —
-// the list above is the subject. A question that takes three lines to ask is
-// a paragraph about something the list does not enumerate, and silence is
-// the cheap failure: the owner types one digit by hand.
+// at 57 columns): a list of what was done and a question about something else
+// under it.
 const REPORT_ONE_PARAGRAPH = [
   '● Итоги по всем трём линиям:',
   '  1. ser8 — оживлён сливом swap в RAM; причинам',
@@ -393,32 +342,38 @@ const REPORT_ONE_PARAGRAPH = [
   '─────────────────────────────────────────────────────',
 ];
 
-test('a report with its question in the one paragraph under it is not an offer', () => {
-  assert.equal(detectOffer(REPORT_ONE_PARAGRAPH), null,
-    'the numbered report was offered as answers');
+test('a report with its question in the one paragraph under it draws no buttons', () => {
   assert.equal(detectPrompt(REPORT_ONE_PARAGRAPH), null);
 });
 
-// The same shape with the question drawn as one line — the form a real offer
-// takes — must keep its buttons: narrowing the reading cannot cost the row
-// on the screen it exists for. The question here is genuinely about the list
-// ("Что делаем?" after two paths), just wrapped in the transcript by hand
-// into one line to hold the rule.
-test('a one-line question under the list is still an offer', () => {
-  const q = detectOffer([
-    '● Дальше есть два пути:',
-    '  1. claude --resume и выбрать сессию d037ae16.',
-    '  2. Продолжить здесь и посчитать стоимость круга.',
-    '',
-    '  Что делаем?',
-    '',
-    '✻ Churned for 1m 6s',
-    '─────────────────────────────────────────────────────',
-    '\u276f\u00a0',
-    '─────────────────────────────────────────────────────',
-  ]);
-  assert.ok(q, 'an offer drawn as the rule reads it lost its buttons');
-  assert.equal(q.options.length, 2);
+// Captured off the yarr session on 2026-11-14: a three-step action plan
+// followed by a one-line yes/no question ("Ставить флаг?") directly above the
+// empty free-text input box `❯\u00a0`. Visually identical in shape to a
+// two-path prose offer with a one-line question ("Что делаем?"), and the
+// fourth screen where guessing a digit choice over the free-text input box
+// drew wrong buttons.
+const PLAN_THEN_QUESTION = [
+  '● Собрал картину. Диагноз:',
+  '',
+  '  Проверить на месте смогу только по факту: игра запускается у Ярослава, я не вижу экран. Поэтому предлагаю так:',
+  '',
+  '  1. Я добавлю DirectDrawCompat к существующему флагу в реестре (HKCU, правка обратимая, удаляется той же командой с минусом).',
+  '  2. Вы попросите Ярослава запустить игру, по alt-tab посмотреть — починилось ли.',
+  '  3. Если нет — сниму флаг и попробую следующий вариант (disable fullscreen optimization, от ручного патча игрыmemory проекта прямо говорит — не патчить).',
+  '',
+  '  Ставить флаг?',
+  '',
+  '✻ Brewed for 4m 16s · done 4:51 PM',
+  '─────────────────────────────────────────────────────',
+  '\u276f\u00a0',
+  '─────────────────────────────────────────────────────',
+  '  ctx 20% | dms@s8:~/work/yarr (master)?1 $ | glm-5.3',
+  '  ⏵⏵ bypass permissions on (shift+tab to cycle)',
+];
+
+test('a numbered action plan with a one-line question above the free-text input box draws no buttons', () => {
+  assert.equal(detectPrompt(PLAN_THEN_QUESTION), null,
+    'a three-step plan above the free-text input box was offered as digit buttons');
 });
 
 // The row that ends a question taking several answers. The real screens are in the

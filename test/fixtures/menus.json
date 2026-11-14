@@ -868,6 +868,20 @@
         "cursor": 0,
         "navigate": "digits"
       }
+    },
+    {
+      "name": "an answered menu above the free-text input box is not a live menu",
+      "_why": "Once the composer input box (`❯\\u00a0`) is at the bottom of the pane, the TUI is waiting for free-text input rather than a menu digit; anything above the box is transcript.",
+      "lines": [
+        "Do you want to make this edit to app.js?",
+        "❯ 1. Yes",
+        "  2. No, and tell Claude what to do (esc)",
+        "",
+        "───────────────────────────────────────────────────",
+        "❯\u00a0",
+        "───────────────────────────────────────────────────"
+      ],
+      "expect": null
     }
   ]
 }

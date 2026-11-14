@@ -317,6 +317,15 @@ func Question(lines []string) *Menu {
 		cur = nil
 	}
 	for i, line := range rows {
+		// The agent's own input box carries the same ❯ a menu points with, and
+		// what is under it is whatever is being typed — see composer.go for how
+		// the two are told apart. A line from there brings no chrome, and
+		// anything above the box is transcript rather than a live menu.
+		composer := composerPrompt.MatchString(line) || geminiBoxAt(rows, i)
+		if composer {
+			closeRun()
+			best = nil
+		}
 		m := option.FindStringSubmatch(line)
 		// Not a numbered line: it may still belong to the option above, so the
 		// run is left open and the next number is what decides. Closing here is
@@ -324,11 +333,6 @@ func Question(lines []string) *Menu {
 		if m == nil {
 			continue
 		}
-		// The agent's own input box carries the same ❯ a menu points with, and
-		// what is under it is whatever is being typed — see composer.go for how
-		// the two are told apart. A line from there brings no chrome, so a
-		// numbered list in a half-written message is prose like any other.
-		composer := composerPrompt.MatchString(line) || geminiBoxAt(rows, i)
 		beside := besideBox(plain[i], pcol) && !composer
 		pointed := pointer.MatchString(m[1]) && !composer
 		hasChrome := (chrome.MatchString(m[1]) || rightBorder.MatchString(line) || beside) && !composer

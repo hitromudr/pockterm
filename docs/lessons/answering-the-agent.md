@@ -153,9 +153,22 @@ the subject — so it is drawn as one line ("Что делаем?", "Что пр
 while a question that needs three lines to ask carries its own subject and is
 not the list's. `askedUnder` therefore reads only the first line of the
 paragraph under the list; a question that wraps costs the row, the cheap
-failure again. The screen is `REPORT_ONE_PARAGRAPH` in `test/detect.test.mjs`,
-held next to a one-line-question offer so the narrowing cannot cost the row on
-the screen the rule exists for.
+failure again. **And on 2026-11-14 a three-step plan with a one-line question ended `detectOffer`
+altogether.** The `yarr` session finished its turn with "Поэтому предлагаю так:
+1. Я добавлю DirectDrawCompat… 2. Вы попросите Ярослава запустить игру… 3. Если
+нет — сниму флаг…" and directly under it the one-line question "Ставить флаг?"
+above the empty `❯\u00a0` input box. Every guard from 2026-09-09, 2026-10-18 and
+2026-11-10 held — the box empty, the list in the last `●` message, numbers 1,2,3
+in order, no `?` on the items themselves, and a single two-word line ending in
+`?` under the list — because on screen that plan has the **exact shape** of
+"Два пути: 1. … 2. … Что делаем?": same colon before the list, same declarative
+numbered sentences, same two-word question, same empty composer below. Three
+buttons stood over a free-text input field (`PLAN_THEN_QUESTION` in
+`test/detect.test.mjs`). After four false positives on prose lists, the lesson is
+that the original rule was right: while the bottom of the screen is the free-text
+input box (`❯\u00a0` or Gemini's composer), the TUI is waiting for free input and
+not a digit choice, so `detectPrompt` reads only a real TUI menu (`detectQuestion`)
+and both detectors discard any candidate run above the composer box.
 
 **And the agent's own input box is not a menu, though it is drawn like one.** It
 carries the very same `❯`, and under it is whatever is being typed: a message

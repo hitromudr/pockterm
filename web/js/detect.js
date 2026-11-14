@@ -519,13 +519,18 @@ export function detectQuestion(lines) {
     run = null;
   };
   for (let i = 0; i < rows.length; i++) {
+    // A line of the input box brings no chrome with it: what is under that ❯ is
+    // being typed, not offered — and anything above the box is transcript, not a
+    // menu waiting for a digit.
+    const composer = COMPOSER.test(rows[i]) || geminiBoxAt(rows, i);
+    if (composer) {
+      close();
+      best = null;
+    }
     const m = OPTION.exec(rows[i]);
     // Not a numbered line: it may still belong to the option above, so the run
     // is left open and the next number is what decides.
     if (!m) continue;
-    // A line of the input box brings no chrome with it: what is under that ❯ is
-    // being typed, not offered.
-    const composer = COMPOSER.test(rows[i]) || geminiBoxAt(rows, i);
     const beside = besideBox(plain[i], pcol) && !composer;
     const pointed = POINTER.test(m[1]) && !composer;
     const chrome = (CHROME.test(m[1]) || RIGHT_BORDER.test(rows[i]) || beside) && !composer;
@@ -606,169 +611,26 @@ export function detectQuestion(lines) {
   };
 }
 
-// An offer is not a menu, and until now the page could not tell the difference
-// because it refused to look.
-//
-// A TUI menu is drawn with chrome — a pointer, a box — and that chrome is the
-// whole defence against reading a numbered list in prose as something to press:
-// a digit sent to a program that has no menu goes into whatever it is doing. But
-// an agent that has finished its turn and written "Что делаем? 1. … 2. …" is
-// asking a question too, and answering it from the phone meant typing the digit
-// by hand into a field the thumb has to find first. Reported as the row of
-// buttons not being drawn for exactly that screen.
-//
-// What makes it safe is not the shape of the list but where it is and what
-// happens when it is pressed. Four things have to hold, and each one removes a
-// way to be wrong:
-//
-//   - the agent's own input box is on screen, empty. That is what the digit is
-//     typed into — not into a shell, not into a half-written message.
-//   - the list is inside the agent's last message (below the last `●`).
-//   - the question is drawn under the list and nothing else stands between the
-//     two. A list of what was *done* is not an offer, and a question about
-//     something else, further down the same message, is not the list's — see
-//     askedUnder for the screen that cost.
-//   - the numbers run 1,2,3… in order, at least two of them.
-//
-// It answers `digits`, because that is literally what it is: the button types
-// the number and presses Enter, which is what the owner would have done.
-const AGENT_SAID = /^\s*●\s+\S/;
-const TURN_SUMMARY = /^\s*[✻✽✳✢✶*]\s+\w+\s+for\s+/;
-
-// Whether the one thing standing between the list and the end of the message is
-// the question that list answers.
-//
-// The question mark used to be looked for anywhere in the message, and the answer
-// it gave was the wrong one on the owner's screen of 2026-09-09: three numbered
-// decisions already taken, a paragraph about how they had come up, and a closing
-// "Хочешь — проверю …?" about something else entirely. Every other rule held —
-// the box was empty, the list sat in the last message, the numbers ran 1,2,3 — so
-// the page drew three buttons, and a press would have sent a bare digit as an
-// answer to a question nobody had asked. A wrong answer looks exactly like the
-// right one, which is why the reading is narrowed rather than patched.
-//
-// The shape it is narrowed to is the one an offer is actually drawn in: the list
-// last, the question directly under it ("Два пути: 1. … 2. … Что делаем?"). So
-// the last option's own wrap is consumed — prose wraps with no blank line in it,
-// while a paragraph after a list has one before it — and then exactly one
-// paragraph may stand, the one ending in "?", with nothing below it but the turn
-// summary and the box's chrome. A question drawn with no blank line under the
-// last option counts too: the wrap stops at the first line that ends in one.
-//
-// A list with prose after it is then not an offer, and nothing is drawn for it.
-// That is the cheap failure here — a paragraph between the two says the question
-// is about something the list does not enumerate, and silence costs a thumb one
-// digit typed by hand.
-//
-// **And the paragraph has to be one line.** Reported 2026-11-10 from the devops
-// session: "Итоги по всем трём линиям: 1. … 2. … 3. …" and under it "Открытый
-// вопрос за тобой: править пробу в 70-wired-wifi-toggle … или дать логгеру
-// сутки накопить?" — one paragraph, ending in "?", so every rule above held and
-// three buttons stood over a report of what had been *done*. An offer's question
-// names no subject of its own — the list above is the subject — which is why it
-// is drawn as one line ("Что делаем?", "Что приоритетнее?"). A question that
-// needs a paragraph to ask is about something the list does not enumerate, and
-// the same silence follows: the owner types one digit by hand.
-function askedUnder(block, last) {
-  const chromeOnly = (line) => !boxGlyphs(line) || TURN_SUMMARY.test(line);
-  const closes = (from) => {
-    for (let i = from; i < block.length; i++) {
-      if (!chromeOnly(block[i])) return false;
-    }
-    return true;
-  };
-  let i = last + 1;
-  // The last option's own wrap.
-  for (; i < block.length && !chromeOnly(block[i]); i++) {
-    if (boxGlyphs(block[i]).endsWith('?')) return closes(i + 1);
-  }
-  // Then the question under the list, which has to be the question itself — and
-  // one line of it, for the reason above: a question that wraps is a paragraph
-  // with a subject of its own, not the list's own question.
-  while (i < block.length && chromeOnly(block[i])) i++;
-  if (i >= block.length) return false;
-  return boxGlyphs(block[i]).endsWith('?') && closes(i + 1);
-}
-
-// Whether an option before the last ends in a question mark: its own text runs
-// from its number down to the last line with words on it before the next one.
-function asksItself(block, at) {
-  for (let k = 0; k + 1 < at.length; k++) {
-    for (let i = at[k + 1] - 1; i >= at[k]; i--) {
-      const text = boxGlyphs(block[i]);
-      if (text === '') continue;
-      if (text.endsWith('?')) return true;
-      break;
-    }
-  }
-  return false;
-}
-
-export function detectOffer(lines) {
-  const plain = lines.map(stripAnsi);
-  // The input box, and nothing typed into it: the lowest one, since the
-  // transcript above can hold the prompts of messages already sent.
-  let box = -1;
-  for (let i = plain.length - 1; i >= 0; i--) {
-    if (!COMPOSER.test(plain[i])) continue;
-    if (plain[i].replace(COMPOSER, '').trim() !== '') return null;
-    box = i;
-    break;
-  }
-  if (box < 0) return null;
-
-  // The agent's last message: from its ● down to the box.
-  let said = -1;
-  for (let i = box - 1; i >= 0; i--) {
-    if (AGENT_SAID.test(plain[i])) { said = i; break; }
-  }
-  if (said < 0) return null;
-  const block = plain.slice(said, box);
-
-  // The lowest run of 1,2,3… in it. A line that is not an option continues the
-  // one above — in prose a wrapped line sits at the margin, so the indentation
-  // rule a real menu is read by has nothing to say here.
-  let best = null;
-  let run = null;
-  for (let i = 0; i < block.length; i++) {
-    const m = OPTION.exec(block[i]);
-    if (!m) continue;
-    if (run && m[2] === String(run.opts.length + 1)) {
-      run.opts.push({ key: m[2], label: label(m[3]) });
-      run.lines.push(i);
-      run.last = i;
-      continue;
-    }
-    if (run && run.opts.length >= 2) best = run;
-    run = m[2] === '1'
-      ? { start: i, last: i, lines: [i], opts: [{ key: '1', label: label(m[3]) }] }
-      : null;
-  }
-  if (run && run.opts.length >= 2) best = run;
-  if (!best) return null;
-
-  // The items have to be the choices, not the questions. On the owner's screen
-  // of 2026-10-18 the agent closed its turn with "Два коротких вопроса:" and two
-  // numbered questions, each wanting a sentence; the last one ended in "?", which
-  // askedUnder reads as the question drawn straight under the list, and two
-  // buttons offered a bare digit for each. An item before the last that itself
-  // ends in a question mark says the list is the asking. An offer phrased as
-  // questions goes unanswered by a button — the cheap failure.
-  if (asksItself(block, best.lines)) return null;
-
-  // And the question has to be the list's own: drawn under it, with nothing else
-  // in between.
-  if (!askedUnder(block, best.last)) return null;
-
-  const prompt = label(boxGlyphs(block[0]).replace(/^●\s*/, ''));
-  return { prompt, options: best.opts, cursor: -1, navigate: 'digits', offer: true };
-}
-
 // detectPrompt is the one question the page asks the screen: is there something
-// here to answer? A real menu first — it is the stricter reading and the one
-// that can be driven with arrows — and an offer only when there is no menu.
+// here to answer?
+//
+// Only a real TUI menu (`detectQuestion`) qualifies. A numbered list in the
+// agent's prose above the free-text input box (`❯\u00a0`) used to be read as an
+// "offer" when a question stood under it, and that guess paid four times:
+//   - 2026-09-09: three numbered decisions already taken + a closing question;
+//   - 2026-10-18: two numbered questions from the agent waiting for sentences;
+//   - 2026-11-10: a three-point summary + a one-paragraph question under it;
+//   - 2026-11-14: a three-step action plan ("Поэтому предлагаю так: 1. Я
+//     добавлю… 2. Вы попросите… 3. Если нет — сниму…") + a one-line question
+//     ("Ставить флаг?") directly above the empty `❯\u00a0` box.
+// The fourth screen has the exact visual shape of "Два пути: 1. … 2. … Что
+// делаем?" — same colon, same declarative numbered items, same two-word
+// single-line question ending in `?`, same empty composer at the bottom. Telling
+// a plan's steps from a digit choice would mean reading Russian prose rather
+// than TUI shape, and while the bottom of the screen is the free-text input
+// field (`❯\u00a0`), there is no digit choice on screen.
 export function detectPrompt(lines) {
-  return detectQuestion(lines) || detectOffer(lines);
+  return detectQuestion(lines);
 }
 
 // How many arrows reach the option at `want` from where the pointer is, or null
