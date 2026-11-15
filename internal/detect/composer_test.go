@@ -52,3 +52,24 @@ func TestInputBoxIsTheAgentsOwnPrompt(t *testing.T) {
 		t.Errorf("InputBoxAt(gemini) = %d, want 1", got)
 	}
 }
+
+// opencode 2.3, off Sanya's server on 2026-11-15: a column of `┃` closed by
+// `╹▀▀▀`, the box starting on the first `┃`.
+func TestInputBoxOpencode(t *testing.T) {
+	box := []string{
+		"     Build · DeepSeek V4.1 Flash 1017 · 3.5s · 136.4 tok/s · 2.4s ttft",
+		"",
+		"  ┃",
+		"  ┃  проверь",
+		"  ┃  Build · DeepSeek V4.1 Flash 1017 DeepSeek · max",
+		"  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+		"  ~/admin           7.1K (1%) · $0.00  ctrl+p commands    ~/admin",
+	}
+	if got := InputBoxAt(box); got != 2 {
+		t.Errorf("InputBoxAt(opencode) = %d, want 2", got)
+	}
+	// A quoted bar with nothing closing it is somebody's text, not the box.
+	if InputBox([]string{"  ┃ цитата", "  ┃ дальше", "обычный текст"}) {
+		t.Error("an unclosed column of bars was read as the opencode box")
+	}
+}

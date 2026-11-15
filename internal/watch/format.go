@@ -437,6 +437,12 @@ var statusLine = regexp.MustCompile(`^ctx\s+\d+%\s*\|`)
 // this line sits between the two. The verbs turn over between releases, so what is
 // matched is "<one word> for <a duration>".
 var turnSummary = regexp.MustCompile(`^\P{L}*\p{L}+\s+for\s+\d+[hms]`)
+
+// opencode's version of it, under every answer: agent, model, then the step's
+// duration and speed.
+//
+//	Build · DeepSeek V4.1 Flash 1017 · 7m 48s · 200.8 tok/s · 963ms ttft
+var opencodeSummary = regexp.MustCompile(`·\s*[\d.]+\s*tok/s\b`)
 var timeSignoff = regexp.MustCompile(`^(?:(?:текущее\s+)?время:?\s*)?\d{1,2}:\d{2}\s+utc\b`)
 
 func isChrome(s string) bool {
@@ -445,7 +451,7 @@ func isChrome(s string) bool {
 	if l == ">" || l == "> " || strings.TrimLeft(l, "> ") == "" {
 		return true
 	}
-	if statusLine.MatchString(l) || turnSummary.MatchString(s) || timeSignoff.MatchString(l) {
+	if statusLine.MatchString(l) || turnSummary.MatchString(s) || opencodeSummary.MatchString(s) || timeSignoff.MatchString(l) {
 		return true
 	}
 	// The live counter. It should never be the body of a notice at all — a session

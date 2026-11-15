@@ -37,7 +37,11 @@ var liveCounter = regexp.MustCompile(`\(\s*(?:\d+\s*h\s*)?(?:\d+\s*m\s*)?\d+\s*s
 // releases put the counter behind "esc to interrupt" and newer ones drop it
 // while a tool call is in flight, so this is the second reading rather than a
 // fallback — either one means the same thing.
-var liveInterrupt = regexp.MustCompile(`(?i)esc to interrupt`)
+//
+// opencode 2.3 says it without the "to" ("esc interrupt", under its box while a
+// step runs), so the word is optional: read strictly, an opencode pane never
+// counted, and its tabs went purple on every redraw instead.
+var liveInterrupt = regexp.MustCompile(`(?i)esc (?:to )?interrupt`)
 
 // And the third, from the owner's own observation: the counter's line always
 // opens with one of a small set of stars, and those characters turn up in

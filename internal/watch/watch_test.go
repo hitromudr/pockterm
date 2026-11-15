@@ -1608,3 +1608,59 @@ func TestAPIErrorPaintsRedAndNotifies(t *testing.T) {
 		t.Fatalf("unopened worker error events = %+v, want one Error event", got)
 	}
 }
+
+// opencode 2.3, off Sanya's server on 2026-11-15. Its box is a column of `┃`
+// closed by `╹▀▀▀`, and while a step runs the line under it says "esc
+// interrupt" — without the "to" Claude Code puts in. Neither was read, so an
+// opencode tab had only the silence rule: every redraw, every keystroke and
+// every phone attaching painted it purple for thirty seconds, and the owner saw
+// a strip of working DeepSeek tabs with every agent standing still.
+const (
+	ocIdle = "     Готово, ничего не менял.\n\n" +
+		"     Build · DeepSeek V4.1 Flash 1017 · 3.5s · 136.4 tok/s · 2.4s ttft\n\n" +
+		"  ┃\n  ┃\n  ┃\n  ┃  Build · DeepSeek V4.1 Flash 1017 DeepSeek · max\n" +
+		"  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n" +
+		"  ~/admin                                  7.1K (1%) · $0.00  ctrl+p commands    ~/admin\n"
+	ocBusy = "     ⠹ 2 commands\n" +
+		"  ┃\n  ┃  Build auto · DeepSeek V4.1 Flash 1017 DeepSeek · max\n" +
+		"  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n" +
+		"   ⬝⬝⬝■■■■■ esc interrupt          ↓ 1 shell · 51.2K (5%) · $0.03  ctrl+p commands\n"
+)
+
+func TestOpencodeTabsSayWhatTheAgentIsDoing(t *testing.T) {
+	h := newHarness(30 * time.Second)
+	h.screen = ocIdle
+	h.w.Tick()
+	// Typed into, redrawn: the agent is standing, so the tab is not purple.
+	for i, typed := range []string{"п", "пр", "проверь"} {
+		h.screen = strings.Replace(ocIdle, "  ┃\n  ┃  Build", "  ┃  "+typed+"\n  ┃  Build", 1)
+		h.advance(2 * time.Second)
+		h.w.Tick()
+		if got := h.w.Activity("claude"); got == ActivityWorking {
+			t.Fatalf("keystroke %d: %q — typing into opencode is not the agent working", i, got)
+		}
+	}
+	h.screen = ocBusy
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityWorking {
+		t.Fatalf("a step running: %q, want %q", got, ActivityWorking)
+	}
+	h.screen = ocIdle
+	h.settle()
+	if got := h.kinds(); len(got) != 1 || got[0] != Done {
+		t.Fatalf("events = %+v, want one done as soon as the step ends", h.events)
+	}
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("after the step: %q, want %q", got, ActivityDone)
+	}
+	// And the next redraw of a standing agent does not take it back to purple.
+	h.screen = strings.Replace(ocIdle, "7.1K (1%)", "7.2K (1%)", 1)
+	h.advance(2 * time.Second)
+	h.w.Tick()
+	if got := h.w.Activity("claude"); got != ActivityDone {
+		t.Fatalf("a redraw after the step: %q, want %q", got, ActivityDone)
+	}
+	if !strings.Contains(h.events[0].Prompt, "Готово") {
+		t.Fatalf("done should carry the agent's last words, not its box: %q", h.events[0].Prompt)
+	}
+}

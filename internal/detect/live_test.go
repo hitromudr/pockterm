@@ -40,6 +40,11 @@ func TestLive(t *testing.T) {
 		{"an older release counts behind the way out", []string{
 			"✻ Wrangling… (esc to interrupt · 12s · ↑ 1.4k tokens)",
 		}, true},
+		// opencode 2.3 drops the "to"; off Sanya's server, 2026-11-15.
+		{"opencode says it without the to", []string{
+			"  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+			"   ⬝⬝⬝■■■■■ esc interrupt       ↓ 1 shell · 51.2K (5%) · $0.03  ctrl+p commands",
+		}, true},
 		{"a tool call in flight with no counter yet", []string{
 			"● Bash(make check)",
 			"  ⎿  Running… (esc to interrupt)",

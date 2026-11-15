@@ -28,7 +28,28 @@ var (
 	geminiPrompt   = regexp.MustCompile("^[ \t][>*!] ")
 	composerTop    = regexp.MustCompile("^[ \t]*(?:[─━═]{3,}|▄{3,})[ \t]*$")
 	composerBottom = regexp.MustCompile("^[ \t]*(?:[─━═]{3,}|▀{3,})[ \t]*$")
+	// opencode 2.3 draws its box as a column of `┃` (the text typed, then the
+	// agent and model line) closed by `╹` and a run of `▀`.
+	opencodeSide   = regexp.MustCompile("^[ \t]*┃")
+	opencodeBottom = regexp.MustCompile("^[ \t]*╹▀{3,}[ \t]*$")
 )
+
+// opencodeBoxAt says whether an opencode box starts on line i: the first of a
+// run of `┃` lines that ends on the `╹▀▀▀` closing it.
+func opencodeBoxAt(plain []string, i int) bool {
+	if !opencodeSide.MatchString(plain[i]) || (i > 0 && opencodeSide.MatchString(plain[i-1])) {
+		return false
+	}
+	for j := i + 1; j < len(plain); j++ {
+		if opencodeBottom.MatchString(plain[j]) {
+			return true
+		}
+		if !opencodeSide.MatchString(plain[j]) {
+			return false
+		}
+	}
+	return false
+}
 
 func geminiBoxAt(plain []string, i int) bool {
 	if i <= 0 || !geminiPrompt.MatchString(plain[i]) || !composerTop.MatchString(plain[i-1]) {
@@ -84,6 +105,9 @@ func InputBoxAt(lines []string) int {
 		}
 		if geminiBoxAt(plain, i) {
 			return geminiChromeAt(plain, i)
+		}
+		if opencodeBoxAt(plain, i) {
+			return i
 		}
 	}
 	return -1
