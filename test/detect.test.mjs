@@ -607,3 +607,19 @@ test('Gemini CLI /settings: Apply To commits with Tab and scroll sends arrows', 
   assert.equal(settingsScrollKeys(settingsFocused, -1, 2), '\x1b[B\x1b[B');
   assert.equal(settingsScrollKeys(settingsFocused, 1, 1), '\x1b[A');
 });
+
+// opencode marks its chosen option by colour only; the page passes that in as
+// `lines.accent`, and with it the menu has a pointer the buttons can walk from.
+test('opencode: the cursor comes from the coloured number', () => {
+  const c = fixtures.cases.find((x) => x.name === 'opencode 2.3 question');
+  const lines = [...c.lines];
+  lines.accent = lines.map((l) => l.includes('3. Type your own answer'));
+  const q = detectQuestion(lines);
+  assert.equal(q.cursor, 2);
+  assert.equal(q.navigate, 'arrows');
+  const k = answerKeys(q, 0);
+  assert.deepEqual(k, { move: '\x1b[A\x1b[A', commit: '\r' });
+  // Two coloured numbers is not a reading: no cursor rather than a guess.
+  lines.accent = lines.map((l) => /┃ {2}[13]\./.test(l));
+  assert.equal(detectQuestion(lines).cursor, -1);
+});

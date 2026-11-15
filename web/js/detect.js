@@ -29,18 +29,18 @@
 // tool confirmation drew no buttons at all. It is a pointer and not chrome —
 // see POINTER and CHROME — because Claude Code begins every message with the same
 // glyph, and a message that opens with a numbered list is prose.
-const OPTION = /^([\s│>❯›●*-]*)(\d{1,2})[.)](?:\s+|(?=\D))(\S.*?)\s*$/;
+const OPTION = /^([\s│┃>❯›●*-]*)(\d{1,2})[.)](?:\s+|(?=\D))(\S.*?)\s*$/;
 
 // Whether that line's number has the label glued to it. On a two-column menu it
 // says more than how the line is spaced: the widget has moved the number one
 // line down, so the label's first words are on the line above — see `widen`.
-const GLUED = /^[\s│>❯›●*-]*\d{1,2}[.)]\S/;
+const GLUED = /^[\s│┃>❯›●*-]*\d{1,2}[.)]\S/;
 
 // TUI chrome: the pointer at the highlighted option, or the box the prompt
 // is drawn in. A numbered list in prose (Claude writes one in almost every
 // answer) has neither, and that list is the false positive worth killing —
 // buttons for it send stray digits to whatever is actually running.
-const CHROME = /[>❯›│]/;
+const CHROME = /[>❯›│┃]/;
 const RIGHT_BORDER = /│\s*$/;
 
 // The agent's own input box, which carries the very same ❯ — and under it,
@@ -90,7 +90,8 @@ function inputBoxAt(plain) {
 // reading of the same event — that choosing it *means* "I will answer in my own
 // words". It does not mean anything; it is a field waiting to be typed into, and
 // the page's job is to reach it and hand over the keyboard.
-const TYPE_FIELD = /^Type something\.?$/;
+// opencode 2.3 adds its own field as the last option: "Type your own answer".
+const TYPE_FIELD = /^(?:Type something\.?|Type your own answer)$/;
 
 // The checkbox a question that takes several answers draws after the number:
 // `1. [ ] Label`, and `[✔]` once that answer has been chosen. Captured off a
@@ -117,7 +118,7 @@ function label(text) {
 }
 
 function boxGlyphs(s) {
-  return s.replace(/[│╭╮╰╯─]/g, '').trim();
+  return s.replace(/[│┃╭╮╰╯─]/g, '').trim();
 }
 
 // The left edge of a box drawn *beside* the options, and the whole of what tells
@@ -238,7 +239,7 @@ function indentOf(line) {
   let col = 0;
   for (const ch of line) {
     if (ch === ' ' || ch === '\t' || ch === '\u00a0' || ch === '\u202f'
-        || ch === '│' || ch === '>' || ch === '❯' || ch === '›' || ch === '●') col++;
+        || ch === '│' || ch === '┃' || ch === '>' || ch === '❯' || ch === '›' || ch === '●') col++;
     else return col;
   }
   return col;
@@ -304,7 +305,8 @@ const BULLET = /●/;
 // A menu that says how it is answered. Claude Code's AskUserQuestion draws this
 // under its options, and it is a list of the keys it accepts — digits are not
 // among them, which is the whole reason it has to be read.
-const NAVIGATION = /(enter to select|to navigate)/i;
+// opencode 2.3: "↑↓ select  enter submit  esc dismiss".
+const NAVIGATION = /(enter to select|to navigate|↑↓ select|enter submit)/i;
 
 // How far below the last option to look for it. The line sits directly under the
 // menu, with at most a rule and a blank between.
@@ -380,7 +382,7 @@ const SUBMIT = /^(Submit|Next)$/;
 const SUBMIT_REACH = 6;
 
 // The chrome down the left edge of a row, and the row's own text.
-const ROW = /^([\s│>❯›]*)(\S.*?)\s*$/;
+const ROW = /^([\s│┃>❯›]*)(\S.*?)\s*$/;
 
 // The submit row of a question that takes several answers, or undefined.
 //
@@ -602,10 +604,18 @@ export function detectQuestion(lines) {
   let navigate = best.bullet ? 'digit' : 'digits';
   if (saysScope(rows, tail)) navigate = 'scope';
   else if (saysHow(rows, tail)) navigate = 'arrows';
+  // opencode 2.3 draws no pointer: the chosen option's number is painted in the
+  // colour of the `┃` beside it, and that is not in the text. The page reads it
+  // off the cells and hands it in as `lines.accent` (see visibleLines in app.js).
+  let cursor = best.pointers.indexOf(true);
+  if (cursor < 0 && Array.isArray(lines.accent)) {
+    const marked = best.at.filter((i) => lines.accent[i]);
+    if (marked.length === 1) cursor = best.at.indexOf(marked[0]);
+  }
   return {
     prompt,
     options: best.opts,
-    cursor: best.pointers.indexOf(true),
+    cursor,
     navigate,
     submit: submitRow(rows, best),
   };

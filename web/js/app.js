@@ -5936,11 +5936,34 @@ document.getElementById('paste').addEventListener('click', async () => {
 function visibleLines() {
   const buf = term.buffer.active;
   const lines = [];
+  lines.accent = [];
   for (let y = 0; y < term.rows; y++) {
     const line = buf.getLine(buf.baseY + y);
     lines.push(line ? line.translateToString(true) : '');
+    lines.accent.push(line ? accented(line) : false);
   }
   return lines;
+}
+
+// Whether the number on an opencode option row is painted in the colour of the
+// `┃` beside it — the only way opencode 2.3 marks the chosen option (the others'
+// numbers are muted). Measured off Sanya's server, 2026-11-15.
+function accented(line) {
+  let bar = null;
+  for (let x = 0; x < line.length; x++) {
+    const c = line.getCell(x);
+    if (!c) return false;
+    const ch = c.getChars();
+    if (bar === null) {
+      if (ch === '┃') bar = c;
+      else if (ch !== ' ' && ch !== '') return false;
+      continue;
+    }
+    if (ch === ' ' || ch === '') continue;
+    if (!/^\d$/.test(ch)) return false;
+    return c.getFgColorMode() === bar.getFgColorMode() && c.getFgColor() === bar.getFgColor();
+  }
+  return false;
 }
 
 // How far back the frozen copy asks to reach. A cap on how tall a <pre> a phone

@@ -38,24 +38,24 @@ import (
 // selected option was not an option and a tool confirmation raised no "asks for
 // an answer". It is not chrome, though — Claude Code opens every message with the
 // same glyph — so a run still needs a box or a ❯ to be a menu.
-var option = regexp.MustCompile(`^([\s│>❯›●*-]*)(\d{1,2})[.)](?:\s+(\S.*?)|([^\s\d].*?))\s*$`)
+var option = regexp.MustCompile(`^([\s│┃>❯›●*-]*)(\d{1,2})[.)](?:\s+(\S.*?)|([^\s\d].*?))\s*$`)
 
 // row is a line split into the chrome drawn down its left edge and its own
 // words, which is how a wrapped label's continuation is read off a two-column
 // menu.
-var row = regexp.MustCompile(`^([\s│>❯›]*)(\S.*?)\s*$`)
+var row = regexp.MustCompile(`^([\s│┃>❯›]*)(\S.*?)\s*$`)
 
 // TUI chrome: the pointer at the highlighted option, or the box the prompt
 // is drawn in. A numbered list in prose has neither, and that list is the
 // false positive worth killing.
 var (
-	chrome = regexp.MustCompile(`[>❯›│]`)
+	chrome = regexp.MustCompile(`[>❯›│┃]`)
 	// The pointer at the highlighted option alone, Gemini's "●" among it — see
 	// widget for why a box without one is not enough.
 	pointer     = regexp.MustCompile(`[>❯›●]`)
 	rightBorder = regexp.MustCompile(`│\s*$`)
 	ansi        = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]")
-	boxGlyphs   = regexp.MustCompile(`[│╭╮╰╯─]`)
+	boxGlyphs   = regexp.MustCompile(`[│┃╭╮╰╯─]`)
 	// A rule drawn across the menu: a horizontal line and nothing else.
 	// Deliberately blind to the border glyphs — a box's own edges are chrome
 	// around a list, while this is a line through one.
@@ -69,7 +69,8 @@ var (
 	// The keys a menu says it takes, drawn under its options. This package
 	// presses nothing and so does not read them; the line is recognised because
 	// it ends the list of options, which is where a wrapped label stops.
-	navigation = regexp.MustCompile(`(?i)(enter to select|to navigate)`)
+	// opencode 2.3: "↑↓ select  enter submit  esc dismiss".
+	navigation = regexp.MustCompile(`(?i)(enter to select|to navigate|↑↓ select|enter submit)`)
 	// The corners and tees of a box drawn beside the options — see
 	// previewColumn. "│" is left out on purpose: a prompt drawn in a box has
 	// one down both edges, and every boxed menu would look like this one.
@@ -521,7 +522,7 @@ func indentOf(line string) int {
 	col := 0
 	for _, r := range line {
 		switch r {
-		case ' ', '\t', '\u00a0', '\u202f', '│', '>', '❯', '›', '●':
+		case ' ', '\t', '\u00a0', '\u202f', '│', '┃', '>', '❯', '›', '●':
 			col++
 		default:
 			return col

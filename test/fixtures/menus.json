@@ -878,10 +878,52 @@
         "  2. No, and tell Claude what to do (esc)",
         "",
         "───────────────────────────────────────────────────",
-        "❯\u00a0",
+        "❯ ",
         "───────────────────────────────────────────────────"
       ],
       "expect": null
+    },
+    {
+      "name": "opencode 2.3 question",
+      "_why": "Off Sanya's server, 2026-11-15: opencode draws its question down a `┃` column, says how it is answered under it (`↑↓ select  enter submit`) and marks the chosen option only by colour, so plain text carries no cursor (the page reads it off the cells — see detect.js). Digits are not bound: one typed over the custom answer went into it. The last option is the menu's own text field.",
+      "lines": [
+        "  ┃",
+        "  ┃  Questions",
+        "  ┃",
+        "  ┃  Хендоф записал. Но `agent-relay spawn` падает: ведущий таб срезается,",
+        "  ┃  полей 4 вместо 5 (ValueError). Править не стал: файл общий. Что делаем?",
+        "  ┃",
+        "  ┃  1. Починить строку и запустить эстафету (Recommended)",
+        "  ┃     Правлю /usr/local/bin/agent-relay: strip() → strip(\"\\n\"), запускаю spawn, дальше вкладку принимает",
+        "  ┃     наследник. О правке сообщу в хендофе.",
+        "  ┃  2. Не трогать, эстафету не делаем",
+        "  ┃     Оставляю как есть, хендоф лежит на месте — передашь вкладку сам вручную.",
+        "  ┃  3. Type your own answer",
+        "  ┃",
+        "  ┃  ↑↓ select  enter submit  esc dismiss",
+        "  ┃                                                                       ~/admin/devops:main",
+        ""
+      ],
+      "expect": {
+        "prompt": "полей 4 вместо 5 (ValueError). Править не стал: файл общий. Что делаем?",
+        "options": [
+          {
+            "key": "1",
+            "label": "Починить строку и запустить эстафету (Recommended)"
+          },
+          {
+            "key": "2",
+            "label": "Не трогать, эстафету не делаем"
+          },
+          {
+            "key": "3",
+            "label": "Type your own answer"
+          }
+        ],
+        "cursor": -1,
+        "navigate": "arrows",
+        "input": 2
+      }
     }
   ]
 }
