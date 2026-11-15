@@ -95,6 +95,20 @@ export function scrollStepLines(wheelLines, { scrolledBack = false, appWheel = f
   return Math.max(1, wheelLines | 0 || 5);
 }
 
+// The SGR wheel event for n notches, aimed at the middle of the pane. A program
+// that owns the mouse scrolls whatever is under the pointer: Claude Code takes
+// a wheel anywhere, but opencode (measured on a 161x40 pane, 2026-11-15) moves
+// its message list only for a pointer over it, and the top-left cell, where
+// every swipe used to land, is outside it, so the phone scrolled nothing while
+// a laptop's real pointer did. The middle of the pane is the message list in
+// every agent's layout, and with tmux's status line at either edge it is still
+// inside the pane.
+export function wheelEvents(btn, count, cols, rows) {
+  const x = Math.max(1, Math.ceil((cols | 0) / 2));
+  const y = Math.max(1, Math.ceil((rows | 0) / 2));
+  return `\x1b[<${btn};${x};${y}M`.repeat(Math.max(0, count | 0));
+}
+
 // Claude Code's full-screen view accelerates a burst of wheel notches (lNt in
 // 2.1.317: gap <= 40ms adds 0.3 per notch up to 6, gap > 40ms or a direction
 // change resets to 1), while Gemini CLI's ScrollProvider moves one line per

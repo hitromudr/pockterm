@@ -11,7 +11,7 @@ import {
 import { initDiag, environment, report } from './diag.js';
 import { watch as watchInput } from './inputdiag.js';
 import { keepEmpty } from './imefield.js';
-import { Scroller, movedWholeScreen, scrollStepLines, geminiWheelNotches } from './scroll.js';
+import { Scroller, movedWholeScreen, scrollStepLines, geminiWheelNotches, wheelEvents } from './scroll.js';
 import { staleNotice, startsReload, TAKE_HOLD } from './update.js';
 import { endingKeys, commitComposition, endEditByBlur } from './ender.js';
 import { pushHistory, previewOf } from './compose.js';
@@ -3657,7 +3657,7 @@ function flushWheel() {
   const count = onGemini
     ? geminiWheelNotches(n, btn === 64 ? 1 : -1, wheelSentAt, geminiWheelState)
     : n;
-  send(keys || `\x1b[<${btn};1;1M`.repeat(count));
+  send(keys || wheelEvents(btn, count, term.cols, term.rows));
   // One message, one batch: what the shift below counts against the redraws
   // coming back.
   scroller.batched(wheelSentAt);

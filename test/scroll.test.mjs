@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  Scroller, movedWholeScreen, scrollStepLines, geminiWheelNotches,
+  Scroller, movedWholeScreen, scrollStepLines, geminiWheelNotches, wheelEvents,
 } from '../web/js/scroll.js';
 
 // A stand-in for the clock and the frame callback, so a flick can be played
@@ -621,4 +621,12 @@ test('Gemini wheel notches stay 1:1 on a slow drag and accelerate on a burst lik
 
   // Reversing direction resets the multiplier immediately.
   assert.equal(geminiWheelNotches(1, -1, 220 + 21 * 16, state), 1);
+});
+
+// opencode scrolls only the list under the pointer; 1;1 is outside it.
+test('wheel events land in the middle of the pane, not the top-left cell', () => {
+  assert.equal(wheelEvents(64, 2, 161, 40), '\x1b[<64;81;20M\x1b[<64;81;20M');
+  assert.equal(wheelEvents(65, 1, 51, 35), '\x1b[<65;26;18M');
+  assert.equal(wheelEvents(64, 1, 0, 0), '\x1b[<64;1;1M');
+  assert.equal(wheelEvents(64, 0, 80, 24), '');
 });
