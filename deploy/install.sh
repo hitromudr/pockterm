@@ -206,9 +206,11 @@ build_binary() {
 		log "building from source" >&2
 		# Stamped the way make/go.mk stamps it, so the page and `pockterm
 		# version` say which build this is.
+		# `|| return`: this runs inside $(...), where set -e is off, and a failed
+		# build used to fall through to installing the previous binary in silence.
 		(cd "$PROJECT_DIR" && go build \
 			-ldflags "-X github.com/hitromudr/pockterm.version=$(bash tools/version.sh)" \
-			-o bin/pockterm ./cmd/pockterm) >&2
+			-o bin/pockterm ./cmd/pockterm) >&2 || return 1
 		echo "$PROJECT_DIR/bin/pockterm"
 		return
 	fi
@@ -267,7 +269,7 @@ main() {
 	check_tools
 
 	local src
-	src="$(build_binary)"
+	src="$(build_binary)" || die "the build failed — nothing was installed"
 
 	mkdir -p "$PREFIX" "$UNIT_DIR" "$(dirname "$ENV_FILE")"
 	install -m755 "$src" "$BIN"

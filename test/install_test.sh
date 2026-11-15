@@ -183,6 +183,20 @@ grep -q 'telegram is not configured' "$WORK/out" || bad "no warning that the pai
 grep -q 'here: http://127.0.0.1:8130/' "$WORK/out" || bad "a failed pairing took the rest of the install with it"
 ok "--tg pairs Telegram in the install, and its failure ends only itself"
 
+# --- a failed build stops the install ---
+# Measured on a server where the autoupdate unit ran go without HOME: the build
+# died on "module cache not found", the installer went on with the binary from
+# the previous build, said nothing and restarted nothing — the new code was
+# pulled and never ran.
+mkdir -p "$WORK/badgo"
+printf '#!/bin/sh\necho "go: module cache not found" >&2\nexit 1\n' > "$WORK/badgo/go"
+chmod +x "$WORK/badgo/go"
+before="$(stat -c %Y "$WORK/pockterm")"
+run_install_expecting_failure PATH="$WORK/badgo:$PATH"
+grep -q 'module cache not found' "$WORK/out" || bad "the build's own error was not shown"
+[ "$(stat -c %Y "$WORK/pockterm")" = "$before" ] || bad "a failed build still replaced the binary"
+ok "a build that fails stops the install"
+
 # --- installing from a published release, no toolchain needed ---
 # A local directory stands in for the release page: curl reads file:// URLs,
 # so this exercises the real download path without a network.
