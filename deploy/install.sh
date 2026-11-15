@@ -41,6 +41,10 @@ UNIT="$UNIT_DIR/pockterm.service"
 # until the next reboot.
 ENV_CHANGED=""
 UNIT_RESTARTED=""
+# Set when the binary differs from the one installed: the running service keeps
+# the old one until restarted, and without this an update pulled new code and
+# went on serving the previous build (15.11.2026).
+BIN_CHANGED=""
 WITH_TG=""
 
 log()  { printf '\033[1;34m[pockterm]\033[0m %s\n' "$*"; }
@@ -272,8 +276,13 @@ main() {
 	src="$(build_binary)" || die "the build failed — nothing was installed"
 
 	mkdir -p "$PREFIX" "$UNIT_DIR" "$(dirname "$ENV_FILE")"
-	install -m755 "$src" "$BIN"
-	ok "binary → $BIN"
+	if [ -f "$BIN" ] && cmp -s "$src" "$BIN"; then
+		ok "binary unchanged"
+	else
+		install -m755 "$src" "$BIN"
+		ok "binary → $BIN"
+		BIN_CHANGED=1
+	fi
 
 	# Token: generated once and kept. Regenerating it on every run would
 	# invalidate the link already saved on the phone.
@@ -325,9 +334,10 @@ main() {
 	# it above is not in effect yet. Only then, though: a restart drops every
 	# open terminal, and an install that changed nothing must cost nobody a
 	# reconnect.
-	if [ -n "$ENV_CHANGED" ] && [ -z "$UNIT_RESTARTED" ] && use_systemd; then
+	if [ -n "$ENV_CHANGED$BIN_CHANGED" ] && [ -z "$UNIT_RESTARTED" ] && use_systemd; then
 		systemctl restart pockterm.service
-		ok "service restarted to pick up $ENV_FILE"
+		if [ -n "$BIN_CHANGED" ]; then ok "service restarted on the new binary"
+		else ok "service restarted to pick up $ENV_FILE"; fi
 	fi
 
 	if use_systemd; then

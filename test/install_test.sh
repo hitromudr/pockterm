@@ -170,7 +170,7 @@ ok "a host without tmux is refused, with the command that fixes it"
 # make is only the "+" button, so its absence is a warning and the install goes on.
 run_install REQUIRE_MAKE=pockterm-no-such-tool
 grep -q 'pockterm-no-such-tool is not installed' "$WORK/out" || bad "no warning about the missing make"
-grep -q 'binary → ' "$WORK/out" || bad "a missing make stopped the install"
+grep -qE 'binary (→ |unchanged)' "$WORK/out" || bad "a missing make stopped the install"
 ok "a host without make is warned, not refused"
 
 # --- --tg pairs Telegram inside the install, and a failure is not fatal ---
@@ -182,6 +182,14 @@ grep -q '^POCKTERM_TG_TOKEN=' "$WORK/tg.env" && bad "a token that was never veri
 grep -q 'telegram is not configured' "$WORK/out" || bad "no warning that the pairing failed"
 grep -q 'here: http://127.0.0.1:8130/' "$WORK/out" || bad "a failed pairing took the rest of the install with it"
 ok "--tg pairs Telegram in the install, and its failure ends only itself"
+
+# --- a new binary is installed and marked for a restart, the same one is not ---
+run_install
+grep -q 'binary unchanged' "$WORK/out" || { cat "$WORK/out"; bad "reinstalling the same build replaced the binary"; }
+printf 'older build\n' > "$WORK/pockterm"; chmod +x "$WORK/pockterm"
+run_install
+grep -q 'binary → ' "$WORK/out" || bad "a different build was not installed"
+ok "only a changed binary is installed (and restarts the service)"
 
 # --- a failed build stops the install ---
 # Measured on a server where the autoupdate unit ran go without HOME: the build
