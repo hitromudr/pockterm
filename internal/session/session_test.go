@@ -111,6 +111,9 @@ func TestKindNamesTheButton(t *testing.T) {
 		{"shell", "shell"},
 		{"yolo", "yolo"},
 		{"custom:b2", "custom:b2"},
+		// A hand-written buttons.json id with a hyphen: the session used to lose
+		// its stamp and fall back to bare "custom", so the page hid its tab.
+		{"custom:ds-yolo", "custom:ds-yolo"},
 		// Not a preset this server has: no claim rather than a made-up one.
 		{"qwen", ""},
 		{"", ""},

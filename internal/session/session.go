@@ -44,7 +44,7 @@ func Target(preset string) (string, error) {
 // the recipe, a tmux command that stamps it on the session — so nothing here may
 // end a quote or start an expansion. It is derived from a preset the server has
 // already resolved, which is why this is a second lock rather than the first.
-var kindOK = regexp.MustCompile(`^[a-z][a-z0-9-]{0,23}(:[a-z][a-z0-9]{0,15})?$`)
+var kindOK = regexp.MustCompile(`^[a-z][a-z0-9-]{0,23}(:[a-z][a-z0-9-]{0,23})?$`)
 
 // Kind is what to call the session a preset starts, for the Makefile to stamp on
 // it (`KIND=`) and the page to read back off it.
