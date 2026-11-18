@@ -79,6 +79,9 @@ type Session struct {
 	// server so a session started via `make custom` or with a leaked MAKEFLAGS
 	// can be matched to the host's button for that agent.
 	Start string `json:"-"`
+	// The pid of the session's current pane, for reading what runs in it when
+	// Start names no agent (see session.LiveKind). 0 when tmux did not say.
+	PanePID int `json:"-"`
 	// Where the owner dragged this tab to, 1-based; 0 for a session nobody has
 	// placed. Kept in tmux beside the kind (see OrderOption) rather than in a file
 	// of this server's, for the same three reasons: CI restarts this binary several
@@ -107,7 +110,7 @@ const OrderOption = "@pockterm-order"
 // shifting every field after it.
 const listFormat = "#{session_name}\t#{session_windows}\t#{session_created}\t#{session_attached}" +
 	"\t#{session_group}\t#{" + KindOption + "}\t#{pane_current_path}\t#{" + OrderOption + "}" +
-	"\t#{pane_start_command}"
+	"\t#{pane_pid}\t#{pane_start_command}"
 
 // ListSessions returns the argv listing sessions one per line in the
 // tab-separated order ParseSessions parses.
@@ -148,9 +151,14 @@ func ParseSessions(out string) []Session {
 		if len(f) > 7 {
 			order, _ = strconv.Atoi(f[7])
 		}
-		start := ""
+		pid := 0
 		if len(f) > 8 {
-			start = f[8]
+			pid, _ = strconv.Atoi(f[8])
+		}
+		start := ""
+		if len(f) > 9 {
+			// Rejoined: the start command is the one field that can carry a tab.
+			start = strings.Join(f[9:], "\t")
 		}
 		// Nobody stamped this one — started before the Makefile knew how, or by
 		// hand. The command the pane was created with still answers the coarse
@@ -167,6 +175,7 @@ func ParseSessions(out string) []Session {
 			Kind:     kind,
 			Dir:      dir,
 			Start:    start,
+			PanePID:  pid,
 			Order:    order,
 		})
 	}

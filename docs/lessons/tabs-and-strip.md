@@ -586,6 +586,27 @@ answers **"shell" or nothing** — which button ran `agent-run
 --dangerously-skip-permissions` is the Makefile's knowledge and this program refuses
 to hold it. It never overrules a stamp.
 
+**The stamp says who raised the tab, not what runs in it** (2026-11-18). A tab is
+raised by one agent for another: since 15.11 `claude-relay` starts its successor from
+a script file (`exec bash …/claude-relay/<id>.sh`), so `#{pane_start_command}` names
+no agent and the session keeps whatever stamp it had — on ser8 four `con-*` tabs ran
+`claude-glm-safe` under a bare `custom` and were drawn as ★, and the owner read it as
+"the mark depends on who raised the tab". `session.LiveKind` reads the pane instead:
+`#{pane_pid}` (asked for just before the start command), then down through shells
+only, to the first wrapper that names an agent (`claude-glm-safe`, `gemini-key-safe`,
+`node …/gemini`), and `agent-run` by its `AGENT_COMMAND` (none = Claude W). Shells
+only, because an agent's own tools are its children — a `gemini-safe -p` for a second
+opinion under a W session must not turn the tab Gemini. Only when the start command
+names nothing, so a stamp the Makefile checked is not second-guessed.
+
+What it cannot see it leaves alone. Claude Code makes itself non-dumpable, so
+`/proc/<pid>/environ` of the agent is closed even to its owner, and the account it
+runs as (`CLAUDE_CONFIG_DIR`) is unreadable from outside. A project's launcher behind
+`agent-run` (exante's `xnt-seed`, which sets the account from `--ge` itself) ends the
+walk with no answer and the stamp stands — so the opener is the one who has to stamp
+the right button there: `xnt-lr --claude --ge` was stamped `yolo` (W) by exante's own
+`xnt_kind`, and no reading of the processes would have said G.
+
 **The mark is picked from a grid**, which replaced a trick: the way to give a button
 a glyph was to type an emoji at the front of its label, something you had to know and
 a character out of a name that has 24. `MARKS` in `web/js/kinds.js` is the vocabulary

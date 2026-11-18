@@ -1097,7 +1097,7 @@ func sessionLister(cfg config.Config, buttons *session.Buttons) func() ([]tmuxcm
 			btns = buttons.List()
 		}
 		for i := range list {
-			list[i].Kind = session.MatchStartKind(btns, list[i].Kind, list[i].Start)
+			list[i].Kind = session.LiveKind(btns, session.ProcFS{}, list[i].Kind, list[i].Start, list[i].PanePID)
 			list[i].Project = session.WorktreeProject(root, home, list[i].Dir)
 			list[i].Dir = session.ShortDir(root, home, list[i].Dir)
 		}

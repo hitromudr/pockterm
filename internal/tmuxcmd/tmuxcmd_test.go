@@ -240,12 +240,12 @@ func TestParseSessionsReadsTheKind(t *testing.T) {
 	// Lines as tmux prints them for the format this asks for: the stamped option,
 	// then the command the pane was created with — quoted by tmux when it has a
 	// space in it.
-	// The empty field before the command is the tab's place in the strip, which
-	// nobody dragged here: see OrderOption.
-	out := "natal\t1\t1754226692\t0\tnatal\tyolo\t/home/dms/work/self\t\t\"agent-run --dangerously-skip-permissions\"\n" +
-		"qwen\t1\t1754226700\t0\t\tcustom:b2\t/home/dms/work\t\t\"AGENT_COMMAND=qwen agent-run\"\n" +
-		"build\t1\t1754226800\t0\t\t\t/home/dms/work\t\t/usr/bin/zsh\n" +
-		"deploy\t1\t1754226900\t0\t\t\t/home/dms\t\t\"bash -lc \\\"make deploy\\\"\"\n" +
+	// The empty field is the tab's place in the strip, which nobody dragged
+	// here (see OrderOption); the pane's pid comes before the command.
+	out := "natal\t1\t1754226692\t0\tnatal\tyolo\t/home/dms/work/self\t\t1234\t\"agent-run --dangerously-skip-permissions\"\n" +
+		"qwen\t1\t1754226700\t0\t\tcustom:b2\t/home/dms/work\t\t1234\t\"AGENT_COMMAND=qwen agent-run\"\n" +
+		"build\t1\t1754226800\t0\t\t\t/home/dms/work\t\t1234\t/usr/bin/zsh\n" +
+		"deploy\t1\t1754226900\t0\t\t\t/home/dms\t\t1234\t\"bash -lc \\\"make deploy\\\"\"\n" +
 		"old\t1\t1754227000\t0\t\n"
 	got := ParseSessions(out)
 	if len(got) != 5 {
@@ -490,5 +490,15 @@ func TestClientsHolding(t *testing.T) {
 	}
 	if got := ClientsHolding("one", shared); got != nil {
 		t.Fatalf("a user session was picked up: %v", got)
+	}
+}
+
+func TestParseSessionsReadsThePanePid(t *testing.T) {
+	// The pid sits in front of the start command, and a tab inside the start
+	// command stays in it rather than becoming a field of its own.
+	out := "relay\t1\t1754032444\t0\t\tcustom\t/home/dms\t\t4242\texec bash a\tb.sh\n"
+	got := ParseSessions(out)
+	if len(got) != 1 || got[0].PanePID != 4242 || got[0].Start != "exec bash a\tb.sh" {
+		t.Fatalf("got %+v", got)
 	}
 }
