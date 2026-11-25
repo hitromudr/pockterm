@@ -23,6 +23,45 @@ export const SEP = '@';
 // than a poll.
 export const PEER_WAIT = 2500;
 
+// Every other request to another host — start, close, rename, buttons, push —
+// ends by itself after PEER_CALL_WAIT. Longer than a poll, since a host under
+// load can take seconds to start a session, but bounded: on 2026-11-25 s8 choked
+// on memory for hours, and the page could start nothing on rpi5 or a6 either.
+// The hosts share one origin (cc.*/@name), so a request to the stuck one that
+// never ended held the browser's connections to all of them.
+export const PEER_CALL_WAIT = 20000;
+
+// How long a socket may sit in its handshake. The browser lets one handshake
+// per address be pending at a time, and every host behind cc.* is one address:
+// a socket to a silent host would keep every other host's sockets waiting.
+export const HANDSHAKE_WAIT = 8000;
+
+// withDeadline(init, wait, opts) → { init, stop }: init with a signal that
+// aborts the request after `wait`, and stop() to let the deadline go once the
+// answer is in. A caller that brought a signal of its own keeps it untouched.
+export function withDeadline(init, wait, opts) {
+  const { timers = globalThis, Ctl = globalThis.AbortController } = opts || {};
+  const base = init || {};
+  if (base.signal || typeof Ctl !== 'function') return { init: base, stop: () => {} };
+  const ctl = new Ctl();
+  const timer = timers.setTimeout(() => ctl.abort(), wait);
+  return { init: { ...base, signal: ctl.signal }, stop: () => timers.clearTimeout(timer) };
+}
+
+// guardHandshake(sock, wait, opts) closes sock if it is still connecting after
+// `wait` and tells opts.stuck. Closing a connecting socket fires its close
+// event, so whatever reconnects on close takes it from there. Returns a release
+// for when the socket opens; a socket already open or gone is left alone.
+export function guardHandshake(sock, wait, opts) {
+  const { timers = globalThis, stuck = () => {} } = opts || {};
+  const timer = timers.setTimeout(() => {
+    if (sock.readyState !== 0) return; // WebSocket.CONNECTING
+    try { sock.close(); } catch (_) { /* already gone */ }
+    stuck();
+  }, wait);
+  return () => timers.clearTimeout(timer);
+}
+
 // readPeers(answer) → { self, hosts: [{ name, url, direct }] }, from what
 // /api/peers answered. Anything unreadable — an older server, which answers this
 // path with the page itself, or no answer at all — is one host, which is what

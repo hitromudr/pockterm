@@ -28,6 +28,7 @@ import { gridShape, gridPick, gridKeep, storedGrid, GRID_MAX } from './grid.js';
 import {
   readPeers, multi, others, qualify, splitName, localName, hostLabel, baseOf, apiURL, socketURL,
   isCross, requestInit, mergeLists, byHost, PEER_WAIT, hostButtons, shareButtons, sharePush,
+  withDeadline, guardHandshake, PEER_CALL_WAIT, HANDSHAKE_WAIT,
 } from './hosts.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
@@ -80,10 +81,17 @@ async function loadPeers() {
 // origin (see requestInit). A host the page does not know is refused here: it
 // must never fall through to this host, where a session of the same name may
 // well exist.
+//
+// Another host's request ends by itself after PEER_CALL_WAIT unless the caller
+// brought a signal of its own: a host that stopped answering must not hold the
+// requests to every other host behind it (see PEER_CALL_WAIT in js/hosts.js).
 function hostFetch(host, path, init) {
   const base = baseOf(host, peers);
   if (base === null) return Promise.reject(new Error(`unknown host ${host}`));
-  return fetch(apiURL(base, path, tokenQS), requestInit(init, isCross(base, location)));
+  const req = requestInit(init, isCross(base, location));
+  if (!host) return fetch(apiURL(base, path, tokenQS), req);
+  const timed = withDeadline(req, PEER_CALL_WAIT);
+  return fetch(apiURL(base, path, tokenQS), timed.init).finally(timed.stop);
 }
 
 // Version of the code actually running. Nobody writes it: the binary stamps its
@@ -2815,7 +2823,14 @@ function connectHost() {
   }
   const sock = new WebSocket(socketURL(base, location, socketQS()));
   adopt(sock, 'host');
-  sock.onopen = opened;
+  // A handshake that hangs is closed, and onclose reconnects with its backoff:
+  // left pending it would hold every other host's sockets behind it, since the
+  // browser runs one pending handshake per address (HANDSHAKE_WAIT).
+  const host = hostOfCurrent();
+  const release = guardHandshake(sock, HANDSHAKE_WAIT, {
+    stuck: () => report('socket-stuck', { host: hostLabel(host, peers), ms: HANDSHAKE_WAIT }),
+  });
+  sock.onopen = () => { release(); opened(); };
 }
 
 // While the socket goes the long way and the door is known, the door is asked

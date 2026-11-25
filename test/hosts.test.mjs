@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   readPeers, multi, others, qualify, splitName, localName, hostLabel, baseOf, apiURL, socketURL,
   isCross, requestInit, mergeLists, byHost, SEP,
+  withDeadline, guardHandshake, PEER_CALL_WAIT, HANDSHAKE_WAIT,
 } from '../web/js/hosts.js';
 import { projectOf, groupSessions } from '../web/js/groups.js';
 
@@ -245,4 +246,97 @@ test('the buttons saved here are sent to every other host', async () => {
   assert.deepEqual(sent[0][1], { buttons: list });
   assert.deepEqual(failed, ['micro', 'neuro']);
   assert.deepEqual(await shareButtons(list, [], async () => { throw new Error('not called'); }), []);
+});
+
+// A clock the test drives by hand.
+function clock() {
+  let t = 0;
+  const timers = [];
+  const c = {
+    setTimeout(fn, ms) { const h = { at: t + ms, fn }; timers.push(h); return h; },
+    clearTimeout(h) { const i = timers.indexOf(h); if (i >= 0) timers.splice(i, 1); },
+    advance(ms) {
+      t += ms;
+      for (const h of timers.filter((x) => x.at <= t)) { c.clearTimeout(h); h.fn(); }
+    },
+    pending: () => timers.length,
+  };
+  return c;
+}
+
+// 2026-11-25: s8 choked on memory for hours and the page could start nothing on
+// rpi5 or a6 either. A request to the stuck host had no end of its own, and the
+// hosts share one origin — so one host's silence held everyone's requests.
+test('a request to another host ends by itself when that host is silent', () => {
+  const c = clock();
+  const { init, stop } = withDeadline({ method: 'POST', body: 'x' }, PEER_CALL_WAIT, { timers: c });
+  assert.equal(init.method, 'POST');
+  assert.equal(init.body, 'x');
+  assert.ok(init.signal, 'a signal is attached');
+  assert.equal(init.signal.aborted, false);
+  c.advance(PEER_CALL_WAIT - 1);
+  assert.equal(init.signal.aborted, false, 'not before its time');
+  c.advance(1);
+  assert.equal(init.signal.aborted, true, 'aborted once the wait is over');
+  stop();
+});
+
+test('an answered request lets its deadline go', () => {
+  const c = clock();
+  const { init, stop } = withDeadline(undefined, 1000, { timers: c });
+  stop();
+  assert.equal(c.pending(), 0);
+  c.advance(5000);
+  assert.equal(init.signal.aborted, false);
+});
+
+test('a caller with a signal of its own keeps it', () => {
+  const c = clock();
+  const own = new AbortController();
+  const { init, stop } = withDeadline({ signal: own.signal }, 1000, { timers: c });
+  assert.equal(init.signal, own.signal);
+  assert.equal(c.pending(), 0);
+  stop();
+});
+
+test('the wait for another host is longer than a poll but bounded', () => {
+  assert.ok(PEER_CALL_WAIT > PEER_WAIT_FLOOR);
+  assert.ok(PEER_CALL_WAIT <= 30000);
+  assert.ok(HANDSHAKE_WAIT > 0 && HANDSHAKE_WAIT <= 10000);
+});
+const PEER_WAIT_FLOOR = 2500;
+
+// A socket stuck in the handshake holds the browser's one pending handshake per
+// address, and every host behind cc.* shares that address.
+test('a socket that never opens is closed after the handshake wait', () => {
+  const c = clock();
+  const sock = { readyState: 0, closed: 0, close() { this.closed += 1; } };
+  let stuck = 0;
+  guardHandshake(sock, HANDSHAKE_WAIT, { timers: c, stuck: () => { stuck += 1; } });
+  c.advance(HANDSHAKE_WAIT - 1);
+  assert.equal(sock.closed, 0);
+  c.advance(1);
+  assert.equal(sock.closed, 1);
+  assert.equal(stuck, 1);
+});
+
+test('an opened or already closed socket is left alone', () => {
+  for (const state of [1, 2, 3]) {
+    const c = clock();
+    const sock = { readyState: state, closed: 0, close() { this.closed += 1; } };
+    let stuck = 0;
+    guardHandshake(sock, 100, { timers: c, stuck: () => { stuck += 1; } });
+    c.advance(100);
+    assert.equal(sock.closed, 0, `state ${state}`);
+    assert.equal(stuck, 0);
+  }
+});
+
+test('a guard let go before the wait does nothing', () => {
+  const c = clock();
+  const sock = { readyState: 0, closed: 0, close() { this.closed += 1; } };
+  const release = guardHandshake(sock, 100, { timers: c });
+  release();
+  c.advance(1000);
+  assert.equal(sock.closed, 0);
 });
