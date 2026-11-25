@@ -36,6 +36,16 @@ export const PEER_CALL_WAIT = 20000;
 // a socket to a silent host would keep every other host's sockets waiting.
 export const HANDSHAKE_WAIT = 8000;
 
+// handshakeWait(stuck) → the wait for the next try after `stuck` handshakes in a
+// row were cut: doubled each time up to HANDSHAKE_MAX. A slow network away from
+// home gets through on a later try, and a silent host still holds the others
+// back for HANDSHAKE_MAX at worst.
+export const HANDSHAKE_MAX = 30000;
+export function handshakeWait(stuck) {
+  const n = Math.max(0, Math.min(stuck | 0, 8));
+  return Math.min(HANDSHAKE_WAIT * 2 ** n, HANDSHAKE_MAX);
+}
+
 // withDeadline(init, wait, opts) → { init, stop }: init with a signal that
 // aborts the request after `wait`, and stop() to let the deadline go once the
 // answer is in. A caller that brought a signal of its own keeps it untouched.

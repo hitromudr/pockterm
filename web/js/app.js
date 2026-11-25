@@ -28,7 +28,7 @@ import { gridShape, gridPick, gridKeep, storedGrid, GRID_MAX } from './grid.js';
 import {
   readPeers, multi, others, qualify, splitName, localName, hostLabel, baseOf, apiURL, socketURL,
   isCross, requestInit, mergeLists, byHost, PEER_WAIT, hostButtons, shareButtons, sharePush,
-  withDeadline, guardHandshake, PEER_CALL_WAIT, HANDSHAKE_WAIT,
+  withDeadline, guardHandshake, handshakeWait, PEER_CALL_WAIT,
 } from './hosts.js';
 
 const token = new URLSearchParams(location.search).get('token') || '';
@@ -1145,6 +1145,14 @@ function wirePreset(b) {
       // tmux needs a moment before the session shows up in the listing.
       setTimeout(loadSessions, 400);
     } catch (_) {
+      // Another host that did not answer in PEER_CALL_WAIT may still be starting
+      // it under load: the list is read again, so a second tap is not made blind.
+      if (host) {
+        toast(`${hostLabel(host, peers)}: no answer yet — it may still start, the list is refreshed`);
+        report('start-session', { preset, dir: dir || '', host, ok: false, status: 'timeout' });
+        setTimeout(loadSessions, 400);
+        return;
+      }
       toast('no connection to the server');
     }
   });
@@ -2813,6 +2821,8 @@ function connect() {
 // The long way to the session's own host: this page's origin for this host, the
 // address /api/peers gave for another. A host the page no longer knows gets no
 // socket at all — never this host's, where the same name may be another session.
+// Handshakes cut in a row; the next one is given longer (handshakeWait).
+let stuckHandshakes = 0;
 function connectHost() {
   const base = baseOf(hostOfCurrent(), peers);
   if (base === null) {
@@ -2827,10 +2837,14 @@ function connectHost() {
   // left pending it would hold every other host's sockets behind it, since the
   // browser runs one pending handshake per address (HANDSHAKE_WAIT).
   const host = hostOfCurrent();
-  const release = guardHandshake(sock, HANDSHAKE_WAIT, {
-    stuck: () => report('socket-stuck', { host: hostLabel(host, peers), ms: HANDSHAKE_WAIT }),
+  const wait = handshakeWait(stuckHandshakes);
+  const release = guardHandshake(sock, wait, {
+    stuck: () => {
+      stuckHandshakes += 1;
+      report('socket-stuck', { host: hostLabel(host, peers), ms: wait });
+    },
   });
-  sock.onopen = () => { release(); opened(); };
+  sock.onopen = () => { release(); stuckHandshakes = 0; opened(); };
 }
 
 // While the socket goes the long way and the door is known, the door is asked

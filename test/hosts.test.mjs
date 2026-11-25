@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   readPeers, multi, others, qualify, splitName, localName, hostLabel, baseOf, apiURL, socketURL,
   isCross, requestInit, mergeLists, byHost, SEP,
-  withDeadline, guardHandshake, PEER_CALL_WAIT, HANDSHAKE_WAIT,
+  withDeadline, guardHandshake, handshakeWait, PEER_CALL_WAIT, HANDSHAKE_WAIT, HANDSHAKE_MAX,
 } from '../web/js/hosts.js';
 import { projectOf, groupSessions } from '../web/js/groups.js';
 
@@ -339,4 +339,15 @@ test('a guard let go before the wait does nothing', () => {
   release();
   c.advance(1000);
   assert.equal(sock.closed, 0);
+});
+
+// A slow network away from home is not a silent host: a handshake that needs 10s
+// would be cut at 8s on every try and never get through.
+test('the handshake wait grows with every stuck try, up to a bound', () => {
+  assert.equal(handshakeWait(0), HANDSHAKE_WAIT);
+  assert.equal(handshakeWait(1), HANDSHAKE_WAIT * 2);
+  assert.ok(handshakeWait(2) > handshakeWait(1));
+  assert.equal(handshakeWait(10), HANDSHAKE_MAX);
+  assert.equal(handshakeWait(-1), HANDSHAKE_WAIT);
+  assert.ok(HANDSHAKE_MAX <= 30000);
 });
