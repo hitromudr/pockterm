@@ -21,7 +21,7 @@ export const SEP = '@';
 // How long another host is waited for. The strip is polled every few seconds
 // and a host that is off answers nothing at all, so its absence has to cost less
 // than a poll.
-export const PEER_WAIT = 2500;
+export const PEER_WAIT = 4000;
 
 // Every other request to another host — start, close, rename, buttons, push —
 // ends by itself after PEER_CALL_WAIT. Longer than a poll, since a host under
@@ -192,26 +192,39 @@ export function requestInit(init, cross) {
   return out;
 }
 
-// mergeLists(p, answers) → { sessions, down, error } — one list out of every
-// host's answer, in the listed order of the hosts.
+// mergeLists(p, answers, cache) → { sessions, down, error } — one list out of
+// every host's answer, in the listed order of the hosts.
 //
 // answers maps a host ('' for this one) to { sessions } or { error }. Another
 // host's sessions are renamed `name@host` and carry `host`; this host's are
-// passed as they came. `down` is the hosts that did not answer, with why, in
-// order — the page draws them grey rather than dropping them, since a host
-// that has simply vanished from the list reads as a host with no sessions.
-// `error` is set only when nobody answered, and it is this host's: that is the
-// one-host page's message, and with one host it is the only answer there is.
-export function mergeLists(p, answers) {
+// passed as they came. When `cache` (a Map) is supplied, each remote host's
+// last good session list is remembered and reused on a single transient poll
+// failure so its tabs do not blink out of the strip on a momentary RTT spike;
+// two consecutive failures mark the host `down`. `down` is the hosts that did
+// not answer, with why, in order — the page draws them grey rather than
+// dropping them, since a host that has simply vanished from the list reads as a
+// host with no sessions. `error` is set only when nobody answered, and it is
+// this host's: that is the one-host page's message, and with one host it is the
+// only answer there is.
+export function mergeLists(p, answers, cache = null) {
   const order = multi(p) ? p.hosts.map((h) => (h.name === p.self ? '' : h.name)) : [''];
   const sessions = [];
   const down = [];
   let answered = 0;
   for (const host of order) {
-    const a = answers.get(host);
+    let a = answers.get(host);
     if (!a || a.error) {
-      down.push({ host, why: (a && a.error) || 'no answer' });
-      continue;
+      const prev = host && cache ? cache.get(host) : null;
+      if (prev && prev.fails < 1) {
+        cache.set(host, { sessions: prev.sessions, fails: prev.fails + 1 });
+        a = { sessions: prev.sessions };
+      } else {
+        if (prev) cache.set(host, { sessions: prev.sessions, fails: prev.fails + 1 });
+        down.push({ host, why: (a && a.error) || 'no answer' });
+        continue;
+      }
+    } else if (host && cache) {
+      cache.set(host, { sessions: a.sessions || [], fails: 0 });
     }
     answered++;
     for (const s of a.sessions || []) {

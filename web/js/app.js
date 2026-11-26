@@ -240,6 +240,7 @@ if (tabsEl && typeof ResizeObserver === 'function') {
 // does not answer within PEER_WAIT is in `down` — drawn grey — and the rest is
 // shown without it; `error` is left for when nobody answered at all.
 let downHosts = [];
+const lastHostSessions = new Map();
 async function fetchHostSessions(host) {
   let stop = null;
   let signal;
@@ -295,7 +296,7 @@ async function fetchSessions() {
   const got = await Promise.all(hosts.map((h) => fetchHostSessions(h)));
   if (!got[0].error && !customLoaded) customReady = loadCustom();
   hosts.forEach((h, i) => { if (h && !got[i].error) refreshPeerButtons(h); });
-  const { sessions, down, error } = mergeLists(peers, new Map(hosts.map((h, i) => [h, got[i]])));
+  const { sessions, down, error } = mergeLists(peers, new Map(hosts.map((h, i) => [h, got[i]])), lastHostSessions);
   const was = downHosts.map((d) => d.host).join(',');
   downHosts = multi(peers) ? down : [];
   if (downHosts.map((d) => d.host).join(',') !== was) {

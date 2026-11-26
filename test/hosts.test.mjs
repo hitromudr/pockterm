@@ -128,6 +128,23 @@ test('one list out of every host, in the listed order, the silent ones grey', ()
   assert.equal(one.sessions[0], mine[0]);
   // And an answer from a host that is not listed is not shown.
   assert.deepEqual(mergeLists(readPeers(null), new Map([['', { sessions: [] }], ['ser8', { sessions: [{ name: 'z' }] }]])).sessions, []);
+
+  // With a cache Map: a single transient poll timeout keeps the remote host's
+  // last good sessions (no tab strip flicker); a second consecutive timeout
+  // marks the host down.
+  const cache = new Map();
+  assert.deepEqual(
+    mergeLists(two, new Map([['', { sessions: [{ name: 'a' }] }], ['ser8', { sessions: [{ name: 'qa' }] }]]), cache),
+    { sessions: [{ name: 'a' }, { name: 'qa@ser8', host: 'ser8' }], down: [], error: '' },
+  );
+  assert.deepEqual(
+    mergeLists(two, new Map([['', { sessions: [{ name: 'a' }] }], ['ser8', { error: 'no connection' }]]), cache),
+    { sessions: [{ name: 'a' }, { name: 'qa@ser8', host: 'ser8' }], down: [], error: '' },
+  );
+  assert.deepEqual(
+    mergeLists(two, new Map([['', { sessions: [{ name: 'a' }] }], ['ser8', { error: 'no connection' }]]), cache),
+    { sessions: [{ name: 'a' }], down: [{ host: 'ser8', why: 'no connection' }], error: '' },
+  );
 });
 
 test('a strip dragged across hosts keeps global positions across hosts', () => {
